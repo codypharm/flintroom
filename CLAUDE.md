@@ -33,6 +33,7 @@ Flintroom is a mobile-first, hands-free rehearsal app for high-stakes speaking s
 | Doc | Path | Purpose |
 | --- | --- | --- |
 | Product Spec | `Product.md` | Full product spec — source of truth. Positioning, features, pricing, stack, build plan, risks. |
+| Ledger & sessions | `docs/minutes-ledger-and-sessions.md` | Resolved design for the minutes ledger and session state machine, with rationale. Read before touching billing, sessions, or the metering boundary. |
 | Design Guide | `design-guide/pitchgo_design_system/DESIGN.md` | Design tokens (colors, type, spacing, shape, elevation) — source of truth for `impeccable` skill. |
 | Screen mockups | `design-guide/<screen>/code.html` + `screen.png` | **Stale — layout/density reference only.** Predate the rename (PitchGo/PitchForge) and encode retired decisions: token counters, `investment_verdict_dashboard`, "Avg. Likelihood %", pitch-only copy. See `Product.md` §9 → Brand Commitments. |
 
