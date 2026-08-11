@@ -11,7 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy import text
 
 from app.core.database import Base
+from app.modules.audit_log.models import AuditEvent  # noqa: F401  (registers the table)
 from app.modules.billing.models import Account
+from app.modules.audit_log.admin import AdminService
+from app.modules.audit_log.service import AuditService
 from app.modules.billing.service import LedgerService
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
@@ -64,6 +67,16 @@ async def db(engine) -> AsyncSession:
 @pytest.fixture
 def ledger(db) -> LedgerService:
     return LedgerService(db)
+
+
+@pytest.fixture
+def audit(db) -> AuditService:
+    return AuditService(db)
+
+
+@pytest.fixture
+def admin(db) -> AdminService:
+    return AdminService(db)
 
 
 @pytest_asyncio.fixture

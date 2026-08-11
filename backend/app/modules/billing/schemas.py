@@ -1,6 +1,10 @@
 from enum import Enum
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict
+
+from app.core.actors import Actor
 
 
 class Bucket(str, Enum):
@@ -74,3 +78,9 @@ class LedgerEntryRead(BaseModel):
     bucket: Bucket
     delta_seconds: int
     reason: EntryReason
+
+    actor: Actor
+    actor_id: str | None = None
+    request_id: str | None = None
+    balance_after_seconds: int = 0
+    created_at: datetime | None = None

@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.actors import ActorContext
 from app.core.errors import AccountNotFound
 from app.core.logging import get_logger
 from app.modules.billing.models import Account, LedgerEntry
@@ -35,8 +36,11 @@ class LedgerService:
     That is what makes the audit trail complete rather than mostly complete.
     """
 
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, actor: ActorContext | None = None) -> None:
         self._db = db
+        # Defaults to system: the overwhelmingly common writer is the tick loop
+        # and the lazy period reset. Request-scoped callers pass their own.
+        self._actor = actor or ActorContext.system()
 
     async def grant(
         self,
@@ -260,6 +264,10 @@ class LedgerService:
                 bucket=bucket.value,
                 delta_seconds=delta_seconds,
                 reason=reason.value,
+                actor=self._actor.actor.value,
+                actor_id=self._actor.actor_id,
+                request_id=self._actor.request_id,
+                balance_after_seconds=self._balance_of(account).total_seconds,
                 idempotency_key=idempotency_key,
             )
         )

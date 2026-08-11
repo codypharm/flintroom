@@ -26,6 +26,7 @@ from app.core.database import Base
 # Importing the models registers them on Base.metadata. Autogenerate only sees
 # what has been imported, so a module missing here silently produces an empty
 # migration rather than an error.
+from app.modules.audit_log import models as audit_log_models  # noqa: F401
 from app.modules.billing import models as billing_models  # noqa: F401
 
 target_metadata = Base.metadata

@@ -69,6 +69,15 @@ class LedgerEntry(Base):
     delta_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(String(32), nullable=False)
 
+    #: Provenance. A delta and a reason say what moved; these say who moved it.
+    actor: Mapped[str] = mapped_column(String(16), nullable=False, server_default="system")
+    actor_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    #: Total across all buckets immediately after this entry. Denormalised so an
+    #: admin view shows a running balance without replaying the log per row.
+    balance_after_seconds: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

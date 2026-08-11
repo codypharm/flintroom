@@ -113,7 +113,7 @@ Never put business logic in route handlers. Never do DB queries at the route lay
 | Webhooks | Signature verified (RevenueCat, ElevenLabs if applicable) before payload parsed. Unverified = reject + audit log. |
 | Secrets | Zero secrets in code or logs. `.env` local only, gitignored. |
 | Recordings/PII | No raw audio or full transcript returned in list endpoints. Retention window explicit and documented before any recording feature ships. |
-| Audit trail | Session start/end, minute decrements, top-up purchases, refunds all written to audit log. |
+| Audit trail | Money movements are recorded in `ledger_entries` (never duplicated elsewhere); everything else worth proving goes to `audit_events`. See Audit Model below. |
 | Rate limiting | Auth and session-start endpoints rate-limited. |
 
 When in doubt: **deny by default, log the denial, surface to human if ambiguous.**
@@ -215,6 +215,18 @@ Supabase is the Postgres host, not the application platform. These are the rules
 - Log every money movement (tick, refund, grant, forgiveness, period reset). These are the lines that answer "why is this user's balance what it is."
 - Application logs are **not** the audit trail. The audit trail is a database table and may not be sampled or dropped.
 - `configure_logging()` belongs at process startup (the app lifespan), never in the app factory — it replaces root handlers, and a factory that does that by being called will fight anything else with an opinion about handlers.
+
+### Audit model
+
+Two tables, one rule: **a balance change is recorded exactly once.**
+
+- **`ledger_entries` is the money record.** Every tick, grant, refund, expiry and forgiveness, append-only, each row carrying `actor` / `actor_id` / `request_id` and `balance_after_seconds`. Never mirror a money movement into `audit_events` — a second copy of a balance can silently disagree with the first, and the reconciliation test only guards the ledger.
+- **`audit_events` is everything else worth proving:** session start/settle/reap, denied starts, entitlement changes, rejected webhooks, permission denials, admin overrides. No foreign keys — an audit row must survive deletion of whatever it describes.
+- **Provenance is set at service construction**, not per call: `LedgerService(db, actor=ActorContext(...))`. A caller cannot then attribute half its writes to one actor and half to another. Defaults to `SYSTEM`; `ADMIN` requires an `actor_id`.
+- **Audit context is redacted like a log line.** These rows are append-only, so a secret written into one cannot be edited back out.
+- **`AdminService` is read-only.** Anything an operator changes goes through the owning service so it lands with an `ADMIN` actor attached — a support tool that writes directly is how an unexplained balance appears.
+
+> **Naming:** the module is `audit_log`, never `auditor`. **Auditor** is the domain term for the background agent that cross-checks a live transcript against ingested material (see Domain Language). Colliding the two makes every future search for either useless.
 
 ### Error status codes
 
