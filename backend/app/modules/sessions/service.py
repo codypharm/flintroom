@@ -23,8 +23,14 @@ from app.core.errors import (
 from app.core.logging import get_logger
 from app.modules.audit_log.schemas import AuditEventType
 from app.modules.audit_log.service import AuditService
-from app.modules.sessions.models import Session
-from app.modules.sessions.schemas import EndReason, SessionState
+from app.modules.sessions.models import Session, SessionPhaseSpan
+from app.modules.sessions.schemas import (
+    METERED_PHASES,
+    EndReason,
+    PhaseSpanRead,
+    SessionPhase,
+    SessionState,
+)
 
 #: The states that hold a user's one-session lock. Released at `settled` and
 #: `failed` — neither costs anything to keep around.
@@ -125,6 +131,12 @@ class SessionService:
         """The voice channel is up. From here the meter runs."""
         session = await self._load(session_id)
         self._move(session, SessionState.ACTIVE)
+        # The state change and the span open together. A session that is
+        # `active` with no open interrogation span would be running a room the
+        # ledger has no billable window to attach to.
+        self._db.add(
+            SessionPhaseSpan(session_id=session.id, phase=SessionPhase.INTERROGATION)
+        )
         await self._db.commit()
 
         log.info(
@@ -169,6 +181,10 @@ class SessionService:
         session = await self._load(session_id)
         self._move(session, SessionState.FINALIZING)
         session.end_reason = end_reason
+        # Stopping the meter and closing the billable window are one event. Two
+        # separate steps would eventually be half-performed, and a span left
+        # open bills forever on every replay of the ledger.
+        await self._close_open_span(session_id)
         await self._db.commit()
 
         log.info(
@@ -196,6 +212,139 @@ class SessionService:
         )
         await self._db.commit()
         return session
+
+    async def open_phase(
+        self, *, session_id: uuid.UUID, phase: SessionPhase
+    ) -> PhaseSpanRead:
+        """Begin an unmetered coaching phase.
+
+        Only the coaching phases. Interrogation spans are opened by `activate`
+        alone, so there is no call anywhere in the codebase that can start the
+        meter without going through the state machine — see the refusal in
+        `_reject_metered_phase`.
+        """
+        session = await self._load(session_id)
+        self._reject_metered_phase(session, phase)
+        self._require_billing_closed(session, phase)
+
+        # Only ever closes another coaching span: billing is already closed by
+        # the time this runs, so `begin_finalizing` remains the only thing in
+        # the codebase that can close an interrogation span.
+        await self._close_open_span(session_id)
+        # Read before the rollback below can expire it. A rollback expires every
+        # object in the session even with `expire_on_commit` off, and touching
+        # an expired attribute afterwards triggers a lazy refresh — blocking IO
+        # inside an async call, surfacing as MissingGreenlet rather than as
+        # anything resembling the real cause.
+        user_id = session.user_id
+
+        span = SessionPhaseSpan(session_id=session.id, phase=phase)
+        self._db.add(span)
+        try:
+            await self._db.commit()
+        except IntegrityError as exc:
+            # A second device opened the same phase first. Unlike a start race
+            # this is not a denial: nothing is billed either way and both
+            # devices wanted the user in the same phase, so handing back the
+            # span that won is the honest outcome. A 409 here would refuse a
+            # free feature to protect nothing.
+            await self._db.rollback()
+            if not self._is_one_open_span_violation(exc):
+                raise
+            log.info(
+                "phase_open_lost_race",
+                user_id=str(user_id),
+                session_id=str(session_id),
+                phase=phase.value,
+            )
+            return await self._open_span(session_id)
+
+        log.info(
+            "phase_opened",
+            user_id=str(user_id),
+            session_id=str(session_id),
+            phase=phase.value,
+        )
+        return PhaseSpanRead.model_validate(span)
+
+    @staticmethod
+    def _reject_metered_phase(session: Session, phase: SessionPhase) -> None:
+        """Refuse to open a billable phase through the coaching door.
+
+        The metering boundary is a trust mechanic, not a tuning knob (CLAUDE.md
+        → Metering Rules), so it is enforced where it cannot be routed around
+        rather than by every caller remembering which phases cost money. A
+        settled session is billing-closed; opening interrogation on one would
+        restart the meter on a session already paid for and forgiven.
+        """
+        if phase in METERED_PHASES:
+            raise InvalidStateTransition(
+                session_id=str(session.id),
+                from_state=session.state.value,
+                to_state=phase.value,
+            )
+
+    @staticmethod
+    def _require_billing_closed(session: Session, phase: SessionPhase) -> None:
+        """Coaching opens after settlement, never during the room.
+
+        Opening a phase closes whatever span is open, so permitting this while
+        the session is `active` would stop the meter through a door that has no
+        business touching billing — and leave a session still `active`, still
+        holding the lock, with no span for the next tick to attach to. §4.1 puts
+        settlement first: the panel finishes, the session settles, then debrief.
+        """
+        if session.state is not SessionState.SETTLED:
+            raise InvalidStateTransition(
+                session_id=str(session.id),
+                from_state=session.state.value,
+                to_state=phase.value,
+            )
+
+    async def _close_open_span(self, session_id: uuid.UUID) -> None:
+        """Close whichever phase is currently open, if any.
+
+        Tolerant of there being none: the reaper retries `finalizing`, and a
+        retry that found nothing left to close is a success, not an error.
+        """
+        for span in await self._open_spans(session_id):
+            span.ended_at = datetime.now(UTC)
+
+    async def _open_span(self, session_id: uuid.UUID) -> PhaseSpanRead:
+        """The phase currently open. Only called where one must exist."""
+        [span] = await self._open_spans(session_id)
+        return PhaseSpanRead.model_validate(span)
+
+    async def _open_spans(self, session_id: uuid.UUID) -> list[SessionPhaseSpan]:
+        result = await self._db.execute(
+            select(SessionPhaseSpan)
+            .where(
+                SessionPhaseSpan.session_id == session_id,
+                SessionPhaseSpan.ended_at.is_(None),
+            )
+            .execution_options(populate_existing=True)
+        )
+        return list(result.scalars())
+
+    @staticmethod
+    def _is_one_open_span_violation(exc: IntegrityError) -> bool:
+        """Checked by name, for the reason given on the start-race check: any
+        other constraint failing must stay a 500 rather than be reported back as
+        a benign duplicate."""
+        return "uq_spans_one_open_per_session" in str(getattr(exc, "orig", exc))
+
+    async def spans(self, *, session_id: uuid.UUID) -> list[PhaseSpanRead]:
+        """Every phase this session has been through, oldest first.
+
+        Chronological rather than newest-first: a span list is read as a
+        timeline of what happened, not as an incident log read backwards.
+        """
+        result = await self._db.execute(
+            select(SessionPhaseSpan)
+            .where(SessionPhaseSpan.session_id == session_id)
+            .order_by(SessionPhaseSpan.started_at, SessionPhaseSpan.id)
+        )
+        return [PhaseSpanRead.model_validate(row) for row in result.scalars()]
 
     @staticmethod
     def _move(session: Session, to_state: SessionState) -> None:

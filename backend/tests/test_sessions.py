@@ -16,7 +16,8 @@ from app.core.errors import ActiveSessionExists, InvalidStateTransition
 from app.modules.audit_log.schemas import AuditEventType
 from app.modules.audit_log.service import AuditService
 from app.modules.sessions.models import Session as SessionModel
-from app.modules.sessions.schemas import EndReason, SessionState
+from app.modules.sessions.models import SessionPhaseSpan
+from app.modules.sessions.schemas import EndReason, SessionPhase, SessionState
 from app.modules.sessions.service import SessionService
 
 
@@ -312,6 +313,199 @@ async def test_a_session_whose_audit_row_fails_to_write_is_not_created_either(
         ).scalar_one()
 
     assert committed == 0
+
+
+async def test_activating_a_session_opens_an_interrogation_span(sessions, account):
+    """The meter's structural anchor.
+
+    Metering is not a conditional check scattered across the write paths — the
+    ledger references interrogation spans, so "is this billable" is answered by
+    which span is open rather than by remembering to ask. A span opening at
+    `active` is what makes that answer exist.
+    """
+    session = await sessions.start(user_id=account.user_id)
+    await sessions.activate(session_id=session.id)
+
+    spans = await sessions.spans(session_id=session.id)
+
+    assert [span.phase for span in spans] == [SessionPhase.INTERROGATION]
+    assert spans[0].ended_at is None
+
+
+async def test_finalizing_closes_the_interrogation_span_so_the_meter_stops(
+    sessions, account
+):
+    """The billable window has an end, and it is the same event that stops the
+    meter — not a second bookkeeping step that can be forgotten.
+
+    An interrogation span left open is a room that bills forever in every
+    replay of the ledger, which is the failure the whole append-only design
+    exists to make impossible.
+    """
+    session = await sessions.start(user_id=account.user_id)
+    await sessions.activate(session_id=session.id)
+
+    await sessions.begin_finalizing(session_id=session.id, end_reason=EndReason.USER_ENDED)
+
+    [interrogation] = await sessions.spans(session_id=session.id)
+    assert interrogation.ended_at is not None
+    assert interrogation.ended_at >= interrogation.started_at
+
+
+async def test_debrief_opens_on_a_settled_session_and_bills_nothing(
+    sessions, ledger, account
+):
+    """The metering boundary, structurally (Product.md §4.1).
+
+    Debrief and sparring are the part §3.5 calls "what users will pay for", and
+    they are unmetered. Opening one on a *settled* session is the normal case,
+    not an exception: billing closed when the room did, and the coaching that
+    follows is deliberately free — including for a user who came back to it an
+    hour later.
+    """
+    session = await sessions.start(user_id=account.user_id)
+    await sessions.activate(session_id=session.id)
+    await sessions.begin_finalizing(session_id=session.id, end_reason=EndReason.USER_ENDED)
+    await sessions.settle(session_id=session.id)
+
+    await sessions.open_phase(session_id=session.id, phase=SessionPhase.DEBRIEF)
+
+    spans = await sessions.spans(session_id=session.id)
+    assert [span.phase for span in spans] == [
+        SessionPhase.INTERROGATION,
+        SessionPhase.DEBRIEF,
+    ]
+    assert await ledger.entries(user_id=account.user_id) == []
+
+
+async def test_the_meter_cannot_be_restarted_by_opening_an_interrogation_phase(
+    sessions, account
+):
+    """The coaching door does not open a billable phase.
+
+    `open_phase` is the one call that exists to be used *after* settlement, so
+    it is exactly where a mistake would restart the meter on a session already
+    paid for and forgiven. Interrogation spans come from `activate` alone, which
+    means the state machine's transition table is the only way to reach a
+    billable window — the metering boundary cannot be routed around by picking a
+    different method.
+    """
+    session = await sessions.start(user_id=account.user_id)
+    await sessions.activate(session_id=session.id)
+    await sessions.begin_finalizing(session_id=session.id, end_reason=EndReason.USER_ENDED)
+    await sessions.settle(session_id=session.id)
+
+    with pytest.raises(InvalidStateTransition):
+        await sessions.open_phase(
+            session_id=session.id, phase=SessionPhase.INTERROGATION
+        )
+
+    assert len(await sessions.spans(session_id=session.id)) == 1
+
+
+async def test_devices_racing_to_open_a_phase_produce_one_span(engine, db, account):
+    """One open span per session, arbitrated by Postgres.
+
+    Two open spans double-count the phase in the §4.3 per-phase durations, and
+    for interrogation that is a double charge for one stretch of wall-clock
+    time. The service closes the open span before inserting, but that check
+    cannot see an uncommitted sibling transaction — the same reason the
+    one-live-session rule is an index rather than a query.
+
+    Losing this race is not an error. Both devices wanted the user in debrief
+    and nothing is billed either way, so the loser is handed the span that won
+    rather than a 409 for a phase that costs nothing.
+
+    Connections are established before the race for the reason documented on
+    the start race above: a cold pool serializes the racers and the test passes
+    without proving anything.
+    """
+    session = await SessionService(db).start(user_id=account.user_id)
+    await SessionService(db).activate(session_id=session.id)
+    await SessionService(db).begin_finalizing(
+        session_id=session.id, end_reason=EndReason.USER_ENDED
+    )
+    await SessionService(db).settle(session_id=session.id)
+
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    racers = [factory() for _ in range(5)]
+    await asyncio.gather(*(racer.execute(text("SELECT 1")) for racer in racers))
+
+    gate = asyncio.Event()
+
+    async def open_once(racer):
+        await gate.wait()
+        return await SessionService(racer).open_phase(
+            session_id=session.id, phase=SessionPhase.DEBRIEF
+        )
+
+    tasks = [asyncio.create_task(open_once(racer)) for racer in racers]
+    await asyncio.sleep(0)
+    gate.set()
+    results = await asyncio.gather(*tasks)
+
+    for racer in racers:
+        await racer.close()
+
+    assert len({result.id for result in results}) == 1
+
+    open_spans = (
+        await db.execute(
+            select(func.count())
+            .select_from(SessionPhaseSpan)
+            .where(
+                SessionPhaseSpan.session_id == session.id,
+                SessionPhaseSpan.ended_at.is_(None),
+            )
+        )
+    ).scalar_one()
+    assert open_spans == 1
+
+
+async def test_moving_from_debrief_to_sparring_keeps_the_two_durations_apart(
+    sessions, account
+):
+    """§4.3 needs `debrief_seconds` and `sparring_seconds` separately.
+
+    It admits its median coaching duration is a guess, and the only way to
+    replace that guess with a measurement is for each phase to have its own
+    closed span. Opening sparring without closing debrief would leave one merged
+    blob that answers neither question.
+    """
+    session = await sessions.start(user_id=account.user_id)
+    await sessions.activate(session_id=session.id)
+    await sessions.begin_finalizing(session_id=session.id, end_reason=EndReason.USER_ENDED)
+    await sessions.settle(session_id=session.id)
+
+    await sessions.open_phase(session_id=session.id, phase=SessionPhase.DEBRIEF)
+    await sessions.open_phase(session_id=session.id, phase=SessionPhase.SPARRING)
+
+    spans = await sessions.spans(session_id=session.id)
+    assert [span.phase for span in spans] == [
+        SessionPhase.INTERROGATION,
+        SessionPhase.DEBRIEF,
+        SessionPhase.SPARRING,
+    ]
+    assert [span.ended_at is None for span in spans] == [False, False, True]
+
+
+async def test_coaching_cannot_open_while_the_room_is_still_running(sessions, account):
+    """Billing closes before coaching opens, in that order.
+
+    Opening a coaching phase closes whatever span is open, so allowing it during
+    an `active` session would stop the meter through a door that was never meant
+    to touch billing — leaving a session that is still `active`, still holding
+    the lock, with no open span for the ledger to attach a tick to. §4.1 orders
+    it the other way: let the panel finish, settle, *then* hand off to debrief.
+    """
+    session = await sessions.start(user_id=account.user_id)
+    await sessions.activate(session_id=session.id)
+
+    with pytest.raises(InvalidStateTransition):
+        await sessions.open_phase(session_id=session.id, phase=SessionPhase.DEBRIEF)
+
+    [interrogation] = await sessions.spans(session_id=session.id)
+    assert interrogation.ended_at is None
 
 
 async def test_a_full_lifecycle_reads_as_a_story_in_the_audit_trail(sessions, audit, account):

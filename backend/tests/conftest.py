@@ -16,7 +16,10 @@ from app.modules.billing.models import Account
 from app.modules.audit_log.admin import AdminService
 from app.modules.audit_log.service import AuditService
 from app.modules.billing.service import LedgerService
-from app.modules.sessions.models import Session  # noqa: F401  (registers the table)
+from app.modules.sessions.models import (  # noqa: F401  (registers the tables)
+    Session,
+    SessionPhaseSpan,
+)
 from app.modules.sessions.service import SessionService
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent

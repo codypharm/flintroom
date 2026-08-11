@@ -3,7 +3,11 @@
 The state machine is specified in `docs/minutes-ledger-and-sessions.md` Part 2.
 """
 
+import uuid
+from datetime import datetime
 from enum import Enum
+
+from pydantic import BaseModel, ConfigDict
 
 
 class SessionState(str, Enum):
@@ -30,6 +34,26 @@ class SessionState(str, Enum):
     FINALIZING = "finalizing"
     SETTLED = "settled"
     FAILED = "failed"
+
+
+class SessionPhase(str, Enum):
+    """What the user is doing inside a session.
+
+    The metering boundary in one place (Product.md §4.1, CLAUDE.md → Metering
+    Rules): `INTERROGATION` is billable, the two coaching phases are not. Making
+    it a phase rather than a flag on the ledger write means a new unmetered
+    phase cannot accidentally start charging — it would have to be added to the
+    billable set deliberately.
+    """
+
+    INTERROGATION = "interrogation"
+    DEBRIEF = "debrief"
+    SPARRING = "sparring"
+
+
+#: The only phase that costs the user minutes. Everything after the room closes
+#: is unmetered and stays that way — see CLAUDE.md → Metering Rules.
+METERED_PHASES = frozenset({SessionPhase.INTERROGATION})
 
 
 class EndReason(str, Enum):
@@ -65,3 +89,20 @@ class EndReason(str, Enum):
     #: Agent spin-up never completed. Nothing was billed; this ends in `failed`,
     #: not `settled`.
     PROVISIONING_FAILED = "provisioning_failed"
+
+
+class PhaseSpanRead(BaseModel):
+    """One stretch of one phase.
+
+    `ended_at` null means the phase is still open — for interrogation that also
+    means the meter is running, which is why it is never inferred from the
+    session state.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    session_id: uuid.UUID
+    phase: SessionPhase
+    started_at: datetime
+    ended_at: datetime | None = None

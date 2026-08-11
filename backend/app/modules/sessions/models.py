@@ -1,12 +1,12 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, Index, func, text
+from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Index, func, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
-from app.modules.sessions.schemas import EndReason, SessionState
+from app.modules.sessions.schemas import EndReason, SessionPhase, SessionState
 
 #: A VARCHAR, deliberately not a native Postgres enum: `ALTER TYPE ... ADD
 #: VALUE` cannot be reversed, which would make adding a sixth state a migration
@@ -32,6 +32,14 @@ end_reason_column = Enum(
     name="session_end_reason",
     native_enum=False,
     length=24,
+    values_callable=lambda enum: [member.value for member in enum],
+)
+
+phase_column = Enum(
+    SessionPhase,
+    name="session_phase",
+    native_enum=False,
+    length=16,
     values_callable=lambda enum: [member.value for member in enum],
 )
 
@@ -106,3 +114,63 @@ class Session(Base):
 
     #: Set exactly once, when billing closes. Null in every other state.
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SessionPhaseSpan(Base):
+    """One stretch of one phase within a session. Append-only.
+
+    Rows are inserted when a phase opens and closed once by setting `ended_at`;
+    they are never deleted. That is what lets billing be reconstructed from the
+    spans alone rather than trusted from a running total, and what gives §4.3
+    the exact per-phase durations it needs to replace its guessed median
+    coaching duration.
+    """
+
+    __tablename__ = "session_phase_spans"
+    __table_args__ = (
+        CheckConstraint(
+            f"phase IN ({_sql_values(SessionPhase)})", name="ck_spans_phase"
+        ),
+        # A span cannot end before it began. Cheap here, and it is what lets any
+        # duration query trust its own arithmetic instead of filtering for
+        # nonsense rows.
+        CheckConstraint(
+            "ended_at IS NULL OR ended_at >= started_at", name="ck_spans_ordering"
+        ),
+        # One open span per session. Two would double-count the phase in §4.3's
+        # per-phase durations, and for interrogation that is one stretch of
+        # wall-clock time charged twice. Partial, because closed spans
+        # accumulate for the life of the session and must not collide.
+        Index(
+            "uq_spans_one_open_per_session",
+            "session_id",
+            unique=True,
+            postgresql_where=text("ended_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+
+    #: A real foreign key, unlike `user_id`: this points at a table we own, so
+    #: it carries none of the portability cost the `auth.users` rule exists to
+    #: avoid. Cascade because a span has no meaning without its session.
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    phase: Mapped[SessionPhase] = mapped_column(phase_column, nullable=False)
+
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    #: Null while the phase is open. For interrogation, null means the meter is
+    #: running — which is why it is never inferred from the session's state.
+    ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
