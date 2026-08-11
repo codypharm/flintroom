@@ -333,6 +333,10 @@ class SessionService:
         a benign duplicate."""
         return "uq_spans_one_open_per_session" in str(getattr(exc, "orig", exc))
 
+    async def get(self, *, session_id: uuid.UUID) -> Session:
+        """Read one session, or 404. The only public read of a session row."""
+        return await self._load(session_id)
+
     async def spans(self, *, session_id: uuid.UUID) -> list[PhaseSpanRead]:
         """Every phase this session has been through, oldest first.
 
@@ -347,8 +351,14 @@ class SessionService:
         return [PhaseSpanRead.model_validate(row) for row in result.scalars()]
 
     @staticmethod
-    def _move(session: Session, to_state: SessionState) -> None:
-        """Apply a transition, or refuse it.
+    def require_transition(session: Session, to_state: SessionState) -> None:
+        """Refuse a transition that the table does not allow, changing nothing.
+
+        Public so that a caller doing work *around* a transition can check the
+        precondition before that work rather than after it. Settlement needs
+        exactly this: it writes money and then closes the session, and a close
+        rejected at the end leaves the money already committed against a session
+        that is still running.
 
         Refusing is a business rule violation (422), not a crash: a duplicate
         End tap or a reaper racing a user is ordinary traffic, not a bug.
@@ -359,6 +369,11 @@ class SessionService:
                 from_state=session.state.value,
                 to_state=to_state.value,
             )
+
+    @classmethod
+    def _move(cls, session: Session, to_state: SessionState) -> None:
+        """Apply a transition, or refuse it."""
+        cls.require_transition(session, to_state)
         session.state = to_state
 
     async def _load(self, session_id: uuid.UUID) -> Session:

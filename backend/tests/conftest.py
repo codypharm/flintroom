@@ -21,6 +21,7 @@ from app.modules.sessions.models import (  # noqa: F401  (registers the tables)
     SessionPhaseSpan,
 )
 from app.modules.sessions.service import SessionService
+from app.modules.sessions.settlement import SettlementService
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
@@ -96,3 +97,8 @@ async def account(db) -> Account:
     db.add(account)
     await db.commit()
     return account
+
+
+@pytest.fixture
+def settlement(db) -> SettlementService:
+    return SettlementService(db)

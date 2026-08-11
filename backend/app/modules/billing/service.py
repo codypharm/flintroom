@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.actors import ActorContext
@@ -138,6 +138,70 @@ class LedgerService:
         )
         return self._balance_of(account)
 
+    async def refund_session(
+        self,
+        *,
+        user_id: uuid.UUID,
+        session_id: uuid.UUID,
+        reason: EntryReason,
+    ) -> Balance:
+        """Return every second charged for a session, to the buckets it came from.
+
+        Bucket-faithful, not merely amount-faithful. Allowance is replaced
+        outright at the next period boundary while top-up minutes never expire
+        (§4.5), so refunding top-up time into allowance would hand back the
+        right number of seconds and then quietly expire them — a refund for our
+        own outage turned into a slower way of taking the user's money.
+
+        Reconstructed from the entries rather than from a running total, because
+        the entries are the record; a total can drift, and this is the one place
+        that would silently pay out the drift.
+        """
+        # Lock first, then check — the ordering `charge_tick` uses, and for the
+        # same reason: a replay that checked before locking could be waved
+        # through while the original refund is still uncommitted.
+        account = await self._load_account(user_id, for_update=True)
+
+        if await self._session_already_refunded(session_id=session_id, reason=reason):
+            return self._balance_of(account)
+
+        charged = await self._db.execute(
+            select(LedgerEntry.bucket, func.sum(LedgerEntry.delta_seconds))
+            .where(
+                LedgerEntry.session_id == session_id,
+                LedgerEntry.reason == EntryReason.TICK.value,
+            )
+            .group_by(LedgerEntry.bucket)
+        )
+
+        refunded = 0
+        for bucket, total in charged.all():
+            # Ticks are negative; the refund is what puts them back.
+            seconds = -int(total)
+            if seconds <= 0:
+                continue
+            self._stage(
+                account=account,
+                bucket=Bucket(bucket),
+                delta_seconds=seconds,
+                reason=reason,
+                # One key per bucket per session, so a retried settlement
+                # reaches the same balance instead of paying out again.
+                idempotency_key=f"refund:{session_id}:{reason.value}:{bucket}",
+                session_id=session_id,
+            )
+            refunded += seconds
+
+        await self._db.commit()
+        log.info(
+            "session_refunded",
+            user_id=str(user_id),
+            session_id=str(session_id),
+            reason=reason.value,
+            refunded_seconds=refunded,
+        )
+        return self._balance_of(account)
+
     async def forgive_overdraft(self, *, user_id: uuid.UUID, session_id: uuid.UUID) -> Balance:
         """Write off a grace overdraft at settlement.
 
@@ -271,6 +335,26 @@ class LedgerService:
                 idempotency_key=idempotency_key,
             )
         )
+
+    async def _session_already_refunded(
+        self, *, session_id: uuid.UUID, reason: EntryReason
+    ) -> bool:
+        """Has this session already been refunded under this reason?
+
+        Without this a retried settlement hits the unique index on
+        `idempotency_key` and raises — which is safe for the balance but leaves
+        the session stuck in `finalizing` forever, since the retry can never
+        complete. That is the one failure state no user action resolves.
+        """
+        result = await self._db.execute(
+            select(LedgerEntry.id)
+            .where(
+                LedgerEntry.session_id == session_id,
+                LedgerEntry.reason == reason.value,
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
 
     async def _tick_already_charged(self, *, session_id: uuid.UUID, tick_index: int) -> bool:
         """Has this tick been charged before?
