@@ -132,6 +132,7 @@ Do not re-open without explicit human instruction.
 | Voice provider | ElevenLabs Agents, Gemini Live as fallback behind an interface | Native barge-in, distinct per-archetype voices; swappable if cost/latency fails |
 | Panel internals | Persona + attack strategy + grounding context, as config not code | Makes new archetypes and the v2 professional-conversation expansion configuration work, not a rewrite |
 | Backend coupling | No mobile-only assumptions (device-coupled auth, push-token dependencies, phone-specific audio formats) | Keeps a future web client possible without a backend rewrite |
+| Supabase scope | **Managed Postgres + RLS only.** Not Supabase Auth, Storage, PostgREST, Realtime, or Edge Functions without explicit approval | Keeps a move to RDS/Cloud SQL a `pg_dump` and a connection string rather than a rewrite. The app already holds no Supabase credentials — all access is through FastAPI — so the lock-in surface is near zero and worth keeping that way. See Database Portability below |
 | Allowance unit | Minutes, monthly, no roll-over reset weekly | Rehearsal is bursty; weekly reset punishes exactly the usage pattern the product serves |
 | Video/body-language analysis | Deferred, not planned for v1 | Commodity layer, expensive, scientifically contested signal — audio-only serves the adversarial thesis |
 
@@ -180,6 +181,18 @@ backend/app/modules/{module}/
 - All DB operations via SQLAlchemy async sessions, injected via `db: AsyncSession = Depends(get_db)`.
 - Never use raw SQL unless a complex query justifies it — prefer the ORM.
 - Every write touching multiple tables (especially the minutes ledger) uses a transaction: `async with db.begin()`.
+- Balances and any other read-modify-write on money take `SELECT ... FOR UPDATE` on the owning row. Contention is per account and a user may hold only one active session, so this serializes a user against themselves and never against another user — which is also what keeps the write path shardable by `user_id`. Do not introduce a global counter, a shared lock, or a cross-user aggregate on the write path; see `docs/deferred-scale-work.md`.
+
+### Database portability (follows from the locked Supabase-scope decision)
+
+Supabase is the Postgres host, not the application platform. These are the rules that keep the exit cheap — each is free to follow now and expensive to retrofit:
+
+- **All DB access goes through FastAPI.** No `supabase-js`, PostgREST, or direct client credentials — the mobile app never holds a database key.
+- **`user_id` is a plain UUID.** Never a foreign key to `auth.users`. This is the single decision that separates a weekend migration from a quarter-long one.
+- **RLS policies are written deny-all, without `auth.uid()`.** Service-role access through the API is the real wall; RLS is defense-in-depth, and policies free of Supabase auth helpers run unchanged on any Postgres.
+- **Auth provider sits behind an interface**, decided on its own merits — not inherited because the database happens to be Supabase.
+- **Object storage sits behind an interface**, same pattern as the voice provider. The contract is the presigned URL, not the vendor SDK.
+- **No Supabase-specific SQL.** Standard extensions available on RDS/Cloud SQL (e.g. `pgvector`) are fine; Supabase-only helper schemas are not.
 
 ### Schemas
 
