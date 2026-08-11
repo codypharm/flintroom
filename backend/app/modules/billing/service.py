@@ -37,7 +37,7 @@ class LedgerService:
         idempotency_key: str,
     ) -> Balance:
         """Add seconds to a bucket."""
-        account = await self._load_account(user_id)
+        account = await self._load_account(user_id, for_update=True)
         self._stage(
             account=account,
             bucket=bucket,
@@ -65,7 +65,9 @@ class LedgerService:
         own entry, so the trail records which minutes were actually spent rather
         than only how many.
         """
-        account = await self._load_account(user_id)
+        # Lock first, then check: a replay that checked before locking could be
+        # waved through while the original tick is still uncommitted.
+        account = await self._load_account(user_id, for_update=True)
 
         if await self._tick_already_charged(session_id=session_id, tick_index=tick_index):
             return self._balance_of(account)
@@ -165,8 +167,36 @@ class LedgerService:
         )
         return result.scalar_one_or_none() is not None
 
-    async def _load_account(self, user_id: uuid.UUID) -> Account:
-        account = await self._db.get(Account, user_id)
+    async def _load_account(self, user_id: uuid.UUID, *, for_update: bool = False) -> Account:
+        """Load an account, optionally locking it for the rest of the transaction.
+
+        Every write path locks. Balances are read-modify-write — a tick has to
+        see the true per-bucket amounts to decide how to split itself — so two
+        unlocked writers on one account each compute an absolute new value and
+        the last commit erases the others. A webhook grant landing during a live
+        session is exactly that collision.
+
+        The lock is per account row, and Product.md allows a user only one
+        active session at a time, so genuine contention here is close to zero:
+        this serializes one user against themselves, never one user against
+        another.
+
+        `populate_existing` forces the locked read to refresh the object rather
+        than answer from the session's identity map, which would reinstate the
+        stale value the lock was taken to avoid.
+        """
+        statement = (
+            select(Account)
+            .where(Account.user_id == user_id)
+            # Always refresh. A balance is money, and answering it from a
+            # session's identity map reports what that session last saw rather
+            # than what is committed.
+            .execution_options(populate_existing=True)
+        )
+        if for_update:
+            statement = statement.with_for_update()
+
+        account = (await self._db.execute(statement)).scalar_one_or_none()
         if account is None:
             raise LookupError(f"no ledger account for user {user_id}")
         return account

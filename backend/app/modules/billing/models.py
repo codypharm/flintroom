@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, String, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -40,6 +40,12 @@ class LedgerEntry(Base):
     """
 
     __tablename__ = "ledger_entries"
+    __table_args__ = (
+        # The idempotency check runs on every tick of every live session. Without
+        # this it is a sequential scan of the entire ledger, and the ledger only
+        # ever grows.
+        Index("ix_ledger_entries_session_tick", "session_id", "tick_index"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     user_id: Mapped[uuid.UUID] = mapped_column(
