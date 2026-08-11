@@ -220,6 +220,9 @@ backend/app/modules/{module}/
 - **Panel composition should default to mixed**, not uniformly hostile — ship a champion, a skeptic, and a neutral by default.
 - Every challenge should trace back to something the user said or attached — ungrounded generic questions are the primary retention killer (Open Risk #2). Do not ship interrogation logic that can't cite its source.
 - Difficulty calibration escalates across sessions — a first session that destroys the user produces churn, not resilience.
+- **The coach converses freely but is grounded only in the session.** Debrief and sparring are genuine conversation — follow-ups, clarifications, the coach pushing back on a weak re-answer (§3.5: "a conversational debrief, not a static dashboard"). Do not reduce it to a rigid form-filling flow. What is bounded is the coach's **grounding scope**: the session transcript, ranked weak answers, Auditor findings, and ingested material. The coach does not evaluate fresh material it was never handed — that is an interrogation, and interrogation is metered.
+- **Enforce that scope structurally, not with a system prompt.** A prompt saying "don't do general pitch review" is one jailbreak from failing, and users will try. Constrain it in the orchestration graph: coaching turns carry the session's artifacts as their grounding context and nothing else, and a request to evaluate new material is classified and redirected to starting a session. The redirect is a product moment ("that's what the room is for"), never a paywall — see Metering Rules.
+- **Why this is a hard constraint:** an unscoped coach hands every user unlimited free pitch review and removes the reason to pay for the panel, and open-ended "listen and tell me how I did" is exactly the competitor product the wedge exists to refuse (`Product.md` §1). Scoping is also what keeps the unmetered promise honest — the bound is subject matter, not a clock, so "unlimited coaching" stays literally true.
 
 ---
 
