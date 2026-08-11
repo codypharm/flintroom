@@ -16,6 +16,8 @@ from app.modules.billing.models import Account
 from app.modules.audit_log.admin import AdminService
 from app.modules.audit_log.service import AuditService
 from app.modules.billing.service import LedgerService
+from app.modules.sessions.models import Session  # noqa: F401  (registers the table)
+from app.modules.sessions.service import SessionService
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
@@ -77,6 +79,11 @@ def audit(db) -> AuditService:
 @pytest.fixture
 def admin(db) -> AdminService:
     return AdminService(db)
+
+
+@pytest.fixture
+def sessions(db) -> SessionService:
+    return SessionService(db)
 
 
 @pytest_asyncio.fixture
