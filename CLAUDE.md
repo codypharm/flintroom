@@ -199,7 +199,24 @@ Supabase is the Postgres host, not the application platform. These are the rules
 - All API inputs validated with Pydantic v2. No raw dicts at the router level.
 - Response models always explicit — never return ORM objects directly. Use `model_config = ConfigDict(from_attributes=True)`.
 
-### Error handling
+### Logging and error handling
+
+**Errors.** Services raise typed errors from `app/core/errors.py`; routers never translate them. One handler in `app/main.py` turns them into responses, so the status code for a given failure is decided once.
+
+- `message` + `code` go to the client. `context` goes to the log only — echoing it leaks internal identifiers to whoever is probing the endpoint.
+- Never raise bare `Exception`, and never catch broadly enough to swallow one. An unexpected exception stays a 500 with a logged traceback and a generic body; dressing a bug up as a tidy 4xx is how a crash becomes invisible.
+- Provider failures surface as `ProviderUnavailable` (502) and **must not name the vendor** to the client — it exposes internal architecture and goes stale the moment the voice provider is swapped, which the stack is built to allow.
+
+**Logging** via `app/core/logging.py` — `get_logger(__name__, tag="billing")`.
+
+- Context is keyword arguments, never f-strings: `log.info("tick_charged", session_id=..., seconds=15)`. Identifiers must be greppable and named identically on every line that carries them.
+- Tag names the subsystem — `billing`, `sessions`, `voice`, `auditor`, `http` — so one live session can be followed across modules.
+- **Never log raw audio, transcripts, or ingested material contents.** Sensitive-looking keys are redacted automatically, but transcript text is not detectable by key name and must not be passed at all.
+- Log every money movement (tick, refund, grant, forgiveness, period reset). These are the lines that answer "why is this user's balance what it is."
+- Application logs are **not** the audit trail. The audit trail is a database table and may not be sampled or dropped.
+- `configure_logging()` belongs at process startup (the app lifespan), never in the app factory — it replaces root handlers, and a factory that does that by being called will fight anything else with an opinion about handlers.
+
+### Error status codes
 
 - Business rule violations → `HTTPException(422)`. Auth failures → `401`/`403`. Not found → `404`.
 - Never raise bare `Exception`. Never swallow exceptions silently — log, then re-raise or return a typed error.

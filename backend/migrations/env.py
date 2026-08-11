@@ -15,7 +15,11 @@ config = context.config
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers defaults to True, which silences every logger
+    # already created — including the application's, since modules build theirs
+    # at import time. Running migrations in-process would otherwise turn off
+    # application logging for the life of the process.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 from app.core.database import Base
 

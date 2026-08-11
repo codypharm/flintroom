@@ -4,6 +4,8 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import AccountNotFound
+from app.core.logging import get_logger
 from app.modules.billing.models import Account, LedgerEntry
 from app.modules.billing.schemas import Balance, Bucket, EntryReason, LedgerEntryRead
 from app.modules.billing.tiers import MONTHLY_ALLOWANCE_SECONDS
@@ -22,6 +24,8 @@ SPEND_ORDER = (Bucket.ALLOWANCE, Bucket.FREE, Bucket.TOPUP)
 #: period, not the calendar — a user who subscribed on the 3rd renews on the 3rd.
 #: Replace this when the RevenueCat webhook lands; see docs/minutes-ledger-and-sessions.md.
 PERIOD_LENGTH = timedelta(days=30)
+
+log = get_logger(__name__, tag="billing")
 
 
 class LedgerService:
@@ -118,6 +122,16 @@ class LedgerService:
         # entirely or not at all, or a crash mid-tick bills for a fraction of an
         # interval and leaves the trail disagreeing with the cached balance.
         await self._db.commit()
+        log.info(
+            "tick_charged",
+            user_id=str(user_id),
+            session_id=str(session_id),
+            tick_index=tick_index,
+            seconds=seconds,
+            remaining_seconds=account.balance_allowance_seconds
+            + account.balance_free_seconds
+            + account.balance_topup_seconds,
+        )
         return self._balance_of(account)
 
     async def forgive_overdraft(self, *, user_id: uuid.UUID, session_id: uuid.UUID) -> Balance:
@@ -146,6 +160,12 @@ class LedgerService:
             session_id=session_id,
         )
         await self._db.commit()
+        log.info(
+            "grace_overdraft_forgiven",
+            user_id=str(user_id),
+            session_id=str(session_id),
+            forgiven_seconds=overdraft,
+        )
         return self._balance_of(account)
 
     async def ensure_current_period(self, *, user_id: uuid.UUID) -> Balance:
@@ -197,6 +217,14 @@ class LedgerService:
             )
 
         await self._db.commit()
+        log.info(
+            "period_reset",
+            user_id=str(user_id),
+            period_id=account.period_id,
+            periods_elapsed=elapsed,
+            expired_seconds=remainder if remainder > 0 else 0,
+            granted_seconds=allowance or 0,
+        )
         return self._balance_of(account)
 
     async def balance(self, *, user_id: uuid.UUID) -> Balance:
@@ -284,7 +312,7 @@ class LedgerService:
 
         account = (await self._db.execute(statement)).scalar_one_or_none()
         if account is None:
-            raise LookupError(f"no ledger account for user {user_id}")
+            raise AccountNotFound(user_id=str(user_id))
         return account
 
     @staticmethod
