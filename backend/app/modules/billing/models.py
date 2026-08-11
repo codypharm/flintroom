@@ -21,6 +21,14 @@ class Account(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
     entitlement_tier: Mapped[str] = mapped_column(String(32), nullable=False)
 
+    #: Monotonic counter, not a calendar key. It advances once per elapsed
+    #: entitlement period and makes the allowance grant idempotent by
+    #: construction: the key is derived from it, so a re-grant cannot insert.
+    period_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    period_ends_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     balance_allowance_seconds: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )

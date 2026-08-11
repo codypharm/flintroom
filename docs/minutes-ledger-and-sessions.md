@@ -97,6 +97,7 @@ This matches §4.3, which specifies one `session_costs` row per session carrying
 
 - **Recording retention window.** Open in `Product.md` §9. Bounds how long a settled session stays reopenable for coaching. Blocks the debrief module and the App Store submission; does not block the ledger.
 - **Coaching soft cap, per-span vs cumulative.** Largely moot now that the coach is scoped by subject rather than by clock (see `Product.md` §9 → Capabilities and Constraints). §4.7's ~20 minute cap remains as friction against an idle open session; per-span is sufficient.
+- **Period length is a 30-day placeholder.** The reset decision says the boundary follows the RevenueCat entitlement period, not the calendar — someone who subscribes on the 3rd renews on the 3rd. Until the RevenueCat webhook lands there is nothing to read that from, so `PERIOD_LENGTH` in `billing/service.py` advances by a flat 30 days. It is marked in code. Replace it when the webhook arrives; a user on a 30-day cadence drifts a day earlier each month against a calendar-month subscription.
 - **Every cost figure quoted above** derives from §4.3's unverified vendor list-rate assumptions. The grace write-off arithmetic and the circuit-breaker threshold both need re-deriving once real telemetry lands.
 
 ---

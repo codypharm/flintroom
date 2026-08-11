@@ -1,10 +1,12 @@
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.billing.models import Account, LedgerEntry
 from app.modules.billing.schemas import Balance, Bucket, EntryReason, LedgerEntryRead
+from app.modules.billing.tiers import MONTHLY_ALLOWANCE_SECONDS
 
 _BUCKET_BALANCE_COLUMN = {
     Bucket.ALLOWANCE: "balance_allowance_seconds",
@@ -15,6 +17,11 @@ _BUCKET_BALANCE_COLUMN = {
 #: Allowance expires at the period boundary, so spend it before anything else.
 #: Top-up is last because the user paid for it and it never expires.
 SPEND_ORDER = (Bucket.ALLOWANCE, Bucket.FREE, Bucket.TOPUP)
+
+#: Placeholder cadence. The real boundary comes from the RevenueCat entitlement
+#: period, not the calendar — a user who subscribed on the 3rd renews on the 3rd.
+#: Replace this when the RevenueCat webhook lands; see docs/minutes-ledger-and-sessions.md.
+PERIOD_LENGTH = timedelta(days=30)
 
 
 class LedgerService:
@@ -110,6 +117,57 @@ class LedgerService:
         # One commit for the whole tick. A tick that straddles buckets must land
         # entirely or not at all, or a crash mid-tick bills for a fraction of an
         # interval and leaves the trail disagreeing with the cached balance.
+        await self._db.commit()
+        return self._balance_of(account)
+
+    async def ensure_current_period(self, *, user_id: uuid.UUID) -> Balance:
+        """Roll the account onto the current period if its boundary has passed.
+
+        Lazy rather than scheduled: the stack has no scheduler, and a lazy reset
+        has no silent failure mode. A dropped RevenueCat webhook costs nothing
+        because the next read repairs it.
+        """
+        account = await self._load_account(user_id, for_update=True)
+        now = datetime.now(UTC)
+
+        if account.period_ends_at is None or account.period_ends_at > now:
+            return self._balance_of(account)
+
+        # Walk to the *current* period. Granting per elapsed boundary would hand
+        # a user who was away for a quarter three allowances at once.
+        elapsed = 0
+        while account.period_ends_at <= now:
+            account.period_ends_at = account.period_ends_at + PERIOD_LENGTH
+            elapsed += 1
+        account.period_id += elapsed
+
+        # No roll-over (Product.md §4.4). The remainder is written off as its own
+        # entry rather than overwritten, so replaying the log still reproduces
+        # the cached balance.
+        #
+        # Only a positive remainder expires. A negative one is a grace overdraft,
+        # and clearing it here would forgive it under the wrong reason code —
+        # forgiveness is a `grace_forgiven` entry written at settlement.
+        remainder = account.balance_allowance_seconds
+        if remainder > 0:
+            self._stage(
+                account=account,
+                bucket=Bucket.ALLOWANCE,
+                delta_seconds=-remainder,
+                reason=EntryReason.EXPIRE_ALLOWANCE,
+                idempotency_key=f"expire_allowance:{user_id}:{account.period_id}",
+            )
+
+        allowance = MONTHLY_ALLOWANCE_SECONDS.get(account.entitlement_tier)
+        if allowance is not None:
+            self._stage(
+                account=account,
+                bucket=Bucket.ALLOWANCE,
+                delta_seconds=allowance,
+                reason=EntryReason.GRANT_ALLOWANCE,
+                idempotency_key=f"grant_allowance:{user_id}:{account.period_id}",
+            )
+
         await self._db.commit()
         return self._balance_of(account)
 

@@ -1,14 +1,20 @@
+import asyncio
 import os
 import uuid
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from alembic import command
+from alembic.config import Config
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy import text
 
 from app.core.database import Base
 from app.modules.billing.models import Account
 from app.modules.billing.service import LedgerService
+
+BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
@@ -18,12 +24,29 @@ TEST_DATABASE_URL = os.getenv(
 
 @pytest_asyncio.fixture(scope="session")
 async def engine():
+    """Build the schema by running the migrations, not from model metadata.
+
+    `create_all` would test the models against themselves and never execute a
+    migration, so a missing or wrong migration would pass every test and fail
+    on deploy. Running them here means the migration chain is exercised on every
+    test run, and a model change without a migration shows up as a failure.
+    """
     engine = create_async_engine(TEST_DATABASE_URL, poolclass=None)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+
+    await asyncio.to_thread(_upgrade_to_head)
+
     yield engine
     await engine.dispose()
+
+
+def _upgrade_to_head() -> None:
+    config = Config(str(BACKEND_ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_ROOT / "migrations"))
+    os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+    command.upgrade(config, "head")
 
 
 @pytest_asyncio.fixture
