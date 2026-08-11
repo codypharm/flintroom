@@ -18,17 +18,27 @@ from app.core.logging import get_logger, redact
 from app.modules.audit_log.models import AuditEvent
 from app.modules.audit_log.schemas import AuditEventRead, AuditEventType
 
-log = get_logger(__name__, tag="audit")
-
 
 class AuditService:
     """The only writer of `audit_events`."""
 
-    def __init__(self, db: AsyncSession, actor: ActorContext | None = None) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        actor: ActorContext | None = None,
+        *,
+        tag: str = "audit",
+    ) -> None:
         self._db = db
         self._actor = actor or ActorContext.system()
+        # The owning subsystem's tag, not this module's. A session's audit lines
+        # and its ordinary lines are the same investigation, and splitting them
+        # across two tags means filtering to `sessions` silently drops the start
+        # and the settle — the two lines most worth having. The audit *table* is
+        # unaffected; this only decides where the log line files itself.
+        self._log = get_logger(__name__, tag=tag)
 
-    async def record(
+    def stage(
         self,
         event_type: AuditEventType,
         *,
@@ -36,12 +46,18 @@ class AuditService:
         session_id: uuid.UUID | None = None,
         **context: Any,
     ) -> None:
-        """Write one audit row.
+        """Queue one audit row without committing. The caller commits.
 
-        Context is redacted with the same rules as a log line. Applying them only
-        to stdout would mean the first audit call carrying a webhook signature
-        writes it to disk permanently — and these rows are append-only, so it
-        could not be edited back out.
+        This is what lets an event land in the *same* transaction as the change
+        it describes. Committing separately would mean a process that dies in
+        between leaves either a state change nobody can explain or an audit row
+        for something that never happened — and the first is precisely the row
+        an operator will later be asked about.
+
+        Context is redacted with the same rules as a log line. Applying them
+        only to stdout would mean the first audit call carrying a webhook
+        signature writes it to disk permanently — and these rows are
+        append-only, so it could not be edited back out.
         """
         self._db.add(
             AuditEvent(
@@ -54,14 +70,29 @@ class AuditService:
                 context=redact(context),
             )
         )
-        await self._db.commit()
-
-        log.info(
+        self._log.info(
             event_type.value,
             user_id=str(user_id) if user_id else None,
             session_id=str(session_id) if session_id else None,
             **context,
         )
+
+    async def record(
+        self,
+        event_type: AuditEventType,
+        *,
+        user_id: uuid.UUID | None = None,
+        session_id: uuid.UUID | None = None,
+        **context: Any,
+    ) -> None:
+        """Write one audit row on its own.
+
+        For events with nothing else to commit alongside them — a denial, a
+        rejected webhook. Where there *is* an accompanying write, use `stage`
+        and let the owning service commit both together.
+        """
+        self.stage(event_type, user_id=user_id, session_id=session_id, **context)
+        await self._db.commit()
 
     async def events_for_user(
         self, *, user_id: uuid.UUID | None, limit: int = 100

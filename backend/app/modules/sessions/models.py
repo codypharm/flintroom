@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
-from app.modules.sessions.schemas import SessionState
+from app.modules.sessions.schemas import EndReason, SessionState
 
 #: A VARCHAR, deliberately not a native Postgres enum: `ALTER TYPE ... ADD
 #: VALUE` cannot be reversed, which would make adding a sixth state a migration
@@ -27,9 +27,22 @@ session_state_column = Enum(
     values_callable=lambda enum: [member.value for member in enum],
 )
 
-#: Rendered from the enum rather than hand-typed, so a new state cannot be added
-#: to the Python enum while the database quietly keeps rejecting it.
-_STATE_VALUES = ", ".join(f"'{member.value}'" for member in SessionState)
+end_reason_column = Enum(
+    EndReason,
+    name="session_end_reason",
+    native_enum=False,
+    length=24,
+    values_callable=lambda enum: [member.value for member in enum],
+)
+
+
+def _sql_values(enum: type[Enum]) -> str:
+    """Render an enum's values as a SQL list.
+
+    Generated rather than hand-typed so that a new member cannot be added in
+    Python while the database quietly keeps rejecting it.
+    """
+    return ", ".join(f"'{member.value}'" for member in enum)
 
 
 class Session(Base):
@@ -44,7 +57,21 @@ class Session(Base):
     __table_args__ = (
         # The state set, enforced by the database. A bug writing an unknown
         # state fails loudly at the write rather than quietly at the next read.
-        CheckConstraint(f"state IN ({_STATE_VALUES})", name="ck_sessions_state"),
+        CheckConstraint(
+            f"state IN ({_sql_values(SessionState)})", name="ck_sessions_state"
+        ),
+        CheckConstraint(
+            f"end_reason IS NULL OR end_reason IN ({_sql_values(EndReason)})",
+            name="ck_sessions_end_reason",
+        ),
+        # Settled and timestamped are the same fact. Every cost and revenue
+        # report keys off `settled_at`, so a settled session without one is
+        # invisible to them while still counting as closed — and an unsettled
+        # session *with* one is a closed session still holding the lock.
+        CheckConstraint(
+            "(state = 'settled') = (settled_at IS NOT NULL)",
+            name="ck_sessions_settled_at",
+        ),
         # One live session per user, enforced by Postgres rather than by a
         # check in the service. A service-level check cannot see an uncommitted
         # sibling transaction, so two devices tapping Start at the same moment
@@ -73,6 +100,9 @@ class Session(Base):
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+    #: Why the session stopped. Null until it does.
+    end_reason: Mapped[EndReason | None] = mapped_column(end_reason_column, nullable=True)
 
     #: Set exactly once, when billing closes. Null in every other state.
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

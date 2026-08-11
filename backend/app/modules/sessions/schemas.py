@@ -30,3 +30,38 @@ class SessionState(str, Enum):
     FINALIZING = "finalizing"
     SETTLED = "settled"
     FAILED = "failed"
+
+
+class EndReason(str, Enum):
+    """Why a session stopped.
+
+    Recorded because these are not equivalent to the business: a session that
+    ended because the user was finished is a success, and one that ended on a
+    provider failure is a refund and an incident. Both look identical in the
+    ledger without this.
+    """
+
+    #: The user pressed End. An intent, honoured by the server.
+    USER_ENDED = "user_ended"
+
+    #: The per-session interrogation cap. Protects against a forgotten room.
+    SESSION_CAP = "session_cap"
+
+    #: The bounded grace overdraft ran out, past a zero balance.
+    GRACE_CAP = "grace_cap"
+
+    #: No *user* speech while the panel awaited an answer. Panel speech does
+    #: not count — an agent monologuing to an empty room is the expensive
+    #: failure this exists to catch.
+    IDLE_TIMEOUT = "idle_timeout"
+
+    #: The voice provider failed mid-session. The affected minutes are refunded.
+    PROVIDER_FAILURE = "provider_failure"
+
+    #: Three missed ticks, roughly 45 seconds. Arrears ticking means the ledger
+    #: is already correct and no refund is owed.
+    CLIENT_DISCONNECT = "client_disconnect"
+
+    #: Agent spin-up never completed. Nothing was billed; this ends in `failed`,
+    #: not `settled`.
+    PROVISIONING_FAILED = "provisioning_failed"
