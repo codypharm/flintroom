@@ -42,6 +42,29 @@ class Balance(BaseModel):
     def total_seconds(self) -> int:
         return self.allowance_seconds + self.free_seconds + self.topup_seconds
 
+    @property
+    def remaining_minutes(self) -> int:
+        """Whole minutes remaining, floored.
+
+        Seconds are charged exactly; the displayed figure floors, so the user
+        always holds slightly more than shown rather than slightly less.
+
+        Clamped at zero: a grace overdraft is real in the ledger but must never
+        be shown as a debt, and it is forgiven at settlement regardless.
+        """
+        return max(self.total_seconds, 0) // 60
+
+    @property
+    def has_time_remaining(self) -> bool:
+        """Whether any time is left at all, however little.
+
+        Separate from `remaining_minutes` because 59 seconds and 0 seconds both
+        floor to zero minutes and only one of them can start a session. Exposing
+        this keeps the raw seconds out of the interface, which §4.6 requires —
+        a second-by-second figure is the depleting counter by another name.
+        """
+        return self.total_seconds > 0
+
 
 class LedgerEntryRead(BaseModel):
     """One immutable line of the audit trail."""

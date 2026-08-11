@@ -120,6 +120,34 @@ class LedgerService:
         await self._db.commit()
         return self._balance_of(account)
 
+    async def forgive_overdraft(self, *, user_id: uuid.UUID, session_id: uuid.UUID) -> Balance:
+        """Write off a grace overdraft at settlement.
+
+        A session that reaches zero mid-interrogation keeps running on a bounded
+        overdraft, because Product.md §4.5 forbids cutting the panel off. At
+        settlement the overdraft is forgiven rather than carried into next month:
+        chasing two minutes is the engaged-user farming §4.5 warns against.
+
+        The write-off is a typed entry, not a reset of the balance, so replaying
+        the log still reproduces the cache.
+        """
+        account = await self._load_account(user_id, for_update=True)
+
+        overdraft = -account.balance_allowance_seconds
+        if overdraft <= 0:
+            return self._balance_of(account)
+
+        self._stage(
+            account=account,
+            bucket=Bucket.ALLOWANCE,
+            delta_seconds=overdraft,
+            reason=EntryReason.GRACE_FORGIVEN,
+            idempotency_key=f"grace_forgiven:{session_id}",
+            session_id=session_id,
+        )
+        await self._db.commit()
+        return self._balance_of(account)
+
     async def ensure_current_period(self, *, user_id: uuid.UUID) -> Balance:
         """Roll the account onto the current period if its boundary has passed.
 
