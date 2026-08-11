@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>PitchGo AI - Debrief</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Theme Configuration -->
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "primary-fixed-dim": "#ffb59a",
+                    "on-tertiary": "#ffffff",
+                    "on-secondary-fixed-variant": "#484745",
+                    "on-tertiary-fixed": "#1a1c1c",
+                    "surface-dim": "#dcd9d9",
+                    "primary": "#a43700",
+                    "tertiary-fixed-dim": "#c6c6c7",
+                    "surface": "#fcf9f8",
+                    "outline-variant": "#e3bfb2",
+                    "on-surface-variant": "#5a4138",
+                    "on-error-container": "#93000a",
+                    "surface-container-high": "#eae7e7",
+                    "outline": "#8f7066",
+                    "secondary": "#605e5c",
+                    "secondary-container": "#e5e2df",
+                    "tertiary-fixed": "#e2e2e2",
+                    "surface-container-highest": "#e5e2e1",
+                    "error": "#ba1a1a",
+                    "surface-container-low": "#f6f3f2",
+                    "on-background": "#1c1b1b",
+                    "inverse-surface": "#313030",
+                    "surface-container": "#f0eded",
+                    "primary-container": "#cd4700",
+                    "on-primary-container": "#fffbff",
+                    "tertiary": "#5a5c5c",
+                    "on-secondary": "#ffffff",
+                    "on-tertiary-container": "#fcfcfc",
+                    "on-surface": "#1c1b1b",
+                    "inverse-on-surface": "#f3f0ef",
+                    "on-secondary-fixed": "#1c1b1a",
+                    "on-tertiary-fixed-variant": "#454747",
+                    "secondary-fixed-dim": "#c9c6c3",
+                    "error-container": "#ffdad6",
+                    "surface-variant": "#e5e2e1",
+                    "surface-tint": "#a83900",
+                    "on-secondary-container": "#666462",
+                    "secondary-fixed": "#e5e2df",
+                    "inverse-primary": "#ffb59a",
+                    "on-primary": "#ffffff",
+                    "surface-container-lowest": "#ffffff",
+                    "tertiary-container": "#737575",
+                    "on-error": "#ffffff",
+                    "primary-fixed": "#ffdbcf",
+                    "background": "#fcf9f8",
+                    "surface-bright": "#fcf9f8",
+                    "on-primary-fixed-variant": "#802a00",
+                    "on-primary-fixed": "#380d00"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "gutter": "16px",
+                    "base": "4px",
+                    "sm": "12px",
+                    "md": "16px",
+                    "xs": "8px",
+                    "container-padding": "20px",
+                    "xxl": "48px",
+                    "xl": "32px",
+                    "lg": "24px"
+            },
+            "fontFamily": {
+                    "label-md": ["Hanken Grotesk"],
+                    "label-lg": ["Hanken Grotesk"],
+                    "headline-lg": ["Hanken Grotesk"],
+                    "headline-lg-mobile": ["Hanken Grotesk"],
+                    "headline-md": ["Hanken Grotesk"],
+                    "body-md": ["Hanken Grotesk"],
+                    "body-sm": ["Hanken Grotesk"],
+                    "headline-sm": ["Hanken Grotesk"],
+                    "body-lg": ["Hanken Grotesk"]
+            },
+            "fontSize": {
+                    "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "label-lg": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "headline-lg-mobile": ["28px", {"lineHeight": "36px", "fontWeight": "700"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}]
+            }
+          }
+        }
+      }
+    </script>
+<style>
+        @import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800;900&display=swap');
+        body { font-family: 'Hanken Grotesk', sans-serif; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background min-h-screen relative pb-[100px] selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopAppBar Component (from JSON) -->
+<header class="bg-background dark:bg-background docked full-width top-0 z-40 bg-background dark:bg-background flat no shadows flex justify-between items-center px-container-padding py-md w-full">
+<button class="text-primary dark:text-primary-fixed-dim hover:opacity-80 transition-opacity duration-200 p-2 -ml-2 flex items-center justify-center rounded-full active:bg-surface-variant">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">menu</span>
+</button>
+<h1 class="font-headline-sm text-headline-sm font-bold text-on-background dark:text-on-surface tracking-tight">
+            PitchGo AI
+        </h1>
+<div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-container-high text-on-surface font-label-md transition-opacity duration-200 hover:opacity-80 cursor-pointer">
+<span class="material-symbols-outlined text-[16px] text-primary" style="font-variation-settings: 'FILL' 1;">generating_tokens</span>
+            120 Tokens
+        </div>
+</header>
+<!-- Main Content Canvas -->
+<main class="px-container-padding flex flex-col gap-lg max-w-[1200px] mx-auto pt-sm">
+<!-- Header Context -->
+<div>
+<h2 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface">Debrief</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1">Post-Pitch Analysis</p>
+</div>
+<!-- Summary Card -->
+<section class="bg-surface-container-lowest rounded-[28px] p-lg shadow-[0_8px_24px_-4px_rgba(26,26,26,0.04)] relative overflow-hidden flex flex-col md:flex-row gap-lg items-center md:items-start border border-surface-container">
+<!-- Decorative gradient blur -->
+<div class="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-2xl -mr-16 -mt-16 pointer-events-none"></div>
+<div class="flex-shrink-0 flex flex-col items-center justify-center w-32 h-32 rounded-full border-8 border-surface-container bg-surface-bright relative z-10">
+<span class="text-[56px] font-black text-primary leading-none tracking-tighter">B+</span>
+</div>
+<div class="flex-1 relative z-10">
+<h3 class="font-headline-sm text-headline-sm text-on-surface mb-sm">Solid Delivery, Minor Gaps</h3>
+<ul class="space-y-sm">
+<li class="flex gap-sm items-start">
+<span class="material-symbols-outlined text-primary mt-0.5 text-[20px]" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Strong opening hook, captured attention within first 15 seconds.</span>
+</li>
+<li class="flex gap-sm items-start">
+<span class="material-symbols-outlined text-primary mt-0.5 text-[20px]" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Pacing was optimal during the product demonstration phase.</span>
+</li>
+<li class="flex gap-sm items-start">
+<span class="material-symbols-outlined text-outline mt-0.5 text-[20px]" style="font-variation-settings: 'FILL' 1;">warning</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Financial projections felt rushed; missed clarifying key CAC metrics.</span>
+</li>
+</ul>
+</div>
+</section>
+<!-- Voice Coach Audio Review -->
+<section class="bg-surface-container-lowest rounded-[28px] p-lg shadow-[0_8px_24px_-4px_rgba(26,26,26,0.04)] border border-surface-container flex flex-col gap-md">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-sm">
+<div class="w-10 h-10 rounded-full overflow-hidden bg-surface-container-high flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="A highly detailed, professional headshot portrait of an AI voice coach avatar. The character is a friendly, modern tech-professional with a warm smile, set against a pristine white studio background with soft, high-key lighting characteristic of premium light-mode UI design. Subtle orange accent lighting reflects off their shoulder to tie into the brand colors." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBlGf9HmG8hnC3_Y0-vBhxdUCNxSjD-n9VdcetIRteX1CDCeIwP954n2wTmUnkrrAxewrZzigkns7YrF9vmiPL8oDhRdw8Fk5xjg0OvUw7TT2EiDZ4CjEKJizhwwbOtylRIxKKutRF4iTH3efQHLPEPLTWTMtZif_G_nTR2zV1GhzTOpk6OIGdgwV4c9zPDXIrvrodOu_69S2wpcXBcewUre0nj8GO60X59W5IM5u6g3WgL3tWc7NRBDap3PjNKXx2qyEJONKWy5A"/>
+</div>
+<div>
+<h3 class="font-label-lg text-label-lg text-on-surface">Voice Coach Audio Review</h3>
+<p class="font-label-md text-label-md text-secondary">Coach Sarah • 2:45</p>
+</div>
+</div>
+<button class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary hover:bg-primary/20 transition-colors">
+<span class="material-symbols-outlined text-[28px]" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</button>
+</div>
+<!-- Custom Progress Bar -->
+<div class="relative w-full h-12 flex items-center group cursor-pointer">
+<!-- Track -->
+<div class="absolute w-full h-2 bg-surface-container-highest rounded-full overflow-hidden"></div>
+<!-- Fill -->
+<div class="absolute h-2 bg-primary rounded-full left-0 w-[45%] pointer-events-none"></div>
+<!-- Tracking Dot -->
+<div class="absolute w-5 h-5 bg-surface-container-lowest border-4 border-primary rounded-full left-[45%] -translate-x-1/2 shadow-sm group-hover:scale-110 transition-transform"></div>
+<!-- Timestamps -->
+<div class="absolute w-full flex justify-between top-8 px-1">
+<span class="font-label-md text-label-md text-outline">1:14</span>
+<span class="font-label-md text-label-md text-outline">2:45</span>
+</div>
+</div>
+</section>
+<!-- Mismatched Slide Flags -->
+<section class="flex flex-col gap-sm mt-xs">
+<h3 class="font-label-lg text-label-lg text-on-surface px-1 uppercase tracking-wider text-secondary">Mismatched Slide Flags</h3>
+<div class="space-y-sm">
+<!-- Pill 1 -->
+<div class="bg-error-container/40 rounded-[20px] p-sm flex items-start gap-sm border border-error/10">
+<span class="material-symbols-outlined text-error text-[20px] mt-0.5" style="font-variation-settings: 'FILL' 0;">close</span>
+<div>
+<p class="font-label-lg text-label-lg text-on-surface">Slide 3: Market Size</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">TAM claim contradicted speech metrics. You mentioned $5B, slide says $10B.</p>
+</div>
+</div>
+<!-- Pill 2 -->
+<div class="bg-surface-container-high rounded-[20px] p-sm flex items-start gap-sm">
+<span class="material-symbols-outlined text-secondary text-[20px] mt-0.5" style="font-variation-settings: 'FILL' 0;">info</span>
+<div>
+<p class="font-label-lg text-label-lg text-on-surface">Slide 7: Roadmap</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Spent 45 seconds here; slide lacks visual anchors for that duration.</p>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Fixed Bottom Split-Capsule CTA -->
+<div class="fixed bottom-6 left-0 w-full px-container-padding z-50 flex justify-center pointer-events-none">
+<div class="w-full max-w-[400px] h-[64px] bg-surface-container-lowest rounded-full shadow-[0_12px_32px_-8px_rgba(26,26,26,0.12)] border border-surface-container flex overflow-hidden pointer-events-auto transition-transform duration-200 active:scale-95">
+<!-- Left Half -->
+<button class="flex-1 bg-primary text-on-primary font-label-lg text-label-lg flex items-center justify-center hover:opacity-90 transition-opacity">
+                Enter Sparring Mode
+            </button>
+<!-- Divider line -->
+<div class="w-[1px] bg-surface-variant h-full"></div>
+<!-- Right Half -->
+<button class="flex-1 bg-transparent text-on-surface font-label-lg text-label-lg flex items-center justify-center hover:bg-surface-container-lowest transition-colors">
+                Return Home
+            </button>
+</div>
+</div>
+</body></html>

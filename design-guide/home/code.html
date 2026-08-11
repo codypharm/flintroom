@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>PitchGo AI - Home</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary-container": "#737575",
+                        "error": "#ba1a1a",
+                        "on-tertiary-container": "#fcfcfc",
+                        "surface-variant": "#e5e2e1",
+                        "outline": "#8f7066",
+                        "on-primary-container": "#fffbff",
+                        "background": "#fcf9f8",
+                        "on-secondary-fixed": "#1c1b1a",
+                        "on-secondary-container": "#666462",
+                        "surface-container": "#f0eded",
+                        "on-secondary": "#ffffff",
+                        "primary": "#a43700",
+                        "secondary-fixed": "#e5e2df",
+                        "on-tertiary-fixed-variant": "#454747",
+                        "tertiary-fixed": "#e2e2e2",
+                        "surface-container-low": "#f6f3f2",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-fixed-dim": "#c6c6c7",
+                        "surface-tint": "#a83900",
+                        "on-surface-variant": "#5a4138",
+                        "on-error": "#ffffff",
+                        "on-background": "#1c1b1b",
+                        "surface-container-highest": "#e5e2e1",
+                        "inverse-primary": "#ffb59a",
+                        "secondary-container": "#e5e2df",
+                        "outline-variant": "#e3bfb2",
+                        "on-primary-fixed-variant": "#802a00",
+                        "tertiary": "#5a5c5c",
+                        "on-surface": "#1c1b1b",
+                        "primary-container": "#cd4700",
+                        "inverse-on-surface": "#f3f0ef",
+                        "on-primary": "#ffffff",
+                        "secondary-fixed-dim": "#c9c6c3",
+                        "primary-fixed-dim": "#ffb59a",
+                        "primary-fixed": "#ffdbcf",
+                        "on-error-container": "#93000a",
+                        "on-tertiary": "#ffffff",
+                        "inverse-surface": "#313030",
+                        "surface": "#fcf9f8",
+                        "error-container": "#ffdad6",
+                        "surface-container-high": "#eae7e7",
+                        "on-tertiary-fixed": "#1a1c1c",
+                        "on-secondary-fixed-variant": "#484745",
+                        "surface-bright": "#fcf9f8",
+                        "secondary": "#605e5c",
+                        "on-primary-fixed": "#380d00",
+                        "surface-dim": "#dcd9d9"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px",
+                        "ROUND_EIGHT": "28px"
+                    },
+                    "spacing": {
+                        "xs": "8px",
+                        "md": "16px",
+                        "container-padding": "20px",
+                        "sm": "12px",
+                        "gutter": "16px",
+                        "lg": "24px",
+                        "base": "4px",
+                        "xl": "32px",
+                        "xxl": "48px"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Hanken Grotesk"],
+                        "label-md": ["Hanken Grotesk"],
+                        "headline-lg-mobile": ["Hanken Grotesk"],
+                        "headline-sm": ["Hanken Grotesk"],
+                        "label-lg": ["Hanken Grotesk"],
+                        "body-lg": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "headline-lg": ["Hanken Grotesk"],
+                        "body-sm": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                        "headline-lg-mobile": ["28px", {"lineHeight": "36px", "fontWeight": "700"}],
+                        "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "label-lg": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}],
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: #fcf9f8;
+            color: #1c1b1b;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+        .bento-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+        }
+        @media (min-width: 768px) {
+            .bento-grid {
+                grid-template-columns: repeat(12, 1fr);
+            }
+            .bento-col-span-8 { grid-column: span 8; }
+            .bento-col-span-4 { grid-column: span 4; }
+            .bento-col-span-6 { grid-column: span 6; }
+            .bento-col-span-12 { grid-column: span 12; }
+        }
+        .card-shadow {
+            box-shadow: 0px 8px 24px -4px rgba(26, 26, 26, 0.04);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="font-body-md text-body-md antialiased pb-24 md:pb-0 pt-20">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 w-full z-40 bg-background dark:bg-background flex justify-between items-center px-container-padding py-md w-full transition-opacity duration-200 flat no shadows">
+<button class="flex items-center justify-center p-2 rounded-full hover:opacity-80 transition-colors">
+<span class="material-symbols-outlined text-primary dark:text-primary-fixed-dim" style="font-variation-settings: 'FILL' 0;">menu</span>
+</button>
+<h1 class="font-headline-sm text-headline-sm font-bold text-on-background dark:text-on-surface">PitchGo AI</h1>
+<a class="flex items-center gap-1 px-3 py-1.5 rounded-full bg-primary-container/10 text-primary font-label-md text-label-md font-semibold hover:opacity-80 transition-colors" href="{{DATA:SCREEN:SCREEN_4}}">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">generating_tokens</span>
+            120 Tokens
+        </a>
+</header>
+<main class="max-w-[1200px] mx-auto px-container-padding space-y-lg mt-md">
+<!-- Greeting -->
+<section class="mb-lg">
+<h2 class="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-on-surface">Welcome back, Alex!</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant mt-2">Ready to refine your pitch? You're on a 3-day streak.</p>
+</section>
+<div class="bento-grid">
+<!-- Analytics Overview (Bento spanning) -->
+<div class="bento-col-span-8 bg-surface-container-lowest rounded-ROUND_EIGHT p-lg card-shadow relative overflow-hidden group">
+<!-- Abstract BG Element -->
+<div class="absolute -right-20 -top-20 w-64 h-64 bg-primary-fixed rounded-full blur-3xl opacity-50 pointer-events-none group-hover:opacity-70 transition-opacity duration-500"></div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface mb-md">At a Glance</h3>
+<div class="grid grid-cols-2 md:grid-cols-3 gap-md">
+<!-- Metric 1 -->
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-1">Total Sessions</span>
+<div class="flex items-baseline gap-2">
+<span class="font-headline-lg text-headline-lg text-primary">24</span>
+<span class="font-body-sm text-body-sm text-secondary">+2 this week</span>
+</div>
+</div>
+<!-- Metric 2 -->
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-1">Avg. Likelihood</span>
+<div class="flex items-baseline gap-2">
+<span class="font-headline-lg text-headline-lg text-primary">72%</span>
+<span class="material-symbols-outlined text-[16px] text-green-600">trending_up</span>
+</div>
+</div>
+<!-- Metric 3 (Tokens - linked) -->
+<a class="flex flex-col hover:opacity-80 transition-opacity md:col-span-1 col-span-2" href="{{DATA:SCREEN:SCREEN_4}}">
+<span class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-1">Tokens Remaining</span>
+<div class="flex items-baseline gap-2">
+<span class="font-headline-lg text-headline-lg text-primary">120</span>
+<span class="font-label-md text-label-md text-primary underline">Refill</span>
+</div>
+</a>
+</div>
+<!-- Mini Chart Placeholder -->
+<div class="mt-lg h-24 w-full flex items-end gap-2 px-2">
+<div class="w-1/6 bg-secondary-container rounded-t-sm h-[30%]"></div>
+<div class="w-1/6 bg-secondary-container rounded-t-sm h-[45%]"></div>
+<div class="w-1/6 bg-secondary-container rounded-t-sm h-[60%]"></div>
+<div class="w-1/6 bg-primary-fixed rounded-t-sm h-[75%]"></div>
+<div class="w-1/6 bg-primary rounded-t-sm h-[90%] relative">
+<div class="absolute -top-6 left-1/2 -translate-x-1/2 bg-surface-container-highest text-on-surface font-label-md text-[10px] px-2 py-1 rounded-sm shadow-sm whitespace-nowrap">Latest: 85%</div>
+</div>
+</div>
+</div>
+<!-- Recent Activity / Quick Start -->
+<div class="bento-col-span-4 bg-surface-container-lowest rounded-ROUND_EIGHT p-lg card-shadow flex flex-col justify-between">
+<div>
+<div class="flex justify-between items-center mb-md">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Recent Session</h3>
+<span class="font-label-md text-label-md text-on-surface-variant bg-surface-container px-2 py-1 rounded-full">2 hrs ago</span>
+</div>
+<div class="bg-surface-container-low rounded-xl p-md mb-md border border-surface-container-highest">
+<div class="flex items-center gap-sm mb-2">
+<div class="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">rocket_launch</span>
+</div>
+<div>
+<h4 class="font-label-lg text-label-lg text-on-surface">Series A Prep</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Persona: The Visionary</p>
+</div>
+</div>
+<div class="w-full bg-secondary-container rounded-full h-1.5 mt-3">
+<div class="bg-primary h-1.5 rounded-full" style="width: 85%"></div>
+</div>
+<p class="font-label-md text-label-md text-on-surface-variant mt-1 text-right">85% Complete</p>
+</div>
+</div>
+<button class="w-full bg-primary text-on-primary font-label-lg text-label-lg rounded-full py-3 px-6 hover:bg-primary/90 transition-colors shadow-md flex items-center justify-center gap-2">
+<span class="material-symbols-outlined">play_arrow</span>
+                    Resume Session
+                </button>
+</div>
+<!-- Recommended Training Header -->
+<div class="bento-col-span-12 flex justify-between items-end mt-md mb-sm">
+<h3 class="font-headline-md text-headline-md text-on-surface">Recommended Training</h3>
+<a class="font-label-lg text-label-lg text-primary hover:underline" href="#">View all</a>
+</div>
+<!-- Recommended Card 1 -->
+<a class="bento-col-span-6 group bg-surface-container-lowest rounded-ROUND_EIGHT overflow-hidden card-shadow hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1" href="{{DATA:SCREEN:SCREEN_2}}">
+<div class="h-32 w-full relative">
+<div class="bg-cover bg-center w-full h-full" data-alt="A clean, modern 3D illustration of a glowing judge's gavel resting on a sleek metallic podium in a minimalist, bright corporate environment. The scene is lit with soft, high-key studio lighting with warm burnt orange accents against pure white surfaces. The aesthetic is premium, professional, and AI-native." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCA3bq7Bcgc7dwI4aVv4ITJCXVmHBPR_dH6JPp_dzjE8mm1B7KSevIr760P4ps0c06YTMfraIavKzhO1UUk3D2jUl2DqLWkjWpuk83012WBC74N_ZfM3Jm9D7dDdVgsUhqUldXDFSnv2fWNMAupPerBN5vxEXlGqddIWQgeS71OSpCfFRAiM0f9ML-UIpI4FlnJ93QW_f91qOW7V_GIWF42gjhW1eV6gfpURlq1X3MOhPuCRpaDJ1wTxxZaCE_dKZ4ro6iCQQSC4w')"></div>
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-md">
+<span class="bg-white/20 backdrop-blur-md text-white font-label-md text-label-md px-3 py-1 rounded-full border border-white/30">Popular</span>
+</div>
+</div>
+<div class="p-lg">
+<div class="flex justify-between items-start mb-2">
+<h4 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-primary transition-colors">Investment Verdict</h4>
+<span class="material-symbols-outlined text-primary group-hover:translate-x-1 transition-transform">arrow_forward</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant line-clamp-2">Get a rapid "Yes" or "No" evaluation on your core value proposition from a simulated tier-1 VC.</p>
+</div>
+</a>
+<!-- Recommended Card 2 -->
+<a class="bento-col-span-6 group bg-surface-container-lowest rounded-ROUND_EIGHT overflow-hidden card-shadow hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1" href="{{DATA:SCREEN:SCREEN_12}}">
+<div class="h-32 w-full relative">
+<div class="bg-cover bg-center w-full h-full" data-alt="An abstract, modern digital artwork showing two glowing geometric orbs gently colliding or orbiting each other, symbolizing dialogue and interaction. Set in a bright, airy gallery space with soft off-white backgrounds and vibrant orange light trails. The mood is energetic, intelligent, and clean." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuD6X1pFnNCbcq2dXDNZnS7Dx-AlqBoe9Im71STrNUEpBnsBkiIYnK5bJizpvLrsxIqqPEnK0hVFOxQZUi00dO-KQKUhU-8kEN0uP2CLp9al1YgMnirFXT6Ck-Hgn9PBalIHkdYE6VCEmP4CJHhieAVt-ct7Lg93eE4cUStk0FsAzSx_cdaZft_FSUwPeXy13DYxNWE5ikX-LyPTI0SKfUSTauq3KVWO0kBtME7dstZk0qS4wKrN2qQWQWacXIqDGZDssOYuo7XK4w')"></div>
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-md">
+<span class="bg-white/20 backdrop-blur-md text-white font-label-md text-label-md px-3 py-1 rounded-full border border-white/30">Intense</span>
+</div>
+</div>
+<div class="p-lg">
+<div class="flex justify-between items-start mb-2">
+<h4 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-primary transition-colors">Sparring Mode</h4>
+<span class="material-symbols-outlined text-primary group-hover:translate-x-1 transition-transform">arrow_forward</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant line-clamp-2">Engage in rapid-fire objection handling. The AI will try to poke holes in your financial model.</p>
+</div>
+</a>
+</div>
+</main>
+<!-- BottomNavBar (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-3 bg-surface-container-lowest dark:bg-surface-container shadow-[0_-8px_24px_-4px_rgba(26,26,26,0.04)] shadow-lg rounded-t-[28px]">
+<!-- Home (Active) -->
+<a class="flex flex-col items-center justify-center bg-primary dark:bg-primary-container text-on-primary dark:text-on-primary-container rounded-full px-6 py-2 scale-95 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">home</span>
+<span class="font-label-md text-label-md mt-1">Home</span>
+</a>
+<!-- Sessions -->
+<a class="flex flex-col items-center justify-center text-secondary dark:text-on-secondary-fixed-variant p-2 hover:bg-secondary-container/50 scale-95 transition-transform duration-200 rounded-lg" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">mic</span>
+<span class="font-label-md text-label-md mt-1">Sessions</span>
+</a>
+<!-- Library -->
+<a class="flex flex-col items-center justify-center text-secondary dark:text-on-secondary-fixed-variant p-2 hover:bg-secondary-container/50 scale-95 transition-transform duration-200 rounded-lg" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">analytics</span>
+<span class="font-label-md text-label-md mt-1">Library</span>
+</a>
+<!-- Profile -->
+<a class="flex flex-col items-center justify-center text-secondary dark:text-on-secondary-fixed-variant p-2 hover:bg-secondary-container/50 scale-95 transition-transform duration-200 rounded-lg" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">person</span>
+<span class="font-label-md text-label-md mt-1">Profile</span>
+</a>
+</nav>
+</body></html>

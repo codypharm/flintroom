@@ -1,0 +1,263 @@
+<!DOCTYPE html><html class="light" lang="en" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>PitchForge AI - Setup</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-fixed-dim": "#ffb59a",
+                        "on-tertiary": "#ffffff",
+                        "on-secondary-fixed-variant": "#484745",
+                        "on-tertiary-fixed": "#1a1c1c",
+                        "surface-dim": "#dcd9d9",
+                        "primary": "#a43700",
+                        "tertiary-fixed-dim": "#c6c6c7",
+                        "surface": "#fcf9f8",
+                        "outline-variant": "#e3bfb2",
+                        "on-surface-variant": "#5a4138",
+                        "on-error-container": "#93000a",
+                        "surface-container-high": "#eae7e7",
+                        "outline": "#8f7066",
+                        "secondary": "#605e5c",
+                        "secondary-container": "#e5e2df",
+                        "tertiary-fixed": "#e2e2e2",
+                        "surface-container-highest": "#e5e2e1",
+                        "error": "#ba1a1a",
+                        "surface-container-low": "#f6f3f2",
+                        "on-background": "#1c1b1b",
+                        "inverse-surface": "#313030",
+                        "surface-container": "#f0eded",
+                        "primary-container": "#cd4700",
+                        "on-primary-container": "#fffbff",
+                        "tertiary": "#5a5c5c",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary-container": "#fcfcfc",
+                        "on-surface": "#1c1b1b",
+                        "inverse-on-surface": "#f3f0ef",
+                        "on-secondary-fixed": "#1c1b1a",
+                        "on-tertiary-fixed-variant": "#454747",
+                        "secondary-fixed-dim": "#c9c6c3",
+                        "error-container": "#ffdad6",
+                        "surface-variant": "#e5e2e1",
+                        "surface-tint": "#a83900",
+                        "on-secondary-container": "#666462",
+                        "secondary-fixed": "#e5e2df",
+                        "inverse-primary": "#ffb59a",
+                        "on-primary": "#ffffff",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-container": "#737575",
+                        "on-error": "#ffffff",
+                        "primary-fixed": "#ffdbcf",
+                        "background": "#fcf9f8",
+                        "surface-bright": "#fcf9f8",
+                        "on-primary-fixed-variant": "#802a00",
+                        "on-primary-fixed": "#380d00"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px",
+                        "card": "28px"
+                    },
+                    "spacing": {
+                        "gutter": "16px",
+                        "base": "4px",
+                        "sm": "12px",
+                        "md": "16px",
+                        "xs": "8px",
+                        "container-padding": "20px",
+                        "xxl": "48px",
+                        "xl": "32px",
+                        "lg": "24px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["Hanken Grotesk"],
+                        "label-lg": ["Hanken Grotesk"],
+                        "headline-lg": ["Hanken Grotesk"],
+                        "headline-lg-mobile": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "body-md": ["Hanken Grotesk"],
+                        "body-sm": ["Hanken Grotesk"],
+                        "headline-sm": ["Hanken Grotesk"],
+                        "body-lg": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "label-md": ["12px", { "lineHeight": "16px", "fontWeight": "500" }],
+                        "label-lg": ["14px", { "lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-lg-mobile": ["28px", { "lineHeight": "36px", "fontWeight": "700" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "body-sm": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "headline-sm": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: #FDF9F6;
+        }
+        .level-1-shadow {
+            box-shadow: 0 8px 24px -4px rgba(26, 26, 26, 0.04);
+        }
+        .level-2-shadow {
+            box-shadow: 0 12px 32px -8px rgba(26, 26, 26, 0.08);
+        }
+        
+        /* Custom scrollbar for horizontal lists */
+        .hide-scroll::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scroll {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen pb-24 md:pb-0">
+<!-- TopAppBar (Transactional - Hidden on this flow based on intent, replaced by custom header) -->
+<header class="flex justify-between items-center px-container-padding py-md w-full sticky top-0 z-40 bg-background/80 backdrop-blur-md">
+<button class="w-10 h-10 flex items-center justify-center rounded-full bg-surface-container-lowest level-1-shadow text-on-surface hover:opacity-80 transition-opacity duration-200">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">menu</span>
+</button>
+<h1 class="font-headline-sm text-headline-sm font-bold text-on-background tracking-tight">PitchForge AI</h1>
+<div class="px-sm py-xs bg-surface-container-highest rounded-full flex items-center gap-xs">
+<span class="material-symbols-outlined text-primary text-[16px]" style="font-variation-settings: 'FILL' 1;">monetization_on</span>
+<span class="font-label-lg text-label-lg text-on-surface-variant">Tokens: 8</span>
+</div>
+</header>
+<main class="max-w-[1200px] mx-auto px-container-padding md:px-lg pt-md pb-xxl flex flex-col gap-lg">
+<!-- Upload Section -->
+<section class="flex flex-col gap-sm">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Session Title</h2>
+<div class="relative">
+<input class="w-full bg-surface-container-lowest border-none level-1-shadow rounded-full py-md px-md font-body-md text-body-md text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary focus:outline-none transition-all duration-200" placeholder="e.g. Q3 Strategy Pitch" type="text">
+</div>
+</section><section class="flex flex-col gap-sm">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Upload Deck</h2>
+<div class="bg-surface-container-lowest rounded-card level-1-shadow border-2 border-dashed border-outline-variant p-lg flex flex-col items-center justify-center gap-md min-h-[160px] cursor-pointer hover:bg-surface-container-low transition-colors duration-200 group relative overflow-hidden">
+<div class="absolute inset-0 w-full h-full opacity-10 mix-blend-overlay">
+<img alt="Background texture" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC_9iKdF9h52WnER9MK_wYbflf3sgIEfZdHHKJUWLTxypTqD_qT0x5Qwv2sko3KbdYoMyyw-z3N6SL9xPW-hxsLyKo3YVUwYBJBEvTHaPcVvoKk6ogmz6RN-GfcdLO6LFXEc2mBm-6GukiHtmYRRmJsqIJYhRjtBx7ofwmlrZMPPJAxUc6If2ELpHANUMY9Zyxshwia3cy8vwiMt0ejzRq2tR4xbrIim96ACbS-ZkL0O0Llu-PHLvjW5mWAO6_-gJqZal2QNOje2w">
+</div>
+<div class="w-16 h-16 rounded-full bg-primary-fixed flex items-center justify-center group-hover:scale-105 transition-transform duration-200 z-10">
+<span class="material-symbols-outlined text-primary text-3xl" style="font-variation-settings: 'FILL' 1;">upload_file</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant z-10">Upload Pitch Deck PDF</p>
+<p class="font-body-sm text-body-sm text-secondary z-10">Max size 20MB</p>
+</div>
+</section>
+<!-- Context Input Section -->
+<section class="flex flex-col gap-sm">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Target Context</h2>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant z-10" style="font-variation-settings: 'FILL' 0;">link</span>
+<input class="w-full bg-surface-container-lowest border-none level-1-shadow rounded-full py-md pl-12 pr-md font-body-md text-body-md text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary focus:outline-none transition-all duration-200" placeholder="Paste Investor LinkedIn or Company URL" type="url">
+</div>
+</section>
+<!-- Panelist Archetypes -->
+<section class="flex flex-col gap-sm overflow-hidden -mx-container-padding px-container-padding md:mx-0 md:px-0">
+<div class="flex justify-between items-end mb-xs">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Select Panelists</h2>
+<span class="font-body-sm text-body-sm text-secondary">Choose up to 3</span>
+</div>
+<div class="flex gap-md overflow-x-auto hide-scroll pb-sm snap-x">
+<!-- Archetype 1 -->
+<div class="snap-start shrink-0 w-[140px] bg-surface-container-lowest rounded-[24px] level-1-shadow p-sm flex flex-col items-center gap-sm relative cursor-pointer group">
+<div class="absolute top-sm right-sm z-10">
+<div class="w-6 h-6 rounded-full bg-surface border-2 border-outline-variant flex items-center justify-center transition-colors group-hover:border-primary">
+<!-- Checked state (hidden by default) -->
+<span class="material-symbols-outlined text-[14px] text-white opacity-0" style="font-variation-settings: 'FILL' 1;">check</span>
+</div>
+</div>
+<div class="w-[80px] h-[80px] rounded-full overflow-hidden bg-surface-variant mt-sm relative">
+<img class="w-full h-full object-cover" data-alt="A detailed digital portrait illustration of a confident, sharply dressed male executive with a warm expression, representing a 'Growth Maximalist' investor archetype. The lighting is soft and bright, fitting a light-mode modern app aesthetic. The color palette features neutral tones with subtle energetic orange accents. The style is clean, minimalist, and professional." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA02bmKVQErsnN9pvFJK_fozmpohWel7wZdXk_DRD6U8hKkToPtIZDM27sTHQwQIwRLb-F36D14RdNTpMqB7feVj-jyhvNjxH-QWzZxobCmQjvZQVl1jhFLTDQlW84YggkskR5csYuWRIx1nSU0byg9_8X51dTLVGw-Q4b2haWg2pPhLccLgZcyCH6JSMs29DJHk0L3T_TmZ99SAfL7sx2aYnOv1JE-epgVEW7ZZc9JR9cZ8crCMPk59VPs8BhKXkVuoOLUowOTCA">
+</div>
+<div class="text-center w-full">
+<h3 class="font-label-lg text-label-lg text-on-surface line-clamp-2 leading-tight">The Growth Maximalist</h3>
+</div>
+</div>
+<!-- Archetype 2 (Selected State) -->
+<div class="snap-start shrink-0 w-[140px] bg-surface-container-lowest rounded-[24px] level-2-shadow ring-2 ring-primary p-sm flex flex-col items-center gap-sm relative cursor-pointer">
+<div class="absolute top-sm right-sm z-10">
+<div class="w-6 h-6 rounded-full bg-primary border-2 border-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-[14px] text-on-primary" style="font-variation-settings: 'FILL' 1;">check</span>
+</div>
+</div>
+<div class="w-[80px] h-[80px] rounded-full overflow-hidden bg-surface-variant mt-sm relative">
+<img class="w-full h-full object-cover" data-alt="A highly detailed digital illustration of a meticulous, analytical female CFO wearing modern business attire, representing the 'Margin-Obsessed CFO' investor archetype. She has a focused yet approachable expression. The image is set against a clean, off-white background with soft, diffused lighting to match a premium, light-mode UI. Warm professional aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBOgT5LxDpJMnLULDP5maDXbHN_RiwtNd1Ai7P2wJvYG_6HyGe4WLEbEedzsEuVQCA0_u6BSG6hE_53yECrDSo0SioVsTCMEFCBIBdoeamj4IMHtFR_h0e7vbJEKbdbJ1sJZ7ATUUfwP6ZEB2u3Pqwz2Gsy9APCHYZ7uTsBter0nRLnZc2N7uKxkz87YnTzLh0jyRTwEJNcE5k3ZyXCyVBJqpnQ-S5saD37f26uaRc2mYVJrPRKxy0bJ4GMP3NCftjbI5xUycaYGw">
+</div>
+<div class="text-center w-full">
+<h3 class="font-label-lg text-label-lg text-on-surface line-clamp-2 leading-tight">The Margin-Obsessed CFO</h3>
+</div>
+</div>
+<!-- Archetype 3 -->
+<div class="snap-start shrink-0 w-[140px] bg-surface-container-lowest rounded-[24px] level-1-shadow p-sm flex flex-col items-center gap-sm relative cursor-pointer group">
+<div class="absolute top-sm right-sm z-10">
+<div class="w-6 h-6 rounded-full bg-surface border-2 border-outline-variant flex items-center justify-center transition-colors group-hover:border-primary">
+<span class="material-symbols-outlined text-[14px] text-white opacity-0" style="font-variation-settings: 'FILL' 1;">check</span>
+</div>
+</div>
+<div class="w-[80px] h-[80px] rounded-full overflow-hidden bg-surface-variant mt-sm relative">
+<img class="w-full h-full object-cover" data-alt="A polished digital portrait of an inquisitive, casually dressed tech visionary representing the 'Product Purist' investor archetype. The subject is looking thoughtfully off-camera. The background is a minimalist, warm off-white, illuminated by high-key, soft lighting. The visual style is premium, tactile, and aligns with a modern light-mode application aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAjWTx3urBpyh9FqbYw6-n4lzKG60JL5hHT6Ul5fNGf1WDacVTm_AfR8OWScmDzu6QhJbQluaMstn1sGrXublDJJadt6mk_eGdYBxrZFN5cm_xHwnXWfoxeaU7gbQANL2qbEQWIyzwnlyyarTO186hLA6YSLo_1A0rediW4VvCWIFBtnStMZf9hx3GVtJHIUHik4ZaIDVebVHwoQdrEcGWs3MFpFitCRFDKqKGu1Axduh9bnW4dHZzB1Le-2Wvo_5-uPItRwVvVBQ">
+</div>
+<div class="text-center w-full">
+<h3 class="font-label-lg text-label-lg text-on-surface line-clamp-2 leading-tight">The Product Purist</h3>
+</div>
+</div>
+<!-- Archetype 4 -->
+<div class="snap-start shrink-0 w-[140px] bg-surface-container-lowest rounded-[24px] level-1-shadow p-sm flex flex-col items-center gap-sm relative cursor-pointer group pr-md">
+<div class="absolute top-sm right-sm z-10">
+<div class="w-6 h-6 rounded-full bg-surface border-2 border-outline-variant flex items-center justify-center transition-colors group-hover:border-primary">
+<span class="material-symbols-outlined text-[14px] text-white opacity-0" style="font-variation-settings: 'FILL' 1;">check</span>
+</div>
+</div>
+<div class="w-[80px] h-[80px] rounded-full overflow-hidden bg-surface-variant mt-sm relative flex items-center justify-center bg-surface-container-high">
+<span class="material-symbols-outlined text-outline text-3xl" style="font-variation-settings: 'FILL' 0;">add</span>
+</div>
+<div class="text-center w-full">
+<h3 class="font-label-lg text-label-lg text-on-surface line-clamp-2 leading-tight">Custom Persona</h3>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Fixed Bottom CTA (Floating above navigation area) -->
+<div class="fixed bottom-[72px] left-0 w-full p-container-padding bg-gradient-to-t from-background via-background to-transparent z-50 pointer-events-none flex justify-center">
+<div class="max-w-[600px] w-full pointer-events-auto">
+<button class="w-full h-[56px] bg-primary text-on-primary font-headline-sm text-headline-sm rounded-full flex items-center justify-center gap-xs level-2-shadow hover:bg-primary-container transition-colors active:scale-[0.98]">
+<span class="">Begin Session<br></span>
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">arrow_forward</span>
+</button>
+</div>
+</div>
+
+
+<nav class="fixed bottom-0 left-0 w-full bg-surface-container-lowest border-t border-outline-variant px-container-padding py-sm flex justify-between items-center z-50 md:hidden">
+  <a href="#" class="flex flex-col items-center gap-xs text-secondary hover:text-primary transition-colors">
+    <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">home</span>
+    <span class="text-label-md font-label-md">Home</span>
+  </a>
+  <a href="#" class="flex flex-col items-center gap-xs text-primary transition-colors">
+    <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">chat_bubble</span>
+    <span class="text-label-md font-label-md">Sessions</span>
+  </a>
+  <a href="#" class="flex flex-col items-center gap-xs text-secondary hover:text-primary transition-colors">
+    <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">folder</span>
+    <span class="text-label-md font-label-md">Library</span>
+  </a>
+  <a href="#" class="flex flex-col items-center gap-xs text-secondary hover:text-primary transition-colors">
+    <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">person</span>
+    <span class="text-label-md font-label-md">Profile</span>
+  </a>
+</nav></body></html>

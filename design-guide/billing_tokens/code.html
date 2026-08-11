@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Billing &amp; Tokens</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+                  "primary": "#a43700",
+                  "primary-fixed": "#ffdbcf",
+                  "on-tertiary-fixed-variant": "#454747",
+                  "surface-variant": "#e5e2e1",
+                  "on-secondary-fixed-variant": "#484745",
+                  "on-secondary-container": "#666462",
+                  "error": "#ba1a1a",
+                  "tertiary-fixed-dim": "#c6c6c7",
+                  "outline-variant": "#e3bfb2",
+                  "surface": "#fcf9f8",
+                  "on-tertiary": "#ffffff",
+                  "surface-container": "#f0eded",
+                  "surface-dim": "#dcd9d9",
+                  "on-secondary": "#ffffff",
+                  "outline": "#8f7066",
+                  "on-error-container": "#93000a",
+                  "inverse-on-surface": "#f3f0ef",
+                  "error-container": "#ffdad6",
+                  "on-primary-fixed-variant": "#802a00",
+                  "on-primary-container": "#fffbff",
+                  "surface-container-high": "#eae7e7",
+                  "secondary-container": "#e5e2df",
+                  "tertiary-container": "#737575",
+                  "surface-container-low": "#f6f3f2",
+                  "on-surface": "#1c1b1b",
+                  "on-primary": "#ffffff",
+                  "on-error": "#ffffff",
+                  "on-tertiary-fixed": "#1a1c1c",
+                  "secondary-fixed": "#e5e2df",
+                  "secondary-fixed-dim": "#c9c6c3",
+                  "surface-container-highest": "#e5e2e1",
+                  "surface-bright": "#fcf9f8",
+                  "on-surface-variant": "#5a4138",
+                  "surface-tint": "#a83900",
+                  "inverse-primary": "#ffb59a",
+                  "tertiary-fixed": "#e2e2e2",
+                  "background": "#fcf9f8",
+                  "tertiary": "#5a5c5c",
+                  "primary-container": "#cd4700",
+                  "surface-container-lowest": "#ffffff",
+                  "on-background": "#1c1b1b",
+                  "on-secondary-fixed": "#1c1b1a",
+                  "primary-fixed-dim": "#ffb59a",
+                  "on-primary-fixed": "#380d00",
+                  "secondary": "#605e5c",
+                  "on-tertiary-container": "#fcfcfc",
+                  "inverse-surface": "#313030"
+          },
+          "borderRadius": {
+                  "DEFAULT": "0.25rem",
+                  "lg": "0.5rem",
+                  "xl": "0.75rem",
+                  "full": "9999px"
+          },
+          "spacing": {
+                  "sm": "12px",
+                  "lg": "24px",
+                  "base": "4px",
+                  "gutter": "16px",
+                  "xs": "8px",
+                  "xxl": "48px",
+                  "md": "16px",
+                  "container-padding": "20px",
+                  "xl": "32px"
+          },
+          "fontFamily": {
+                  "label-lg": [
+                          "Hanken Grotesk"
+                  ],
+                  "label-md": [
+                          "Hanken Grotesk"
+                  ],
+                  "headline-lg-mobile": [
+                          "Hanken Grotesk"
+                  ],
+                  "body-lg": [
+                          "Hanken Grotesk"
+                  ],
+                  "headline-lg": [
+                          "Hanken Grotesk"
+                  ],
+                  "headline-sm": [
+                          "Hanken Grotesk"
+                  ],
+                  "headline-md": [
+                          "Hanken Grotesk"
+                  ],
+                  "body-sm": [
+                          "Hanken Grotesk"
+                  ],
+                  "body-md": [
+                          "Hanken Grotesk"
+                  ]
+          },
+          "fontSize": {
+                  "label-lg": [
+                          "14px",
+                          {
+                                  "lineHeight": "20px",
+                                  "letterSpacing": "0.01em",
+                                  "fontWeight": "600"
+                          }
+                  ],
+                  "label-md": [
+                          "12px",
+                          {
+                                  "lineHeight": "16px",
+                                  "fontWeight": "500"
+                          }
+                  ],
+                  "headline-lg-mobile": [
+                          "28px",
+                          {
+                                  "lineHeight": "36px",
+                                  "fontWeight": "700"
+                          }
+                  ],
+                  "body-lg": [
+                          "18px",
+                          {
+                                  "lineHeight": "28px",
+                                  "fontWeight": "400"
+                          }
+                  ],
+                  "headline-lg": [
+                          "32px",
+                          {
+                                  "lineHeight": "40px",
+                                  "letterSpacing": "-0.02em",
+                                  "fontWeight": "700"
+                          }
+                  ],
+                  "headline-sm": [
+                          "20px",
+                          {
+                                  "lineHeight": "28px",
+                                  "fontWeight": "600"
+                          }
+                  ],
+                  "headline-md": [
+                          "24px",
+                          {
+                                  "lineHeight": "32px",
+                                  "letterSpacing": "-0.01em",
+                                  "fontWeight": "600"
+                          }
+                  ],
+                  "body-sm": [
+                          "14px",
+                          {
+                                  "lineHeight": "20px",
+                                  "fontWeight": "400"
+                          }
+                  ],
+                  "body-md": [
+                          "16px",
+                          {
+                                  "lineHeight": "24px",
+                                  "fontWeight": "400"
+                          }
+                  ]
+          }
+  },
+      },
+    }
+  </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background min-h-screen pb-32">
+<!-- TopAppBar -->
+<header class="flex justify-between items-center px-container-padding py-md w-full bg-background docked full-width top-0 sticky z-40">
+<button class="w-10 h-10 flex items-center justify-center rounded-full bg-surface-container-lowest shadow-sm hover:opacity-80 transition-opacity duration-200">
+<span class="material-symbols-outlined text-primary font-headline-sm text-headline-sm" data-icon="arrow_back">arrow_back</span>
+</button>
+<h1 class="font-headline-sm text-headline-sm font-bold text-on-background">Billing &amp; Tokens</h1>
+<div class="px-4 py-2 bg-primary-fixed rounded-full flex items-center gap-2">
+<span class="material-symbols-outlined text-on-primary-fixed-variant" data-icon="generating_tokens" style="font-variation-settings: 'FILL' 1;">generating_tokens</span>
+<span class="font-label-lg text-label-lg text-on-primary-fixed-variant">24 Tokens</span>
+</div>
+</header>
+<main class="px-container-padding py-lg flex flex-col gap-xl max-w-3xl mx-auto">
+<!-- Current Plan Section -->
+<section>
+<div class="bg-surface-container-lowest rounded-[28px] p-lg shadow-[0_8px_24px_-4px_rgba(26,26,26,0.04)]">
+<div class="flex items-center justify-between mb-sm">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Current Plan</h2>
+<span class="bg-primary/10 text-primary px-3 py-1 rounded-full font-label-md text-label-md">Pro Plan</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant mb-md">Weekly Tokens: 4 / 10 remaining</p>
+<div class="h-2 w-full bg-surface-variant rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[40%] rounded-full"></div>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-xs text-right">Resets in 3 days</p>
+</div>
+</section>
+<!-- Subscription Tiers -->
+<section>
+<h2 class="font-headline-md text-headline-md font-bold mb-md">Available Plans</h2>
+<div class="flex flex-col gap-md">
+<!-- Free Tier -->
+<div class="bg-surface-container-lowest rounded-[28px] p-lg shadow-[0_8px_24px_-4px_rgba(26,26,26,0.04)] border border-surface-variant/50 relative overflow-hidden group">
+<div class="flex justify-between items-start mb-md">
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Free Trial <span class="font-body-sm text-body-sm text-on-surface-variant font-normal ml-2">(Hackathon Demo)</span></h3>
+<p class="font-headline-md text-headline-md font-bold text-on-surface mt-xs">$0</p>
+</div>
+</div>
+<ul class="flex flex-col gap-sm font-body-sm text-body-sm text-on-surface-variant">
+<li class="flex items-center gap-xs"><span class="material-symbols-outlined text-primary text-base">check_circle</span> 3 Lifetime Tokens</li>
+<li class="flex items-center gap-xs"><span class="material-symbols-outlined text-primary text-base">check_circle</span> Access to 2 Pre-saved archetypes</li>
+<li class="flex items-center gap-xs"><span class="material-symbols-outlined text-primary text-base">check_circle</span> Basic text deck ingestion</li>
+</ul>
+<button class="mt-lg w-full min-h-[56px] rounded-full border border-primary text-primary font-label-lg text-label-lg hover:bg-primary/5 transition-colors">Select Plan</button>
+</div>
+<!-- Pro Tier (Current) -->
+<div class="bg-surface-container-lowest rounded-[28px] p-lg shadow-[0_12px_32px_-8px_rgba(26,26,26,0.08)] border-2 border-primary relative overflow-hidden">
+<div class="absolute top-0 right-0 bg-primary text-on-primary px-4 py-1 rounded-bl-xl font-label-md text-label-md shadow-sm">CURRENT</div>
+<div class="flex justify-between items-start mb-md">
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Pro Tier <span class="font-body-sm text-body-sm text-on-surface-variant font-normal ml-2">(Monthly Plan)</span></h3>
+<p class="font-headline-md text-headline-md font-bold text-primary mt-xs">$19<span class="font-body-sm text-body-sm text-on-surface-variant font-normal">/mo</span></p>
+</div>
+</div>
+<ul class="flex flex-col gap-sm font-body-sm text-body-sm text-on-surface-variant">
+<li class="flex items-center gap-xs"><span class="material-symbols-outlined text-primary text-base">check_circle</span> 10 Tokens/week (Resets weekly, no roll-over)</li>
+<li class="flex items-center gap-xs"><span class="material-symbols-outlined text-primary text-base">check_circle</span> Full pre-saved archetype roster</li>
+<li class="flex items-center gap-xs"><span class="material-symbols-outlined text-primary text-base">check_circle</span> Custom URL scraping</li>
+<li class="flex items-center gap-xs"><span class="material-symbols-outlined text-primary text-base">check_circle</span> Advanced Auditor logic</li>
+</ul>
+<button class="mt-lg w-full min-h-[56px] rounded-full bg-surface-variant text-on-surface-variant font-label-lg text-label-lg cursor-not-allowed">Current Plan</button>
+</div>
+<!-- Executive Tier -->
+<div class="bg-surface-container-lowest rounded-[28px] p-lg shadow-[0_8px_24px_-4px_rgba(26,26,26,0.04)] border border-surface-variant/50 relative overflow-hidden group">
+<div class="absolute top-0 right-0 bg-secondary-container text-on-secondary-container px-4 py-1 rounded-bl-xl font-label-md text-label-md">SAVE 35%</div>
+<div class="flex justify-between items-start mb-md mt-sm">
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Executive Tier <span class="font-body-sm text-body-sm text-on-surface-variant font-normal ml-2">(Annual Plan)</span></h3>
+<p class="font-headline-md text-headline-md font-bold text-on-surface mt-xs">$149<span class="font-body-sm text-body-sm text-on-surface-variant font-normal">/yr</span></p>
+</div>
+</div>
+<ul class="flex flex-col gap-sm font-body-sm text-body-sm text-on-surface-variant">
+<li class="flex items-center gap-xs"><span class="material-symbols-outlined text-primary text-base">check_circle</span> 15 Tokens/week (Resets weekly)</li>
+<li class="flex items-center gap-xs"><span class="material-symbols-outlined text-primary text-base">check_circle</span> Priority sub-1 second voice processing queue</li>
+<li class="flex items-center gap-xs"><span class="material-symbols-outlined text-primary text-base">check_circle</span> Unlimited PDF deck analysis storage</li>
+</ul>
+<button class="mt-lg w-full min-h-[56px] rounded-full bg-primary text-on-primary font-label-lg text-label-lg hover:bg-primary-container shadow-sm transition-colors">Upgrade to Executive</button>
+</div>
+</div>
+</section>
+<!-- Add-on Section -->
+<section>
+<div class="bg-primary-fixed/30 rounded-[28px] p-lg border border-primary-fixed">
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-md">
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-primary-fixed-variant flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" data-icon="bolt" style="font-variation-settings: 'FILL' 1;">bolt</span>
+              Booster Pack
+            </h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Pay-As-You-Go. 5 Extra Tokens (Never expire).</p>
+<p class="font-headline-md text-headline-md font-bold text-primary mt-2">$7 <span class="font-body-sm text-body-sm font-normal text-on-surface-variant">one-off</span></p>
+</div>
+<button class="w-full md:w-auto px-8 min-h-[56px] rounded-full bg-primary text-on-primary font-label-lg text-label-lg hover:bg-primary-container shadow-sm transition-colors">Buy Now</button>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<!-- Semantic intent: "Billing & Tokens" relates closely to user account management -> "Profile" tab should be active. -->
+<!-- Note: While often suppressed on sub-pages with "Back", the prompt specifically asks for the Bottom Navigation with "Profile active". Following prompt override. -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-3 bg-surface-container-lowest rounded-t-[28px] shadow-[0_-8px_24px_-4px_rgba(26,26,26,0.04)] md:hidden">
+<a class="flex flex-col items-center justify-center text-secondary p-2 scale-95 transition-transform duration-200 hover:bg-secondary-container/50 rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="home">home</span>
+<span class="font-label-md text-label-md mt-1">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-secondary p-2 scale-95 transition-transform duration-200 hover:bg-secondary-container/50 rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="mic">mic</span>
+<span class="font-label-md text-label-md mt-1">Sessions</span>
+</a>
+<a class="flex flex-col items-center justify-center text-secondary p-2 scale-95 transition-transform duration-200 hover:bg-secondary-container/50 rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="analytics">analytics</span>
+<span class="font-label-md text-label-md mt-1">Library</span>
+</a>
+<!-- Active State: Profile -->
+<a class="flex flex-col items-center justify-center bg-primary text-on-primary rounded-full px-6 py-2 scale-95 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="person" style="font-variation-settings: 'FILL' 1;">person</span>
+<span class="font-label-md text-label-md mt-1">Profile</span>
+</a>
+</nav>
+</body></html>

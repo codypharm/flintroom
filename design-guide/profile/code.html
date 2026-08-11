@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>PitchGo AI - Profile</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                            "error": "#ba1a1a",
+                            "surface-variant": "#e5e2e1",
+                            "on-tertiary-fixed": "#1a1c1c",
+                            "outline": "#8f7066",
+                            "tertiary": "#5a5c5c",
+                            "on-error-container": "#93000a",
+                            "on-surface-variant": "#5a4138",
+                            "surface-dim": "#dcd9d9",
+                            "surface": "#fcf9f8",
+                            "on-primary-fixed-variant": "#802a00",
+                            "surface-container-lowest": "#ffffff",
+                            "on-tertiary": "#ffffff",
+                            "on-secondary-container": "#666462",
+                            "surface-container": "#f0eded",
+                            "primary-fixed": "#ffdbcf",
+                            "on-primary-fixed": "#380d00",
+                            "on-error": "#ffffff",
+                            "surface-container-low": "#f6f3f2",
+                            "secondary-container": "#e5e2df",
+                            "on-secondary-fixed-variant": "#484745",
+                            "error-container": "#ffdad6",
+                            "on-primary": "#ffffff",
+                            "on-tertiary-fixed-variant": "#454747",
+                            "secondary-fixed-dim": "#c9c6c3",
+                            "secondary": "#605e5c",
+                            "surface-bright": "#fcf9f8",
+                            "surface-tint": "#a83900",
+                            "on-primary-container": "#fffbff",
+                            "outline-variant": "#e3bfb2",
+                            "tertiary-container": "#737575",
+                            "tertiary-fixed": "#e2e2e2",
+                            "primary-container": "#cd4700",
+                            "surface-container-highest": "#e5e2e1",
+                            "on-background": "#1c1b1b",
+                            "inverse-on-surface": "#f3f0ef",
+                            "surface-container-high": "#eae7e7",
+                            "background": "#fcf9f8",
+                            "secondary-fixed": "#e5e2df",
+                            "primary": "#a43700",
+                            "on-secondary-fixed": "#1c1b1a",
+                            "on-secondary": "#ffffff",
+                            "primary-fixed-dim": "#ffb59a",
+                            "on-surface": "#1c1b1b",
+                            "inverse-surface": "#313030",
+                            "on-tertiary-container": "#fcfcfc",
+                            "tertiary-fixed-dim": "#c6c6c7",
+                            "inverse-primary": "#ffb59a"
+                    },
+                    "borderRadius": {
+                            "DEFAULT": "0.25rem",
+                            "lg": "0.5rem",
+                            "xl": "0.75rem",
+                            "full": "9999px"
+                    },
+                    "spacing": {
+                            "base": "4px",
+                            "lg": "24px",
+                            "md": "16px",
+                            "xl": "32px",
+                            "xs": "8px",
+                            "container-padding": "20px",
+                            "xxl": "48px",
+                            "sm": "12px",
+                            "gutter": "16px"
+                    },
+                    "fontFamily": {
+                            "body-sm": [
+                                    "Hanken Grotesk"
+                            ],
+                            "label-md": [
+                                    "Hanken Grotesk"
+                            ],
+                            "label-lg": [
+                                    "Hanken Grotesk"
+                            ],
+                            "headline-lg": [
+                                    "Hanken Grotesk"
+                            ],
+                            "headline-sm": [
+                                    "Hanken Grotesk"
+                            ],
+                            "body-md": [
+                                    "Hanken Grotesk"
+                            ],
+                            "headline-md": [
+                                    "Hanken Grotesk"
+                            ],
+                            "headline-lg-mobile": [
+                                    "Hanken Grotesk"
+                            ],
+                            "body-lg": [
+                                    "Hanken Grotesk"
+                            ]
+                    },
+                    "fontSize": {
+                            "body-sm": [
+                                    "14px",
+                                    {
+                                            "lineHeight": "20px",
+                                            "fontWeight": "400"
+                                    }
+                            ],
+                            "label-md": [
+                                    "12px",
+                                    {
+                                            "lineHeight": "16px",
+                                            "fontWeight": "500"
+                                    }
+                            ],
+                            "label-lg": [
+                                    "14px",
+                                    {
+                                            "lineHeight": "20px",
+                                            "letterSpacing": "0.01em",
+                                            "fontWeight": "600"
+                                    }
+                            ],
+                            "headline-lg": [
+                                    "32px",
+                                    {
+                                            "lineHeight": "40px",
+                                            "letterSpacing": "-0.02em",
+                                            "fontWeight": "700"
+                                    }
+                            ],
+                            "headline-sm": [
+                                    "20px",
+                                    {
+                                            "lineHeight": "28px",
+                                            "fontWeight": "600"
+                                    }
+                            ],
+                            "body-md": [
+                                    "16px",
+                                    {
+                                            "lineHeight": "24px",
+                                            "fontWeight": "400"
+                                    }
+                            ],
+                            "headline-md": [
+                                    "24px",
+                                    {
+                                            "lineHeight": "32px",
+                                            "letterSpacing": "-0.01em",
+                                            "fontWeight": "600"
+                                    }
+                            ],
+                            "headline-lg-mobile": [
+                                    "28px",
+                                    {
+                                            "lineHeight": "36px",
+                                            "fontWeight": "700"
+                                    }
+                            ],
+                            "body-lg": [
+                                    "18px",
+                                    {
+                                            "lineHeight": "28px",
+                                            "fontWeight": "400"
+                                    }
+                            ]
+                    }
+            },
+                },
+        }
+    </script>
+<style>
+        body {
+            background-color: #fcf9f8; /* theme background */
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .card-shadow {
+            box-shadow: 0 8px 24px -4px rgba(26, 26, 26, 0.04);
+        }
+        .interactive-shadow {
+            box-shadow: 0 12px 32px -8px rgba(26, 26, 26, 0.08);
+        }
+        .nav-shadow {
+            box-shadow: 0 -8px 24px -4px rgba(26, 26, 26, 0.04);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="text-on-background pb-[100px] md:pb-0">
+<!-- TopAppBar (Shared Component) -->
+<header class="bg-surface dark:bg-surface-dim w-full top-0 sticky z-40">
+<div class="flex justify-between items-center px-container-padding py-md max-w-[1200px] mx-auto">
+<div class="flex items-center gap-xs">
+<span class="material-symbols-outlined text-primary dark:text-primary-fixed-dim" data-icon="graphic_eq">graphic_eq</span>
+<h1 class="font-headline-md text-headline-md font-bold text-primary dark:text-primary-fixed-dim">PitchGo AI</h1>
+</div>
+<div class="hidden md:flex gap-lg items-center">
+<a class="text-on-surface-variant font-label-lg text-label-lg hover:opacity-80 transition-opacity duration-200" href="#">Home</a>
+<a class="text-on-surface-variant font-label-lg text-label-lg hover:opacity-80 transition-opacity duration-200" href="#">Sessions</a>
+<a class="text-on-surface-variant font-label-lg text-label-lg hover:opacity-80 transition-opacity duration-200" href="#">Library</a>
+<a class="text-primary font-bold font-label-lg text-label-lg hover:opacity-80 transition-opacity duration-200" href="#">Profile</a>
+</div>
+<button class="font-label-lg text-label-lg text-primary dark:text-primary-fixed-dim bg-primary-fixed dark:bg-primary-container px-md py-xs rounded-full hover:opacity-80 transition-opacity duration-200">
+                24 Tokens
+            </button>
+</div>
+</header>
+<main class="max-w-[1200px] mx-auto px-container-padding py-xl flex flex-col gap-lg">
+<!-- Profile Card (Top Section) -->
+<section class="bg-surface-container-lowest rounded-[28px] card-shadow p-lg flex flex-col md:flex-row items-center md:items-start gap-lg text-center md:text-left">
+<div class="w-24 h-24 rounded-full overflow-hidden flex-shrink-0 bg-secondary-container">
+<img class="w-full h-full object-cover" data-alt="A close-up, high-quality, professional portrait of a modern business professional, Alex Chen, with a warm, approachable smile, set against a soft, light-mode studio background. The lighting is flattering and bright, emphasizing a premium, trustworthy aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA6R50y-D_SbGJnG48gs8gYXepFATiaIqKOgf9h5EOrqZzhyb2Mko2fNGLaR2btUBwx51F9YyC1IS08zncAOw0n6OPQfKkhycbkNoVBeGwSicsRgcQKjs-R1Zfjl2Ejr9fW_Sjt7KI_vb0VpAq9vPMsYRA5zHY2ZbTR4KMohLx0Wwmlja2dxbjsgdJkgDu5WzXqQqrzlz3DsXerzRbQJ6diGjIU1HTzUTqTtikEdkXUtZ8j4bJPmOzDBO8yxkhkfsQMDOu8Euqrow"/>
+</div>
+<div class="flex-grow">
+<h2 class="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-on-surface mb-xs">Alex Chen</h2>
+<div class="inline-flex items-center gap-base bg-primary-fixed/30 px-sm py-base rounded-full">
+<span class="material-symbols-outlined text-primary text-[16px]" data-icon="stars" data-weight="fill" style="font-variation-settings: 'FILL' 1;">stars</span>
+<span class="font-label-md text-label-md text-primary font-bold">Pro Member</span>
+</div>
+<p class="font-body-md text-body-md text-secondary mt-sm">alex.chen@example.com</p>
+</div>
+<button class="mt-md md:mt-0 bg-surface-container-lowest border border-outline text-on-surface font-label-lg text-label-lg px-lg py-sm rounded-full hover:bg-surface-container-low transition-colors duration-200 min-h-[56px] flex items-center justify-center">
+                Edit Profile
+            </button>
+</section>
+<!-- Settings List (List Section) -->
+<section class="flex flex-col gap-md">
+<a class="bg-surface-container-lowest rounded-[28px] card-shadow p-lg flex items-center justify-between hover:bg-surface-container-low transition-colors duration-200 group" href="#">
+<div class="flex items-center gap-md">
+<div class="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center text-primary group-hover:bg-primary-fixed/30 transition-colors duration-200">
+<span class="material-symbols-outlined" data-icon="lock">lock</span>
+</div>
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Account Security</h3>
+<p class="font-body-sm text-body-sm text-secondary">Password, 2FA, connected devices</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-primary" data-icon="chevron_right">chevron_right</span>
+</a>
+<a class="bg-surface-container-lowest rounded-[28px] card-shadow p-lg flex items-center justify-between hover:bg-surface-container-low transition-colors duration-200 group" href="#">
+<div class="flex items-center gap-md">
+<div class="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center text-primary group-hover:bg-primary-fixed/30 transition-colors duration-200">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</div>
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Notification Preferences</h3>
+<p class="font-body-sm text-body-sm text-secondary">Email and push alerts</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-primary" data-icon="chevron_right">chevron_right</span>
+</a>
+<a class="bg-surface-container-lowest rounded-[28px] card-shadow p-lg flex items-center justify-between hover:bg-surface-container-low transition-colors duration-200 group" href="#">
+<div class="flex items-center gap-md">
+<div class="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center text-primary group-hover:bg-primary-fixed/30 transition-colors duration-200">
+<span class="material-symbols-outlined" data-icon="credit_card">credit_card</span>
+</div>
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Billing &amp; Tokens</h3>
+<p class="font-body-sm text-body-sm text-secondary">Manage subscription and token balance</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-primary" data-icon="chevron_right">chevron_right</span>
+</a>
+<a class="bg-surface-container-lowest rounded-[28px] card-shadow p-lg flex items-center justify-between hover:bg-surface-container-low transition-colors duration-200 group" href="#">
+<div class="flex items-center gap-md">
+<div class="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center text-primary group-hover:bg-primary-fixed/30 transition-colors duration-200">
+<span class="material-symbols-outlined" data-icon="link">link</span>
+</div>
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Linked LinkedIn Profile</h3>
+<p class="font-body-sm text-body-sm text-secondary">Manage social connections</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-primary" data-icon="chevron_right">chevron_right</span>
+</a>
+</section>
+<!-- Sign Out (Bottom Section) -->
+<section class="mt-md">
+<button class="w-full bg-surface-container-lowest rounded-[28px] card-shadow p-lg flex items-center justify-center gap-sm hover:bg-error-container/20 transition-colors duration-200 min-h-[56px]">
+<span class="material-symbols-outlined text-error" data-icon="logout">logout</span>
+<span class="font-label-lg text-label-lg text-error font-bold">Sign Out</span>
+</button>
+</section>
+</main>
+<!-- BottomNavBar (Shared Component) - Hidden on md and up -->
+<nav class="md:hidden bg-surface-container-lowest dark:bg-surface-container-lowest fixed bottom-0 w-full z-50 rounded-t-xl nav-shadow flex justify-around items-center px-base pb-lg pt-md">
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed-dim px-lg py-xs hover:bg-surface-container-high dark:hover:bg-surface-container active:scale-95 transition-transform duration-200 group rounded-xl" href="#">
+<span class="material-symbols-outlined mb-base group-hover:text-primary transition-colors" data-icon="home">home</span>
+<span class="font-label-md text-label-md group-hover:text-primary transition-colors">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed-dim px-lg py-xs hover:bg-surface-container-high dark:hover:bg-surface-container active:scale-95 transition-transform duration-200 group rounded-xl" href="#">
+<span class="material-symbols-outlined mb-base group-hover:text-primary transition-colors" data-icon="record_voice_over">record_voice_over</span>
+<span class="font-label-md text-label-md group-hover:text-primary transition-colors">Sessions</span>
+</a>
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed-dim px-lg py-xs hover:bg-surface-container-high dark:hover:bg-surface-container active:scale-95 transition-transform duration-200 group rounded-xl" href="#">
+<span class="material-symbols-outlined mb-base group-hover:text-primary transition-colors" data-icon="video_library">video_library</span>
+<span class="font-label-md text-label-md group-hover:text-primary transition-colors">Library</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-primary-fixed dark:bg-primary-container text-on-primary-fixed dark:text-on-primary-container rounded-full px-lg py-xs hover:bg-surface-container-high dark:hover:bg-surface-container active:scale-95 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined mb-base" data-icon="person" data-weight="fill" style="font-variation-settings: 'FILL' 1;">person</span>
+<span class="font-label-md text-label-md font-bold">Profile</span>
+</a>
+</nav>
+</body></html>
