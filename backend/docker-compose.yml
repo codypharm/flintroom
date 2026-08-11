@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16
+    container_name: flintroom-db
+    environment:
+      POSTGRES_USER: flintroom
+      POSTGRES_PASSWORD: flintroom
+      POSTGRES_DB: flintroom_test
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flintroom -d flintroom_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15

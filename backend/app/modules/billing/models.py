@@ -1,0 +1,61 @@
+import uuid
+from datetime import datetime
+
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.core.database import Base
+
+
+class Account(Base):
+    """Cached per-bucket balance for one user.
+
+    The balance is a cache over `ledger_entries`, kept because the session-start
+    path reads it and must stay O(1). Replaying the entries must always reproduce
+    it; where they disagree, the entries are right and the cache is the bug.
+    """
+
+    __tablename__ = "accounts"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    entitlement_tier: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    balance_allowance_seconds: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    balance_free_seconds: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    balance_topup_seconds: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+
+
+class LedgerEntry(Base):
+    """Append-only. Never updated, never deleted.
+
+    A correction is a new entry with the opposite sign, so the history stays
+    replayable and the audit trail stays honest about what happened.
+    """
+
+    __tablename__ = "ledger_entries"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("accounts.user_id"), nullable=False, index=True
+    )
+    session_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+
+    #: Set on tick entries only. One tick can produce several entries when it
+    #: straddles buckets, so the tick — not the entry — is the unit of replay.
+    tick_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    bucket: Mapped[str] = mapped_column(String(16), nullable=False)
+    delta_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
