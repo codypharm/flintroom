@@ -15,15 +15,22 @@ run reaches the same end state without paying anything twice.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.actors import ActorContext
 from app.core.logging import get_logger
 from app.modules.billing.schemas import EntryReason
 from app.modules.billing.service import LedgerService
-from app.modules.sessions.models import Session
-from app.modules.sessions.schemas import EndReason, SessionState
+from app.modules.sessions.models import Session, SessionPhaseSpan
+from app.modules.sessions.schemas import (
+    TICK_INTERVAL,
+    EndReason,
+    SessionPhase,
+    SessionState,
+)
 from app.modules.sessions.service import SessionService
 
 #: Which endings owe the user their minutes back, and under which typed reason.
@@ -36,13 +43,13 @@ from app.modules.sessions.service import SessionService
 #: paid for, and `client_disconnect` is already correct because ticks are
 #: charged in arrears. `provisioning_failed` never reaches settlement at all.
 #:
-#: `idle_timeout` is the one deliberate gap. It owes a refund — but of the idle
-#: window only, not the session, and nothing yet records when the user last
-#: spoke. Refunding the whole session would hand back a rehearsal that worked
-#: right up until the user walked away. Wire it when idle detection lands and
-#: has a timestamp to offer; see docs/minutes-ledger-and-sessions.md Part 2.
+#: `idle_timeout` refunds the silent window only, not the session — the room
+#: worked right up until the user stopped answering, and handing back a
+#: rehearsal they used would be a different product decision than "do not charge
+#: for time nobody received".
 REFUND_REASONS: dict[EndReason | None, EntryReason] = {
     EndReason.PROVIDER_FAILURE: EntryReason.REFUND_PROVIDER_FAILURE,
+    EndReason.IDLE_TIMEOUT: EntryReason.REFUND_IDLE,
 }
 
 log = get_logger(__name__, tag="billing")
@@ -72,7 +79,10 @@ class SettlementService:
 
         if (reason := REFUND_REASONS.get(session.end_reason)) is not None:
             await self._ledger.refund_session(
-                user_id=session.user_id, session_id=session.id, reason=reason
+                user_id=session.user_id,
+                session_id=session.id,
+                reason=reason,
+                from_index=await self._first_unserved_tick(session, reason),
             )
 
         await self._ledger.forgive_overdraft(
@@ -80,3 +90,47 @@ class SettlementService:
         )
 
         return await self._sessions.settle(session_id=session_id)
+
+    async def _first_unserved_tick(
+        self, session: Session, reason: EntryReason
+    ) -> int:
+        """The tick from which the user stopped receiving what they paid for.
+
+        Zero for every reason but idle: a provider failure means the room was
+        not delivering from the moment it broke, and settlement is only reached
+        with that reason once it has. Idle is the one ending where the earlier
+        part of the session worked exactly as sold.
+
+        The straddling tick — the one running when they went quiet — is refunded
+        whole rather than split. It rounds in the user's favour by at most one
+        interval, matching how the ledger rounds everywhere else, and it avoids
+        prorating a single tick back across whichever buckets it drew from.
+        """
+        if reason is not EntryReason.REFUND_IDLE:
+            return 0
+        if session.last_user_speech_at is None:
+            # They never said a word, so no part of this room was received.
+            return 0
+
+        started_at = await self._interrogation_started_at(session.id)
+        silent_from = (session.last_user_speech_at - started_at).total_seconds()
+        return max(int(silent_from // TICK_INTERVAL.total_seconds()), 0)
+
+    async def _interrogation_started_at(self, session_id: uuid.UUID) -> datetime:
+        """When the metered window opened.
+
+        Read from the span rather than from `sessions.started_at`, which marks
+        spin-up: the tick index everything here is counted in is measured from
+        the span, and mixing the two would shift every index by however long the
+        voice channel took to come up.
+        """
+        result = await self._db.execute(
+            select(SessionPhaseSpan.started_at)
+            .where(
+                SessionPhaseSpan.session_id == session_id,
+                SessionPhaseSpan.phase == SessionPhase.INTERROGATION,
+            )
+            .order_by(SessionPhaseSpan.started_at)
+            .limit(1)
+        )
+        return result.scalar_one()

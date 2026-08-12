@@ -286,6 +286,24 @@ class SessionService:
         )
         return bool(result.scalar_one())
 
+    async def record_speech(self, *, session_id: uuid.UUID) -> None:
+        """The user said something. Resets the idle clock, nothing else.
+
+        Called by the voice layer, which is the only thing that can hear them.
+        Deliberately separate from `record_progress`: that one means the client
+        is still connected, and a phone streaming silence from an empty desk
+        proves exactly that while being the case this has to catch.
+
+        Not metered, not audited, and not a transition — a room with somebody
+        talking in it is the ordinary state of the product, and recording it
+        four times a minute into the audit trail would bury everything that
+        actually needs proving.
+        """
+        session = await self._load(session_id)
+        self._require_live(session)
+        session.last_user_speech_at = func.now()
+        await self._db.commit()
+
     async def settle(self, *, session_id: uuid.UUID) -> Session:
         """Billing is closed and the lock is released.
 

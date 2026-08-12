@@ -31,6 +31,13 @@ GRACE_LIMIT = timedelta(seconds=120)
 #: provider time against an empty room until the balance ran out.
 SESSION_LIMIT = timedelta(minutes=12)
 
+#: How long the user may say nothing before the room is treated as abandoned.
+#: Only *user* speech resets it — a panel talking to an empty room is the
+#: expensive failure this exists to catch, not evidence that anyone is there.
+#: Long enough to sit through a hostile question and think before answering,
+#: which is the behaviour the product is asking for.
+IDLE_LIMIT = timedelta(seconds=90)
+
 
 class SessionState(str, Enum):
     """The five states a session can be in.

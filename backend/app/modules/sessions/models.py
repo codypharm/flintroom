@@ -142,6 +142,15 @@ class Session(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    #: The last time the *user* said something, or null if they never have.
+    #: Written by the voice layer, which is the only thing that can hear them.
+    #: Panel speech deliberately does not touch this: an agent monologuing to an
+    #: empty room is the expensive failure idle detection exists to catch, so
+    #: treating it as activity would disarm the check in exactly that case.
+    last_user_speech_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     #: Why the session stopped. Null until it does.
     end_reason: Mapped[EndReason | None] = mapped_column(end_reason_column, nullable=True)
 

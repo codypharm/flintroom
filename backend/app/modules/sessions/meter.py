@@ -31,6 +31,7 @@ from app.core.logging import get_logger
 from app.modules.billing.service import LedgerService
 from app.modules.sessions.models import Session, SessionPhaseSpan
 from app.modules.sessions.schemas import (
+    IDLE_LIMIT,
     SESSION_LIMIT,
     TICK_INTERVAL,
     EndReason,
@@ -48,6 +49,9 @@ TICK_SECONDS = int(TICK_INTERVAL.total_seconds())
 #: rather than against a second reading of the clock that could disagree.
 CAP_TICKS = int(SESSION_LIMIT / TICK_INTERVAL)
 
+#: The idle cutoff in seconds, to compare against what the query returns.
+IDLE_SECONDS = IDLE_LIMIT.total_seconds()
+
 log = get_logger(__name__, tag="billing")
 
 
@@ -62,6 +66,7 @@ class _Room(NamedTuple):
     id: uuid.UUID
     user_id: uuid.UUID
     ticks_due: int
+    idle_seconds: float
 
 
 class MeterService:
@@ -145,11 +150,20 @@ class MeterService:
             # no overdraft to be in and no length to have exceeded.
             return
 
+        # Idle is checked first because it is the ending that happened first.
+        # An abandoned room reaches the idle cutoff at ninety seconds; if it is
+        # still open twelve minutes later, that is a sweep that was down, not a
+        # user who used their whole session. The order is not bookkeeping — it
+        # decides whether they are refunded, and only this ending refunds.
+        if room.idle_seconds >= IDLE_SECONDS:
+            await self._close(room, EndReason.IDLE_TIMEOUT)
+            return
+
         if room.ticks_due >= CAP_TICKS:
-            # Checked before grace: both would close the room, and a room that
-            # has run its full length ended because it ran its full length. An
-            # end reason of `grace_cap` on a twelve-minute session would send
-            # every cost report looking for an overdraft that was incidental.
+            # Before grace, for the same reason: a room that ran its full length
+            # ended because it ran its full length. An end reason of `grace_cap`
+            # on a twelve-minute session would send every cost report looking
+            # for an overdraft that was incidental to it.
             await self._close(room, EndReason.SESSION_CAP)
             return
 
@@ -189,11 +203,22 @@ class MeterService:
         drifted would bill a room for time it has not run.
         """
         elapsed = func.extract("epoch", func.now() - SessionPhaseSpan.started_at)
+        # Silence is measured from the span when the user has never spoken: a
+        # room nobody has said anything in has been quiet since it opened, and
+        # that is the abandoned room this is looking for.
+        quiet_since = func.extract(
+            "epoch",
+            func.now()
+            - func.coalesce(
+                Session.last_user_speech_at, SessionPhaseSpan.started_at
+            ),
+        )
         result = await self._db.execute(
             select(
                 Session.id,
                 Session.user_id,
                 func.floor(elapsed / TICK_SECONDS),
+                quiet_since,
             )
             .join(SessionPhaseSpan, SessionPhaseSpan.session_id == Session.id)
             .where(
@@ -202,4 +227,7 @@ class MeterService:
                 SessionPhaseSpan.ended_at.is_(None),
             )
         )
-        return [_Room(id, user_id, int(due)) for id, user_id, due in result.all()]
+        return [
+            _Room(id, user_id, int(due), float(quiet))
+            for id, user_id, due, quiet in result.all()
+        ]

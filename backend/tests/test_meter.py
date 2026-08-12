@@ -164,6 +164,9 @@ async def test_a_room_left_running_is_closed_at_the_session_cap(
     session = await sessions.start(user_id=account.user_id)
     await sessions.activate(session_id=session.id)
     await _running_for(db, session, seconds=12 * 60 + 15)
+    # Still arguing back — otherwise this is an abandoned room, which is idle
+    # detection's case and a refund, not the cap's case and a full charge.
+    await sessions.record_speech(session_id=session.id)
 
     await meter.sweep()
 

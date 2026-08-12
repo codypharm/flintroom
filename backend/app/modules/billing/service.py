@@ -144,8 +144,15 @@ class LedgerService:
         user_id: uuid.UUID,
         session_id: uuid.UUID,
         reason: EntryReason,
+        from_index: int = 0,
     ) -> Balance:
-        """Return every second charged for a session, to the buckets it came from.
+        """Return seconds charged for a session, to the buckets they came from.
+
+        `from_index` refunds only from that tick onward, which is what an idle
+        window is: the room worked until the user stopped answering, so the
+        earlier intervals were served and are not owed back. Defaults to the
+        whole session, because every other refund reason means none of it
+        landed.
 
         Bucket-faithful, not merely amount-faithful. Allowance is replaced
         outright at the next period boundary while top-up minutes never expire
@@ -170,6 +177,7 @@ class LedgerService:
             .where(
                 LedgerEntry.session_id == session_id,
                 LedgerEntry.reason == EntryReason.TICK.value,
+                LedgerEntry.tick_index >= from_index,
             )
             .group_by(LedgerEntry.bucket)
         )
