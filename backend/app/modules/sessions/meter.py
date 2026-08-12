@@ -76,11 +76,14 @@ class MeterService:
 
     async def sweep(self) -> None:
         """One pass over every live room."""
-        for room in await self._live_rooms():
+        rooms = await self._live_rooms()
+        skipped = 0
+        for room in rooms:
             try:
                 await self._charge_due(room)
                 await self._enforce_caps(room)
             except FlintroomError as exc:
+                skipped += 1
                 # The room closed under us — the user pressed End, or the reaper
                 # got there first. Ordinary contention, and it must not end the
                 # batch: the rooms after this one are still running and still
@@ -98,6 +101,13 @@ class MeterService:
                     session_id=str(room.id),
                     code=exc.code,
                 )
+
+        # One line per pass, whether or not anything happened. This is the
+        # series that answers "were we billing at all last Tuesday" and "how
+        # many rooms were open when the bill spiked" — neither of which can be
+        # reconstructed from the per-room lines, because the absence of those
+        # is indistinguishable from a sweep that never ran.
+        log.info("meter_swept", rooms=len(rooms), skipped=skipped)
 
     async def _charge_due(self, room: _Room) -> None:
         """Charge every interval this room has completed and not yet paid for.

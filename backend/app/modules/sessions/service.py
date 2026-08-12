@@ -224,6 +224,16 @@ class SessionService:
         if session.grace_started_at is None:
             session.grace_started_at = func.now()
             await self._db.commit()
+            # The moment a user runs out mid-room. Not a money movement itself,
+            # so it does not belong in the ledger — but it is the start of one,
+            # since every second from here is written off at settlement. It is
+            # also the signal behind "how often does this happen, and to whom",
+            # which is the question §4.5's upgrade prompt turns on.
+            log.info(
+                "grace_started",
+                user_id=str(session.user_id),
+                session_id=str(session.id),
+            )
             # A clock started this instant cannot have run out, and saying so
             # without asking the database keeps the common tick cheap.
             return False

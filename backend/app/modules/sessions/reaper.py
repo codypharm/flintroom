@@ -80,6 +80,8 @@ class ReaperService:
 
     async def reap(self) -> None:
         """One sweep, in lifecycle order. Safe to run alongside real users."""
+        reaped = 0
+        skipped = 0
         for state, timeout, close in (
             (SessionState.PROVISIONING, PROVISIONING_TIMEOUT, self._abandon),
             (SessionState.ACTIVE, ORPHAN_TIMEOUT, self._disconnect),
@@ -88,7 +90,9 @@ class ReaperService:
             for session in await self._stalled(state, timeout):
                 try:
                     await close(session)
+                    reaped += 1
                 except FlintroomError as exc:
+                    skipped += 1
                     # The user got there first: they ended the session, or
                     # another worker reaped it, between our select and our
                     # write. Ordinary contention, and it must not end the
@@ -108,6 +112,11 @@ class ReaperService:
                         from_state=state.value,
                         code=exc.code,
                     )
+
+        # One line per pass, even an empty one. A sweep that reaps nothing is
+        # the normal case and the reason to record it: without this, "the reaper
+        # has not run since Friday" looks exactly like "nothing needed reaping."
+        log.info("reaper_swept", reaped=reaped, skipped=skipped)
 
     async def _abandon(self, session: _Stalled) -> None:
         """Spin-up never finished. Nothing was billed, so nothing is settled —
