@@ -24,6 +24,13 @@ TICK_INTERVAL = timedelta(seconds=15)
 #: number, which is a pricing change and therefore not ours to make.
 GRACE_LIMIT = timedelta(seconds=120)
 
+#: How long one interrogation may run before the room closes itself. A bound on
+#: a forgotten room rather than a promise about session length: a user with
+#: minutes in the bank has nothing in their balance that would ever stop them,
+#: and a phone left face-down after the panel finished would otherwise burn
+#: provider time against an empty room until the balance ran out.
+SESSION_LIMIT = timedelta(minutes=12)
+
 
 class SessionState(str, Enum):
     """The five states a session can be in.

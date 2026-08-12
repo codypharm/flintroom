@@ -116,6 +116,19 @@ class InvalidStateTransition(BusinessRuleViolation):
     message = "That session cannot move to that state."
 
 
+class SessionNotLive(BusinessRuleViolation):
+    """The room is no longer running, so stop metering it.
+
+    Distinct from `InvalidStateTransition` because nothing is being transitioned
+    — the meter is asking to charge or to move the grace clock on a session that
+    closed underneath it. The caller's correct response is to stop ticking, and
+    that is a different instruction from "that move is illegal".
+    """
+
+    code = "session_not_live"
+    message = "That session is no longer running."
+
+
 class NoMinutesRemaining(BusinessRuleViolation):
     """Raised when *starting*, never mid-session.
 

@@ -336,6 +336,24 @@ class LedgerService:
             )
         )
 
+    async def ticks_charged(self, *, session_id: uuid.UUID) -> int:
+        """How many intervals of this session have already been billed.
+
+        Exists so the meter can skip what it has already charged without
+        reaching into `ledger_entries` itself — the ledger stays the only module
+        that knows how a tick is recorded. Answers with the count implied by the
+        highest index rather than a row count, because a tick that straddled
+        buckets wrote more than one entry for a single interval.
+        """
+        result = await self._db.execute(
+            select(func.max(LedgerEntry.tick_index)).where(
+                LedgerEntry.session_id == session_id,
+                LedgerEntry.tick_index.is_not(None),
+            )
+        )
+        highest = result.scalar_one_or_none()
+        return 0 if highest is None else highest + 1
+
     async def _session_already_refunded(
         self, *, session_id: uuid.UUID, reason: EntryReason
     ) -> bool:
