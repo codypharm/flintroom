@@ -35,6 +35,8 @@ Flintroom is a mobile-first, hands-free rehearsal app for high-stakes speaking s
 | Product Spec | `Product.md` | Full product spec — source of truth. Positioning, features, pricing, stack, build plan, risks. |
 | Ledger & sessions | `docs/minutes-ledger-and-sessions.md` | Resolved design for the minutes ledger and session state machine, with rationale. Read before touching billing, sessions, or the metering boundary. |
 | Deferred scale work | `docs/deferred-scale-work.md` | Scale work considered and declined, each with the signal that should reopen it. Read before adding sharding, replicas, caching, or queueing — and before anything that would break the per-user sharding property. |
+| Auditor grounding | `docs/auditor-grounding.md` | What the Auditor cross-checks against, with and without attached material. Read before touching the Auditor, claim extraction, or targeted interruption. |
+| Onboarding | `docs/onboarding.md` | Resolved first-launch flow — survey shape, sign-in placement, mic-permission timing, the free-tier grant, and why streaks were rejected. Read before touching onboarding, auth, or the free grant. |
 | Design Guide | `design-guide/pitchgo_design_system/DESIGN.md` | Design tokens (colors, type, spacing, shape, elevation) — source of truth for `impeccable` skill. |
 | Screen mockups | `design-guide/<screen>/code.html` + `screen.png` | **Stale — layout/density reference only.** Predate the rename (PitchGo/PitchForge) and encode retired decisions: token counters, `investment_verdict_dashboard`, "Avg. Likelihood %", pitch-only copy. See `Product.md` §9 → Brand Commitments. |
 
