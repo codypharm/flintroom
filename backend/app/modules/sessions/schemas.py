@@ -16,6 +16,14 @@ from pydantic import BaseModel, ConfigDict
 #: tick" (docs/minutes-ledger-and-sessions.md Part 2, Detection).
 TICK_INTERVAL = timedelta(seconds=15)
 
+#: How long a session may keep running past a zero balance before the room is
+#: closed. Product.md §4.5 forbids interrupting a live interrogation, so the
+#: alternative to a bound is not "cut them off sooner" — it is a room that runs
+#: on our invoice until someone notices. Two minutes is what the grace write-off
+#: was costed against (docs Part 1, Zero mid-session); moving it moves that
+#: number, which is a pricing change and therefore not ours to make.
+GRACE_LIMIT = timedelta(seconds=120)
+
 
 class SessionState(str, Enum):
     """The five states a session can be in.

@@ -29,6 +29,10 @@ This records **why** each choice was made. The tests will prove the behavior; on
 
 ### Notes that do not fit the table
 
+**Grace measures the current overdraft, not a per-session ration.** `grace_started_at` is cleared the moment a tick draws without overdrafting, so a user who tops up mid-interrogation and later runs dry again gets a full window rather than the remainder of an old one. The alternative — one window per session — cuts a user off seconds after they gave us money, which is the worst moment in the product to do it. Worst case is another two minutes written off, against a user who has just demonstrated they will pay.
+
+**Entering grace and leaving it are one decision, asked once per tick.** `enter_grace()` stamps the clock on the first overdrawn tick and answers whether the cap has passed; `leave_grace()` is called on the other branch of the same `if`. Split into a stamp and a separate check, a caller that stamps and forgets to ask is a room running past the cap on our invoice, and one that asks without stamping never reaches the cap at all. The cap is compared against Postgres' clock, for the reason given under Authority and detection.
+
 **Grace forgiveness must be an entry.** The write-off appears in the log as a typed `grace_forgiven` entry. Omitting it instead would break reconciliation between the entry history and the cached balance — which was the entire reason for choosing an append-only model.
 
 **`session_costs` is separate from the ledger.** Cost telemetry and billing must be able to disagree; that disagreement *is* the §4.3 reconciliation. Never derive one from the other.
@@ -121,7 +125,7 @@ ledger_entries                      -- append-only, never updated or deleted
 
 sessions
   id, user_id, state, panel_config, grace_started_at?, end_reason?,
-  started_at, settled_at?
+  started_at, last_progress_at, settled_at?
   -- partial unique index on (user_id) where state in
   --   ('provisioning','active','finalizing')
 

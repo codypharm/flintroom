@@ -131,6 +131,17 @@ class Session(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
+    #: When this session started running on a grace overdraft, or null if it is
+    #: not. A timestamp on `active` rather than a sixth state (docs Part 2):
+    #: nothing about ticking, idle detection or the reaper changes during grace,
+    #: so a state would double the transition table for no behavioural
+    #: difference. Nullable because it is cleared the moment a tick draws
+    #: without overdrafting — grace measures the *current* overdraft, so a user
+    #: who tops up mid-room gets a fresh window if they run dry again.
+    grace_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     #: Why the session stopped. Null until it does.
     end_reason: Mapped[EndReason | None] = mapped_column(end_reason_column, nullable=True)
 

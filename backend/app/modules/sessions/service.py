@@ -25,6 +25,7 @@ from app.modules.audit_log.schemas import AuditEventType
 from app.modules.audit_log.service import AuditService
 from app.modules.sessions.models import Session, SessionPhaseSpan
 from app.modules.sessions.schemas import (
+    GRACE_LIMIT,
     METERED_PHASES,
     EndReason,
     PhaseSpanRead,
@@ -208,6 +209,55 @@ class SessionService:
         session = await self._load(session_id)
         session.last_progress_at = func.now()
         await self._db.commit()
+
+    async def enter_grace(self, *, session_id: uuid.UUID) -> bool:
+        """A tick overdrafted. Start the grace clock, and say whether it has run out.
+
+        One call rather than a stamp and a separate check, because the two are
+        never useful apart: a caller that stamped grace and forgot to ask would
+        be a room running past the cap for free, and one that asked without
+        stamping would never reach the cap at all.
+        """
+        session = await self._load(session_id)
+        if session.grace_started_at is None:
+            session.grace_started_at = func.now()
+            await self._db.commit()
+            # A clock started this instant cannot have run out, and saying so
+            # without asking the database keeps the common tick cheap.
+            return False
+        return await self._grace_expired(session_id)
+
+    async def leave_grace(self, *, session_id: uuid.UUID) -> None:
+        """A tick drew without overdrafting. Whatever grace was running is over.
+
+        The counterpart to `enter_grace`, and called on the other branch of the
+        same decision, so the tick loop either enters or leaves on every tick
+        and cannot quietly do neither. Clearing rather than remembering is the
+        decision recorded in docs Part 1: grace tracks the overdraft the session
+        is in now, so a user who tops up and later runs dry gets a full window
+        rather than the remainder of an old one.
+        """
+        session = await self._load(session_id)
+        if session.grace_started_at is None:
+            return
+        session.grace_started_at = None
+        await self._db.commit()
+
+    async def _grace_expired(self, session_id: uuid.UUID) -> bool:
+        """Has the grace clock passed the cap?
+
+        Asked of Postgres rather than computed here, because the timestamp it is
+        compared against was written by Postgres. Mixing in the worker's clock
+        makes the cap depend on how far that worker has drifted — early, and a
+        paying user is cut off mid-answer; late, and the write-off is unbounded
+        by exactly the amount of the drift.
+        """
+        result = await self._db.execute(
+            select(Session.grace_started_at < func.now() - GRACE_LIMIT).where(
+                Session.id == session_id
+            )
+        )
+        return bool(result.scalar_one())
 
     async def settle(self, *, session_id: uuid.UUID) -> Session:
         """Billing is closed and the lock is released.
