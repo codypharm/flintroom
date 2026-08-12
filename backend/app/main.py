@@ -1,13 +1,16 @@
 """FastAPI application factory."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.core.database import create_engine, create_session_factory
 from app.core.errors import FlintroomError
 from app.core.logging import configure_logging, get_logger
+from app.modules.sessions.runner import SweepRunner
 
 log = get_logger(__name__, tag="http")
 
@@ -23,7 +26,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     configure_logging()
     log.info("api_started")
-    yield
+
+    # The sweeps run in every API process. Both are idempotent, so overlapping
+    # workers reach the same answer and the duplicate writes are refused —
+    # which is what makes a plain loop sufficient here and a task queue an
+    # unnecessary piece of infrastructure to own.
+    engine = create_engine()
+    runner = SweepRunner(create_session_factory(engine))
+    sweeps = asyncio.create_task(runner.run())
+
+    try:
+        yield
+    finally:
+        # Asked to stop, then waited for. Cancelling instead would risk landing
+        # inside a commit, and a session left half-settled on every deploy is
+        # the exact damage the reaper exists to repair.
+        runner.stop()
+        await sweeps
+        await engine.dispose()
+        log.info("api_stopped")
 
 
 def create_app() -> FastAPI:
