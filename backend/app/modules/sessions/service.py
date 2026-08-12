@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import NoReturn
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -195,6 +195,20 @@ class SessionService:
         )
         return session
 
+    async def record_progress(self, *, session_id: uuid.UUID) -> None:
+        """The client is still there. Resets the reaper's clock, nothing else.
+
+        Called by the billing tick, which doubles as the heartbeat — one
+        mechanism rather than two, so a session cannot be paying for a room it
+        has stopped proving anyone is in. Deliberately not part of
+        `charge_tick`: the ledger has no business writing to a session row, and
+        keeping the two calls in the tick loop is what makes "we billed but did
+        not hear from the client" a state the reaper can still see.
+        """
+        session = await self._load(session_id)
+        session.last_progress_at = func.now()
+        await self._db.commit()
+
     async def settle(self, *, session_id: uuid.UUID) -> Session:
         """Billing is closed and the lock is released.
 
@@ -372,9 +386,20 @@ class SessionService:
 
     @classmethod
     def _move(cls, session: Session, to_state: SessionState) -> None:
-        """Apply a transition, or refuse it."""
+        """Apply a transition, or refuse it.
+
+        Every transition is progress, so the reaper's clock is reset here rather
+        than in each method — one place to keep honest as states are added, and
+        no way to add a transition that silently leaves a session looking stuck.
+
+        `func.now()` rather than a Python timestamp so the value is written by
+        the same clock the reaper compares it against. The attribute holds a SQL
+        expression until the row is next read, which is why nothing in-process
+        reads it back.
+        """
         cls.require_transition(session, to_state)
         session.state = to_state
+        session.last_progress_at = func.now()
 
     async def _load(self, session_id: uuid.UUID) -> Session:
         result = await self._db.execute(

@@ -4,10 +4,17 @@ The state machine is specified in `docs/minutes-ledger-and-sessions.md` Part 2.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict
+
+#: How often a live interrogation is billed — and, because the tick doubles as
+#: the heartbeat, how often the client proves it is still there. Declared here
+#: rather than in the tick loop because the reaper needs it too, and "how long
+#: is three missed ticks" must not be able to disagree with "how long is a
+#: tick" (docs/minutes-ledger-and-sessions.md Part 2, Detection).
+TICK_INTERVAL = timedelta(seconds=15)
 
 
 class SessionState(str, Enum):

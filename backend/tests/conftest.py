@@ -20,6 +20,7 @@ from app.modules.sessions.models import (  # noqa: F401  (registers the tables)
     Session,
     SessionPhaseSpan,
 )
+from app.modules.sessions.reaper import ReaperService
 from app.modules.sessions.service import SessionService
 from app.modules.sessions.settlement import SettlementService
 
@@ -102,3 +103,8 @@ async def account(db) -> Account:
 @pytest.fixture
 def settlement(db) -> SettlementService:
     return SettlementService(db)
+
+
+@pytest.fixture
+def reaper(db) -> ReaperService:
+    return ReaperService(db)

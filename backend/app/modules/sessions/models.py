@@ -93,6 +93,18 @@ class Session(Base):
                 "state IN ('provisioning', 'active', 'finalizing')"
             ),
         ),
+        # The reaper's sweep. Partial over the same predicate as the lock index,
+        # because settled and failed sessions accumulate for the life of the
+        # account and are never reaped — indexing them would grow a hot index
+        # forever to answer a question nobody asks about them.
+        Index(
+            "ix_sessions_reapable",
+            "state",
+            "last_progress_at",
+            postgresql_where=text(
+                "state IN ('provisioning', 'active', 'finalizing')"
+            ),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -106,6 +118,16 @@ class Session(Base):
     state: Mapped[SessionState] = mapped_column(session_state_column, nullable=False)
 
     started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    #: The last time this session did anything: a transition, or a billing tick.
+    #: Distinct from `started_at`, which never moves — a twelve-minute
+    #: interrogation is old but not stuck, and the reaper must not confuse the
+    #: two. Written with the database's clock on every touch, because the reaper
+    #: compares it against the database's clock and a skewed worker would
+    #: otherwise throw users out of rehearsals they are still in.
+    last_progress_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
