@@ -10,8 +10,11 @@ for a broker to prevent a harmless overlap buys nothing.
 What it does cost: if every process running this is down, nothing bills while
 the voice provider carries on charging for rooms that are still open. Arrears
 means the user is never overcharged, so the loss is ours — which is why every
-pass logs, including the empty ones. An alert on the absence of `sweep_pass` is
-the thing that makes this design safe, and there is no substitute for it.
+pass logs, including the empty ones. `meter_swept` is emitted unconditionally
+once per pass, and an alert on its *absence* is the thing that makes this design
+safe. There is no substitute for it: no error is raised when nothing is running,
+which is exactly why silence has to be what the alert watches for. See
+`docs/deployment.md`.
 """
 
 from __future__ import annotations
