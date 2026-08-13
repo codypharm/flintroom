@@ -226,6 +226,14 @@ class SessionService:
     async def record_progress(self, *, session_id: uuid.UUID) -> None:
         """The client is still there. Resets the reaper's clock, nothing else.
 
+        Called by the voice layer, not by the client, and deliberately has no
+        HTTP endpoint. The backend holds the streaming connection, so it
+        already knows whether audio is flowing — and a mobile client cannot be
+        force-updated, so a heartbeat endpoint published now would still be
+        live years after the voice channel made it redundant. Until Phase 2
+        lands there is no caller, and the session cap and idle timeout are what
+        bound a forgotten room in the meantime.
+
         Called by the billing tick, which doubles as the heartbeat — one
         mechanism rather than two, so a session cannot be paying for a room it
         has stopped proving anyone is in. Deliberately not part of

@@ -1,0 +1,488 @@
+openapi: 3.1.0
+info:
+  title: Flintroom API
+  version: 0.1.0
+paths:
+  /v1/me:
+    get:
+      tags:
+      - auth
+      summary: Read Current Identity
+      description: 'Answer whether the credential the app is holding is still good.
+
+
+        The mobile client calls this on launch. A 200 means go straight in; a 401
+
+        means sign in again.'
+      operationId: auth_read_current_identity
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Identity'
+      security:
+      - HTTPBearer: []
+  /v1/auth/sessions:
+    post:
+      tags:
+      - auth
+      summary: Sign In
+      description: 'Exchange a provider ID token for one of ours.
+
+
+        A POST that creates a session rather than a user: whether an account is
+
+        created is an implementation detail of who turns out to be signing in, and
+
+        the client cannot know in advance. Repeating the call is safe and returns
+
+        the same user, so a retry on a flaky connection costs nothing.'
+      operationId: auth_sign_in
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignInRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignedIn'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/auth/sessions/refresh:
+    post:
+      tags:
+      - auth
+      summary: Refresh Session
+      description: 'Trade a refresh token for a fresh pair.
+
+
+        No bearer token required, and deliberately so: the whole point is to be
+
+        reachable once the access token has expired.'
+      operationId: auth_refresh_session
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignedIn'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/auth/sessions/sign-out:
+    post:
+      tags:
+      - auth
+      summary: Sign Out
+      description: 'End this session.
+
+
+        Takes the refresh token rather than a bearer credential, because sign-out
+
+        has to work once the access token has expired — which is the state a
+
+        returning user is in before anything else happens.
+
+
+        Always 204. Whether the token was real is not something this endpoint will
+
+        tell an unauthenticated caller.'
+      operationId: auth_sign_out
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+        required: true
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/sessions:
+    post:
+      tags:
+      - sessions
+      summary: Start Session
+      description: 'Open a room for the caller.
+
+
+        The user is taken from the credential, never from the body: a client that
+
+        could name the account would be able to spend somebody else''s minutes.'
+      operationId: sessions_start_session
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionRead'
+      security:
+      - HTTPBearer: []
+  /v1/sessions/{session_id}:
+    get:
+      tags:
+      - sessions
+      summary: Read Session
+      description: One session, if it belongs to the caller.
+      operationId: sessions_read_session
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Session Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/sessions/{session_id}/end:
+    post:
+      tags:
+      - sessions
+      summary: End Session
+      description: 'The End button: an intent, honoured by the server.
+
+
+        The end reason is not taken from the body. `user_ended` is the only ending
+
+        a client is in a position to report, and every other reason in the enum
+
+        decides whether minutes are refunded — a client that could name one would
+
+        be choosing its own refund.'
+      operationId: sessions_end_session
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Session Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/balance:
+    get:
+      tags:
+      - billing
+      summary: Read Balance
+      description: 'How much interrogation time the caller has left.
+
+
+        Through `ensure_current_period` rather than a plain read, because the
+
+        monthly reset is lazy: a subscriber whose period rolled over overnight has
+
+        not been granted the new month''s allowance until something asks. A plain
+
+        read would show them zero minutes on a screen whose Start button works.'
+      operationId: billing_read_balance
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalanceRead'
+      security:
+      - HTTPBearer: []
+components:
+  schemas:
+    BalanceRead:
+      properties:
+        remaining_minutes:
+          type: integer
+          title: Remaining Minutes
+        has_time_remaining:
+          type: boolean
+          title: Has Time Remaining
+      type: object
+      required:
+      - remaining_minutes
+      - has_time_remaining
+      title: BalanceRead
+      description: 'What a client is told about its own balance.
+
+
+        Two fields, and the omissions are the point. No seconds: §4.6 forbids a
+
+        depleting counter, and raw seconds on the wire is that counter with the
+
+        rounding left to whoever wrote the client — one of them will round up and
+
+        promise a minute that is not there.
+
+
+        No per-bucket breakdown either. Which bucket a second comes from is spend
+
+        ordering, an internal rule, and showing three numbers that deplete in turn
+
+        is the credits display §4.6 exists to refuse.'
+    EndReason:
+      type: string
+      enum:
+      - user_ended
+      - session_cap
+      - grace_cap
+      - idle_timeout
+      - provider_failure
+      - client_disconnect
+      - provisioning_failed
+      title: EndReason
+      description: 'Why a session stopped.
+
+
+        Recorded because these are not equivalent to the business: a session that
+
+        ended because the user was finished is a success, and one that ended on a
+
+        provider failure is a refund and an incident. Both look identical in the
+
+        ledger without this.'
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    Identity:
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          title: User Id
+      type: object
+      required:
+      - user_id
+      title: Identity
+      description: 'What the API will admit about the caller to the caller.
+
+
+        Deliberately only the identifier. `CLAUDE.md` requires minimum necessary
+
+        fields, and this endpoint''s job is answering "is this credential still
+
+        good", not returning a profile.'
+    RefreshRequest:
+      properties:
+        refresh_token:
+          type: string
+          maxLength: 512
+          minLength: 1
+          title: Refresh Token
+      type: object
+      required:
+      - refresh_token
+      title: RefreshRequest
+      description: The stored credential, offered in exchange for a fresh pair.
+    SessionRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        user_id:
+          type: string
+          format: uuid
+          title: User Id
+        state:
+          $ref: '#/components/schemas/SessionState'
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        end_reason:
+          anyOf:
+          - $ref: '#/components/schemas/EndReason'
+          - type: 'null'
+        settled_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Settled At
+      type: object
+      required:
+      - id
+      - user_id
+      - state
+      - started_at
+      title: SessionRead
+      description: 'What a client is told about its own session.
+
+
+        Deliberately narrower than the row. `last_progress_at`,
+
+        `last_user_speech_at` and `grace_started_at` are metering machinery: the
+
+        first two describe how the reaper decides a room is abandoned, and
+
+        publishing them tells a client how to look alive without being there.
+
+
+        `grace_started_at` is left out for a product reason rather than a security
+
+        one — it is precisely "you have run out and are on borrowed time", which is
+
+        the depleting counter Product.md §4.6 forbids showing. The room keeps
+
+        running either way; the user has no decision to make from it.'
+    SessionState:
+      type: string
+      enum:
+      - provisioning
+      - active
+      - finalizing
+      - settled
+      - failed
+      title: SessionState
+      description: "The five states a session can be in.\n\n```\nprovisioning ──►\
+        \ active ──► finalizing ──► settled\n     │\n     └──► failed\n```\n\n`provisioning`\
+        \ and `failed` exist because ElevenLabs agent spin-up takes\nreal time and\
+        \ can fail before any audio exists. Without them a spin-up\nfailure is indistinguishable\
+        \ from a real session in every query and every\ncost report.\n\n`finalizing`\
+        \ exists because settlement must be crash-safe: without it,\nnothing separates\
+        \ \"finished settling\" from \"died halfway,\" and the reaper\ncannot safely\
+        \ retry."
+    SignInRequest:
+      properties:
+        provider:
+          type: string
+          maxLength: 32
+          minLength: 1
+          title: Provider
+        id_token:
+          type: string
+          maxLength: 8192
+          minLength: 1
+          title: Id Token
+      type: object
+      required:
+      - provider
+      - id_token
+      title: SignInRequest
+      description: 'What the app sends after a native Sign in with Apple or Google.
+
+
+        `provider` is a plain string rather than an enum on purpose. A closed set
+
+        would answer an unrecognised value with a 422 listing the ones we accept,
+
+        which enumerates our configuration; an unknown provider is refused as an
+
+        invalid sign-in instead.'
+    SignedIn:
+      properties:
+        access_token:
+          type: string
+          title: Access Token
+        refresh_token:
+          type: string
+          title: Refresh Token
+        token_type:
+          type: string
+          title: Token Type
+          default: bearer
+        expires_in:
+          type: integer
+          title: Expires In
+      type: object
+      required:
+      - access_token
+      - refresh_token
+      - expires_in
+      title: SignedIn
+      description: 'The credential pair the app stores.
+
+
+        Both are returned by sign-in and by every refresh, because the refresh
+
+        token rotates on use. A client that keeps the old one will be treated as a
+
+        replay and lose the session, so "always store both" is the contract.'
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+  securitySchemes:
+    HTTPBearer:
+      type: http
+      scheme: bearer

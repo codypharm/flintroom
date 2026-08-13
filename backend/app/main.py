@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 
 from app.core.config import get_settings
 from app.core.database import create_engine, create_session_factory
@@ -73,8 +74,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 API_PREFIX = "/v1"
 
 
+def operation_id(route: APIRoute) -> str:
+    """Name an operation after what it does, not after its URL.
+
+    FastAPI's default folds the path and method into the id, so the generated
+    frontend client ends up with `readSessionV1SessionsSessionIdGet` — a method
+    name that changes whenever the route moves, which is exactly when a client
+    should keep compiling. Prefixed with the tag because route names are only
+    unique within a module, and a collision here silently drops an endpoint
+    from the generated client.
+    """
+    return f"{route.tags[0]}_{route.name}" if route.tags else route.name
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title="Flintroom API", lifespan=lifespan)
+    app = FastAPI(
+        title="Flintroom API",
+        lifespan=lifespan,
+        generate_unique_id_function=operation_id,
+    )
     # Outermost, so an id exists before anything else runs — including the
     # exception handlers, whose log lines are the ones most worth correlating.
     app.add_middleware(RequestIdMiddleware)
