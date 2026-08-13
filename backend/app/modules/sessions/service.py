@@ -7,7 +7,6 @@ decides. Nothing money-relevant is taken from the client.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
 from typing import NoReturn
 
 from sqlalchemy import func, select
@@ -15,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.actors import ActorContext
+from app.core.database import db_now
 from app.core.errors import (
     ActiveSessionExists,
     InvalidStateTransition,
@@ -312,7 +312,7 @@ class SessionService:
         """
         session = await self._load(session_id)
         self._move(session, SessionState.SETTLED)
-        session.settled_at = datetime.now(UTC)
+        session.settled_at = await db_now(self._db)
         self._audit.stage(
             AuditEventType.SESSION_SETTLED,
             user_id=session.user_id,
@@ -416,8 +416,11 @@ class SessionService:
         Tolerant of there being none: the reaper retries `finalizing`, and a
         retry that found nothing left to close is a success, not an error.
         """
+        # Read once: closing two spans at two instants would be a lie about
+        # what happened, and the second read is a round trip for nothing.
+        closed_at = await db_now(self._db)
         for span in await self._open_spans(session_id):
-            span.ended_at = datetime.now(UTC)
+            span.ended_at = closed_at
 
     async def _open_span(self, session_id: uuid.UUID) -> PhaseSpanRead:
         """The phase currently open. Only called where one must exist."""

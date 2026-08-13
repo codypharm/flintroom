@@ -8,6 +8,7 @@ import asyncio
 import uuid
 
 import pytest
+from freezegun import freeze_time
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -350,6 +351,46 @@ async def test_finalizing_closes_the_interrogation_span_so_the_meter_stops(
     [interrogation] = await sessions.spans(session_id=session.id)
     assert interrogation.ended_at is not None
     assert interrogation.ended_at >= interrogation.started_at
+
+
+async def test_a_span_survives_the_application_clock_disagreeing_with_the_database(
+    sessions, account
+):
+    """One clock decides when a phase began and ended, and it is the database's.
+
+    In production the API and the database are separate machines. NTP holds
+    them within milliseconds of each other, not identical — and a phase can
+    close in less time than that gap. Taking `started_at` from the database and
+    `ended_at` from the API process therefore compares two clocks inside
+    `ck_spans_ordering`, and loses whenever the API's is behind.
+
+    The failure lands during `begin_finalizing`, which is the worst place for
+    it: the meter is stopping, and a 500 there leaves the span open — a room
+    that bills forever on every replay of the ledger.
+
+    The frozen clock here is an exaggerated skew, not a realistic one. Real
+    skew is milliseconds and would make this test pass or fail depending on how
+    busy the machine was, which is not a test. Six years makes the same bug
+    deterministic.
+    """
+    session = await sessions.start(user_id=account.user_id)
+    await sessions.activate(session_id=session.id)
+
+    with freeze_time("2020-01-01 00:00:00"):
+        await sessions.begin_finalizing(
+            session_id=session.id, end_reason=EndReason.USER_ENDED
+        )
+        settled = await sessions.settle(session_id=session.id)
+
+    [interrogation] = await sessions.spans(session_id=session.id)
+    assert interrogation.ended_at >= interrogation.started_at
+
+    # `settled_at` has no ordering constraint, so the same mistake here is
+    # silent rather than loud: a session that settled six years before it
+    # started, sitting in the table looking like data. It feeds cost reporting
+    # and any future billing dispute, which are the two places nobody wants to
+    # discover the clock was wrong.
+    assert settled.settled_at >= settled.started_at
 
 
 async def test_debrief_opens_on_a_settled_session_and_bills_nothing(

@@ -1,5 +1,7 @@
 import os
+from datetime import datetime
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -29,6 +31,28 @@ def create_engine(url: str | None = None) -> AsyncEngine:
     if not resolved:
         raise RuntimeError("DATABASE_URL is not set")
     return create_async_engine(resolved)
+
+
+async def db_now(db: AsyncSession) -> datetime:
+    """The database's clock, for any timestamp another timestamp is compared to.
+
+    Several columns take their value from `server_default=func.now()`, which is
+    the database's clock. Writing the other end of the same pair from Python
+    compares two clocks on two machines: NTP holds them within milliseconds of
+    each other, not identical, and a phase span can open and close inside that
+    gap. `ck_spans_ordering` then rejects the write, and the rejection lands
+    during finalisation — leaving the span open, which bills forever on every
+    replay of the ledger.
+
+    Reading the clock costs a round trip inside a transaction that is already
+    open. That is the price of both ends of a comparison coming from the same
+    place, and it is worth paying every time.
+
+    This is `transaction_timestamp()`, matching `func.now()` exactly rather than
+    approximating it — so a row written and compared in one transaction sees
+    consistent values, and the equal case satisfies a `>=` constraint.
+    """
+    return await db.scalar(select(func.now()))
 
 
 def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
