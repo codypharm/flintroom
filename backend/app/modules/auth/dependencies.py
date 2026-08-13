@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.core.errors import NotAuthenticated
+from app.modules.auth.refresh import RefreshTokenService
 from app.modules.auth.service import AuthService, IdentityVerifier
 from app.modules.auth.tokens import AccessTokens
 
@@ -68,3 +69,12 @@ async def get_auth_service(
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 AccessTokensDep = Annotated[AccessTokens, Depends(get_access_tokens)]
+
+
+async def get_refresh_tokens(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> RefreshTokenService:
+    return RefreshTokenService(db)
+
+
+RefreshTokensDep = Annotated[RefreshTokenService, Depends(get_refresh_tokens)]

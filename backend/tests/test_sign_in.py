@@ -18,61 +18,11 @@ import uuid
 import pytest
 import pytest_asyncio
 from sqlalchemy import func, select, text
-from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.core.database import get_db
 from app.core.errors import NotAuthenticated
-from app.main import create_app
-from app.modules.auth.dependencies import get_access_tokens, get_verifiers
-from app.modules.auth.tokens import AccessTokens
-from app.modules.auth.oidc import ProviderIdentity
 from app.modules.auth.service import AuthService
 from app.modules.billing.models import Account
-
-
-SECRET = "test-signing-key-with-no-production-counterpart"
-
-
-class StubProvider:
-    """A provider that vouches for whatever it was told to vouch for."""
-
-    def __init__(self, name: str) -> None:
-        self.name = name
-        self._tokens: dict[str, ProviderIdentity] = {}
-
-    def token_for(
-        self, *, subject: str, email: str | None = None, email_verified: bool = True
-    ) -> str:
-        token = f"{self.name}:{subject}"
-        self._tokens[token] = ProviderIdentity(
-            provider=self.name,
-            subject=subject,
-            email=email,
-            email_verified=email_verified,
-        )
-        return token
-
-    async def verify(self, id_token: str) -> ProviderIdentity:
-        try:
-            return self._tokens[id_token]
-        except KeyError:
-            raise NotAuthenticated() from None
-
-
-@pytest.fixture
-def google() -> StubProvider:
-    return StubProvider("google")
-
-
-@pytest.fixture
-def apple() -> StubProvider:
-    return StubProvider("apple")
-
-
-@pytest_asyncio.fixture
-async def auth(db, google, apple) -> AuthService:
-    return AuthService(db, verifiers={"google": google, "apple": apple})
 
 
 async def test_a_first_sign_in_creates_an_account(auth, google, db):
@@ -237,25 +187,6 @@ async def test_a_provider_we_do_not_offer_is_refused(auth):
     """Not a 404. Answering "we do not support that one" enumerates our setup."""
     with pytest.raises(NotAuthenticated):
         await auth.sign_in(provider="facebook", id_token="anything")
-
-
-@pytest_asyncio.fixture
-async def client(db, google, apple):
-    """The app, wired to the test session and to providers that need no network."""
-    app = create_app()
-    app.dependency_overrides[get_db] = lambda: db
-    # Substituted rather than read from the environment: the real settings are
-    # required fields with no defaults, which is deliberate — a process must not
-    # boot without a signing key — and means a test cannot rely on ambient env.
-    app.dependency_overrides[get_access_tokens] = lambda: AccessTokens(secret=SECRET)
-    app.dependency_overrides[get_verifiers] = lambda: {
-        "google": google,
-        "apple": apple,
-    }
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
-        yield client
 
 
 async def test_signing_in_over_http_returns_a_token_that_works(client, google, db):

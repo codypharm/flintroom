@@ -29,15 +29,24 @@ class SignInRequest(BaseModel):
     id_token: str = Field(min_length=1, max_length=8192)
 
 
-class SignedIn(BaseModel):
-    """The credential the app stores and sends back on every request.
+class RefreshRequest(BaseModel):
+    """The stored credential, offered in exchange for a fresh pair."""
 
-    No refresh token yet — that is its own slice. Until then a session lasts
-    the access token's lifetime and the user signs in again, which is correct
-    but not yet comfortable.
+    refresh_token: str = Field(min_length=1, max_length=512)
+
+
+class SignedIn(BaseModel):
+    """The credential pair the app stores.
+
+    Both are returned by sign-in and by every refresh, because the refresh
+    token rotates on use. A client that keeps the old one will be treated as a
+    replay and lose the session, so "always store both" is the contract.
     """
 
     access_token: str
+    #: Rotates on every use. Never logged, and never put in a URL — it is the
+    #: credential that outlives the access token by weeks.
+    refresh_token: str
     token_type: str = "bearer"
     #: Seconds. The client refreshes on this rather than parsing the token,
     #: which keeps the token opaque to the app and its format ours to change.

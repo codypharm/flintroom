@@ -65,3 +65,58 @@ class AuthIdentity(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class RefreshToken(Base):
+    """A long-lived credential, stored as a hash and spent when used.
+
+    The access token cannot be revoked — nothing is looked up to verify one —
+    so this row is where a session can actually be ended. Everything about the
+    shape follows from that: it is a row rather than a signed blob precisely so
+    that deleting it means something.
+    """
+
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+
+    #: SHA-256 of the token, never the token. A database dump, a leaked backup
+    #: or an over-broad SELECT then yields nothing usable — which is the whole
+    #: reason this table is worth less to an attacker than it looks.
+    #:
+    #: A plain hash rather than bcrypt/argon2 because the input is 32 bytes of
+    #: `secrets` output, not a human-chosen password: there is no dictionary to
+    #: run and nothing for a slow KDF to buy.
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("accounts.user_id"), nullable=False, index=True
+    )
+
+    #: Every token descended from one sign-in shares this. Rotation means the
+    #: thief and the victim end up holding two tokens from the same family, so
+    #: revoking the family is what turns "someone replayed a spent token" into
+    #: "that session is over for both of them".
+    family_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), nullable=False, index=True
+    )
+
+    #: Set when the token is exchanged. A second exchange of the same row is
+    #: the signal that a copy exists somewhere it should not.
+    used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

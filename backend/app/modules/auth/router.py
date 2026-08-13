@@ -6,8 +6,13 @@ business logic and no database access at this layer.
 
 from fastapi import APIRouter
 
-from app.modules.auth.dependencies import AccessTokensDep, AuthServiceDep, CurrentUser
-from app.modules.auth.schemas import Identity, SignedIn, SignInRequest
+from app.modules.auth.dependencies import (
+    AccessTokensDep,
+    AuthServiceDep,
+    CurrentUser,
+    RefreshTokensDep,
+)
+from app.modules.auth.schemas import Identity, RefreshRequest, SignedIn, SignInRequest
 from app.modules.auth.tokens import ACCESS_TOKEN_TTL
 
 router = APIRouter(tags=["auth"])
@@ -25,7 +30,10 @@ async def read_current_identity(user_id: CurrentUser) -> Identity:
 
 @router.post("/auth/sessions", response_model=SignedIn)
 async def sign_in(
-    payload: SignInRequest, auth: AuthServiceDep, tokens: AccessTokensDep
+    payload: SignInRequest,
+    auth: AuthServiceDep,
+    tokens: AccessTokensDep,
+    refresh: RefreshTokensDep,
 ) -> SignedIn:
     """Exchange a provider ID token for one of ours.
 
@@ -38,5 +46,24 @@ async def sign_in(
 
     return SignedIn(
         access_token=tokens.issue(user_id=user_id),
+        refresh_token=await refresh.issue(user_id=user_id),
+        expires_in=int(ACCESS_TOKEN_TTL.total_seconds()),
+    )
+
+
+@router.post("/auth/sessions/refresh", response_model=SignedIn)
+async def refresh_session(
+    payload: RefreshRequest, tokens: AccessTokensDep, refresh: RefreshTokensDep
+) -> SignedIn:
+    """Trade a refresh token for a fresh pair.
+
+    No bearer token required, and deliberately so: the whole point is to be
+    reachable once the access token has expired.
+    """
+    user_id, rotated = await refresh.rotate(token=payload.refresh_token)
+
+    return SignedIn(
+        access_token=tokens.issue(user_id=user_id),
+        refresh_token=rotated,
         expires_in=int(ACCESS_TOKEN_TTL.total_seconds()),
     )

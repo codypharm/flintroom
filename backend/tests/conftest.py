@@ -7,12 +7,22 @@ import pytest
 import pytest_asyncio
 from alembic import command
 from alembic.config import Config
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy import text
 
-from app.core.database import Base
+from app.core.database import Base, get_db
+from app.core.errors import NotAuthenticated
+from app.main import create_app
+from app.modules.auth.dependencies import get_access_tokens, get_verifiers
+from app.modules.auth.oidc import ProviderIdentity
+from app.modules.auth.service import AuthService
+from app.modules.auth.tokens import AccessTokens
 from app.modules.audit_log.models import AuditEvent  # noqa: F401  (registers the table)
-from app.modules.auth.models import AuthIdentity  # noqa: F401  (registers the table)
+from app.modules.auth.models import (  # noqa: F401  (registers the tables)
+    AuthIdentity,
+    RefreshToken,
+)
 from app.modules.billing.models import Account
 from app.modules.audit_log.admin import AdminService
 from app.modules.audit_log.service import AuditService
@@ -115,3 +125,75 @@ def reaper(db) -> ReaperService:
 @pytest.fixture
 def meter(db) -> MeterService:
     return MeterService(db)
+
+
+# --- HTTP harness ---------------------------------------------------------
+#
+# Shared because three test modules need it, and a per-module copy drifts: the
+# one that forgets an override fails for a reason unrelated to what it tests.
+
+SECRET = "test-signing-key-with-no-production-counterpart"
+
+
+class StubProvider:
+    """A provider that vouches for whatever it was told to vouch for."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self._tokens: dict[str, ProviderIdentity] = {}
+
+    def token_for(
+        self, *, subject: str, email: str | None = None, email_verified: bool = True
+    ) -> str:
+        token = f"{self.name}:{subject}"
+        self._tokens[token] = ProviderIdentity(
+            provider=self.name,
+            subject=subject,
+            email=email,
+            email_verified=email_verified,
+        )
+        return token
+
+    async def verify(self, id_token: str) -> ProviderIdentity:
+        try:
+            return self._tokens[id_token]
+        except KeyError:
+            raise NotAuthenticated() from None
+
+
+@pytest.fixture
+def google() -> StubProvider:
+    return StubProvider("google")
+
+
+@pytest.fixture
+def apple() -> StubProvider:
+    return StubProvider("apple")
+
+
+@pytest_asyncio.fixture
+async def auth(db, google, apple) -> AuthService:
+    return AuthService(db, verifiers={"google": google, "apple": apple})
+
+
+
+
+@pytest_asyncio.fixture
+async def client(db, google, apple):
+    """The app, wired to the test session and to providers that need no network.
+
+    The lifespan is deliberately not run: it starts the sweep loop and opens a
+    second connection pool, neither of which any HTTP test here is about.
+    """
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: db
+    # Substituted rather than read from the environment. The real settings are
+    # required fields with no defaults — a process must not boot without a
+    # signing key — which also means a test cannot rely on ambient env.
+    app.dependency_overrides[get_access_tokens] = lambda: AccessTokens(secret=SECRET)
+    app.dependency_overrides[get_verifiers] = lambda: {"google": google, "apple": apple}
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        yield client
