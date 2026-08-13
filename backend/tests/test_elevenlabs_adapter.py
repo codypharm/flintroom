@@ -59,6 +59,32 @@ def test_conversation_metadata_is_the_channel_coming_up():
     assert isinstance(event, ChannelReady)
 
 
+def test_an_agent_configured_for_the_wrong_format_is_refused_at_the_handshake():
+    """A misconfigured agent must fail loudly, at connect, before any audio.
+
+    We cannot dictate the format — it is an agent-level setting, not an
+    overridable field, and sending an override that has not been enabled in
+    their security settings throws. So the metadata they report is checked
+    instead, at the one moment it is knowable.
+
+    Refusing here turns the worst failure mode this integration has into an
+    ordinary one. Streaming 24 kHz audio to a client expecting 16 kHz produces
+    noise, not an error: it would pass a smoke test, survive a demo, and be
+    indistinguishable from a bad microphone in the one room that mattered.
+    """
+    with pytest.raises(ProviderUnavailable):
+        to_event(
+            {
+                "type": "conversation_initiation_metadata",
+                "conversation_initiation_metadata_event": {
+                    "conversation_id": "conv_123",
+                    "agent_output_audio_format": "pcm_24000",
+                    "user_input_audio_format": AUDIO_FORMAT,
+                },
+            }
+        )
+
+
 def test_agent_audio_arrives_decoded():
     """Base64 is their wire requirement, not a fact about the audio.
 
@@ -246,12 +272,14 @@ async def test_a_provider_that_cannot_be_reached_never_names_the_vendor():
             pass  # pragma: no cover
 
 
-async def test_dialling_pins_the_audio_format_in_both_directions():
-    """Neither side's default is trusted, because the failure is silent.
+async def test_dialling_addresses_the_configured_agent_and_authenticates():
+    """What the dial actually has to get right, now that it pins nothing.
 
-    The relay transcodes nothing, so a provider answering in 24 kHz would be
-    sending audio the phone cannot play — arriving as noise rather than as an
-    error, which is the kind of bug that survives a demo and fails in a room.
+    The handshake carries no config override. Audio format is set on the agent
+    and verified from the metadata it reports back, because an override that
+    has not been enabled in their security settings throws — a handshake that
+    tried to pin the format would fail every connection instead of protecting
+    any of them.
     """
     socket = FakeSocket()
 
@@ -269,8 +297,6 @@ async def test_dialling_pins_the_audio_format_in_both_directions():
 
     assert "agent_id=agent-42" in connects.url
     assert connects.headers == {"xi-api-key": "secret-key"}
-
-    handshake = json.loads(socket.sent[0])
-    audio = handshake["conversation_config_override"]["conversation"]
-    assert audio["user_input_audio_format"] == AUDIO_FORMAT
-    assert audio["agent_output_audio_format"] == AUDIO_FORMAT
+    assert json.loads(socket.sent[0]) == {
+        "type": "conversation_initiation_client_data"
+    }

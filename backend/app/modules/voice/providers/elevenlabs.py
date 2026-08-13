@@ -107,23 +107,16 @@ class ElevenLabsProvider:
             async with self._connect(
                 url, additional_headers={"xi-api-key": self._api_key}
             ) as socket:
-                # Pinning both formats rather than accepting their defaults.
-                # The relay does no transcoding, so a provider that decided to
-                # answer in 24 kHz would be sending audio the phone cannot play
-                # — and that failure is silent, arriving as noise rather than
-                # as an error.
+                # Audio format is deliberately *not* overridden here. It is an
+                # agent-level setting rather than an overridable field, and
+                # ElevenLabs throws on an override that has not been enabled in
+                # the agent's security settings — so sending one would fail
+                # every connection rather than pin anything.
+                #
+                # The format is asserted on the way back instead, from the
+                # metadata they report. See `ElevenLabsChannel.events`.
                 await socket.send(
-                    json.dumps(
-                        {
-                            "type": "conversation_initiation_client_data",
-                            "conversation_config_override": {
-                                "conversation": {
-                                    "user_input_audio_format": AUDIO_FORMAT,
-                                    "agent_output_audio_format": AUDIO_FORMAT,
-                                }
-                            },
-                        }
-                    )
+                    json.dumps({"type": "conversation_initiation_client_data"})
                 )
                 yield ElevenLabsChannel(socket)
         except (WebSocketException, OSError) as exc:
@@ -186,6 +179,35 @@ class ElevenLabsChannel:
         )
 
 
+def _require_expected_audio_format(metadata: dict[str, Any]) -> None:
+    """Refuse an agent configured for audio the phone cannot play.
+
+    The format is theirs to declare, not ours to set: it is configured on the
+    agent rather than per conversation, and an override that has not been
+    enabled in their security settings throws rather than applies. So this
+    checks what they report, at the one moment it becomes knowable.
+
+    Worth a hard failure because the alternative is the quietest bug this
+    integration can produce. The relay transcodes nothing, so 24 kHz audio sent
+    to a client expecting 16 kHz arrives as noise rather than as an error — it
+    would pass a smoke test, survive a demo, and be indistinguishable from a
+    bad microphone in the one room that mattered.
+
+    Raised as `ProviderUnavailable`, so the room ends the way every other
+    upstream failure does: settled, refunded, and without naming the vendor.
+    """
+    formats = {
+        "agent_output": metadata.get("agent_output_audio_format"),
+        "user_input": metadata.get("user_input_audio_format"),
+    }
+    wrong = {side: got for side, got in formats.items() if got != AUDIO_FORMAT}
+    if not wrong:
+        return
+
+    log.error("voice_audio_format_mismatch", expected=AUDIO_FORMAT, **wrong)
+    raise ProviderUnavailable(reason="audio_format_mismatch", expected=AUDIO_FORMAT)
+
+
 def to_event(message: dict[str, Any]) -> VoiceEvent | None:
     """Translate one of their messages. `None` means nothing upstream acts on it.
 
@@ -200,6 +222,9 @@ def to_event(message: dict[str, Any]) -> VoiceEvent | None:
             # Their handshake reply, and the only evidence that agent spin-up
             # succeeded. Until it arrives the session is `provisioning` and
             # bills nothing.
+            _require_expected_audio_format(
+                message["conversation_initiation_metadata_event"]
+            )
             return ChannelReady()
 
         case "audio":
