@@ -20,6 +20,8 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.core.config import get_settings
+
+from .conftest import create_funded_account
 from app.modules.auth.models import RefreshToken
 from app.modules.auth.refresh import RefreshTokenService
 from app.main import create_app
@@ -29,6 +31,7 @@ from app.modules.sessions.meter import MeterService
 from app.modules.sessions.models import SessionPhaseSpan
 from app.modules.sessions.runner import SweepRunner
 from app.modules.sessions.schemas import SessionState
+
 
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
@@ -134,7 +137,7 @@ async def test_the_loop_survives_a_pass_that_cannot_reach_the_database():
 
 
 async def test_a_broken_sweep_does_not_stop_the_other_one(
-    runner, sessions, account, db, monkeypatch
+    runner, sessions, funded_account, db, monkeypatch
 ):
     """A bug in billing must not also stop rooms being cleaned up.
 
@@ -149,7 +152,7 @@ async def test_a_broken_sweep_does_not_stop_the_other_one(
 
     monkeypatch.setattr(MeterService, "sweep", broken)
 
-    stuck = await sessions.start(user_id=account.user_id)
+    stuck = await sessions.start(user_id=funded_account.user_id)
     await db.execute(
         update(SessionModel)
         .where(SessionModel.id == stuck.id)
@@ -163,7 +166,7 @@ async def test_a_broken_sweep_does_not_stop_the_other_one(
 
 
 async def test_one_pass_bills_a_live_room_and_reaps_a_stuck_one(
-    runner, sessions, ledger, account, db
+    runner, sessions, ledger, funded_account, db
 ):
     """The tracer: both sweeps are wired, and they run against real sessions.
 
@@ -173,13 +176,13 @@ async def test_one_pass_bills_a_live_room_and_reaps_a_stuck_one(
     nobody can end or end rooms nobody billed.
     """
     await ledger.grant(
-        user_id=account.user_id,
+        user_id=funded_account.user_id,
         bucket=Bucket.ALLOWANCE,
         seconds=600,
         reason=EntryReason.GRANT_ALLOWANCE,
         idempotency_key="grant-1",
     )
-    live = await sessions.start(user_id=account.user_id)
+    live = await sessions.start(user_id=funded_account.user_id)
     await sessions.activate(session_id=live.id)
     await db.execute(
         update(SessionPhaseSpan)
@@ -188,7 +191,10 @@ async def test_one_pass_bills_a_live_room_and_reaps_a_stuck_one(
     )
     await db.commit()
 
-    stuck = await sessions.start(user_id=uuid.uuid4())
+    # A second user entirely, funded like any real one — starting a room now
+    # requires an account with minutes, which a bare UUID never had.
+    other = await create_funded_account(db, ledger)
+    stuck = await sessions.start(user_id=other.user_id)
     await db.execute(
         update(SessionModel)
         .where(SessionModel.id == stuck.id)
@@ -198,7 +204,7 @@ async def test_one_pass_bills_a_live_room_and_reaps_a_stuck_one(
 
     await runner.once()
 
-    assert (await ledger.balance(user_id=account.user_id)).allowance_seconds == 585
+    assert (await ledger.balance(user_id=funded_account.user_id)).allowance_seconds == 585
     assert (await sessions.get(session_id=stuck.id)).state is SessionState.FAILED
 
 

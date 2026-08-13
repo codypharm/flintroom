@@ -13,9 +13,11 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.actors import ActorContext
+from app.core.actors import Actor, ActorContext
 from app.core.database import db_now
 from app.core.errors import (
+    FlintroomError,
+    NoMinutesRemaining,
     ActiveSessionExists,
     InvalidStateTransition,
     SessionNotFound,
@@ -24,6 +26,7 @@ from app.core.errors import (
 from app.core.logging import get_logger
 from app.modules.audit_log.schemas import AuditEventType
 from app.modules.audit_log.service import AuditService
+from app.modules.billing.service import LedgerService
 from app.modules.sessions.models import Session, SessionPhaseSpan
 from app.modules.sessions.schemas import (
     GRACE_LIMIT,
@@ -81,6 +84,24 @@ class SessionService:
         if (existing := await self._active_session(user_id)) is not None:
             await self._deny_start(user_id, blocked_by=existing.id)
 
+        # Rolled *before* the balance is judged, not after. The period reset is
+        # lazy because the stack has no scheduler, so this read is what grants a
+        # new month's allowance — checking first would tell a subscriber whose
+        # month ticked over last night that they are out of minutes.
+        balance = await LedgerService(
+            self._db, actor=ActorContext(actor=Actor.USER, actor_id=str(user_id))
+        ).ensure_current_period(user_id=user_id)
+
+        if balance.total_seconds <= 0:
+            # The only moment the answer can be no. Product.md §4.5 forbids
+            # interrupting a live interrogation for balance, so a room that
+            # opens is a room that finishes.
+            await self._deny_start(
+                user_id,
+                reason="no_minutes_remaining",
+                error=NoMinutesRemaining(user_id=str(user_id)),
+            )
+
         session = Session(user_id=user_id, state=SessionState.PROVISIONING)
         self._db.add(session)
         try:
@@ -111,6 +132,7 @@ class SessionService:
         *,
         blocked_by: uuid.UUID | None = None,
         reason: str = "active_session_exists",
+        error: FlintroomError | None = None,
     ) -> NoReturn:
         """Refuse a start and leave evidence that it happened.
 
@@ -124,7 +146,7 @@ class SessionService:
             session_id=blocked_by,
             reason=reason,
         )
-        raise ActiveSessionExists(
+        raise error or ActiveSessionExists(
             user_id=str(user_id),
             session_id=str(blocked_by) if blocked_by else None,
         )

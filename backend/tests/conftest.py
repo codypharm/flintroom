@@ -27,7 +27,9 @@ from app.modules.auth.models import (  # noqa: F401  (registers the tables)
 from app.modules.billing.models import Account
 from app.modules.audit_log.admin import AdminService
 from app.modules.audit_log.service import AuditService
+from app.modules.billing.schemas import Bucket, EntryReason
 from app.modules.billing.service import LedgerService
+from app.modules.billing.tiers import FREE_TIER_LIFETIME_SECONDS
 from app.modules.sessions.models import (  # noqa: F401  (registers the tables)
     Session,
     SessionPhaseSpan,
@@ -110,6 +112,39 @@ async def account(db) -> Account:
     account = Account(user_id=uuid.uuid4(), entitlement_tier="free")
     db.add(account)
     await db.commit()
+    return account
+
+
+@pytest_asyncio.fixture
+async def funded_account(db, ledger) -> Account:
+    """An account as a real one exists: signed up, holding its free minutes.
+
+    Starting a session requires a balance, so any test that opens a room needs
+    this rather than the empty account above. The empty one stays for the ledger
+    tests, which care precisely about a balance built up from nothing.
+    """
+    return await create_funded_account(db, ledger)
+
+
+async def create_funded_account(db, ledger) -> Account:
+    """An account as a real one exists: signed up, with its free minutes.
+
+    Starting a session requires a balance, so the modules that exercise the
+    session lifecycle need this rather than the empty account above. Kept as a
+    helper called by a per-module `account` override, so that the ledger tests —
+    which care precisely about a balance built from nothing — keep the empty one.
+    """
+    account = Account(user_id=uuid.uuid4(), entitlement_tier="free")
+    db.add(account)
+    await db.commit()
+
+    await ledger.grant(
+        user_id=account.user_id,
+        bucket=Bucket.FREE,
+        seconds=FREE_TIER_LIFETIME_SECONDS,
+        reason=EntryReason.GRANT_FREE,
+        idempotency_key=f"grant_free:{account.user_id}",
+    )
     return account
 
 

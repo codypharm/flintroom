@@ -14,9 +14,11 @@ clock in the comparison; freezing Python's would prove nothing about it.
 import uuid
 from datetime import timedelta
 
+import pytest_asyncio
 from sqlalchemy import func, update
 
 from app.core.actors import Actor
+from .conftest import create_funded_account
 from app.core.errors import InvalidStateTransition
 from app.modules.audit_log.schemas import AuditEventType
 from app.modules.billing.models import Account
@@ -24,6 +26,7 @@ from app.modules.billing.schemas import Bucket, EntryReason
 from app.modules.sessions.models import Session as SessionModel
 from app.modules.sessions.schemas import EndReason, SessionState
 from app.modules.sessions.service import SessionService
+
 
 
 async def _stall(db, session, *, seconds: int) -> None:
@@ -42,7 +45,7 @@ async def _stall(db, session, *, seconds: int) -> None:
 
 
 async def test_a_session_stuck_provisioning_is_failed_so_the_lock_releases(
-    reaper, sessions, ledger, account, db
+    reaper, sessions, ledger, funded_account, db
 ):
     """The tracer: spin-up died, and nobody is coming to tell us.
 
@@ -51,7 +54,7 @@ async def test_a_session_stuck_provisioning_is_failed_so_the_lock_releases(
     to clear it themselves. Ending it as `failed` rather than routing it through
     settlement is what keeps a room that never opened out of the cost reports.
     """
-    session = await sessions.start(user_id=account.user_id)
+    session = await sessions.start(user_id=funded_account.user_id)
     await _stall(db, session, seconds=180)
 
     await reaper.reap()
@@ -59,13 +62,16 @@ async def test_a_session_stuck_provisioning_is_failed_so_the_lock_releases(
     reaped = await sessions.get(session_id=session.id)
     assert reaped.state is SessionState.FAILED
     assert reaped.end_reason is EndReason.PROVISIONING_FAILED
-    assert await ledger.entries(user_id=account.user_id) == []
+    # Nothing billed, rather than no entries: a real account carries its
+    # signup grant, and a tick is the only thing that writes against a room.
+    entries = await ledger.entries(user_id=funded_account.user_id)
+    assert [e for e in entries if e.reason is EntryReason.TICK] == []
 
     # The point of the whole exercise: the user can start again.
-    await sessions.start(user_id=account.user_id)
+    await sessions.start(user_id=funded_account.user_id)
 
 
-async def test_a_spin_up_still_in_progress_is_left_alone(reaper, sessions, account):
+async def test_a_spin_up_still_in_progress_is_left_alone(reaper, sessions, funded_account):
     """The cutoff has to mean something, or the reaper is a session killer.
 
     Agent spin-up takes real time, and this runs on a timer with no knowledge of
@@ -73,7 +79,7 @@ async def test_a_spin_up_still_in_progress_is_left_alone(reaper, sessions, accou
     user is holding a phone that believes it is connecting, and the failure they
     see is ours.
     """
-    session = await sessions.start(user_id=account.user_id)
+    session = await sessions.start(user_id=funded_account.user_id)
 
     await reaper.reap()
 
@@ -81,7 +87,7 @@ async def test_a_spin_up_still_in_progress_is_left_alone(reaper, sessions, accou
 
 
 async def test_a_reaped_session_is_attributed_to_the_reaper_in_the_audit_trail(
-    reaper, sessions, audit, account, db
+    reaper, sessions, audit, funded_account, db
 ):
     """The one ending with no user request behind it.
 
@@ -91,14 +97,14 @@ async def test_a_reaped_session_is_attributed_to_the_reaper_in_the_audit_trail(
     only thing that explains what did. `Actor.REAPER` rather than `SYSTEM` so
     the sweep is distinguishable from the tick loop that shares its schedule.
     """
-    session = await sessions.start(user_id=account.user_id)
+    session = await sessions.start(user_id=funded_account.user_id)
     await _stall(db, session, seconds=180)
 
     await reaper.reap()
 
     reaped = [
         event
-        for event in await audit.events_for_user(user_id=account.user_id)
+        for event in await audit.events_for_user(user_id=funded_account.user_id)
         if event.event_type is AuditEventType.SESSION_REAPED
     ]
     assert len(reaped) == 1
@@ -111,7 +117,7 @@ async def test_a_reaped_session_is_attributed_to_the_reaper_in_the_audit_trail(
 
 
 async def test_a_settlement_that_died_partway_is_finished_by_the_reaper(
-    reaper, sessions, ledger, account, db
+    reaper, sessions, ledger, funded_account, db
 ):
     """The case no user action will ever resolve.
 
@@ -122,17 +128,17 @@ async def test_a_settlement_that_died_partway_is_finished_by_the_reaper(
     a crash they did not cause and cannot clear.
     """
     await ledger.grant(
-        user_id=account.user_id,
+        user_id=funded_account.user_id,
         bucket=Bucket.ALLOWANCE,
         seconds=10,
         reason=EntryReason.GRANT_ALLOWANCE,
         idempotency_key="grant-1",
     )
-    session = await sessions.start(user_id=account.user_id)
+    session = await sessions.start(user_id=funded_account.user_id)
     await sessions.activate(session_id=session.id)
     # §4.5 forbids cutting the panel off, so this ran 20s past zero.
     await ledger.charge_tick(
-        user_id=account.user_id, session_id=session.id, tick_index=0, seconds=30
+        user_id=funded_account.user_id, session_id=session.id, tick_index=0, seconds=30
     )
     await sessions.begin_finalizing(
         session_id=session.id, end_reason=EndReason.USER_ENDED
@@ -143,8 +149,8 @@ async def test_a_settlement_that_died_partway_is_finished_by_the_reaper(
     await reaper.reap()
 
     assert (await sessions.get(session_id=session.id)).state is SessionState.SETTLED
-    assert (await ledger.balance(user_id=account.user_id)).allowance_seconds == 0
-    await sessions.start(user_id=account.user_id)
+    assert (await ledger.balance(user_id=funded_account.user_id)).allowance_seconds == 0
+    await sessions.start(user_id=funded_account.user_id)
 
 
 async def test_a_room_whose_client_vanished_is_closed_without_a_refund(
@@ -193,7 +199,7 @@ async def test_a_room_whose_client_vanished_is_closed_without_a_refund(
 
 
 async def test_a_user_who_gets_there_first_does_not_take_the_sweep_down_with_them(
-    reaper, sessions, audit, account, db, monkeypatch
+    reaper, sessions, audit, ledger, funded_account, db, monkeypatch
 ):
     """A sweep is a batch, and one contended session must not end it.
 
@@ -207,13 +213,12 @@ async def test_a_user_who_gets_there_first_does_not_take_the_sweep_down_with_the
     change it explains so the two commit together; a reaping that never happened
     leaving a row saying it did would make the trail worse than no trail.
     """
-    other = Account(user_id=uuid.uuid4(), entitlement_tier="free")
-    db.add(other)
-    await db.commit()
+    # Funded like any real account: a room cannot open without minutes.
+    other = await create_funded_account(db, ledger)
     # Read once, up front. The sweep rolls back when it loses the race below,
     # and a rollback expires every ORM object on this session — these fixtures
     # included. Touching one afterwards reloads it lazily, mid-test.
-    owner, other_owner = account.user_id, other.user_id
+    owner, other_owner = funded_account.user_id, other.user_id
 
     contended = await sessions.start(user_id=owner)
     await sessions.activate(session_id=contended.id)

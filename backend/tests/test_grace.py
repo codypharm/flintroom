@@ -11,12 +11,14 @@ import uuid
 from datetime import timedelta
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import func, update
 
 from app.core.errors import SessionNotLive
 from app.modules.billing.schemas import Bucket, EntryReason
 from app.modules.sessions.models import Session as SessionModel
 from app.modules.sessions.schemas import EndReason, SessionState
+
 
 
 async def _in_grace_for(db, session, *, seconds: int) -> None:
@@ -96,7 +98,7 @@ async def test_a_room_still_overdrawing_past_the_cap_is_told_to_close(
 
 
 async def test_grace_cannot_start_on_a_room_that_is_no_longer_live(
-    sessions, ledger, account
+    sessions, ledger, funded_account
 ):
     """A tick in flight when the room closed must not restart the clock.
 
@@ -108,7 +110,7 @@ async def test_grace_cannot_start_on_a_room_that_is_no_longer_live(
     A refusal rather than a silent no-op, because the caller needs to hear it:
     the honest response to "this room is gone" is to stop ticking it.
     """
-    session = await sessions.start(user_id=account.user_id)
+    session = await sessions.start(user_id=funded_account.user_id)
     await sessions.activate(session_id=session.id)
     await sessions.begin_finalizing(
         session_id=session.id, end_reason=EndReason.USER_ENDED
@@ -118,7 +120,7 @@ async def test_grace_cannot_start_on_a_room_that_is_no_longer_live(
         await sessions.enter_grace(session_id=session.id)
 
 
-async def test_leaving_grace_refuses_on_a_closed_room_too(sessions, account):
+async def test_leaving_grace_refuses_on_a_closed_room_too(sessions, funded_account):
     """Both branches of the tick answer the same way to a room that is gone.
 
     The meter enters grace on an overdrawn tick and leaves it on a healthy one.
@@ -126,7 +128,7 @@ async def test_leaving_grace_refuses_on_a_closed_room_too(sessions, account):
     the user's balance at that moment — which is the kind of asymmetry that
     produces a bug reproducible only when someone is nearly out of minutes.
     """
-    session = await sessions.start(user_id=account.user_id)
+    session = await sessions.start(user_id=funded_account.user_id)
     await sessions.activate(session_id=session.id)
     await sessions.begin_finalizing(
         session_id=session.id, end_reason=EndReason.USER_ENDED
