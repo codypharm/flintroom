@@ -12,6 +12,16 @@ dependencies = [
     "alembic>=1.14",
     "pyjwt[crypto]>=2.9",
     "httpx>=0.27",
+    # A WebSocket *client*. FastAPI and Starlette provide only the server half,
+    # and httpx does not implement the protocol at all — so nothing already
+    # here can dial the voice provider, which is the one integration this
+    # product cannot work without.
+    #
+    # `websockets` is the reference implementation, pure Python with no C
+    # extension to build. It is confined to the ElevenLabs adapter: the relay
+    # depends on our own Protocol, so replacing the library, or the provider,
+    # touches one module.
+    "websockets>=13.0",
 ]
 
 [dependency-groups]

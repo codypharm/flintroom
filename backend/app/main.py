@@ -19,6 +19,8 @@ from app.modules.auth.router import router as auth_router
 from app.modules.billing.router import router as billing_router
 from app.modules.sessions.router import router as sessions_router
 from app.modules.sessions.runner import SweepRunner
+from app.modules.voice.providers import build_voice_provider
+from app.modules.voice.router import router as voice_router
 
 log = get_logger(__name__, tag="http")
 
@@ -43,8 +45,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # owns a JWKS cache, so building them per request would fetch a provider's
     # keys on every sign-in — the latency the cache exists to avoid, and the
     # hammering REFRESH_COOLDOWN exists to prevent.
+    settings = get_settings()
     http = httpx.AsyncClient(timeout=5.0)
-    app.state.verifiers = build_verifiers(get_settings(), http)
+    app.state.verifiers = build_verifiers(settings, http)
+
+    # One provider for the process, like the verifiers above. Left unset when
+    # the deployment has no voice credentials: auth, balances and session
+    # bookkeeping all work without them, and only the stream socket refuses.
+    app.state.voice_provider = build_voice_provider(settings)
+    if app.state.voice_provider is None:
+        log.warning("voice_provider_unconfigured")
 
     engine = create_engine()
     session_factory = create_session_factory(engine)
@@ -100,6 +110,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix=API_PREFIX)
     app.include_router(sessions_router, prefix=API_PREFIX)
     app.include_router(billing_router, prefix=API_PREFIX)
+    app.include_router(voice_router, prefix=API_PREFIX)
     return app
 
 

@@ -38,6 +38,20 @@ class Settings(BaseSettings):
     google_client_id: str = Field(min_length=1)
     apple_client_id: str = Field(min_length=1)
 
+    #: The voice provider. Optional, unlike the secrets above, and the
+    #: difference is deliberate: a missing signing key is an insecure default
+    #: that must never boot, whereas a missing voice key is an unconfigured
+    #: integration. Auth, balances and session bookkeeping all work without it,
+    #: so refusing to start would take four working routers down with the one
+    #: that is not ready.
+    #:
+    #: It fails closed instead, loudly and typed, at the moment a room tries to
+    #: open — see `voice.dependencies.get_voice_provider`. The trade is that a
+    #: deployment missing the key learns at the first session rather than at
+    #: boot; if that becomes the more expensive end, make these required.
+    elevenlabs_api_key: str | None = None
+    elevenlabs_agent_id: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:
