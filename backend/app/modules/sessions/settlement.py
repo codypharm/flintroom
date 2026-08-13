@@ -17,13 +17,16 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.actors import ActorContext
 from app.core.logging import get_logger
+from app.modules.billing.models import Account
 from app.modules.billing.schemas import EntryReason
 from app.modules.billing.service import LedgerService
+from app.modules.voice.costs import SessionCost
 from app.modules.sessions.models import Session, SessionPhaseSpan
 from app.modules.sessions.schemas import (
     TICK_INTERVAL,
@@ -103,8 +106,72 @@ class SettlementService:
         await self._ledger.forgive_overdraft(
             user_id=session.user_id, session_id=session.id
         )
+        await self._record_cost(session)
 
         return await self._sessions.settle(session_id=session_id)
+
+    async def _record_cost(self, session: Session) -> None:
+        """Leave one `session_costs` row behind (Product.md §4.3).
+
+        Here rather than in the meter, because the interrogation window is only
+        final once the room has stopped. A row accumulated tick by tick would
+        need correcting by every refund and grace write-off, and §4.3's
+        acceptance test — agreement with the provider invoice within 10% —
+        cannot be run against a figure that was true at some point mid-session.
+
+        Idempotent by primary key, like everything else settlement writes: the
+        reaper re-runs a settlement that died partway, and a second cost row for
+        one session would quietly double that session in every per-minute
+        average computed from this table.
+        """
+        seconds = await self._interrogation_seconds(session.id)
+        await self._db.execute(
+            insert(SessionCost)
+            .values(
+                session_id=session.id,
+                user_id=session.user_id,
+                tier=await self._tier(session.user_id),
+                interrogation_seconds=seconds,
+                # One runtime per room today. Phase 3 discovers whether a
+                # three-voice panel is one agent session or three, which is the
+                # number §4.3 says decides whether §4.4's margins hold.
+                agent_session_count=1,
+            )
+            .on_conflict_do_nothing(index_elements=["session_id"])
+        )
+
+    async def _interrogation_seconds(self, session_id: uuid.UUID) -> int:
+        """How long the metered window actually ran, summed over its spans.
+
+        Summed rather than read off the first span: a session may open the
+        interrogation phase more than once, and costing only the first would
+        undercount exactly the sessions that were interrupted and resumed.
+        """
+        result = await self._db.execute(
+            select(
+                func.coalesce(
+                    func.sum(
+                        func.extract(
+                            "epoch",
+                            func.coalesce(SessionPhaseSpan.ended_at, func.now())
+                            - SessionPhaseSpan.started_at,
+                        )
+                    ),
+                    0,
+                )
+            ).where(
+                SessionPhaseSpan.session_id == session_id,
+                SessionPhaseSpan.phase == SessionPhase.INTERROGATION,
+            )
+        )
+        return int(result.scalar_one())
+
+    async def _tier(self, user_id: uuid.UUID) -> str:
+        """Denormalised deliberately — see `SessionCost.tier`."""
+        result = await self._db.execute(
+            select(Account.entitlement_tier).where(Account.user_id == user_id)
+        )
+        return result.scalar_one()
 
     async def _first_unserved_tick(
         self, session: Session, reason: EntryReason
