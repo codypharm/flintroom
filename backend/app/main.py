@@ -14,6 +14,7 @@ from app.core.errors import FlintroomError
 from app.core.logging import configure_logging, get_logger
 from app.modules.auth.providers import build_verifiers
 from app.modules.auth.router import router as auth_router
+from app.modules.sessions.router import router as sessions_router
 from app.modules.sessions.runner import SweepRunner
 
 log = get_logger(__name__, tag="http")
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Flintroom API", lifespan=lifespan)
     register_exception_handlers(app)
     app.include_router(auth_router, prefix=API_PREFIX)
+    app.include_router(sessions_router, prefix=API_PREFIX)
     return app
 
 

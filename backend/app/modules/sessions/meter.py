@@ -179,15 +179,11 @@ class MeterService:
     async def _close(self, room: _Room, end_reason: EndReason) -> None:
         """End the room and settle it in the same pass.
 
-        Settling here rather than leaving `finalizing` for the reaper matters to
-        the user, not to the books: the lock releases now, so the debrief they
-        are being handed to can start immediately, and §4.1 puts settlement
-        before the coaching phases.
+        The same sequence the End button runs, and deliberately the same code:
+        a cap firing and a user tapping End differ in the reason recorded, not
+        in what has to happen to the money.
         """
-        await self._sessions.begin_finalizing(
-            session_id=room.id, end_reason=end_reason
-        )
-        await self._settlement.settle(session_id=room.id)
+        await self._settlement.close(session_id=room.id, end_reason=end_reason)
         log.info(
             "room_closed_by_meter",
             user_id=str(room.user_id),

@@ -120,6 +120,30 @@ class EndReason(str, Enum):
     PROVISIONING_FAILED = "provisioning_failed"
 
 
+class SessionRead(BaseModel):
+    """What a client is told about its own session.
+
+    Deliberately narrower than the row. `last_progress_at`,
+    `last_user_speech_at` and `grace_started_at` are metering machinery: the
+    first two describe how the reaper decides a room is abandoned, and
+    publishing them tells a client how to look alive without being there.
+
+    `grace_started_at` is left out for a product reason rather than a security
+    one — it is precisely "you have run out and are on borrowed time", which is
+    the depleting counter Product.md §4.6 forbids showing. The room keeps
+    running either way; the user has no decision to make from it.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    state: SessionState
+    started_at: datetime
+    end_reason: EndReason | None = None
+    settled_at: datetime | None = None
+
+
 class PhaseSpanRead(BaseModel):
     """One stretch of one phase.
 

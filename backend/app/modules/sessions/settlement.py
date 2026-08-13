@@ -63,6 +63,21 @@ class SettlementService:
         self._sessions = SessionService(db, actor)
         self._ledger = LedgerService(db, actor)
 
+    async def close(self, *, session_id: uuid.UUID, end_reason: EndReason) -> Session:
+        """Stop the meter and settle, in one pass.
+
+        The two halves are never useful apart — a room told to stop and left
+        `finalizing` still holds the user's lock, so the debrief §4.1 hands them
+        to cannot start until the reaper next runs. Kept here rather than in a
+        handler or in the meter because it is the sequence itself that has to be
+        right: money is written between the two, and a caller that reordered
+        them would settle a room still being billed.
+        """
+        await self._sessions.begin_finalizing(
+            session_id=session_id, end_reason=end_reason
+        )
+        return await self.settle(session_id=session_id)
+
     async def settle(self, *, session_id: uuid.UUID) -> Session:
         """Write the money owed, then close the session.
 
