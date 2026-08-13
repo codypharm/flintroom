@@ -70,6 +70,25 @@ class Balance(BaseModel):
         return self.total_seconds > 0
 
 
+class BalanceRead(BaseModel):
+    """What a client is told about its own balance.
+
+    Two fields, and the omissions are the point. No seconds: §4.6 forbids a
+    depleting counter, and raw seconds on the wire is that counter with the
+    rounding left to whoever wrote the client — one of them will round up and
+    promise a minute that is not there.
+
+    No per-bucket breakdown either. Which bucket a second comes from is spend
+    ordering, an internal rule, and showing three numbers that deplete in turn
+    is the credits display §4.6 exists to refuse.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    remaining_minutes: int
+    has_time_remaining: bool
+
+
 class LedgerEntryRead(BaseModel):
     """One immutable line of the audit trail."""
 

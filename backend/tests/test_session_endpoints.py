@@ -15,6 +15,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import func, select
 
+from app.modules.auth.rate_limit import SESSION_START_LIMIT
 from app.modules.auth.tokens import AccessTokens
 from app.modules.sessions.models import Session as SessionModel
 from app.modules.sessions.schemas import EndReason, SessionState
@@ -169,6 +170,46 @@ async def test_ending_a_room_closes_billing_and_releases_the_lock(
 
     # The lock is gone: the next room opens without a 409.
     assert (await client.post("/v1/sessions", headers=headers)).status_code == 201
+
+
+async def test_hammering_start_is_refused(client, funded_account, bearer):
+    """`CLAUDE.md` requires session start rate limited, and this is why.
+
+    Every room that opens is provider time on our invoice, so a client stuck in
+    a retry loop is a cost incident rather than a nuisance. The refusals in
+    between are counted too — a limiter that only counted the rooms that opened
+    would never fire here, because after the first one every attempt is a 409.
+    """
+    headers = bearer(funded_account.user_id)
+
+    statuses = [
+        (await client.post("/v1/sessions", headers=headers)).status_code
+        for _ in range(SESSION_START_LIMIT + 1)
+    ]
+
+    assert statuses[0] == 201
+    assert statuses[-1] == 429
+
+
+async def test_one_user_hammering_start_does_not_lock_out_another(
+    client, funded_account, bearer, db, ledger
+):
+    """The budget is per account, not per address.
+
+    Keyed on the authenticated user rather than the socket, which the
+    unauthenticated endpoints cannot do. It is the better key on both sides:
+    mobile users share carrier NAT in large groups, so an address is often a
+    whole town, and a signed-in identity cannot be swapped for a fresh one the
+    way an address can.
+    """
+    for _ in range(SESSION_START_LIMIT + 1):
+        await client.post("/v1/sessions", headers=bearer(funded_account.user_id))
+
+    bystander = await create_funded_account(db, ledger)
+
+    response = await client.post("/v1/sessions", headers=bearer(bystander.user_id))
+
+    assert response.status_code == 201
 
 
 async def _session_count(db) -> int:

@@ -102,6 +102,29 @@ def rate_limit(namespace: str, limit: int) -> Callable[..., Awaitable[None]]:
     return limited
 
 
+def rate_limit_user(namespace: str, limit: int) -> Callable[..., Awaitable[None]]:
+    """The same, keyed on the authenticated caller instead of the socket.
+
+    The better key wherever it is available, and it is available on every
+    endpoint behind `CurrentUser`. An address is a poor identity in both
+    directions: mobile users share carrier NAT in large groups, so one bucket
+    covers a whole town, while anyone with a reason to work around the limit
+    can generate fresh addresses more easily than fresh accounts.
+    """
+
+    async def limited(
+        user_id: CurrentUser,
+        db: Annotated[AsyncSession, Depends(get_db)],
+    ) -> None:
+        await PostgresRateLimiter(db).check(
+            key=f"{namespace}:user:{user_id}",
+            limit=limit,
+            window=RATE_LIMIT_WINDOW,
+        )
+
+    return limited
+
+
 def _caller(request: Request) -> str:
     """Who to charge this attempt to.
 

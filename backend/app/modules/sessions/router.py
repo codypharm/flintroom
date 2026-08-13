@@ -3,9 +3,10 @@
 Thin, per `CLAUDE.md`: parse the request, call a service, return a response.
 """
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 
-from app.modules.auth.dependencies import CurrentUser
+from app.modules.auth.dependencies import CurrentUser, rate_limit_user
+from app.modules.auth.rate_limit import SESSION_START_LIMIT
 from app.modules.sessions.dependencies import (
     OwnedSession,
     SessionServiceDep,
@@ -16,7 +17,12 @@ from app.modules.sessions.schemas import EndReason, SessionRead
 router = APIRouter(tags=["sessions"])
 
 
-@router.post("/sessions", response_model=SessionRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/sessions",
+    response_model=SessionRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit_user("session_start", SESSION_START_LIMIT))],
+)
 async def start_session(user_id: CurrentUser, sessions: SessionServiceDep) -> SessionRead:
     """Open a room for the caller.
 

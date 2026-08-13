@@ -40,6 +40,13 @@ SIGN_IN_LIMIT = 20
 REFRESH_LIMIT = 60
 RATE_LIMIT_WINDOW = timedelta(minutes=1)
 
+#: Rooms per minute per account. Far tighter than the numbers above, and it can
+#: afford to be: the endpoint is authenticated, so the key is an account rather
+#: than an address, and no honest client needs a second room in the same minute
+#: — a user may only hold one at a time. What this bounds is a retry loop, and
+#: every iteration of one is provider time on our invoice.
+SESSION_START_LIMIT = 10
+
 #: How long a finished window is kept before deletion.
 #:
 #: Not zero, and not "anything not current". A pass that deleted every window
