@@ -24,7 +24,12 @@ from app.modules.billing.tiers import FREE_TIER_LIFETIME_SECONDS
 from app.modules.sessions.models import Session as SessionModel
 from app.modules.sessions.models import SessionPhaseSpan
 from app.modules.sessions.reaper import ORPHAN_TIMEOUT
-from app.modules.sessions.schemas import IDLE_LIMIT, EndReason, SessionState
+from app.modules.sessions.schemas import (
+    IDLE_LIMIT,
+    SESSION_LIMIT,
+    EndReason,
+    SessionState,
+)
 from app.modules.voice.events import (
     AgentAudio,
     ChannelReady,
@@ -312,6 +317,86 @@ async def test_a_user_who_closes_the_app_ends_the_room(
 
     settled = await ledger.balance(user_id=funded_account.user_id)
     assert settled.total_seconds == charged.total_seconds
+
+
+async def _capped_by_the_meter(db, sessions, meter, funded_account):
+    """A room the meter has already closed, with the relay still attached.
+
+    The race the two tests below are about, set up through the real meter rather
+    than by writing a state onto the row: what makes this hard is that the
+    session was ended by a *different* caller in a different pass, and a test
+    that forged the end state would not exercise that.
+
+    Ended at the session cap specifically, because that ending refunds nothing
+    and is not the ending either relay path would choose. If the relay overwrote
+    it, the assertion would catch it — an idle timeout would not, since that is
+    a reason the relay itself can produce.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+    await VoiceRelay(
+        db, provider=FakeVoiceProvider([ChannelReady(), UserSpoke()]), client=FakeClientChannel()
+    ).run(session_id=session.id)
+
+    await _running_for(db, session, seconds=int(SESSION_LIMIT.total_seconds()))
+    await meter.sweep()
+
+    capped = await sessions.get(session_id=session.id)
+    assert capped.state is SessionState.SETTLED
+    assert capped.end_reason is EndReason.SESSION_CAP
+    return session
+
+
+async def test_a_room_closed_under_the_relay_ends_quietly_when_the_phone_hangs_up(
+    db, sessions, meter, funded_account
+):
+    """The meter got there first, and the phone dropping is no longer news.
+
+    This is ordinary traffic, not a fault: the meter closes a room at its cap
+    while the socket is still up, the client keeps streaming for a moment, and
+    then the user closes the app. Two callers, one room, and the second one
+    arrives to find nothing left to do.
+
+    Raising here is wrong twice over. The socket would close under
+    `CLOSE_PROVIDER_UNAVAILABLE`, so a room that ended perfectly normally at its
+    own cap would reach the phone as an outage — and the relay's `_end` would be
+    reporting a state machine refusal as though the room had failed. The state
+    machine is right to refuse; the relay is wrong to ask.
+    """
+    session = await _capped_by_the_meter(db, sessions, meter, funded_account)
+
+    hung_up = FakeClientChannel()
+    hung_up.hang_up()
+    await VoiceRelay(
+        db, provider=FakeVoiceProvider([], keep_open=True), client=hung_up
+    ).run(session_id=session.id)
+
+    unchanged = await sessions.get(session_id=session.id)
+    assert unchanged.state is SessionState.SETTLED
+    assert unchanged.end_reason is EndReason.SESSION_CAP
+
+
+async def test_a_room_closed_under_the_relay_still_reports_the_provider_failing(
+    db, sessions, meter, funded_account
+):
+    """The mirror case, and the reason this is not simply swallowed.
+
+    The provider breaking is the one thing on this path worth surfacing — it is
+    what `run` re-raises for, and what the router turns into
+    `CLOSE_PROVIDER_UNAVAILABLE`. If `_end` raises on its way out, that failure
+    is replaced by a state machine refusal, and the vendor outage becomes
+    invisible in exactly the incident where somebody is looking for it.
+
+    So the relay stops trying to end a room somebody else already ended, and
+    changes nothing about what it re-raises.
+    """
+    session = await _capped_by_the_meter(db, sessions, meter, funded_account)
+
+    relay = VoiceRelay(db, provider=DyingVoiceProvider([]), client=FakeClientChannel())
+    with pytest.raises(ProviderUnavailable):
+        await relay.run(session_id=session.id)
+
+    unchanged = await sessions.get(session_id=session.id)
+    assert unchanged.end_reason is EndReason.SESSION_CAP
 
 
 async def test_a_channel_still_delivering_keeps_the_room_from_being_reaped_as_orphaned(

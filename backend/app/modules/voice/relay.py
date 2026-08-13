@@ -149,10 +149,33 @@ class VoiceRelay:
         keeps the two from disagreeing. The database is the authority on whether
         the room ever opened; a flag on this object is a second answer that can
         drift from it.
+
+        A room that is already ending belongs to whoever ended it. The meter
+        closes rooms at their cap while the socket is still up, and the reaper
+        closes abandoned ones — so arriving to find nothing left to do is
+        ordinary contention rather than a fault, and it is the mirror of the
+        `FlintroomError` the meter's sweep already tolerates per room.
+
+        Nothing is retried here. A session left `finalizing` by a settlement
+        that died partway is the reaper's to finish, and a relay racing it would
+        be a second writer on the money path for no gain.
         """
         session = await self._sessions.get(session_id=session_id)
         if session.state is SessionState.PROVISIONING:
             await self._sessions.fail(session_id=session_id)
+            return
+
+        if session.state is not SessionState.ACTIVE:
+            # Logged rather than passed over in silence: this is also what a
+            # relay ending a room twice would look like, and the two are only
+            # distinguishable from the ending that is already recorded.
+            log.info(
+                "room_already_ended",
+                session_id=str(session_id),
+                state=session.state.value,
+                end_reason=session.end_reason.value if session.end_reason else None,
+                unrecorded=live.value,
+            )
             return
 
         await self._settlement.close(session_id=session_id, end_reason=live)
