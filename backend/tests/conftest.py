@@ -21,6 +21,7 @@ from app.modules.auth.tokens import AccessTokens
 from app.modules.audit_log.models import AuditEvent  # noqa: F401  (registers the table)
 from app.modules.auth.models import (  # noqa: F401  (registers the tables)
     AuthIdentity,
+    RateLimitCounter,
     RefreshToken,
 )
 from app.modules.billing.models import Account

@@ -9,7 +9,16 @@ from a quarter-long one.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -120,3 +129,32 @@ class RefreshToken(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class RateLimitCounter(Base):
+    """One row per key per window, rather than one per request.
+
+    A sliding-window log is more accurate and writes a row every time somebody
+    knocks — on the one path where an attacker sets the write rate. A fixed
+    window permits a burst of up to twice the limit across a boundary, which is
+    the price paid for that.
+
+    Rows are disposable. Losing the table costs a moment of unlimited attempts,
+    never anything a user owns, which is also why it is safe to sweep bluntly.
+    """
+
+    __tablename__ = "rate_limit_counters"
+
+    #: Namespaced by caller, e.g. `sign_in:ip:198.51.100.7`. The namespace is
+    #: part of the key so two limits on the same caller cannot share a budget.
+    bucket_key: Mapped[str] = mapped_column(String(160), primary_key=True)
+
+    #: Floor of the database's clock to the window size. Taken from the database
+    #: so that every API process agrees on where a window starts — two processes
+    #: with skewed clocks would otherwise land in different windows and each
+    #: hand out the full budget.
+    window_start: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), primary_key=True
+    )
+
+    count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")

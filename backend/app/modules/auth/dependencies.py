@@ -7,7 +7,7 @@ service, so that an endpoint cannot be written that forgets it.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Annotated
 
 from fastapi import Depends, Request
@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.core.errors import NotAuthenticated
+from app.modules.auth.rate_limit import RATE_LIMIT_WINDOW, PostgresRateLimiter
 from app.modules.auth.refresh import RefreshTokenService
 from app.modules.auth.service import AuthService, IdentityVerifier
 from app.modules.auth.tokens import AccessTokens
@@ -78,3 +79,40 @@ async def get_refresh_tokens(
 
 
 RefreshTokensDep = Annotated[RefreshTokenService, Depends(get_refresh_tokens)]
+
+
+def rate_limit(namespace: str, limit: int) -> Callable[..., Awaitable[None]]:
+    """A route dependency that counts this caller's attempt and may refuse it.
+
+    Applied as a dependency rather than called inside a handler so that the
+    count happens before any work, and so an endpoint cannot be written that
+    forgets it — the same reasoning `CLAUDE.md` gives for authentication.
+    """
+
+    async def limited(
+        request: Request,
+        db: Annotated[AsyncSession, Depends(get_db)],
+    ) -> None:
+        await PostgresRateLimiter(db).check(
+            key=f"{namespace}:ip:{_caller(request)}",
+            limit=limit,
+            window=RATE_LIMIT_WINDOW,
+        )
+
+    return limited
+
+
+def _caller(request: Request) -> str:
+    """Who to charge this attempt to.
+
+    The socket's peer, never a forwarded header. `X-Forwarded-For` is written by
+    whoever is calling, so trusting it hands every attacker an unlimited supply
+    of identities and makes the limiter decorative.
+
+    The consequence is a deployment requirement: behind a load balancer this is
+    the balancer, and every user shares one bucket. The proxy has to be told to
+    rewrite the peer — uvicorn's `--proxy-headers` with `--forwarded-allow-ips`
+    set to the balancer, so the header is trusted from exactly one source and
+    nobody else.
+    """
+    return request.client.host if request.client else "unknown"

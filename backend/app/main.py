@@ -92,7 +92,11 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=exc.status_code,
             **exc.context,
         )
-        return JSONResponse(status_code=exc.status_code, content=exc.to_response())
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=exc.to_response(),
+            headers=exc.headers or None,
+        )
 
     @app.exception_handler(Exception)
     async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:

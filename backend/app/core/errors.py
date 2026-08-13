@@ -30,6 +30,11 @@ class FlintroomError(Exception):
         self.context: dict[str, Any] = context
         super().__init__(self.message)
 
+    #: Extra response headers. Empty for almost everything — a header is part
+    #: of the protocol, not part of the message, and only a few failures have
+    #: something protocol-level to say.
+    headers: dict[str, str] = {}
+
     def to_response(self) -> dict[str, Any]:
         """The client-facing payload. Deliberately excludes `context`."""
         return {"error": {"code": self.code, "message": self.message}}
@@ -54,6 +59,27 @@ class InsufficientEntitlement(FlintroomError):
     status_code = 403
     code = "insufficient_entitlement"
     message = "Your plan does not include this."
+
+
+class RateLimited(FlintroomError):
+    """Too many attempts in too short a window.
+
+    429 rather than 403: nothing about the caller was denied, and the correct
+    client behaviour is to wait rather than to re-authenticate or give up.
+
+    The message says nothing about which limit was hit or how much budget is
+    left. `Retry-After` is the one thing worth telling them, because without it
+    a client either gives up or retries immediately, and both are worse for us
+    than a client that waits the right amount of time.
+    """
+
+    status_code = 429
+    code = "rate_limited"
+    message = "Too many attempts. Please wait a moment and try again."
+
+    def __init__(self, retry_after_seconds: int, **context: Any) -> None:
+        super().__init__(**context)
+        self.headers = {"Retry-After": str(retry_after_seconds)}
 
 
 # --- Missing resources ----------------------------------------------------

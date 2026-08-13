@@ -4,15 +4,17 @@ Thin, per `CLAUDE.md`: parse the request, call a service, return a response. No
 business logic and no database access at this layer.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.modules.auth.dependencies import (
     AccessTokensDep,
     AuthServiceDep,
     CurrentUser,
     RefreshTokensDep,
+    rate_limit,
 )
 from app.modules.auth.schemas import Identity, RefreshRequest, SignedIn, SignInRequest
+from app.modules.auth.rate_limit import REFRESH_LIMIT, SIGN_IN_LIMIT
 from app.modules.auth.tokens import ACCESS_TOKEN_TTL
 
 router = APIRouter(tags=["auth"])
@@ -28,7 +30,11 @@ async def read_current_identity(user_id: CurrentUser) -> Identity:
     return Identity(user_id=user_id)
 
 
-@router.post("/auth/sessions", response_model=SignedIn)
+@router.post(
+    "/auth/sessions",
+    response_model=SignedIn,
+    dependencies=[Depends(rate_limit("sign_in", SIGN_IN_LIMIT))],
+)
 async def sign_in(
     payload: SignInRequest,
     auth: AuthServiceDep,
@@ -51,7 +57,11 @@ async def sign_in(
     )
 
 
-@router.post("/auth/sessions/refresh", response_model=SignedIn)
+@router.post(
+    "/auth/sessions/refresh",
+    response_model=SignedIn,
+    dependencies=[Depends(rate_limit("refresh", REFRESH_LIMIT))],
+)
 async def refresh_session(
     payload: RefreshRequest, tokens: AccessTokensDep, refresh: RefreshTokensDep
 ) -> SignedIn:
