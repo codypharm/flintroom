@@ -129,12 +129,34 @@ paths:
       tags:
       - sessions
       summary: Start Session
-      description: 'Open a room for the caller.
+      description: 'Open a room for the caller, and hand them the key to its stream.
 
 
         The user is taken from the credential, never from the body: a client that
 
-        could name the account would be able to spend somebody else''s minutes.'
+        could name the account would be able to spend somebody else''s minutes.
+
+
+        Two service calls rather than one, and still no rules here — the sequence
+
+        carries no branch and no condition, so nothing about *when* a room may open
+
+        has leaked out of `SessionService`. If the mint ever grows a decision, it
+
+        belongs behind a service of its own, as settlement did for the join between
+
+        sessions and the ledger.
+
+
+        A mint that failed after the start committed would leave the caller holding
+
+        a room they cannot connect to and unable to open another until the reaper
+
+        clears it, roughly a minute later. Both statements run on the same
+
+        connection against the same database, so the case is nearly always "the
+
+        database is gone", where the start would not have committed either.'
       operationId: sessions_start_session
       responses:
         '201':
@@ -142,7 +164,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SessionRead'
+                $ref: '#/components/schemas/SessionStarted'
       security:
       - HTTPBearer: []
   /v1/sessions/{session_id}:
@@ -383,6 +405,55 @@ components:
         the depleting counter Product.md §4.6 forbids showing. The room keeps
 
         running either way; the user has no decision to make from it.'
+    SessionStarted:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        user_id:
+          type: string
+          format: uuid
+          title: User Id
+        state:
+          $ref: '#/components/schemas/SessionState'
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        end_reason:
+          anyOf:
+          - $ref: '#/components/schemas/EndReason'
+          - type: 'null'
+        settled_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Settled At
+        stream_ticket:
+          type: string
+          title: Stream Ticket
+      type: object
+      required:
+      - id
+      - user_id
+      - state
+      - started_at
+      - stream_ticket
+      title: SessionStarted
+      description: 'The only response that carries a stream ticket.
+
+
+        Separate from `SessionRead` rather than a nullable field on it, because the
+
+        two are answers to different questions. Reading a session or ending one
+
+        must not mint a credential, and a shared schema is how that eventually
+
+        happens by accident — a handler returns the wider type, and a ticket
+
+        appears on a response nobody meant to put one on.'
     SessionState:
       type: string
       enum:

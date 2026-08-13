@@ -19,6 +19,7 @@ from app.modules.auth.rate_limit import SESSION_START_LIMIT
 from app.modules.auth.tokens import AccessTokens
 from app.modules.sessions.models import Session as SessionModel
 from app.modules.sessions.schemas import EndReason, SessionState
+from app.modules.voice.tickets import VoiceTicketService
 
 from tests.conftest import SECRET, create_funded_account
 
@@ -216,3 +217,27 @@ async def _session_count(db) -> int:
     return (
         await db.execute(select(func.count()).select_from(SessionModel))
     ).scalar_one()
+
+
+async def test_starting_a_room_returns_a_ticket_that_opens_its_stream(
+    client, db, funded_account, bearer
+):
+    """The one response that carries a ticket, because it is the only one that should.
+
+    Deliberately not on `SessionRead`: reading a session or ending one must not
+    mint a credential, and sharing a schema is how that would happen by
+    accident rather than by decision.
+
+    Asserted by spending the ticket rather than by matching its shape. A test
+    that only checked a string was present would still pass if the endpoint
+    returned one minted for a different room.
+    """
+    response = await client.post("/v1/sessions", headers=bearer(funded_account.user_id))
+
+    assert response.status_code == 201
+    body = response.json()
+
+    holder = await VoiceTicketService(db).redeem(
+        ticket=body["stream_ticket"], session_id=uuid.UUID(body["id"])
+    )
+    assert holder == funded_account.user_id

@@ -34,6 +34,7 @@ from app.modules.sessions.models import (  # noqa: F401  (registers the tables)
     Session,
     SessionPhaseSpan,
 )
+from app.modules.voice.models import VoiceTicket  # noqa: F401  (registers the table)
 from app.modules.sessions.meter import MeterService
 from app.modules.sessions.reaper import ReaperService
 from app.modules.sessions.service import SessionService

@@ -144,6 +144,22 @@ class SessionRead(BaseModel):
     settled_at: datetime | None = None
 
 
+class SessionStarted(SessionRead):
+    """The only response that carries a stream ticket.
+
+    Separate from `SessionRead` rather than a nullable field on it, because the
+    two are answers to different questions. Reading a session or ending one
+    must not mint a credential, and a shared schema is how that eventually
+    happens by accident — a handler returns the wider type, and a ticket
+    appears on a response nobody meant to put one on.
+    """
+
+    #: Spend it on the stream socket, once, within seconds. Named for what it
+    #: opens rather than `token`, so it is never mistaken in a client for the
+    #: credential that authenticates everything else.
+    stream_ticket: str
+
+
 class PhaseSpanRead(BaseModel):
     """One stretch of one phase.
 
