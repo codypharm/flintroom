@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from app.core.database import create_engine, create_session_factory
 from app.core.errors import FlintroomError
 from app.core.logging import configure_logging, get_logger
+from app.modules.auth.router import router as auth_router
 from app.modules.sessions.runner import SweepRunner
 
 log = get_logger(__name__, tag="http")
@@ -47,9 +48,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.info("api_stopped")
 
 
+#: Versioned from the first endpoint. A mobile client cannot be force-updated,
+#: so old app versions keep calling whatever they were built against for as long
+#: as they exist — and retrofitting a prefix later means breaking exactly those
+#: installs.
+API_PREFIX = "/v1"
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Flintroom API", lifespan=lifespan)
     register_exception_handlers(app)
+    app.include_router(auth_router, prefix=API_PREFIX)
     return app
 
 
