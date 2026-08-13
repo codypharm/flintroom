@@ -60,6 +60,47 @@ CLIENT_EVENTS = [
 #: adding to it. An event enabled in the dashboard and not written down here is
 #: removed the next time this script is applied.
 
+#: Turn-taking, measured rather than guessed. See `docs/voice-latency.md`.
+#:
+#: `eager` is the whole latency story. Model and TTS together take 0.04s; the
+#: rest is the provider deciding the speaker has finished, and eagerness moves
+#: that from a 1.5–8.1s spread to 1.31–1.70s. The tightened *spread* is what was
+#: bought — unpredictable pacing is what reads as broken, not a slow median.
+#:
+#: `turn_timeout` is a floor, not a cap: `turn_v3` is semantic and waits for a
+#: finished thought, so 2.0 here was observed producing 4.2s endpointing at
+#: `normal`. It is set low because there is no reason to make it high, not
+#: because it bounds anything.
+#:
+#: The cost of `eager` is a panel more willing to talk over someone who is
+#: thinking. That is the product's central tension rather than a tuning
+#: detail (`Product.md` §1 against the churn risk of a first session that
+#: destroys the user), and it was chosen deliberately.
+TURN = {
+    "turn_eagerness": "eager",
+    "turn_timeout": 2.0,
+    "soft_timeout_config": {
+        # Covers the remaining ~1.4s with a sound rather than silence. A room
+        # that goes quiet reads as broken; a room where someone murmurs reads as
+        # someone considering what you just said.
+        "timeout_seconds": 1.2,
+        # PROVISIONAL. What a panelist murmurs is panel *tone*, which CLAUDE.md
+        # reserves for the human and which belongs with the archetype work in
+        # Phase 3 — a Margin-Obsessed CFO and a Growth Maximalist do not make
+        # the same noise. These are deliberately flat and non-committal so they
+        # commit to no character before that decision is made.
+        "message": "Hm.",
+        "additional_soft_timeout_messages": ["Mm.", "Right."],
+        "randomize_fillers": True,
+        # One per turn. A room that murmurs repeatedly is not considering, it is
+        # stalling, and the user hears the difference immediately.
+        "max_soft_timeouts_per_generation": 1,
+        # The greeting is not a reply to anything, so there is nothing to be
+        # seen considering.
+        "disable_until_first_user_message": True,
+    },
+}
+
 #: Enabled so Phase 3 can deliver archetypes per conversation. Overrides are
 #: disabled by default and ElevenLabs throws on one that was never allowed, so
 #: this must be set before the first archetype ships, not with it.
@@ -85,6 +126,7 @@ def required_config() -> dict[str, Any]:
         "conversation_config": {
             "tts": {"agent_output_audio_format": AUDIO_FORMAT},
             "asr": {"user_input_audio_format": AUDIO_FORMAT},
+            "turn": TURN,
             "conversation": {
                 "text_only": False,
                 "max_duration_seconds": MAX_DURATION_SECONDS,
@@ -111,11 +153,18 @@ def main() -> None:
     print(f"  user_input_audio_format   = {conv.get('asr', {}).get('user_input_audio_format')!r}")
     print(f"  max_duration_seconds      = {conv.get('conversation', {}).get('max_duration_seconds')!r}")
     print(f"  client_events             = {conv.get('conversation', {}).get('client_events')}")
+    turn = conv.get("turn", {})
+    print(f"  turn_eagerness            = {turn.get('turn_eagerness')!r}")
+    print(f"  turn_timeout              = {turn.get('turn_timeout')!r}")
+    print(f"  soft_timeout              = {turn.get('soft_timeout_config', {}).get('timeout_seconds')!r}")
 
     print("\nrequired:")
     print(f"  audio formats             = {AUDIO_FORMAT!r} (both)")
     print(f"  max_duration_seconds      = {MAX_DURATION_SECONDS} (our cap is {int(SESSION_LIMIT.total_seconds())}s)")
     print(f"  client_events             = {CLIENT_EVENTS}")
+    print(f"  turn                      = {TURN['turn_eagerness']!r}, "
+          f"timeout {TURN['turn_timeout']}, "
+          f"soft {TURN['soft_timeout_config']['timeout_seconds']}s")
 
     if "--apply" not in sys.argv:
         print("\ndry run — re-run with --apply to write these.")

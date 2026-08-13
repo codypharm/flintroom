@@ -103,9 +103,16 @@ provider leg. Measured 1.5 MiB up for 40s of connection.
   product judgement, not something this spike can settle.
 - **Multi-archetype panel.** Everything above measures one agent answering. The
   panel is several archetypes with turn-taking between them plus a background
-  Auditor, which is orchestration ElevenLabs Agents does not do. See
-  `docs/deferred-scale-work.md` conventions for how that decision gets recorded
-  when it is made.
+  Auditor, which is orchestration ElevenLabs Agents does not do — resolved in
+  `docs/voice-orchestration.md`, which also explains why the 0.04s think/speak
+  figure above does not survive the move.
+
+## Applied
+
+`turn_eagerness: eager`, `turn_timeout: 2.0`, and a 1.2s soft-timeout murmur are
+now in `scripts/configure_agent.py`, which is the source of truth for agent
+settings — the dashboard is not. The murmur's *wording* is provisional and
+belongs with the archetype work; see the comment on `TURN` in that file.
 
 ## Reproducing
 
