@@ -95,12 +95,12 @@ class ElevenLabsProvider:
         on their invoice, and that must not depend on the relay remembering to
         tidy up on every path out — including the failing ones.
 
-        UNVERIFIED until an API key exists: that `xi-api-key` is accepted on
-        the handshake for a private agent. The documented alternative is a
-        signed URL fetched from `/v1/convai/conversation/get-signed-url`, which
-        exists so browser clients need not hold the key. We are server-side and
-        already hold it, so the header is the cheaper path if it works. This is
-        the first thing the spike should confirm.
+        `xi-api-key` on the handshake is confirmed against a live private agent
+        (`docs/voice-latency.md`), so the documented signed-URL dance at
+        `/v1/convai/conversation/get-signed-url` is not needed here. That exists
+        so a browser need not hold the key; we are server-side and already hold
+        it, and a round trip per room would sit inside the spin-up window the
+        user waits through.
         """
         url = f"{self._endpoint}?agent_id={self._agent_id}"
         try:
