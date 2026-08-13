@@ -14,9 +14,11 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.actors import ActorContext
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.core.errors import NotAuthenticated
+from app.core.request_context import current_request_id
 from app.modules.auth.rate_limit import RATE_LIMIT_WINDOW, PostgresRateLimiter
 from app.modules.auth.refresh import RefreshTokenService
 from app.modules.auth.service import AuthService, IdentityVerifier
@@ -49,6 +51,21 @@ async def get_current_user(
 #: Every authenticated endpoint annotates with this rather than repeating the
 #: dependency, so there is one spelling of "this route requires a user".
 CurrentUser = Annotated[uuid.UUID, Depends(get_current_user)]
+
+
+def get_caller_context(user_id: CurrentUser) -> ActorContext:
+    """The provenance every service built for this request writes under.
+
+    One place decides what a request's actor looks like. Three modules building
+    it themselves is three chances for one of them to drop the request id, and
+    a row missing it is indistinguishable from one written by the sweep loop.
+    """
+    return ActorContext.user(user_id, request_id=current_request_id())
+
+
+#: Services take this rather than a user id, so a service cannot be constructed
+#: for a request without provenance attached.
+CallerContext = Annotated[ActorContext, Depends(get_caller_context)]
 
 
 def get_verifiers(request: Request) -> Mapping[str, IdentityVerifier]:

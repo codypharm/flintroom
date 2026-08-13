@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 
 class Actor(str, Enum):
@@ -52,6 +53,16 @@ class ActorContext:
     @classmethod
     def system(cls, *, request_id: str | None = None) -> ActorContext:
         return cls(actor=Actor.SYSTEM, request_id=request_id)
+
+    @classmethod
+    def user(cls, user_id: Any, *, request_id: str | None = None) -> ActorContext:
+        """A request made on behalf of the account holder.
+
+        Takes the id in whatever form the caller holds it — a UUID everywhere
+        today — because the column is text and the conversion happening in one
+        place is what stops half the rows carrying braces or a different case.
+        """
+        return cls(actor=Actor.USER, actor_id=str(user_id), request_id=request_id)
 
     @classmethod
     def reaper(cls) -> ActorContext:

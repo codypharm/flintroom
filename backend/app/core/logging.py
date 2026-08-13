@@ -20,6 +20,8 @@ import os
 import sys
 from typing import Any
 
+from app.core.request_context import current_request_id
+
 #: Redacted by key name wherever they appear in log context. Substring match, so
 #: `revenuecat_api_key` and `authorization_header` are both caught.
 SENSITIVE_KEY_FRAGMENTS = (
@@ -99,6 +101,13 @@ class TaggedLogger:
     ) -> None:
         if not self._logger.isEnabledFor(level):
             return
+        # Added here rather than passed at each call site. A rule every caller
+        # has to remember is one some caller will forget, and the lines that
+        # get forgotten are those on unusual paths — the only ones anybody is
+        # chasing a request id to find. Absent outside a request, which is
+        # honest: the sweep loop is not one.
+        if (request_id := current_request_id()) is not None:
+            context = {"request_id": request_id, **context}
         self._logger.log(
             level,
             message,

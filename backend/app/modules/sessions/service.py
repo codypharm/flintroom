@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.actors import Actor, ActorContext
+from app.core.actors import ActorContext
 from app.core.database import db_now
 from app.core.errors import (
     FlintroomError,
@@ -89,7 +89,11 @@ class SessionService:
         # new month's allowance — checking first would tell a subscriber whose
         # month ticked over last night that they are out of minutes.
         balance = await LedgerService(
-            self._db, actor=ActorContext(actor=Actor.USER, actor_id=str(user_id))
+            self._db,
+            # The request id is carried through rather than dropped: a period
+            # reset triggered by a start belongs to the same request as the
+            # start itself, and that is exactly the pair read back later.
+            actor=ActorContext.user(user_id, request_id=self._actor.request_id),
         ).ensure_current_period(user_id=user_id)
 
         if balance.total_seconds <= 0:

@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.core.database import create_engine, create_session_factory
 from app.core.errors import FlintroomError
 from app.core.logging import configure_logging, get_logger
+from app.core.request_context import RequestIdMiddleware
 from app.modules.auth.providers import build_verifiers
 from app.modules.auth.router import router as auth_router
 from app.modules.billing.router import router as billing_router
@@ -74,6 +75,9 @@ API_PREFIX = "/v1"
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Flintroom API", lifespan=lifespan)
+    # Outermost, so an id exists before anything else runs — including the
+    # exception handlers, whose log lines are the ones most worth correlating.
+    app.add_middleware(RequestIdMiddleware)
     register_exception_handlers(app)
     app.include_router(auth_router, prefix=API_PREFIX)
     app.include_router(sessions_router, prefix=API_PREFIX)

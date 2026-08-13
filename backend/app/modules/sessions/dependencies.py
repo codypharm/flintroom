@@ -1,6 +1,6 @@
 """What a session endpoint needs before it runs.
 
-The service is built with the caller already attached, so there is no route in
+The services are built with the caller already attached, so there is no route in
 the module that can reach session state without a user — the same reasoning
 `CLAUDE.md` gives for authentication being a dependency rather than a check
 inside a service.
@@ -14,11 +14,10 @@ from typing import Annotated
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.actors import Actor, ActorContext
 from app.core.database import get_db
 from app.core.errors import SessionNotFound
 from app.core.logging import get_logger
-from app.modules.auth.dependencies import CurrentUser
+from app.modules.auth.dependencies import CallerContext, CurrentUser
 from app.modules.sessions.models import Session
 from app.modules.sessions.service import SessionService
 from app.modules.sessions.settlement import SettlementService
@@ -27,35 +26,31 @@ log = get_logger(__name__, tag="sessions")
 
 
 async def get_session_service(
-    user_id: CurrentUser,
+    caller: CallerContext,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> SessionService:
-    """A service that audits everything it does as this user.
+    """A service that audits everything it does as this caller.
 
-    Provenance is set here rather than passed per call, so a handler cannot
-    attribute half its writes to the caller and half to the system.
+    Provenance is set at construction rather than passed per call, so a handler
+    cannot attribute half its writes to the user and half to the system.
     """
-    return SessionService(
-        db, actor=ActorContext(actor=Actor.USER, actor_id=str(user_id))
-    )
+    return SessionService(db, actor=caller)
 
 
 SessionServiceDep = Annotated[SessionService, Depends(get_session_service)]
 
 
 async def get_settlement_service(
-    user_id: CurrentUser,
+    caller: CallerContext,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> SettlementService:
     """Settlement, attributed to the user who asked for it.
 
     The same writes the meter and the reaper make, under a different actor —
-    which is the whole point of recording one: "who closed this room" is the
-    first question asked of a session that settled unexpectedly.
+    which is the point of recording one: "who closed this room" is the first
+    question asked of a session that settled unexpectedly.
     """
-    return SettlementService(
-        db, actor=ActorContext(actor=Actor.USER, actor_id=str(user_id))
-    )
+    return SettlementService(db, actor=caller)
 
 
 SettlementServiceDep = Annotated[SettlementService, Depends(get_settlement_service)]
