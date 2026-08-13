@@ -72,11 +72,12 @@ Flintroom is a mobile-first, hands-free rehearsal app for high-stakes speaking s
 ```
 flintroom/
 ├── app/                # Expo / React Native app
-│   ├── components/
-│   │   ├── ui/         # Primitive, reusable, no business logic
-│   │   └── modules/    # Feature-specific (panel setup, live session, debrief, sparring)
-│   ├── screens/
-│   └── lib/            # API client, audio streaming, auth
+│   └── src/            # SDK 57 template convention — do not fight it
+│       ├── app/        # Expo Router route tree — the router owns this directory
+│       ├── components/
+│       │   ├── ui/     # Primitive, reusable, no business logic
+│       │   └── modules/ # Feature-specific (panel setup, live session, debrief, sparring)
+│       └── lib/        # API client, audio streaming, auth
 ├── backend/            # FastAPI + LangGraph/PydanticAI
 │   └── app/
 │       ├── modules/    # panels | sessions | auditor | debrief | billing | ingestion
@@ -283,7 +284,7 @@ Two tables, one rule: **a balance change is recorded exactly once.**
 - Never display a depleting-credits counter (see Metering Rules).
 - `components/ui/` — primitive, reusable, no business logic. `components/modules/` — feature-specific, may call the API, tied to one module.
 - No God components. If a file exceeds ~200 lines, split it.
-- API calls via a client generated from `contracts/openapi.yaml`. Never hardcode API paths in components.
+- API calls via a client generated from `contracts/openapi.yaml`. Never hardcode API paths in components. Regenerate with `npm run generate:api`; the generated `src/lib/api/schema.d.ts` is committed, so a clone builds without running codegen. The generator runs through a pinned `npx` rather than sitting in `devDependencies` — it peers on TypeScript 5 while the SDK ships TypeScript 6, and a build-time CLI has no reason to share the app's compiler version. Do not "fix" this with `--legacy-peer-deps`.
 
 ---
 
@@ -293,7 +294,7 @@ No feature ships without tests. Loop: write failing test → minimum code to pas
 
 **Backend:** `pytest` + `pytest-asyncio` + `httpx.AsyncClient` for endpoint tests, `factory_boy` for fixtures, `freezegun` for time-dependent tests (session timeouts, minute expiry).
 
-**Frontend:** `vitest` + `@testing-library/react` for components, `playwright`/Expo equivalent for E2E, `msw` for API mocking.
+**Frontend:** `jest-expo` + `@testing-library/react-native` for components, `maestro` for E2E, `msw` for API mocking. Pure logic — PCM conversion, the connect sequence, close-code routing — is plain TypeScript and needs no renderer, but it runs on the same runner: `@testing-library/react` renders through `react-dom`, which React Native does not have, and a second runner would be a second config, a second mocking story and a rule about which to use.
 
 ### Critical flows that need E2E coverage before any release
 

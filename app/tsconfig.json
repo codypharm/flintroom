@@ -1,0 +1,25 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    // TypeScript 6 stopped pulling in every `@types` package implicitly, so the
+    // test runner's globals have to be named. Listing `jest` here subtracts
+    // nothing — with no automatic inclusion happening, this is the only entry
+    // that was ever going to be found.
+    "types": ["jest"],
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@/assets/*": [
+        "./assets/*"
+      ]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ]
+}
