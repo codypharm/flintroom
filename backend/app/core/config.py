@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     #: to boot rather than a warning nobody reads.
     jwt_secret: str = Field(min_length=32)
 
+    #: The client IDs our provider tokens must be addressed to. These are the
+    #: `aud` values `OidcVerifier` pins, and pinning them is what stops a
+    #: genuine Google token minted for somebody else's app signing in here.
+    #: Required, because a blank audience is a verifier that checks nothing.
+    google_client_id: str = Field(min_length=1)
+    apple_client_id: str = Field(min_length=1)
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -12,6 +12,7 @@ from sqlalchemy import text
 
 from app.core.database import Base
 from app.modules.audit_log.models import AuditEvent  # noqa: F401  (registers the table)
+from app.modules.auth.models import AuthIdentity  # noqa: F401  (registers the table)
 from app.modules.billing.models import Account
 from app.modules.audit_log.admin import AdminService
 from app.modules.audit_log.service import AuditService

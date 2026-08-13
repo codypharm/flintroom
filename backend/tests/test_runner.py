@@ -19,6 +19,7 @@ import pytest_asyncio
 from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.core.config import get_settings
 from app.main import create_app
 from app.modules.billing.schemas import Bucket, EntryReason
 from app.modules.sessions.models import Session as SessionModel
@@ -86,6 +87,14 @@ async def test_the_api_starts_the_sweeps_and_gets_them_back_on_shutdown(monkeypa
     test constructed; only this proves the running API has one.
     """
     monkeypatch.setenv("DATABASE_URL", TEST_DATABASE_URL)
+    # Startup builds the OIDC verifiers, so the process now needs its
+    # configuration to boot. That is the point — a signing key or a client ID
+    # discovered missing at the first sign-in is a deploy that looked healthy.
+    monkeypatch.setenv("JWT_SECRET", "a-test-signing-key-of-sufficient-length")
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "test.apps.googleusercontent.com")
+    monkeypatch.setenv("APPLE_CLIENT_ID", "com.flintroom.test")
+    get_settings.cache_clear()
+
     app = create_app()
     before = len(asyncio.all_tasks())
 

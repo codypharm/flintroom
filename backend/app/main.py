@@ -4,12 +4,15 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.core.config import get_settings
 from app.core.database import create_engine, create_session_factory
 from app.core.errors import FlintroomError
 from app.core.logging import configure_logging, get_logger
+from app.modules.auth.providers import build_verifiers
 from app.modules.auth.router import router as auth_router
 from app.modules.sessions.runner import SweepRunner
 
@@ -32,8 +35,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # workers reach the same answer and the duplicate writes are refused —
     # which is what makes a plain loop sufficient here and a task queue an
     # unnecessary piece of infrastructure to own.
+    # One HTTP client and one set of verifiers for the process. Each verifier
+    # owns a JWKS cache, so building them per request would fetch a provider's
+    # keys on every sign-in — the latency the cache exists to avoid, and the
+    # hammering REFRESH_COOLDOWN exists to prevent.
+    http = httpx.AsyncClient(timeout=5.0)
+    app.state.verifiers = build_verifiers(get_settings(), http)
+
     engine = create_engine()
-    runner = SweepRunner(create_session_factory(engine))
+    session_factory = create_session_factory(engine)
+    # Requests take their session from here via `get_db`. Built once, and by
+    # the same scope that disposes of the engine.
+    app.state.session_factory = session_factory
+    runner = SweepRunner(session_factory)
     sweeps = asyncio.create_task(runner.run())
 
     try:
@@ -44,6 +58,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # the exact damage the reaper exists to repair.
         runner.stop()
         await sweeps
+        await http.aclose()
         await engine.dispose()
         log.info("api_stopped")
 

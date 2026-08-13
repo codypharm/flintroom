@@ -18,3 +18,8 @@ MONTHLY_ALLOWANCE_SECONDS: dict[str, int] = {
 
 #: Granted once at signup, never renewed. Product.md §4.4.
 FREE_TIER_LIFETIME_SECONDS = 15 * 60
+
+#: The tier every account starts on. Not a key in the table above: the free
+#: tier's minutes are lifetime rather than monthly, so it has no renewing
+#: allowance to look up.
+FREE_TIER = "free"

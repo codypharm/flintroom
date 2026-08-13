@@ -1,6 +1,8 @@
 import os
+from collections.abc import AsyncIterator
 from datetime import datetime
 
+from fastapi import Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -31,6 +33,22 @@ def create_engine(url: str | None = None) -> AsyncEngine:
     if not resolved:
         raise RuntimeError("DATABASE_URL is not set")
     return create_async_engine(resolved)
+
+
+async def get_db(request: Request) -> AsyncIterator[AsyncSession]:
+    """One session per request, closed when the response is done.
+
+    Taken from application state rather than a module-level global so that the
+    factory is built once at startup, by the lifespan that also owns disposing
+    of it — and so a test can substitute a session without a running engine.
+
+    No commit here. Services own their transaction boundaries because they are
+    the only thing that knows what a complete unit of work is; a dependency that
+    commits on the way out would commit half-finished ones too.
+    """
+    factory = request.app.state.session_factory
+    async with factory() as session:
+        yield session
 
 
 async def db_now(db: AsyncSession) -> datetime:

@@ -27,6 +27,7 @@ from app.core.database import Base
 # what has been imported, so a module missing here silently produces an empty
 # migration rather than an error.
 from app.modules.audit_log import models as audit_log_models  # noqa: F401
+from app.modules.auth import models as auth_models  # noqa: F401
 from app.modules.billing import models as billing_models  # noqa: F401
 from app.modules.sessions import models as sessions_models  # noqa: F401
 
