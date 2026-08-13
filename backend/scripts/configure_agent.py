@@ -17,16 +17,15 @@ from __future__ import annotations
 
 import json
 import sys
-from pathlib import Path
 from typing import Any
 
 import httpx
 
 from app.modules.sessions.schemas import SESSION_LIMIT
 from app.modules.voice.providers.elevenlabs import AUDIO_FORMAT
+from scripts.envfile import read_env
 
 API = "https://api.elevenlabs.io/v1/convai/agents"
-ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
 #: Their cap must sit above ours, not below it. If the provider hangs up first,
 #: the relay reads it as a mid-room failure and settles as `provider_failure` —
@@ -45,7 +44,21 @@ CLIENT_EVENTS = [
     # Not consumed yet. Enabled now because the Auditor needs it in Phase 3 and
     # it costs nothing to have flowing before then.
     "user_transcript",
+    # Likewise unconsumed. This is what live captions are made of, and captions
+    # are in the v1 accessibility floor (CLAUDE.md → WCAG 2.2 AA plus live
+    # captions), not a later addition. One event per turn.
+    #
+    # Its streaming sibling `agent_chat_response_part` is deliberately absent:
+    # captions do want the streamed form, since text arriving after the sentence
+    # was spoken is a transcript rather than a caption — but it is the noisiest
+    # event on a latency-sensitive socket and nothing reads it until the caption
+    # work is real.
+    "agent_response",
 ]
+
+#: This list is authoritative, and `_merge` replaces it wholesale rather than
+#: adding to it. An event enabled in the dashboard and not written down here is
+#: removed the next time this script is applied.
 
 #: Enabled so Phase 3 can deliver archetypes per conversation. Overrides are
 #: disabled by default and ElevenLabs throws on one that was never allowed, so
@@ -54,14 +67,6 @@ OVERRIDES = {
     "agent": {"prompt": {"prompt": True}, "first_message": True},
     "tts": {"voice_id": True},
 }
-
-
-def _env(name: str) -> str:
-    for line in ENV_FILE.read_text().splitlines():
-        line = line.strip()
-        if line.startswith(f"{name}=") and not line.startswith("#"):
-            return line.partition("=")[2].strip().strip('"').strip("'")
-    raise SystemExit(f"{name} not found in {ENV_FILE}")
 
 
 def _merge(base: dict[str, Any], changes: dict[str, Any]) -> dict[str, Any]:
@@ -93,7 +98,7 @@ def required_config() -> dict[str, Any]:
 
 
 def main() -> None:
-    key, agent_id = _env("ELEVENLABS_API_KEY"), _env("ELEVENLABS_AGENT_ID")
+    key, agent_id = read_env("ELEVENLABS_API_KEY"), read_env("ELEVENLABS_AGENT_ID")
     headers = {"xi-api-key": key}
 
     current = httpx.get(f"{API}/{agent_id}", headers=headers, timeout=20.0)
