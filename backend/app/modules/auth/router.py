@@ -4,7 +4,7 @@ Thin, per `CLAUDE.md`: parse the request, call a service, return a response. No
 business logic and no database access at this layer.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response, status
 
 from app.modules.auth.dependencies import (
     AccessTokensDep,
@@ -77,3 +77,22 @@ async def refresh_session(
         refresh_token=rotated,
         expires_in=int(ACCESS_TOKEN_TTL.total_seconds()),
     )
+
+
+@router.post(
+    "/auth/sessions/sign-out",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(rate_limit("sign_out", REFRESH_LIMIT))],
+)
+async def sign_out(payload: RefreshRequest, refresh: RefreshTokensDep) -> Response:
+    """End this session.
+
+    Takes the refresh token rather than a bearer credential, because sign-out
+    has to work once the access token has expired — which is the state a
+    returning user is in before anything else happens.
+
+    Always 204. Whether the token was real is not something this endpoint will
+    tell an unauthenticated caller.
+    """
+    await refresh.sign_out(token=payload.refresh_token)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

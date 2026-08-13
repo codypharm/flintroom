@@ -185,3 +185,106 @@ async def test_a_replayed_refresh_is_a_401_and_kills_the_session(client, google)
         json={"refresh_token": honest.json()["refresh_token"]},
     )
     assert after.status_code == 401
+
+
+async def test_signing_out_ends_the_session(client, google):
+    """The user's own way to end a session, which until now did not exist.
+
+    Revocation was already in the data model and nothing called it, so a user
+    who lost a phone had no way to act. The refresh token is the credential
+    here rather than a bearer token: sign-out has to work when the access token
+    has already expired, which is exactly the state a returning user is in.
+    """
+    signed_in = await client.post(
+        "/v1/auth/sessions",
+        json={
+            "provider": "google",
+            "id_token": google.token_for(subject="g-1", email="dana@example.com"),
+        },
+    )
+    held = signed_in.json()["refresh_token"]
+
+    signed_out = await client.post(
+        "/v1/auth/sessions/sign-out", json={"refresh_token": held}
+    )
+
+    assert signed_out.status_code == 204
+
+    refused = await client.post(
+        "/v1/auth/sessions/refresh", json={"refresh_token": held}
+    )
+    assert refused.status_code == 401
+
+
+async def test_signing_out_says_nothing_about_the_token(client, google):
+    """204 whether or not the token was real, and 204 the second time.
+
+    Two reasons, and they point the same way. A 404 for an unrecognised token
+    turns sign-out into an oracle for whether a stolen string is live. And a
+    client retrying after a dropped response must not be told its sign-out
+    failed — it succeeded, and saying otherwise invites a loop.
+    """
+    signed_in = await client.post(
+        "/v1/auth/sessions",
+        json={
+            "provider": "google",
+            "id_token": google.token_for(subject="g-1", email="dana@example.com"),
+        },
+    )
+    held = signed_in.json()["refresh_token"]
+
+    assert (
+        await client.post("/v1/auth/sessions/sign-out", json={"refresh_token": held})
+    ).status_code == 204
+    assert (
+        await client.post("/v1/auth/sessions/sign-out", json={"refresh_token": held})
+    ).status_code == 204
+    assert (
+        await client.post(
+            "/v1/auth/sessions/sign-out", json={"refresh_token": "never-issued"}
+        )
+    ).status_code == 204
+
+
+async def test_the_sweep_removes_tokens_that_have_expired(refresh, account, db):
+    """Nothing was clearing these, and they only accumulate.
+
+    Every sign-in and every refresh writes a row, so the table grows with use
+    forever. It holds no history anyone needs — an expired credential is not a
+    record of anything — so the correct retention is none.
+    """
+    await refresh.issue(user_id=account.user_id)
+    await db.execute(
+        update(RefreshToken).values(expires_at=func.now() - timedelta(days=1))
+    )
+    await db.commit()
+
+    await refresh.sweep()
+
+    assert await _token_count(db) == 0
+
+
+async def test_the_sweep_keeps_a_spent_token_until_it_expires(refresh, account, db):
+    """The one that makes this a security test rather than a chore.
+
+    A spent token is what reuse detection reads. Delete it early and a replay
+    stops looking like reuse and starts looking like a token we never issued —
+    still refused, but the family is no longer revoked, so a thief's stolen
+    session survives. The detection would fail silently and every existing test
+    would still pass.
+    """
+    issued = await refresh.issue(user_id=account.user_id)
+    _, rotated = await refresh.rotate(token=issued)
+
+    await refresh.sweep()
+
+    with pytest.raises(NotAuthenticated):
+        await refresh.rotate(token=issued)
+
+    # Family revoked, which is only possible because the spent row survived.
+    with pytest.raises(NotAuthenticated):
+        await refresh.rotate(token=rotated)
+
+
+async def _token_count(db) -> int:
+    return (await db.execute(select(func.count()).select_from(RefreshToken))).scalar_one()

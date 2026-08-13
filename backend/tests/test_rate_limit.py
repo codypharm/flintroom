@@ -18,7 +18,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import update
+from sqlalchemy import func, select, update
 
 from app.core.errors import RateLimited
 from app.modules.auth.models import RateLimitCounter
@@ -179,3 +179,44 @@ def test_the_window_advances_with_the_clock():
     assert (
         window_start_for(start + window, window) - window_start_for(start, window)
     ) == window
+
+
+async def test_the_sweep_clears_windows_that_have_passed(limiter, db):
+    """Counters accumulate one row per key per minute and nothing removed them.
+
+    Cheap to delete because the rows are disposable: losing one costs a moment
+    of unmetered attempts and nothing a user owns.
+    """
+    await limiter.check(key="ip:198.51.100.7", limit=3, window=WINDOW)
+    await db.execute(
+        update(RateLimitCounter).values(
+            window_start=RateLimitCounter.window_start - timedelta(hours=2)
+        )
+    )
+    await db.commit()
+
+    await limiter.sweep()
+
+    assert await _counter_count(db) == 0
+
+
+async def test_the_sweep_leaves_the_live_window_alone(limiter, db):
+    """Otherwise the sweep is an attacker's best friend.
+
+    Deleting the current window resets every caller's budget each time the loop
+    runs. The limiter would still pass every test above — the counting works —
+    while in production nobody is ever limited for longer than one pass.
+    """
+    for _ in range(3):
+        await limiter.check(key="ip:198.51.100.7", limit=3, window=WINDOW)
+
+    await limiter.sweep()
+
+    with pytest.raises(RateLimited):
+        await limiter.check(key="ip:198.51.100.7", limit=3, window=WINDOW)
+
+
+async def _counter_count(db) -> int:
+    return (
+        await db.execute(select(func.count()).select_from(RateLimitCounter))
+    ).scalar_one()

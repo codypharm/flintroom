@@ -23,6 +23,8 @@ from contextlib import AbstractAsyncContextManager
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
+from app.modules.auth.rate_limit import PostgresRateLimiter
+from app.modules.auth.refresh import RefreshTokenService
 from app.modules.sessions.meter import MeterService
 from app.modules.sessions.reaper import ReaperService
 from app.modules.sessions.schemas import TICK_INTERVAL
@@ -93,10 +95,18 @@ class SweepRunner:
         The meter runs first. It is the one that closes rooms at their caps, so
         letting it go ahead means the reaper spends the same pass finishing
         those closures rather than meeting them a full interval later.
+
+        The auth sweeps come last and are pure housekeeping — expired refresh
+        tokens and dead rate-limit windows, neither of which anyone is waiting
+        on. They ride this loop rather than one of their own because a second
+        scheduler would be a second thing to run, monitor and get wrong, for
+        work that is measured in deleted rows.
         """
         async with self._session_factory() as db:
             await self._guarded("meter", MeterService(db).sweep)
             await self._guarded("reaper", ReaperService(db).reap)
+            await self._guarded("refresh_tokens", RefreshTokenService(db).sweep)
+            await self._guarded("rate_limits", PostgresRateLimiter(db).sweep)
 
     @staticmethod
     async def _guarded(name: str, sweep: Callable[[], Awaitable[None]]) -> None:

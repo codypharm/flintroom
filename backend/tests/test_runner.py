@@ -16,10 +16,12 @@ import uuid
 from datetime import timedelta
 
 import pytest_asyncio
-from sqlalchemy import func, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.core.config import get_settings
+from app.modules.auth.models import RefreshToken
+from app.modules.auth.refresh import RefreshTokenService
 from app.main import create_app
 from app.modules.billing.schemas import Bucket, EntryReason
 from app.modules.sessions.models import Session as SessionModel
@@ -198,3 +200,25 @@ async def test_one_pass_bills_a_live_room_and_reaps_a_stuck_one(
 
     assert (await ledger.balance(user_id=account.user_id)).allowance_seconds == 585
     assert (await sessions.get(session_id=stuck.id)).state is SessionState.FAILED
+
+
+async def test_one_pass_also_clears_expired_auth_rows(runner, account, db):
+    """The sweeps exist; this proves something runs them.
+
+    Exactly the failure the pass above guards for the meter and the reaper: a
+    sweep that is written, tested and never wired is indistinguishable from one
+    that works, right up until the table nobody is watching stops fitting in
+    memory.
+    """
+    await RefreshTokenService(db).issue(user_id=account.user_id)
+    await db.execute(
+        update(RefreshToken).values(expires_at=func.now() - timedelta(days=1))
+    )
+    await db.commit()
+
+    await runner.once()
+
+    remaining = (
+        await db.execute(select(func.count()).select_from(RefreshToken))
+    ).scalar_one()
+    assert remaining == 0

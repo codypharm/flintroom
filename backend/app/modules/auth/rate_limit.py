@@ -19,12 +19,13 @@ import math
 from datetime import datetime, timedelta
 from typing import Protocol
 
-from sqlalchemy import text
+from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import db_now
 from app.core.errors import RateLimited
 from app.core.logging import get_logger
+from app.modules.auth.models import RateLimitCounter
 
 log = get_logger(__name__, tag="http")
 
@@ -38,6 +39,14 @@ log = get_logger(__name__, tag="http")
 SIGN_IN_LIMIT = 20
 REFRESH_LIMIT = 60
 RATE_LIMIT_WINDOW = timedelta(minutes=1)
+
+#: How long a finished window is kept before deletion.
+#:
+#: Not zero, and not "anything not current". A pass that deleted every window
+#: but the live one would race a request that had just rolled over — and the
+#: rows are worth nothing anyway, so an hour of slack costs a handful of rows
+#: and removes the race entirely.
+COUNTER_RETENTION = timedelta(hours=1)
 
 
 def window_start_for(now: datetime, window: timedelta) -> datetime:
@@ -107,3 +116,20 @@ class PostgresRateLimiter:
             )
 
 
+
+    async def sweep(self) -> None:
+        """Delete counters whose window is long past.
+
+        Bounded by retention rather than by "everything but the current
+        window". Deleting the live one would hand every caller a fresh budget on
+        every pass — the counting would still be correct and nobody would ever
+        stay limited, which is the kind of break that passes its own unit tests.
+        """
+        cutoff = await db_now(self._db) - COUNTER_RETENTION
+        result = await self._db.execute(
+            delete(RateLimitCounter).where(RateLimitCounter.window_start < cutoff)
+        )
+        await self._db.commit()
+
+        if result.rowcount:
+            log.info("rate_limit_counters_swept", deleted=result.rowcount)

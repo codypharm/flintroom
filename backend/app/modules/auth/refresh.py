@@ -7,7 +7,7 @@ import secrets
 import uuid
 from datetime import datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import db_now
@@ -82,6 +82,44 @@ class RefreshTokenService:
         return held.user_id, await self._mint(
             user_id=held.user_id, family_id=held.family_id
         )
+
+    async def sign_out(self, *, token: str) -> None:
+        """End the session this token belongs to.
+
+        Silent about whether the token existed. Answering differently would let
+        anyone test a stolen string for liveness against an endpoint that needs
+        no credential to reach.
+
+        The whole family goes, not just the row presented: the client holds one
+        token from a chain, and revoking only that one leaves every ancestor
+        still spendable by whoever else has a copy.
+        """
+        held = await self._find(token)
+        if held is None:
+            return
+
+        await self._revoke_family(held.family_id, at=await db_now(self._db))
+        await self._db.commit()
+        log.info("signed_out", user_id=str(held.user_id), family_id=str(held.family_id))
+
+    async def sweep(self) -> None:
+        """Delete tokens that have expired. Nothing else.
+
+        Expiry, deliberately, rather than "used" or "revoked". A spent token is
+        what reuse detection reads — remove it early and a replay stops looking
+        like reuse and starts looking like a token we never issued. Still
+        refused, but the family is no longer revoked, so the thief keeps their
+        session. That failure is silent and every other test still passes, which
+        is why the retention rule lives here in writing.
+        """
+        now = await db_now(self._db)
+        result = await self._db.execute(
+            delete(RefreshToken).where(RefreshToken.expires_at <= now)
+        )
+        await self._db.commit()
+
+        if result.rowcount:
+            log.info("refresh_tokens_swept", deleted=result.rowcount)
 
     async def _revoke_family(self, family_id: uuid.UUID, *, at: datetime) -> None:
         await self._db.execute(
