@@ -2,9 +2,14 @@
 
 Thin by intent. Everything it does is call a `SessionService` method that
 already exists and is already tested; what this adds is the wiring that decides
-*which* one, and when. The seams it drives (`activate`, and shortly `fail`,
-`record_speech`, `record_progress`) were cut for exactly this caller when the
+*which* one, and when. The seams it drives — `activate`, `fail`,
+`record_speech`, `record_progress` — were cut for exactly this caller when the
 state machine was built, and had none until now.
+
+It is also the only place that knows both sides of a conversation at once,
+which is why the audio path passes through here rather than around it: the
+metering decisions all depend on who was talking and whether anything was
+still arriving.
 """
 
 from __future__ import annotations
@@ -24,6 +29,7 @@ from app.modules.voice.events import (
     AgentAudio,
     ChannelReady,
     Heartbeat,
+    Interrupted,
     UserSpoke,
     VoiceEvent,
 )
@@ -158,6 +164,13 @@ class VoiceRelay:
             await self._sessions.record_speech(session_id=session_id)
         elif isinstance(event, Heartbeat):
             await self._sessions.record_progress(session_id=session_id)
+        elif isinstance(event, Interrupted):
+            # Audio runs ahead of playback, so by now frames the panelist will
+            # never get to finish are already buffered on the phone. Stopping
+            # only what we have not sent yet would let them talk over the user
+            # who just cut in — which is the room failing to be interruptible,
+            # the one thing barge-in exists to deliver.
+            await self._client.discard_playback()
         elif isinstance(event, AgentAudio):
             # Straight through. The relay does no codec work in either
             # direction — that is what the PCM-throughout transport decision

@@ -46,6 +46,15 @@ class ClientChannel(Protocol):
         """Play this on the user's device. PCM16, 16 kHz mono, as received."""
         ...
 
+    async def discard_playback(self) -> None:
+        """Drop whatever is buffered and unplayed.
+
+        Called on barge-in. Audio runs ahead of playback, so a panelist the
+        user has already cut across still has frames queued on the device —
+        and letting those finish is the room failing to be interruptible.
+        """
+        ...
+
     def audio(self) -> AsyncIterator[bytes]:
         """What the user is saying, frame by frame, until they hang up.
 

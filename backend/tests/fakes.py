@@ -76,11 +76,15 @@ class FakeClientChannel:
 
     def __init__(self, inbound: Sequence[bytes] = ()) -> None:
         self.sent: list[bytes] = []
+        self.discarded = 0
         self._inbound = list(inbound)
         self._hung_up = asyncio.Event()
 
     async def send_audio(self, pcm: bytes) -> None:
         self.sent.append(pcm)
+
+    async def discard_playback(self) -> None:
+        self.discarded += 1
 
     async def audio(self) -> AsyncIterator[bytes]:
         for frame in self._inbound:

@@ -66,7 +66,19 @@ class AgentAudio:
     pcm: bytes
 
 
+@dataclass(frozen=True, slots=True)
+class Interrupted:
+    """The user talked over a panelist, and the panelist stopped.
+
+    Barge-in is the feature the voice provider was chosen for (Product.md
+    §5.1) — panelists interrupt the way real rooms do, and can be interrupted
+    back. The provider handles its own half; this is the notification that it
+    happened, and what it obliges *us* to do is drop the audio already in
+    flight to the phone.
+    """
+
+
 #: The union upstream code matches on. It grows as the relay learns to handle
 #: more, rather than being written out in advance against events nothing yet
 #: reacts to.
-VoiceEvent = ChannelReady | UserSpoke | Heartbeat | AgentAudio
+VoiceEvent = ChannelReady | UserSpoke | Heartbeat | AgentAudio | Interrupted

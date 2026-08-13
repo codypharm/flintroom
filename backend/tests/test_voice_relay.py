@@ -25,7 +25,13 @@ from app.modules.sessions.models import Session as SessionModel
 from app.modules.sessions.models import SessionPhaseSpan
 from app.modules.sessions.reaper import ORPHAN_TIMEOUT
 from app.modules.sessions.schemas import IDLE_LIMIT, EndReason, SessionState
-from app.modules.voice.events import AgentAudio, ChannelReady, Heartbeat, UserSpoke
+from app.modules.voice.events import (
+    AgentAudio,
+    ChannelReady,
+    Heartbeat,
+    Interrupted,
+    UserSpoke,
+)
 from app.modules.voice.relay import VoiceRelay
 from tests.fakes import (
     DyingVoiceProvider,
@@ -239,6 +245,35 @@ async def test_what_the_user_says_reaches_the_provider(db, sessions, funded_acco
     await relay.run(session_id=session.id)
 
     assert provider.channel.received == spoken
+
+
+async def test_a_user_cutting_in_stops_the_panel_mid_sentence(
+    db, sessions, funded_account
+):
+    """Barge-in, which is the feature ElevenLabs was chosen for (Product.md §5.1).
+
+    Not merely observing the event. Audio travels ahead of playback — frames
+    are already on the phone, buffered, when the user starts talking over them
+    — so an interruption that only stopped *future* frames would leave the
+    panelist finishing their sentence into someone who had already cut in. The
+    room would not feel interruptible, which is the whole point of it.
+
+    So the client is told to drop what it has not played yet. Everything sent
+    before the interruption is spent; what matters is that the buffer goes.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+    client = FakeClientChannel()
+
+    relay = VoiceRelay(
+        db,
+        provider=FakeVoiceProvider(
+            [ChannelReady(), AgentAudio(b"\xaa\xbb"), Interrupted()]
+        ),
+        client=client,
+    )
+    await relay.run(session_id=session.id)
+
+    assert client.discarded == 1
 
 
 async def test_a_user_who_closes_the_app_ends_the_room(
