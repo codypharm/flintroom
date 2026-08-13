@@ -12,6 +12,7 @@ the property that matters most for a stream.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 
@@ -20,28 +21,78 @@ from app.modules.voice.events import VoiceEvent
 
 
 class FakeVoiceChannel:
-    """A channel that says what it was told to say, then ends."""
+    """A channel that says what it was told to say, and remembers what it heard.
 
-    def __init__(self, events: Sequence[VoiceEvent]) -> None:
+    `keep_open` decides what happens after the script runs out. Ending is the
+    convenience most tests want — it is what lets `run` return so they can
+    assert. Staying open is the realistic one, and it is required by any test
+    about *which* side of the conversation finished first: with both sides free
+    to end, the winner is a race and the assertion is a coin toss.
+    """
+
+    def __init__(
+        self, events: Sequence[VoiceEvent], *, keep_open: bool = False
+    ) -> None:
         self._events = events
+        self._keep_open = keep_open
+        self.received: list[bytes] = []
 
     async def events(self) -> AsyncIterator[VoiceEvent]:
         for event in self._events:
             yield event
+        if self._keep_open:
+            await asyncio.Event().wait()
+
+    async def send_audio(self, pcm: bytes) -> None:
+        self.received.append(pcm)
 
 
 class FakeVoiceProvider:
-    """A provider that opens one scripted channel."""
+    """A provider that opens one scripted channel.
 
-    def __init__(self, events: Sequence[VoiceEvent]) -> None:
+    Keeps a reference to the channel it opened so a test can ask what the relay
+    forwarded — the provider side has no other observable effect.
+    """
+
+    def __init__(
+        self, events: Sequence[VoiceEvent], *, keep_open: bool = False
+    ) -> None:
         self._events = events
+        self.channel = FakeVoiceChannel(events, keep_open=keep_open)
 
     @asynccontextmanager
     async def open(self) -> AsyncIterator[FakeVoiceChannel]:
-        yield FakeVoiceChannel(self._events)
+        yield self.channel
 
 
-class DyingVoiceProvider:
+class FakeClientChannel:
+    """A phone: remembers what it was played, says what it was scripted to say.
+
+    Going quiet is not the same as hanging up. Once the scripted frames run out
+    this blocks rather than ending, because a real socket with nobody talking
+    into it stays open — and a fake that ended instead would let every test
+    pass by finishing the conversation early.
+    """
+
+    def __init__(self, inbound: Sequence[bytes] = ()) -> None:
+        self.sent: list[bytes] = []
+        self._inbound = list(inbound)
+        self._hung_up = asyncio.Event()
+
+    async def send_audio(self, pcm: bytes) -> None:
+        self.sent.append(pcm)
+
+    async def audio(self) -> AsyncIterator[bytes]:
+        for frame in self._inbound:
+            yield frame
+        await self._hung_up.wait()
+
+    def hang_up(self) -> None:
+        """Model the user closing the app."""
+        self._hung_up.set()
+
+
+class DyingVoiceProvider(FakeVoiceProvider):
     """A provider that comes up, says its piece, and then breaks.
 
     The failure arrives mid-stream rather than at dial time, which is the
@@ -50,11 +101,8 @@ class DyingVoiceProvider:
     """
 
     def __init__(self, events: Sequence[VoiceEvent]) -> None:
-        self._events = events
-
-    @asynccontextmanager
-    async def open(self) -> AsyncIterator[FakeVoiceChannel]:
-        yield _DyingChannel(self._events)
+        super().__init__(events)
+        self.channel = _DyingChannel(events)
 
 
 class _DyingChannel(FakeVoiceChannel):

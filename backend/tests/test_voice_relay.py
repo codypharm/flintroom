@@ -25,10 +25,11 @@ from app.modules.sessions.models import Session as SessionModel
 from app.modules.sessions.models import SessionPhaseSpan
 from app.modules.sessions.reaper import ORPHAN_TIMEOUT
 from app.modules.sessions.schemas import IDLE_LIMIT, EndReason, SessionState
-from app.modules.voice.events import ChannelReady, Heartbeat, UserSpoke
+from app.modules.voice.events import AgentAudio, ChannelReady, Heartbeat, UserSpoke
 from app.modules.voice.relay import VoiceRelay
 from tests.fakes import (
     DyingVoiceProvider,
+    FakeClientChannel,
     FakeVoiceProvider,
     UnavailableVoiceProvider,
 )
@@ -81,7 +82,7 @@ async def test_a_channel_that_reports_ready_activates_the_session(
     session = await sessions.start(user_id=funded_account.user_id)
     assert session.state is SessionState.PROVISIONING
 
-    relay = VoiceRelay(db, provider=FakeVoiceProvider([ChannelReady()]))
+    relay = VoiceRelay(db, provider=FakeVoiceProvider([ChannelReady()]), client=FakeClientChannel())
     await relay.run(session_id=session.id)
 
     assert (await sessions.get(session_id=session.id)).state is SessionState.ACTIVE
@@ -104,7 +105,7 @@ async def test_a_provider_that_never_comes_up_fails_the_session_and_bills_nothin
     session = await sessions.start(user_id=funded_account.user_id)
     before = await ledger.balance(user_id=funded_account.user_id)
 
-    relay = VoiceRelay(db, provider=UnavailableVoiceProvider())
+    relay = VoiceRelay(db, provider=UnavailableVoiceProvider(), client=FakeClientChannel())
     with pytest.raises(ProviderUnavailable):
         await relay.run(session_id=session.id)
 
@@ -132,7 +133,7 @@ async def test_a_provider_that_dies_mid_room_settles_it_and_refunds_the_minutes(
     room worked right up until the user stopped answering.
     """
     session = await sessions.start(user_id=funded_account.user_id)
-    await VoiceRelay(db, provider=FakeVoiceProvider([ChannelReady()])).run(
+    await VoiceRelay(db, provider=FakeVoiceProvider([ChannelReady()]), client=FakeClientChannel()).run(
         session_id=session.id
     )
 
@@ -146,7 +147,7 @@ async def test_a_provider_that_dies_mid_room_settles_it_and_refunds_the_minutes(
     # No ChannelReady this time: the room is already open, and the stream simply
     # stops. Re-announcing readiness would be the provider re-activating a live
     # session, which the state machine refuses outright.
-    relay = VoiceRelay(db, provider=DyingVoiceProvider([]))
+    relay = VoiceRelay(db, provider=DyingVoiceProvider([]), client=FakeClientChannel())
     with pytest.raises(ProviderUnavailable):
         await relay.run(session_id=session.id)
 
@@ -174,14 +175,14 @@ async def test_a_user_who_is_speaking_keeps_the_room_from_being_reaped_as_idle(
     """
     idle_seconds = int(IDLE_LIMIT.total_seconds()) + 10
     session = await sessions.start(user_id=funded_account.user_id)
-    await VoiceRelay(db, provider=FakeVoiceProvider([ChannelReady()])).run(
+    await VoiceRelay(db, provider=FakeVoiceProvider([ChannelReady()]), client=FakeClientChannel()).run(
         session_id=session.id
     )
     await _running_for(db, session, seconds=idle_seconds)
 
     # Long enough that the very next sweep would close this room, had nobody
     # said anything in it.
-    await VoiceRelay(db, provider=FakeVoiceProvider([UserSpoke()])).run(
+    await VoiceRelay(db, provider=FakeVoiceProvider([UserSpoke()]), client=FakeClientChannel()).run(
         session_id=session.id
     )
     await meter.sweep()
@@ -189,6 +190,93 @@ async def test_a_user_who_is_speaking_keeps_the_room_from_being_reaped_as_idle(
     still_running = await sessions.get(session_id=session.id)
     assert still_running.state is SessionState.ACTIVE
     assert still_running.end_reason is None
+
+
+async def test_what_the_panel_says_reaches_the_phone(db, sessions, funded_account):
+    """The relay carries agent audio out to the client, unmodified.
+
+    Byte-identical on purpose. ElevenLabs speaks PCM16 and so does the socket
+    to the phone, which is the entire reason the transport decision landed on
+    PCM rather than Opus: the relay does no codec work, so there is no decode
+    latency in the path Open Risk #3 is about and no C dependency to justify.
+
+    A relay that re-encoded here would be spending part of the ~1.5s budget to
+    save uplink bandwidth on a leg that is not the constrained one.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+    client = FakeClientChannel()
+    frame = b"\x00\x01\x02\x03"
+
+    relay = VoiceRelay(
+        db,
+        provider=FakeVoiceProvider([ChannelReady(), AgentAudio(frame)]),
+        client=client,
+    )
+    await relay.run(session_id=session.id)
+
+    assert client.sent == [frame]
+
+
+async def test_what_the_user_says_reaches_the_provider(db, sessions, funded_account):
+    """And the same in the other direction, which is the harder one.
+
+    Outbound audio is just another event on a stream the relay was already
+    reading. Inbound is a second source entirely — the phone speaks whenever it
+    likes, not in reply to anything — so the relay has to pump both at once.
+    That is why this is the test that introduces concurrency.
+
+    The frames arrive as they were sent. Base64 is applied at the far leg only,
+    because that is ElevenLabs' wire requirement rather than ours, and paying
+    its 33% on our own leg would be bandwidth spent for nothing.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+    spoken = [b"\x10\x11", b"\x12\x13"]
+
+    provider = FakeVoiceProvider([ChannelReady()])
+    relay = VoiceRelay(
+        db, provider=provider, client=FakeClientChannel(inbound=spoken)
+    )
+    await relay.run(session_id=session.id)
+
+    assert provider.channel.received == spoken
+
+
+async def test_a_user_who_closes_the_app_ends_the_room(
+    db, sessions, meter, ledger, funded_account
+):
+    """The socket dropping is an ending, and it is not a refunded one.
+
+    Ticks are charged in arrears — the meter bills intervals already completed
+    — so the ledger is correct the moment the connection goes, with nothing
+    owed back. That is exactly why `client_disconnect` is absent from
+    `REFUND_REASONS`, and this asserts the balance to prove the ending picked
+    here is the one that behaves that way.
+
+    The provider is held open so this test can only be won by one side. With
+    both free to finish, which of them ended the conversation would be a race,
+    and the end reason would be a coin toss.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+    await VoiceRelay(
+        db, provider=FakeVoiceProvider([ChannelReady()]), client=FakeClientChannel()
+    ).run(session_id=session.id)
+
+    await _running_for(db, session, seconds=60)
+    await meter.sweep()
+    charged = await ledger.balance(user_id=funded_account.user_id)
+
+    hung_up = FakeClientChannel()
+    hung_up.hang_up()
+    await VoiceRelay(
+        db, provider=FakeVoiceProvider([], keep_open=True), client=hung_up
+    ).run(session_id=session.id)
+
+    closed = await sessions.get(session_id=session.id)
+    assert closed.state is SessionState.SETTLED
+    assert closed.end_reason is EndReason.CLIENT_DISCONNECT
+
+    settled = await ledger.balance(user_id=funded_account.user_id)
+    assert settled.total_seconds == charged.total_seconds
 
 
 async def test_a_channel_still_delivering_keeps_the_room_from_being_reaped_as_orphaned(
@@ -207,12 +295,12 @@ async def test_a_channel_still_delivering_keeps_the_room_from_being_reaped_as_or
     for it precisely because the backend holds the stream and already knows.
     """
     session = await sessions.start(user_id=funded_account.user_id)
-    await VoiceRelay(db, provider=FakeVoiceProvider([ChannelReady()])).run(
+    await VoiceRelay(db, provider=FakeVoiceProvider([ChannelReady()]), client=FakeClientChannel()).run(
         session_id=session.id
     )
     await _last_heard_from(db, session, seconds=int(ORPHAN_TIMEOUT.total_seconds()) + 10)
 
-    await VoiceRelay(db, provider=FakeVoiceProvider([Heartbeat()])).run(
+    await VoiceRelay(db, provider=FakeVoiceProvider([Heartbeat()]), client=FakeClientChannel()).run(
         session_id=session.id
     )
     await reaper.reap()

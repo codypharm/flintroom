@@ -25,6 +25,36 @@ class VoiceChannel(Protocol):
         """Everything the provider has to say, in our vocabulary."""
         ...
 
+    async def send_audio(self, pcm: bytes) -> None:
+        """Forward what the user said. PCM16, 16 kHz mono.
+
+        Whatever encoding the vendor's wire format demands — ElevenLabs wants
+        base64 — is applied inside the adapter. The relay hands over samples.
+        """
+        ...
+
+
+class ClientChannel(Protocol):
+    """The socket to the phone — the relay's other side.
+
+    A protocol rather than a `WebSocket` for the same reason the provider is
+    one: the relay's behaviour is worth testing without a network, and the
+    route stays free to hand in whatever the framework gave it.
+    """
+
+    async def send_audio(self, pcm: bytes) -> None:
+        """Play this on the user's device. PCM16, 16 kHz mono, as received."""
+        ...
+
+    def audio(self) -> AsyncIterator[bytes]:
+        """What the user is saying, frame by frame, until they hang up.
+
+        Ends only when the connection does. Silence is not the end of this
+        iterator — a user thinking about a hostile question is still in the
+        room, and the idle timeout is what decides otherwise.
+        """
+        ...
+
 
 class VoiceProvider(Protocol):
     """Opens channels. One instance per process, not per session."""

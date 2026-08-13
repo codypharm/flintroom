@@ -54,7 +54,19 @@ class Heartbeat:
     """
 
 
+@dataclass(frozen=True, slots=True)
+class AgentAudio:
+    """A panelist speaking, as PCM16 the client can play directly.
+
+    Already decoded from whatever the provider put on the wire — ElevenLabs
+    sends base64, and stripping that is the adapter's job, not the relay's.
+    What reaches here is what reaches the phone, byte for byte.
+    """
+
+    pcm: bytes
+
+
 #: The union upstream code matches on. It grows as the relay learns to handle
 #: more, rather than being written out in advance against events nothing yet
 #: reacts to.
-VoiceEvent = ChannelReady | UserSpoke | Heartbeat
+VoiceEvent = ChannelReady | UserSpoke | Heartbeat | AgentAudio
