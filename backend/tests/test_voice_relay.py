@@ -14,6 +14,7 @@ that the fake agrees with itself.
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 
 import pytest
@@ -32,6 +33,7 @@ from app.modules.sessions.schemas import (
 )
 from app.modules.voice.events import (
     AgentAudio,
+    AgentTranscript,
     ChannelReady,
     Heartbeat,
     Interrupted,
@@ -226,6 +228,78 @@ async def test_what_the_panel_says_reaches_the_phone(db, sessions, funded_accoun
     await relay.run(session_id=session.id)
 
     assert client.sent == [frame]
+
+
+async def test_what_the_panel_says_also_reaches_the_phone_as_words(
+    db, sessions, funded_account
+):
+    """The caption leg of the same utterance.
+
+    Captions are in the v1 accessibility floor (`CLAUDE.md`), which makes this
+    the difference between a product a deaf user can use and one they cannot —
+    a voice-only interrogation offers them nothing otherwise.
+
+    Asserted alongside the audio rather than in isolation because the two are
+    one utterance arriving twice, and the failure worth catching is a relay that
+    carries one and drops the other. Text goes out on its own channel method so
+    the client never has to inspect a frame to know whether it is holding
+    something to play or something to show.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+    client = FakeClientChannel()
+    frame = b"\x00\x01\x02\x03"
+    line = "Where does that 40% come from?"
+
+    relay = VoiceRelay(
+        db,
+        provider=FakeVoiceProvider(
+            [ChannelReady(), AgentAudio(frame), AgentTranscript(line)]
+        ),
+        client=client,
+    )
+    await relay.run(session_id=session.id)
+
+    assert client.sent == [frame]
+    assert client.captions == [line]
+
+
+async def test_the_panel_s_words_never_reach_the_logs(
+    db, sessions, funded_account, caplog
+):
+    """A regression guard, written green on purpose, and it does have teeth.
+
+    `CLAUDE.md` forbids transcript text in logs. The reason it needs a test at
+    all is that this is the one sensitive value the redactor cannot save us
+    from: secrets are caught by key name, and a transcript is just a string —
+    indistinguishable from a session id or an end reason to anything scanning
+    keys. The only thing keeping it out is that nobody passes it, which is
+    exactly the kind of guarantee that decays the first time somebody adds a
+    debug line while chasing a caption bug.
+
+    Both surfaces are scanned, because a leak can arrive through either and the
+    obvious assertion catches neither reliably: `caplog.text` renders only the
+    message, while `get_logger` puts keyword context on `record.context` via
+    `extra=`. A guard reading just the rendered text passes happily while the
+    transcript sits in the context dict — which is precisely how it would be
+    logged, since that is how every other value here is passed.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+    secret = "Our margin assumption is 62% and the board has not seen it"
+
+    with caplog.at_level(logging.DEBUG):
+        await VoiceRelay(
+            db,
+            provider=FakeVoiceProvider([ChannelReady(), AgentTranscript(secret)]),
+            client=FakeClientChannel(),
+        ).run(session_id=session.id)
+
+    logged = [caplog.text]
+    for record in caplog.records:
+        logged.append(record.getMessage())
+        logged.extend(str(value) for value in getattr(record, "context", {}).values())
+
+    assert not any("62%" in line for line in logged)
+    assert not any(secret in line for line in logged)
 
 
 async def test_what_the_user_says_reaches_the_provider(db, sessions, funded_account):

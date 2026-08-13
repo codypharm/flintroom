@@ -24,6 +24,7 @@ from websockets.exceptions import ConnectionClosedError
 from app.core.errors import ProviderUnavailable
 from app.modules.voice.events import (
     AgentAudio,
+    AgentTranscript,
     ChannelReady,
     Heartbeat,
     Interrupted,
@@ -105,6 +106,28 @@ def test_agent_audio_arrives_decoded():
     )
 
     assert event == AgentAudio(pcm)
+
+
+def test_a_panelist_speaking_also_arrives_as_words():
+    """The caption line, which is an accessibility requirement rather than a nicety.
+
+    `CLAUDE.md` puts live captions for panel speech in the v1 accessibility
+    floor: a voice-only interrogation is unusable without them. So the same
+    utterance reaches the phone twice — as PCM to play, and as text to show —
+    and this is the second of those.
+
+    Their `agent_response` is a whole utterance rather than a token stream, so
+    what arrives here is a finished line. Making it emerge word by word is the
+    client's animation, not a property of the wire.
+    """
+    event = to_event(
+        {
+            "type": "agent_response",
+            "agent_response_event": {"agent_response": "Where does that 40% come from?"},
+        }
+    )
+
+    assert event == AgentTranscript("Where does that 40% come from?")
 
 
 def test_a_confident_vad_score_is_the_user_speaking():

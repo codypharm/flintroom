@@ -48,14 +48,31 @@ inspect a payload to know whether it is holding audio or an instruction.
 
 ### Control messages
 
-| `type` | Client must |
-| --- | --- |
-| `discard_playback` | Drop everything buffered and unplayed, immediately. |
+| `type` | Payload | Client must |
+| --- | --- | --- |
+| `discard_playback` | — | Drop everything buffered and unplayed, immediately. |
+| `transcript` | `text` | Show this as the panel's current line. |
 
 `discard_playback` is barge-in. Audio runs ahead of playback, so when the user
 talks over a panelist the device is still holding frames of a sentence that will
 never be finished. Playing them out is the room failing to be interruptible,
 which is the feature the voice provider was chosen for (`Product.md` §5.1).
+
+`transcript` is the caption, and it is an accessibility requirement rather than
+a convenience: `CLAUDE.md` puts live captions for panel speech in the v1 floor,
+because a voice-only interrogation offers a deaf or hard-of-hearing user nothing
+at all. It is also the interrogation screen's primary content for every user — a
+presenter glancing down reads the question they just missed.
+
+It arrives as a **whole utterance**, not a token stream, and it is the caption
+for audio the client is already playing. Any word-by-word emergence is the
+client's animation; the wire carries finished lines. A provider that revises an
+utterance after the fact is ignored — by the time a correction lands the line has
+been spoken aloud, and retracting it would be the room contradicting itself.
+
+**Only the panel is captioned.** The user's own speech is deliberately not sent
+back to them; whether it ever should be is an open product question, currently
+recommended against, because reading yourself invites editing instead of arguing.
 
 Text frames from the client are currently ignored rather than refused, so that a
 control message added later cannot kill a live room by arriving before the server
@@ -86,6 +103,12 @@ closes. The client never has to reconcile anything.
 
 - **Silence is not the end.** A user thinking about a hostile question is still
   in the room. The server decides abandonment, via the idle timeout.
+- **There is no warning before that.** The room simply ends and refunds in full.
+  A warning is wanted and deliberately unbuilt: the right channel for a phone
+  lying face-up on a desk is probably a panelist asking whether you are still
+  there, not a banner on a screen nobody is looking at — and that is panel tone,
+  which belongs with the archetype work in Phase 3. Building the visual version
+  first would mean shipping the weaker answer and then living with it.
 - **There is no heartbeat to send.** The server holds the provider connection and
   already knows whether audio is flowing. A client-side keepalive would be a
   second answer to a question that already has one — and, being unremovable from

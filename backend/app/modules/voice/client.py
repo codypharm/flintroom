@@ -21,6 +21,10 @@ log = get_logger(__name__, tag="voice")
 #: payload to know what it is holding.
 DISCARD_PLAYBACK = {"type": "discard_playback"}
 
+#: Carries a payload, unlike `discard_playback`, which is why it is a type name
+#: rather than a whole message: the text is filled in per utterance.
+TRANSCRIPT = "transcript"
+
 
 class WebSocketClientChannel:
     """One connected client."""
@@ -36,6 +40,15 @@ class WebSocketClientChannel:
         a requirement that exists at the other end of the relay.
         """
         await self._websocket.send_bytes(pcm)
+
+    async def send_transcript(self, text: str) -> None:
+        """The panel's current line, for the caption field.
+
+        Deliberately not logged, at any level. `CLAUDE.md` forbids transcript
+        text in logs, and unlike a credential it cannot be caught by key-name
+        redaction — the only thing that keeps it out is nobody passing it.
+        """
+        await self._websocket.send_json({"type": TRANSCRIPT, "text": text})
 
     async def discard_playback(self) -> None:
         """Barge-in: drop what the device has buffered and not yet played."""

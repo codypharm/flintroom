@@ -67,6 +67,35 @@ class AgentAudio:
 
 
 @dataclass(frozen=True, slots=True)
+class AgentTranscript:
+    """A panelist speaking, as words — the same utterance as `AgentAudio`.
+
+    Carried because captions are in the v1 accessibility floor (CLAUDE.md), not
+    because anything server-side reads them: a voice-only interrogation is
+    unusable to a deaf or hard-of-hearing user without them, and the live
+    interrogation surface makes this line its primary content for *every* user,
+    since a glancing presenter reads the question they just missed.
+
+    A finished utterance rather than a token stream. Providers differ on that —
+    ElevenLabs sends one `agent_response` per turn — so the wire carries whole
+    lines and any word-by-word emergence is the client's animation. An event
+    that sometimes meant a fragment and sometimes a line would push that
+    ambiguity into every consumer.
+
+    Deliberately only the panel. Whether the user's own speech is captioned back
+    to them is an open product question on that surface, recommended against —
+    it invites reading yourself instead of arguing — so there is no event for it
+    and adding one is a decision, not a completion.
+
+    Never logged. `CLAUDE.md` forbids transcript text in logs, and unlike a
+    secret it cannot be caught by key-name redaction, so it must not be passed
+    to a log call at all.
+    """
+
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
 class Interrupted:
     """The user talked over a panelist, and the panelist stopped.
 
@@ -81,4 +110,6 @@ class Interrupted:
 #: The union upstream code matches on. It grows as the relay learns to handle
 #: more, rather than being written out in advance against events nothing yet
 #: reacts to.
-VoiceEvent = ChannelReady | UserSpoke | Heartbeat | AgentAudio | Interrupted
+VoiceEvent = (
+    ChannelReady | UserSpoke | Heartbeat | AgentAudio | AgentTranscript | Interrupted
+)

@@ -27,6 +27,7 @@ from app.modules.sessions.service import SessionService
 from app.modules.sessions.settlement import SettlementService
 from app.modules.voice.events import (
     AgentAudio,
+    AgentTranscript,
     ChannelReady,
     Heartbeat,
     Interrupted,
@@ -187,6 +188,12 @@ class VoiceRelay:
             await self._sessions.record_speech(session_id=session_id)
         elif isinstance(event, Heartbeat):
             await self._sessions.record_progress(session_id=session_id)
+        elif isinstance(event, AgentTranscript):
+            # The caption for the audio above, and the only path it has to the
+            # phone. Not logged: `CLAUDE.md` forbids transcript text in logs,
+            # and no redaction rule can catch it, because it is indistinguishable
+            # from any other string by key name.
+            await self._client.send_transcript(event.text)
         elif isinstance(event, Interrupted):
             # Audio runs ahead of playback, so by now frames the panelist will
             # never get to finish are already buffered on the phone. Stopping

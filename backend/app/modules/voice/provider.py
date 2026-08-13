@@ -46,6 +46,16 @@ class ClientChannel(Protocol):
         """Play this on the user's device. PCM16, 16 kHz mono, as received."""
         ...
 
+    async def send_transcript(self, text: str) -> None:
+        """Show this as the panel's current line.
+
+        A separate method from `send_audio` rather than a flag on it, because
+        the two are different obligations at the far end: one is played and one
+        is displayed, and the phone should never have to inspect a payload to
+        learn which it is holding.
+        """
+        ...
+
     async def discard_playback(self) -> None:
         """Drop whatever is buffered and unplayed.
 

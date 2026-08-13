@@ -26,6 +26,7 @@ from app.core.errors import ProviderUnavailable
 from app.core.logging import get_logger
 from app.modules.voice.events import (
     AgentAudio,
+    AgentTranscript,
     ChannelReady,
     Heartbeat,
     Interrupted,
@@ -233,6 +234,14 @@ def to_event(message: dict[str, Any]) -> VoiceEvent | None:
             # transport requirement, not a property of the audio, and leaving
             # it encoded would push a vendor detail all the way to the phone.
             return AgentAudio(base64.b64decode(encoded))
+
+        case "agent_response":
+            # The caption for the audio above. Their `agent_response_correction`
+            # revises an utterance after the fact and is deliberately ignored:
+            # by the time it lands the line has been on screen and spoken aloud,
+            # and retracting a question the panel already asked would be the
+            # room contradicting itself.
+            return AgentTranscript(message["agent_response_event"]["agent_response"])
 
         case "vad_score":
             score = message["vad_score_event"]["vad_score"]
