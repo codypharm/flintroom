@@ -22,7 +22,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.core.errors import NotAuthenticated
 from app.modules.auth.service import AuthService
-from app.modules.billing.models import Account
+from app.modules.billing.models import Account, LedgerEntry
+from app.modules.billing.schemas import Bucket, EntryReason
+from app.modules.billing.tiers import FREE_TIER_LIFETIME_SECONDS
 
 
 async def test_a_first_sign_in_creates_an_account(auth, google, db):
@@ -245,3 +247,105 @@ async def _account_count(db) -> int:
     return (
         await db.execute(select(func.count()).select_from(Account))
     ).scalar_one()
+
+
+async def test_a_new_account_starts_with_the_free_minutes(auth, google, ledger):
+    """The grant that makes a new account usable.
+
+    Until this existed a user could sign in and then do nothing: sessions check
+    the balance before starting, and every new account had zero. Product.md
+    §4.4 promises 15 minutes — one complete session, including the unmetered
+    debrief and sparring.
+
+    Into the free bucket, with its own reason. The bucket matters because
+    `ensure_current_period` expires the *allowance* bucket at every period
+    boundary and leaves this one alone — which is what "lifetime, never
+    renewed" means in code rather than in prose.
+    """
+    user_id = await auth.sign_in(
+        provider="google",
+        id_token=google.token_for(subject="google-1", email="dana@example.com"),
+    )
+
+    balance = await ledger.balance(user_id=user_id)
+    assert balance.free_seconds == FREE_TIER_LIFETIME_SECONDS
+    assert balance.allowance_seconds == 0
+
+    [entry] = await ledger.entries(user_id=user_id)
+    assert entry.reason is EntryReason.GRANT_FREE
+    assert entry.bucket is Bucket.FREE
+
+
+async def test_the_free_minutes_are_granted_once_per_user_ever(auth, google, ledger):
+    """The failure that costs real money.
+
+    Every launch of the app signs in. A grant that ran each time would hand a
+    user unlimited free interrogation — provider cost with no ceiling, straight
+    into Open Risk #4 — and it would look completely normal in the balance
+    until somebody read the ledger.
+    """
+    token = google.token_for(subject="google-1", email="dana@example.com")
+
+    user_id = await auth.sign_in(provider="google", id_token=token)
+    await auth.sign_in(provider="google", id_token=token)
+    await auth.sign_in(provider="google", id_token=token)
+
+    balance = await ledger.balance(user_id=user_id)
+    assert balance.free_seconds == FREE_TIER_LIFETIME_SECONDS
+    assert len(await ledger.entries(user_id=user_id)) == 1
+
+
+async def test_linking_a_second_provider_does_not_grant_again(
+    auth, google, apple, ledger
+):
+    """Linking is the other door into an existing account, so it needs the
+    same guard — and it is the one nobody thinks of, because it looks like a
+    first sign-in from that provider's point of view."""
+    user_id = await auth.sign_in(
+        provider="google",
+        id_token=google.token_for(subject="google-1", email="dana@example.com"),
+    )
+    await auth.sign_in(
+        provider="apple",
+        id_token=apple.token_for(subject="apple-1", email="dana@example.com"),
+    )
+
+    assert (await ledger.balance(user_id=user_id)).free_seconds == (
+        FREE_TIER_LIFETIME_SECONDS
+    )
+
+
+async def test_devices_racing_a_first_sign_in_are_granted_once(engine, db, google):
+    """The race again, now with money on it.
+
+    Two devices reaching a brand-new account at the same moment must produce
+    one account *and* one grant. The unique index on `idempotency_key` is the
+    only thing that can arbitrate, because neither transaction can see the
+    other's uncommitted row.
+    """
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    racers = [factory() for _ in range(5)]
+    await asyncio.gather(*(session.execute(text("SELECT 1")) for session in racers))
+
+    token = google.token_for(subject="google-1", email="dana@example.com")
+    gate = asyncio.Event()
+
+    async def sign_in_once(session):
+        await gate.wait()
+        return await AuthService(session, verifiers={"google": google}).sign_in(
+            provider="google", id_token=token
+        )
+
+    tasks = [asyncio.create_task(sign_in_once(session)) for session in racers]
+    await asyncio.sleep(0)
+    gate.set()
+    results = await asyncio.gather(*tasks)
+
+    for session in racers:
+        await session.close()
+
+    granted = (
+        await db.execute(select(func.count()).select_from(LedgerEntry))
+    ).scalar_one()
+    assert granted == 1
+    assert len(set(results)) == 1

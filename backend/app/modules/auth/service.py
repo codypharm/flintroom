@@ -9,11 +9,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.actors import ActorContext
 from app.core.errors import NotAuthenticated
 from app.core.logging import get_logger
 from app.modules.auth.models import AuthIdentity
 from app.modules.auth.oidc import ProviderIdentity
 from app.modules.billing.models import Account
+from app.modules.billing.service import LedgerService
 from app.modules.billing.tiers import FREE_TIER
 
 log = get_logger(__name__, tag="auth")
@@ -47,6 +49,10 @@ class AuthService:
 
         known = await self._identity(identity)
         if known is not None:
+            # Attempted on the returning path too, not only on sign-up. The
+            # grant is idempotent, so this costs one indexed read and repairs an
+            # account whose creation succeeded while its grant did not.
+            await self._ensure_free_minutes(known.user_id)
             return known.user_id
 
         user_id = await self._linked_by_email(identity)
@@ -84,17 +90,49 @@ class AuthService:
             # rolls back with it — including the account, so a lost race leaves
             # no orphan behind — and the winner's row is now readable.
             await self._db.rollback()
+            # Rollback undoes the transaction but leaves the objects we added
+            # pending in the session, so the next query autoflushes and tries
+            # the same doomed insert again. Everything this attempt built is
+            # being abandoned in favour of the winner's row, so it is discarded
+            # outright rather than left to resurface.
+            self._db.expunge_all()
+
             winner = await self._identity(identity)
             if winner is None:
                 raise
+
+            # Read out as a plain value immediately. Anything below may roll
+            # back its own transaction, and a rollback expires every object
+            # loaded in it — so a later attribute access would issue a refresh,
+            # autoflush on the way, and resurrect the very insert this branch
+            # exists to abandon.
+            winner_id = winner.user_id
+
             log.info(
                 "sign_in_race_lost",
-                user_id=str(winner.user_id),
+                user_id=str(winner_id),
                 provider=identity.provider,
             )
-            return winner.user_id
+            await self._ensure_free_minutes(winner_id)
+            return winner_id
 
+        await self._ensure_free_minutes(user_id)
         return user_id
+
+    async def _ensure_free_minutes(self, user_id: uuid.UUID) -> None:
+        """Product.md §4.4's 15 lifetime minutes, via the owning service.
+
+        Never written here directly: `CLAUDE.md` keeps every ledger movement
+        inside `LedgerService`, so that the one place answering "why is this
+        balance what it is" stays one place.
+
+        SYSTEM rather than USER. Nobody asked for these minutes — policy granted
+        them — and the audit question this actor field answers is "who moved
+        this balance", to which "the signup rule did" is the honest reply.
+        """
+        await LedgerService(
+            self._db, actor=ActorContext.system()
+        ).grant_signup_free_minutes(user_id=user_id)
 
     @staticmethod
     def _is_identity_violation(exc: IntegrityError) -> bool:

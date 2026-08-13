@@ -2,6 +2,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.actors import ActorContext
@@ -9,7 +10,10 @@ from app.core.errors import AccountNotFound
 from app.core.logging import get_logger
 from app.modules.billing.models import Account, LedgerEntry
 from app.modules.billing.schemas import Balance, Bucket, EntryReason, LedgerEntryRead
-from app.modules.billing.tiers import MONTHLY_ALLOWANCE_SECONDS
+from app.modules.billing.tiers import (
+    FREE_TIER_LIFETIME_SECONDS,
+    MONTHLY_ALLOWANCE_SECONDS,
+)
 
 _BUCKET_BALANCE_COLUMN = {
     Bucket.ALLOWANCE: "balance_allowance_seconds",
@@ -62,6 +66,58 @@ class LedgerService:
         )
         await self._db.commit()
         return self._balance_of(account)
+
+    async def grant_signup_free_minutes(self, *, user_id: uuid.UUID) -> None:
+        """The free tier's lifetime minutes, granted once per user ever.
+
+        Product.md §4.4: 15 minutes, one complete session, never renewed. Into
+        the free bucket rather than the allowance one, which is what stops
+        `ensure_current_period` from expiring them at a period boundary and what
+        makes "lifetime" true in code rather than only in the pricing page.
+
+        Idempotent by construction — the key is derived from the user, and
+        `idempotency_key` is globally unique, so a second grant cannot insert.
+        That makes it safe to attempt on *every* sign-in, which is deliberate:
+        a process that died between creating an account and granting its
+        minutes would otherwise leave a user permanently unable to start a
+        session, with no way to notice and no way to repair it. Attempting each
+        time turns that into something that fixes itself the next time they open
+        the app.
+        """
+        key = f"grant_free:{user_id}"
+        if await self._entry_exists(idempotency_key=key):
+            return
+
+        try:
+            await self.grant(
+                user_id=user_id,
+                bucket=Bucket.FREE,
+                seconds=FREE_TIER_LIFETIME_SECONDS,
+                reason=EntryReason.GRANT_FREE,
+                idempotency_key=key,
+            )
+        except IntegrityError:
+            # Two devices signing in for the first time at the same moment. The
+            # check above cannot see a sibling transaction's uncommitted row, so
+            # the unique index is what actually arbitrates — as it does for
+            # every other duplicate in this ledger.
+            await self._db.rollback()
+            log.info("free_grant_already_made", user_id=str(user_id))
+            return
+
+        log.info(
+            "free_grant_made",
+            user_id=str(user_id),
+            seconds=FREE_TIER_LIFETIME_SECONDS,
+        )
+
+    async def _entry_exists(self, *, idempotency_key: str) -> bool:
+        result = await self._db.execute(
+            select(LedgerEntry.id).where(
+                LedgerEntry.idempotency_key == idempotency_key
+            )
+        )
+        return result.first() is not None
 
     async def charge_tick(
         self,
