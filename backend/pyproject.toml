@@ -38,6 +38,15 @@ dev = [
     # would leave the contract unreadable in a diff — and reading it in a diff
     # is the entire reason it is committed rather than served.
     "pyyaml>=6.0",
+    # A server to run the API with. Absent until now because every test drives
+    # the app through `httpx.AsyncClient` in-process, so nothing had ever
+    # actually served it — which meant `uv run uvicorn` failed with "no such
+    # file" rather than with anything about configuration.
+    #
+    # A dev dependency, not a runtime one: what serves the app in production is
+    # a deployment decision (see `docs/deployment.md`), and pinning a server
+    # into the application's own dependencies pre-empts it.
+    "uvicorn[standard]>=0.32",
 ]
 
 [tool.pytest.ini_options]

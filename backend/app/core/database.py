@@ -1,4 +1,3 @@
-import os
 from collections.abc import AsyncIterator
 from datetime import datetime
 
@@ -17,22 +16,18 @@ class Base(DeclarativeBase):
     """Declarative base for every Flintroom ORM model."""
 
 
-def create_engine(url: str | None = None) -> AsyncEngine:
+def create_engine(url: str) -> AsyncEngine:
     """The process's connection pool.
 
-    Read from the environment rather than a settings object because there is no
-    settings module yet, and inventing one means choosing a configuration
-    library — a dependency decision that belongs to the human, not to this
-    function needing a connection string.
+    Handed the URL rather than looking one up. It used to read `os.getenv`
+    itself, on the grounds that there was no settings module yet — there is one
+    now, and the reading it was doing never saw `.env`, so a connection string
+    configured there was accepted by the file and ignored by the process.
 
-    Fails at startup if unset. A process that boots without a database and
-    discovers it on the first sweep looks healthy to every deploy check while
-    silently billing nobody.
+    Required, with no fallback, so that the one place a missing database is
+    caught is the one place that validates every other variable too.
     """
-    resolved = url or os.getenv("DATABASE_URL")
-    if not resolved:
-        raise RuntimeError("DATABASE_URL is not set")
-    return create_async_engine(resolved)
+    return create_async_engine(url)
 
 
 async def get_db(request: Request) -> AsyncIterator[AsyncSession]:

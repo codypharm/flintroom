@@ -12,14 +12,51 @@ delete, because nobody can tell which entries are still load-bearing.
 
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class ConfigurationError(RuntimeError):
+    """Configuration that cannot be used, described without being quoted.
+
+    Raised instead of letting pydantic's own `ValidationError` reach a terminal.
+    That one renders `input_value=`, and for a missing field the input value is
+    the *entire* settings dict — so the default behaviour prints the signing key
+    and the provider API key at the moment an operator is most likely to be
+    watching the logs, and into whatever aggregates them afterwards.
+    """
+
+
+def _describe(error: ValidationError) -> str:
+    """Which fields are wrong and how, and nothing about what they contain.
+
+    `loc` and `msg` only. Pydantic also offers the offending input, which is the
+    part that must never be repeated — a message that quotes the value is a
+    message that cannot be logged, and one that names no field cannot be acted
+    on. Both halves of that are required at once.
+    """
+    problems = ", ".join(
+        f"{'.'.join(str(part) for part in item['loc'])} ({item['msg']})"
+        for item in error.errors(include_url=False, include_input=False)
+    )
+    return f"configuration is invalid: {problems}"
 
 
 class Settings(BaseSettings):
     """Read from the environment, and from a local `.env` that is never committed."""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    #: Where the database is. Declared here rather than read by `create_engine`
+    #: through `os.getenv`, which is what it used to do — and which never saw
+    #: `.env`, because pydantic reads that file only for the fields on this
+    #: class. A `DATABASE_URL=` line was therefore accepted by the file, ignored
+    #: by the code, and reported at startup as simply not set.
+    #:
+    #: No default. A process that boots without a database and discovers it on
+    #: the first sweep looks healthy to every deploy check while silently
+    #: billing nobody.
+    database_url: str = Field(min_length=1)
 
     #: Signs our own access tokens. Required, with no default — a signing key
     #: that falls back to a literal is a key that ships, and every deployment
@@ -51,6 +88,25 @@ class Settings(BaseSettings):
     #: boot; if that becomes the more expensive end, make these required.
     elevenlabs_api_key: str | None = None
     elevenlabs_agent_id: str | None = None
+
+    def __init__(self, **values: object) -> None:
+        """Fail as `ConfigurationError`, carrying nothing underneath it.
+
+        The re-raise deliberately happens *after* the `except` block rather than
+        inside it. Inside, Python would attach the original as `__context__`
+        even with `from None` — suppressed in a printed traceback, but still
+        reachable by anything that walks the chain itself, which log formatters
+        do. Outside, there is no exception being handled and nothing to attach.
+        """
+        problems: str | None = None
+
+        try:
+            super().__init__(**values)
+        except ValidationError as error:
+            problems = _describe(error)
+
+        if problems is not None:
+            raise ConfigurationError(problems)
 
 
 @lru_cache

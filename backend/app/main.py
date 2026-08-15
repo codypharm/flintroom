@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if app.state.voice_provider is None:
         log.warning("voice_provider_unconfigured")
 
-    engine = create_engine()
+    engine = create_engine(settings.database_url)
     session_factory = create_session_factory(engine)
     # Requests take their session from here via `get_db`. Built once, and by
     # the same scope that disposes of the engine.

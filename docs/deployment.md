@@ -93,6 +93,30 @@ deployment that sets them properly needs no file — but a process started from
 the repository root with only a file to read will boot with nothing configured
 and fail on the first request that needs a secret.
 
+**Only fields declared on `Settings` are read from that file.** This is not a
+general dotenv loader: nothing puts `.env` into the process environment, so a
+variable read through `os.getenv` will be present in the file and absent from
+the process. `DATABASE_URL` was exactly that until it became a field, and the
+symptom was the worst available one — the file said it was configured and the
+process said it was not set. Anything new that belongs in `.env` belongs on
+`Settings`.
+
+Alembic is the remaining exception, and deliberately: `migrations/env.py` reads
+the environment directly, so migrations do not require a signing key or a set of
+OAuth client IDs to run. It follows that `.env` does *not* configure a migration
+— export the variable, or pass `uv run --env-file .env`.
+
+## The app is a factory, so serve it as one
+
+```bash
+uv run python -m uvicorn app.main:create_app --factory
+```
+
+`create_app()` is not a module-level `app`, because `configure_logging()`
+replaces the root handlers and belongs to the lifespan rather than to anything
+that runs on import. `uvicorn app.main:app` therefore fails with *Attribute
+"app" not found*, which reads like a missing file rather than a missing flag.
+
 ## Still open
 
 - **Recording retention is undocumented and unimplemented.** App Store review
