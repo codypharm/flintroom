@@ -37,14 +37,34 @@ for patchfile in patches/*.patch; do
     continue
   fi
 
-  # A reverse dry-run succeeds only when the patch is already in place, which
-  # makes this idempotent without `-N` — whose exit codes cannot distinguish
-  # "already applied" from "did not apply".
-  if patch -p1 -R --dry-run -f -d "$target" <"$patchfile" >/dev/null 2>&1; then
+  # Three states, not two. The first version of this script tested only
+  # "already applied?" and force-applied otherwise — which on a *partially*
+  # applied tree made `patch` prompt ("Reversed (or previously applied) patch
+  # detected! Assume -R?"), answer itself from the patch file arriving on
+  # stdin, and reverse the hunks that were correctly in place. It then exited 0.
+  # That is how the recorder half of this patch went missing while the player
+  # half survived, and it would have flip-flopped on every run.
+  #
+  # `--batch -f` on every invocation, including the dry runs: a script that can
+  # stop and ask a question is a script that will answer itself with whatever
+  # happens to be on stdin.
+  if patch -p1 -R --dry-run --batch -f -d "$target" <"$patchfile" >/dev/null 2>&1; then
     echo "apply-patches: $package already patched"
     continue
   fi
 
-  patch -p1 -d "$target" <"$patchfile"
+  if ! patch -p1 --dry-run --batch -f -d "$target" <"$patchfile" >/dev/null 2>&1; then
+    # Neither cleanly applied nor cleanly appliable: some hunks are in and some
+    # are out. There is no safe automatic move from here — applying reverses the
+    # good hunks, reversing loses the rest — so stop and say so. A failed
+    # install is recoverable; a half-patched audio stack is a bug report about
+    # the panel talking over itself three weeks from now.
+    echo "apply-patches: $package is partially patched — refusing to guess." >&2
+    echo "  Restore it with:" >&2
+    echo "    rm -rf $target && npm install" >&2
+    exit 1
+  fi
+
+  patch -p1 --batch -f -d "$target" <"$patchfile"
   echo "apply-patches: patched $package"
 done

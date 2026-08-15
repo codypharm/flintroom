@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!--
+    Changing the audio mode and the output device both require this. It is a
+    normal permission, not a dangerous one: granted at install, with no runtime
+    prompt and nothing for the user to refuse. Declared here rather than in the
+    app manifest so the requirement travels with the code that needs it.
+  -->
+  <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+</manifest>

@@ -138,3 +138,32 @@ export function hasEcho(
 
   return duringPlaybackDbfs - noiseFloorDbfs >= ECHO_OVER_FLOOR_DB;
 }
+
+export type Verdict = 'go' | 'no-go' | 'inconclusive';
+
+/**
+ * The verdict, including the case where there is nothing to judge.
+ *
+ * `hasEcho` answers a yes/no question and therefore cannot say "I did not
+ * measure anything" — with no buffers, every level defaults to the silence
+ * floor, a gated-quiet room looks exactly like a perfectly cancelled one, and
+ * the honest answer and the wrong answer are the same value.
+ *
+ * That is not hypothetical. A run whose input stream was stolen by an audio
+ * routing change delivered zero buffers and the screen printed **GO** — the
+ * most dangerous output this instrument can produce, because the whole point of
+ * it is to be believed.
+ */
+export function verdict(
+  noiseFloorDbfs: number,
+  duringPlaybackDbfs: number,
+  buffers: { silent: number; playback: number }
+): Verdict {
+  // Both phases, because the verdict is a comparison between them and half a
+  // run is not half an answer.
+  if (buffers.silent === 0 || buffers.playback === 0) {
+    return 'inconclusive';
+  }
+
+  return hasEcho(noiseFloorDbfs, duringPlaybackDbfs) ? 'no-go' : 'go';
+}

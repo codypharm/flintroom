@@ -90,6 +90,48 @@ The residual −44.9 dBFS sits within 0.1 dB of the absolute threshold in
 `hasEcho`, which is a judgement rather than a measurement. The method cannot
 resolve further: re-running lands either side of the bar on noise alone.
 
+## The 34.7 dB is not all cancellation
+
+Found on 2026-08-15, by a human noticing the panel sounded quiet and saying so.
+`dumpsys audio`, taken straight after a run:
+
+```
+STREAM_VOICE_CALL:  streamVolume:15 (of 15)   Devices: earpiece(1)
+STREAM_MUSIC:       streamVolume:8  (of 15)   Devices: speaker(2)
+```
+
+Volume was already at maximum. It sounded quiet because declaring
+`Usage::VoiceCommunication` on the player **moved playback off the loudspeaker
+and onto the earpiece** — the slit at the top of the handset, pointing at the
+ceiling with the phone flat on a desk.
+
+So the two patched runs changed two things at once, and the table above credits
+both to cancellation. Some of the 34.7 dB is the platform subtracting a
+reference; some is simply the loud speaker no longer being used. How that splits
+is not knowable from these numbers.
+
+It also means the figure does not describe this product. Flintroom is a phone
+lying on a desk talking hands-free; earpiece playback is not a quieter version
+of that, it is a different thing. The residual captured this way reads
+−69.7 dBFS overall with three full seconds of exact digital silence, which would
+pass any VAD test and prove nothing.
+
+**Routing is not something `react-native-audio-api` can express.** `SessionOptions`
+is iOS-only, there is no output-device or audio-mode call anywhere in its API,
+and its Kotlin touches `AudioManager` solely for focus, media session and
+volume. The app therefore stays in `MODE_NORMAL`, where a `VOICE_COMMUNICATION`
+stream routes to the earpiece by design — working as documented, and wrong for
+us.
+
+The fix is `setMode(MODE_IN_COMMUNICATION)` plus
+`setCommunicationDevice(TYPE_BUILTIN_SPEAKER)`: speakerphone, which is the
+configuration the product actually ships in and the one Android's AEC is most
+thoroughly tuned for. It lives in a module we own rather than in `patches/`,
+because which speaker the panel comes out of is app policy and has to outlive
+whichever audio library is underneath it. See task #26.
+
+Until that lands, **treat every number above as provisional.**
+
 ## Settled by the same run
 
 **The recorder returns the sample rate it is asked for.** 16000 Hz requested,
@@ -106,10 +148,9 @@ contract. This closes task #18.
   for. Answering it needs the end-to-end run task #17 originally specified:
   play panel audio, watch whether `vad_score` crosses 0.5. That test is now
   worth its cost, which it was not while the answer was 30 dB of obvious echo.
-- **`MODE_IN_COMMUNICATION` is untried.** Android's platform AEC is documented
-  to engage fully when `AudioManager` is in communication mode, which the
-  library never sets. It is the next lever if the residual proves too loud, and
-  it needs a Kotlin-side patch rather than a C++ one.
+- **`MODE_IN_COMMUNICATION` is untried,** and is now known to be a prerequisite
+  rather than a further lever — without it, playback is on the wrong speaker and
+  the measurement is not of our configuration. Task #26.
 - **The test signal is harsher than a panelist.** A 0.9-amplitude harmonic stack
   under a 4 Hz envelope is a deliberately unkind input. Real speech has gaps and
   a lower crest factor, so the residual against real panel audio is likely

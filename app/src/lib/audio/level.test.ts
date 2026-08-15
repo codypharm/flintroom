@@ -5,6 +5,7 @@ import {
   median,
   rms,
   toDbfs,
+  verdict,
 } from './level';
 
 /**
@@ -150,5 +151,36 @@ describe('echoAboveFloorDb', () => {
     // What a working AEC looks like: the mic hears no more during playback than
     // it did in silence.
     expect(echoAboveFloorDb(0.002, 0.002)).toBeCloseTo(0, 6);
+  });
+});
+
+describe('verdict', () => {
+  it('refuses to decide when the recorder delivered nothing', () => {
+    // The failure that produced this test: a run where the input stream was
+    // stolen mid-session delivered zero buffers, every level defaulted to the
+    // -120 floor, `hasEcho` saw a quiet room and the screen printed **GO**. A
+    // measurement instrument that reports a pass when it measured nothing is
+    // worse than one that crashes.
+    expect(verdict(-120, -120, { silent: 0, playback: 0 })).toBe('inconclusive');
+  });
+
+  it('refuses when only one phase recorded', () => {
+    // Half a run is not half an answer. Whichever phase is missing, the
+    // comparison the verdict rests on was never made.
+    expect(verdict(-57, -26, { silent: 10, playback: 0 })).toBe('inconclusive');
+    expect(verdict(-57, -26, { silent: 0, playback: 10 })).toBe('inconclusive');
+  });
+
+  it('says no-go when echo lifts a real floor', () => {
+    expect(verdict(-57.3, -26.6, { silent: 40, playback: 40 })).toBe('no-go');
+  });
+
+  it('says go when playback stays down against a real floor', () => {
+    expect(verdict(-57.3, -56.0, { silent: 40, playback: 40 })).toBe('go');
+  });
+
+  it('judges a gated floor on the absolute level instead', () => {
+    expect(verdict(-120, -10.2, { silent: 39, playback: 40 })).toBe('no-go');
+    expect(verdict(-120, -60.0, { silent: 39, playback: 40 })).toBe('go');
   });
 });

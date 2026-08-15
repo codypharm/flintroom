@@ -14,14 +14,15 @@ import {
   ECHO_ABSOLUTE_DBFS,
   ECHO_OVER_FLOOR_DB,
   echoAboveFloorDb,
-  hasEcho,
   isGatedFloor,
   median,
   rms,
   toDbfs,
+  verdict,
 } from '@/lib/audio/level';
 import { PANEL_SPEECH_BASE64 } from '@/lib/audio/panelSpeech';
 import { fromPcm16, resampleLinear } from '@/lib/audio/pcm';
+import { enterHandsFree, leaveHandsFree } from '../../modules/audio-routing';
 
 /**
  * The echo go/no-go spike (task #17), run on a real device.
@@ -54,7 +55,7 @@ const PHASE_SECONDS = 4;
 /** Let the speaker and any AGC settle before believing what the mic reports. */
 const SETTLE_SECONDS = 0.75;
 
-// Both thresholds come from `lib/audio/level`, which is also what `hasEcho`
+// Both thresholds come from `lib/audio/level`, which is also what `verdict`
 // judges by. Restating them here would let the screen print a bar the verdict
 // did not actually use — which is how a reader talks themselves into the
 // wrong conclusion about the one risk gating the audio layer.
@@ -185,6 +186,11 @@ export default function EchoSpikeScreen() {
         iosOptions: ['defaultToSpeaker', 'allowBluetoothHFP'],
       });
 
+      // The Android half of the same sentence, and the reason the first two
+      // patched runs are void: without it the phone routes panel audio to the
+      // earpiece and the measurement is of a device the product never uses.
+      await enterHandsFree();
+
       const recorder = new AudioRecorder();
       recorder.onAudioReady(
         {
@@ -242,6 +248,12 @@ export default function EchoSpikeScreen() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
       setPhase('error');
+    } finally {
+      // In `finally` because the audio mode is process-wide and outlives this
+      // screen. A run that throws halfway would otherwise leave the whole app
+      // in communication mode, and the symptom — the volume rocker adjusting
+      // the wrong stream — shows up nowhere near the cause.
+      leaveHandsFree();
     }
   }, []);
 
@@ -276,6 +288,8 @@ export default function EchoSpikeScreen() {
         iosMode: 'voiceChat',
         iosOptions: ['defaultToSpeaker', 'allowBluetoothHFP'],
       });
+
+      await enterHandsFree();
 
       const recorder = new AudioRecorder();
       // WAV because it is the one format that needs no FFmpeg backend, and this
@@ -320,6 +334,8 @@ export default function EchoSpikeScreen() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
       setPhase('error');
+    } finally {
+      leaveHandsFree();
     }
   }, []);
 
@@ -377,34 +393,65 @@ export default function EchoSpikeScreen() {
 
         {error && <Text style={styles.error}>{error}</Text>}
 
-        {report && (
-          <View style={styles.report}>
-            <Text style={[styles.verdict, { color: colors.text }]}>
-              {hasEcho(report.noiseFloorDbfs, report.playbackDbfs)
-                ? 'NO-GO'
-                : 'GO'}
-            </Text>
-            <Text style={[styles.figure, { color: colors.text }]}>
-              During playback: {report.playbackDbfs.toFixed(1)} dBFS
-            </Text>
-            <Text style={[styles.body, { color: colors.text }]}>
-              Noise floor {report.noiseFloorDbfs.toFixed(1)} dBFS
-              {isGatedFloor(report.noiseFloorDbfs)
-                ? ' — gated to digital silence by noise suppression, so the ratio below is not meaningful and the verdict uses the absolute level above.'
-                : `, so playback sits ${report.echoDb.toFixed(1)} dB above it.`}
-            </Text>
-            <Text style={[styles.body, { color: colors.text }]}>
-              Recorder returned {report.observedSampleRate} Hz (asked for{' '}
-              {RECORD_SAMPLE_RATE}). Buffers: {report.buffersSilent} silent,{' '}
-              {report.buffersPlayback} playing.
-            </Text>
-            <Text style={[styles.body, { color: colors.text }]}>
-              {isGatedFloor(report.noiseFloorDbfs)
-                ? `Fails above ${ECHO_ABSOLUTE_DBFS} dBFS. Noise suppression has removed the floor, so the only question left is whether what the mic still hears is loud enough to read as speech.`
-                : `Fails at ${ECHO_OVER_FLOOR_DB} dB above the floor. A working canceller leaves this near zero; tens of dB up means the mic is hearing the speaker and the panel will interrupt itself.`}
-            </Text>
-          </View>
-        )}
+        {report &&
+          (() => {
+            const decision = verdict(
+              report.noiseFloorDbfs,
+              report.playbackDbfs,
+              { silent: report.buffersSilent, playback: report.buffersPlayback }
+            );
+
+            // Reported separately rather than as a third colour on the same
+            // verdict, because the levels below it are meaningless when nothing
+            // was recorded and printing them next to a word like GO is how a
+            // broken run gets believed.
+            if (decision === 'inconclusive') {
+              return (
+                <View style={styles.report}>
+                  <Text style={[styles.verdict, { color: colors.text }]}>
+                    NO DATA
+                  </Text>
+                  <Text style={[styles.body, { color: colors.text }]}>
+                    The recorder delivered {report.buffersSilent} buffers in
+                    silence and {report.buffersPlayback} during playback, so
+                    there is nothing to compare and no verdict to give.
+                  </Text>
+                  <Text style={[styles.body, { color: colors.text }]}>
+                    Usually the input stream was disconnected by an audio
+                    routing change — check logcat for
+                    AAUDIO_SERVICE_EVENT_DISCONNECTED.
+                  </Text>
+                </View>
+              );
+            }
+
+            return (
+              <View style={styles.report}>
+                <Text style={[styles.verdict, { color: colors.text }]}>
+                  {decision === 'no-go' ? 'NO-GO' : 'GO'}
+                </Text>
+                <Text style={[styles.figure, { color: colors.text }]}>
+                  During playback: {report.playbackDbfs.toFixed(1)} dBFS
+                </Text>
+                <Text style={[styles.body, { color: colors.text }]}>
+                  Noise floor {report.noiseFloorDbfs.toFixed(1)} dBFS
+                  {isGatedFloor(report.noiseFloorDbfs)
+                    ? ' — gated to digital silence by noise suppression, so the ratio below is not meaningful and the verdict uses the absolute level above.'
+                    : `, so playback sits ${report.echoDb.toFixed(1)} dB above it.`}
+                </Text>
+                <Text style={[styles.body, { color: colors.text }]}>
+                  Recorder returned {report.observedSampleRate} Hz (asked for{' '}
+                  {RECORD_SAMPLE_RATE}). Buffers: {report.buffersSilent} silent,{' '}
+                  {report.buffersPlayback} playing.
+                </Text>
+                <Text style={[styles.body, { color: colors.text }]}>
+                  {isGatedFloor(report.noiseFloorDbfs)
+                    ? `Fails above ${ECHO_ABSOLUTE_DBFS} dBFS. Noise suppression has removed the floor, so the only question left is whether what the mic still hears is loud enough to read as speech.`
+                    : `Fails at ${ECHO_OVER_FLOOR_DB} dB above the floor. A working canceller leaves this near zero; tens of dB up means the mic is hearing the speaker and the panel will interrupt itself.`}
+                </Text>
+              </View>
+            );
+          })()}
       </ScrollView>
     </SafeAreaView>
   );
