@@ -36,6 +36,7 @@ way of the number we came to measure.
 from __future__ import annotations
 
 import argparse
+import array
 import asyncio
 import json
 import statistics
@@ -528,9 +529,124 @@ async def sweep(*, api_key: str, agent_id: str, utterances: list[bytes]) -> int:
     return 0
 
 
+def read_residual(path: Path) -> bytes:
+    """A recording from the phone, as PCM16 at 16 kHz mono.
+
+    The phone writes whatever rate its capture stream negotiated, which is not
+    necessarily the rate the callback was asked for, so the file is converted
+    here rather than assumed. Linear interpolation is crude and entirely
+    adequate: this audio exists to be judged by a voice-activity detector, not
+    listened to, and any resampler artefact is far below the echo residual it is
+    carrying.
+    """
+    with wave.open(str(path)) as audio:
+        channels, rate, width = (
+            audio.getnchannels(),
+            audio.getframerate(),
+            audio.getsampwidth(),
+        )
+        frames = audio.readframes(audio.getnframes())
+
+    if width != BYTES_PER_SAMPLE:
+        raise SystemExit(f"{path.name} is {width * 8}-bit; expected 16")
+
+    samples = array.array("h")
+    samples.frombytes(frames)
+
+    if channels > 1:
+        samples = array.array("h", samples[::channels])
+
+    if rate != SAMPLE_RATE:
+        ratio = rate / SAMPLE_RATE
+        resampled = array.array("h")
+        for i in range(int(len(samples) / ratio)):
+            at = i * ratio
+            low = int(at)
+            high = min(low + 1, len(samples) - 1)
+            weight = at - low
+            resampled.append(
+                int(samples[low] * (1 - weight) + samples[high] * weight)
+            )
+        samples = resampled
+
+    print(f"residual  : {path.name}, {rate} Hz {channels}ch → {SAMPLE_RATE} Hz mono")
+    print(f"            {len(samples) / SAMPLE_RATE:.1f}s\n")
+    return samples.tobytes()
+
+
+async def echo_verdict(*, api_key: str, agent_id: str, pcm: bytes) -> int:
+    """Does the echo residual read as speech to their VAD?
+
+    The question `docs/echo-cancellation.md` could not answer with a level. The
+    acoustic spike measured −44.9 dBFS of residual and stopped a tenth of a
+    decibel from a threshold that was a judgement, not a measurement. This asks
+    the only party whose opinion decides the product: their voice-activity
+    detector.
+
+    The answer is unambiguous because `vad_score` is bimodal — 0.00 or 1.00,
+    nothing between (`docs/voice-latency.md`). A single sample at or above
+    SPEECH_THRESHOLD means the panel would interrupt itself.
+
+    Nothing is *said* here. The audio streamed is what the microphone heard
+    while the panel was speaking and the user was silent, so any speech the
+    provider detects in it is our own voice coming back.
+    """
+    observations = Observations()
+    provider = ElevenLabsProvider(
+        api_key=api_key, agent_id=agent_id, connect=_tee(observations, signed_url=None)
+    )
+
+    async with provider.open() as channel:
+        queue: asyncio.Queue = asyncio.Queue()
+        reader = asyncio.create_task(consume(channel, queue))
+        microphone = Microphone(channel)
+        mic = asyncio.create_task(microphone.run())
+        try:
+            item = await next_event(queue, timeout=TURN_TIMEOUT)
+            if item is None or not isinstance(item[1], ChannelReady):
+                print(f"no channel_ready — got {item[1] if item else 'nothing'}")
+                return 2
+
+            await microphone.say(pcm)
+            # Their scores arrive on their own cadence, and the last frames of
+            # the residual have not been judged the moment they are sent.
+            await asyncio.sleep(QUIET_GAP)
+        finally:
+            mic.cancel()
+            reader.cancel()
+
+    scores = [score for _, score in observations.vad]
+    speech = [(at, score) for at, score in observations.vad if score >= SPEECH_THRESHOLD]
+
+    print(f"vad frames: {len(scores)}")
+    print(f"peak score: {max(scores, default=0.0):.2f}  (speech at ≥{SPEECH_THRESHOLD})")
+
+    if not scores:
+        print("\nno vad_score frames — inconclusive, not a pass")
+        return 2
+
+    if speech:
+        first = speech[0][0]
+        print(f"\nNO-GO — read as speech {len(speech)}×, first at {first:.1f}s")
+        print("The panel would interrupt itself. The residual is too loud.")
+        return 1
+
+    print("\nGO — the residual never read as speech")
+    print("Echo cancellation is sufficient on this handset.")
+    return 0
+
+
 async def run(args: argparse.Namespace) -> int:
     api_key = read_env("ELEVENLABS_API_KEY")
     agent_id = read_env("ELEVENLABS_AGENT_ID")
+
+    if args.residual:
+        return await echo_verdict(
+            api_key=api_key,
+            agent_id=agent_id,
+            pcm=read_residual(Path(args.residual)),
+        )
+
     utterances = [utterance(text, voice=args.voice) for text in UTTERANCES[: args.turns]]
     speech = sum(len(pcm) for pcm in utterances) / (SAMPLE_RATE * BYTES_PER_SAMPLE)
     print(f"utterances: {len(utterances)}, {speech:.1f}s of speech per run\n")
@@ -558,6 +674,9 @@ def main() -> None:
     parser.add_argument("--sweep", action="store_true",
                         help="compare turn-detection settings; restores the agent afterwards")
     parser.add_argument("--voice", default=None, help="a `say` voice name")
+    parser.add_argument("--residual", default=None, metavar="WAV",
+                        help="judge a recording from the phone: does the echo "
+                             "residual read as speech? (task #17)")
     args = parser.parse_args()
     args.turns = max(1, min(args.turns, len(UTTERANCES)))
     sys.exit(asyncio.run(run(args)))

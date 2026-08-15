@@ -1,0 +1,38 @@
+diff --git a/android/src/main/cpp/audioapi/android/core/AndroidAudioRecorder.cpp b/android/src/main/cpp/audioapi/android/core/AndroidAudioRecorder.cpp
+index adb0512..0078ade 100644
+--- a/android/src/main/cpp/audioapi/android/core/AndroidAudioRecorder.cpp
++++ b/android/src/main/cpp/audioapi/android/core/AndroidAudioRecorder.cpp
+@@ -69,11 +69,12 @@ Result<NoneType, std::string> AndroidAudioRecorder::openAudioStream() {
+   }
+ 
+   oboe::AudioStreamBuilder builder;
+-  builder.setSharingMode(oboe::SharingMode::Exclusive)
++  builder.setSharingMode(oboe::SharingMode::Shared)
+       ->setDirection(oboe::Direction::Input)
+       ->setFormat(oboe::AudioFormat::Float)
+       ->setFormatConversionAllowed(true)
+-      ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
++      ->setInputPreset(oboe::InputPreset::VoiceCommunication)
++      ->setPerformanceMode(oboe::PerformanceMode::None)
+       ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium)
+       ->setDataCallback(shared_from_this())
+       ->setErrorCallback(shared_from_this());
+diff --git a/android/src/main/cpp/audioapi/android/core/AudioPlayer.cpp b/android/src/main/cpp/audioapi/android/core/AudioPlayer.cpp
+index 76c51aa..521b733 100644
+--- a/android/src/main/cpp/audioapi/android/core/AudioPlayer.cpp
++++ b/android/src/main/cpp/audioapi/android/core/AudioPlayer.cpp
+@@ -31,10 +31,12 @@ AudioPlayer::AudioPlayer(
+ bool AudioPlayer::openAudioStream() {
+   AudioStreamBuilder builder;
+ 
+-  builder.setSharingMode(SharingMode::Exclusive)
++  builder.setSharingMode(SharingMode::Shared)
+       ->setFormat(AudioFormat::Float)
+       ->setFormatConversionAllowed(true)
+-      ->setPerformanceMode(PerformanceMode::LowLatency)
++      ->setUsage(Usage::VoiceCommunication)
++      ->setContentType(ContentType::Speech)
++      ->setPerformanceMode(PerformanceMode::None)
+       ->setChannelCount(channelCount_)
+       ->setSampleRateConversionQuality(SampleRateConversionQuality::Medium)
+       ->setFramesPerDataCallback(RENDER_QUANTUM_SIZE)

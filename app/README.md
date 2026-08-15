@@ -12,6 +12,7 @@ need a development build — your own binary, containing our native modules.
 ```bash
 npm install
 npx expo run:ios --device      # once, and after any native dependency change
+npx expo run:android --device  # ditto, for Android
 ```
 
 After that, the daily loop is:
@@ -26,6 +27,32 @@ TypeScript does not need one.
 
 Because the phone is a different machine, the API base URL must be your
 development machine's LAN address. `localhost` on the phone means the phone.
+
+## Android needs JDK 17, not the one Android Studio ships
+
+Android Studio bundles its own JDK and points `JAVA_HOME` at it. On current
+versions that is **JDK 25, which cannot build this project**:
+
+```bash
+export JAVA_HOME="/opt/homebrew/opt/openjdk@17"   # brew install openjdk@17
+```
+
+JDK 24 introduced JEP 472, restricting native access. That breaks Android
+Gradle Plugin's *CMake configuration* step, so the build dies only on modules
+with C++ — here `react-native-screens` and `react-native-worklets` — after
+eleven minutes of successful Kotlin compilation, with the unhelpful message
+`WARNING: A restricted method in java.lang.System has been called`. Nothing in
+it names the JDK, and the modules it names are innocent.
+
+The first build also needs `ANDROID_HOME` (`~/Library/Android/sdk`); Gradle
+downloads the missing SDK platforms, build-tools and NDK itself.
+
+To build only for the ABI a real phone uses, cutting the C++ compile roughly
+fourfold:
+
+```bash
+./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a
+```
 
 ## Tests
 
