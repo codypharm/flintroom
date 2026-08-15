@@ -209,50 +209,80 @@ free here by construction since originals are deleted and thumbnails are tiny.
 Pages extracted and materials stored are different nouns, and only one of them
 costs money.
 
-**Two controls, doing two different jobs.** A single daily number cannot do
-both — rehearsal is bursty by the same logic that put the minutes allowance on a
+**Four controls, doing three different jobs.** A single number cannot do them
+all — rehearsal is bursty by the same logic that put the minutes allowance on a
 monthly reset, so a ceiling loose enough for a real preparation evening is
 catastrophic if drawn every day for a month.
 
-| Control | Where | Varies by tier | Job |
-| --- | --- | --- | --- |
-| Monthly page budget | `billing/tiers.py` | **Yes** | Protects margin, which is measured monthly |
-| Daily page ceiling | `Settings` | No | Stops a runaway — a loop, a bug, a script |
-| Max pages per material | `Settings` | No | A 500-page PDF is a parsing problem at any price |
-| Max upload bytes | `Settings` | No | Memory during render, and mobile upload reality |
+| Control | Where | Per tier | Published | Job |
+| --- | --- | --- | --- | --- |
+| Max pages per material | `billing/tiers.py` | **Yes** | **Yes — tier cards** | Sells the upgrade, at the one moment a buyer can answer it |
+| Max upload bytes | `billing/tiers.py` | **Yes** | **Yes — tier cards** | Same, plus memory and mobile-upload reality |
+| Monthly page budget | `billing/tiers.py` | **Yes** | No | Protects margin, which is measured monthly |
+| Daily page ceiling | `Settings` | No | No | Stops a runaway — a loop, a bug, a script |
 
-The budget goes beside `MONTHLY_ALLOWANCE_SECONDS`, whose docstring already
-states the terms this inherits: *"policy, not arithmetic — they move when pricing
-moves, and pricing cannot move without the §4.3 cost-instrumentation task behind
-it."*
+All three per-tier figures go beside `MONTHLY_ALLOWANCE_SECONDS`, whose docstring
+already states the terms they inherit: *"policy, not arithmetic — they move when
+pricing moves, and pricing cannot move without the §4.3 cost-instrumentation task
+behind it."*
+
+```
+                 per file        upload      extraction budget
+free             20 pages         10 MB      100 pages LIFETIME
+starter         100 pages         25 MB      600 pages/month
+pro             300 pages        100 MB     1200 pages/month
+teams           100 pages         25 MB      600 pages/seat/month
+
+DAILY_PAGE_CEILING = 200          (Settings, uniform)
+```
+
+### Why the per-file cap is the published one
+
+The monthly budget is the number that protects margin, and it is exactly the
+wrong number to advertise: **nobody can estimate their own monthly page volume at
+signup.** A buyer can answer "how big is my deck" instantly, so the per-file cap
+is legible at the moment the upsell has to land, and the monthly budget is not.
+
+§4.6 endorses this shape — *"lead with the largest honest unit"* — and its warning
+against rationing is about a **depleting counter in the app**, not a quantity on a
+tier card. "3 hours of interrogation" is already such a quantity.
+
+Publishing the per-file cap also leaves §4.4 intact. *"Unlimited material
+storage"* is about how **many** materials you may keep, not how large each one is,
+and the count stays genuinely unlimited. Publishing the monthly budget is what
+would have contradicted it.
+
+**The monthly budget and daily ceiling stay unpublished**, in the same category as
+§4.7's existing *"per-account daily spend ceiling as a runaway-cost circuit
+breaker"* — a safeguard, not an entitlement. Real use is 40–80 pages a month
+against 600 allowed, so no legitimate user meets them, and leaving them
+unpublished keeps them a dial rather than a promise. That matters because they
+rest on an unverified ~$0.01/page: publishing a number derived from an estimate
+converts it into something that cannot be tightened without notifying customers.
+
+Worst case at Pro is roughly $12 a month against $29.90 of margin, on that same
+unverified figure. It is the weakest number in this document, and the reason every
+limit here is provisional: tighten them against observed `extraction_costs`, not
+against this paragraph.
+
+### Two consequences of publishing per-tier caps
+
+**The presign needs the caller's tier.** Validation happens before the presigned
+URL is issued, so the upload path now reads `Account.entitlement_tier` — it is no
+longer a pure function of the file. Cheap, since it is a column on a row the
+request already touches.
+
+**Refusing an oversized upload is a legitimate paywall, and the only one here.**
+CLAUDE.md forbids interrupting a *live session* to show a paywall; this is a
+pre-session refusal on a published limit the user chose their plan against, which
+is a different thing entirely. It should name the tier that would accept the file
+and offer the upgrade. Do not let this precedent drift toward the forbidden case.
 
 **The free tier's budget is lifetime, not monthly.** Its minutes already are —
 `FREE_TIER_LIFETIME_SECONDS`, granted once, deliberately absent from the monthly
 table. A renewing page budget on a tier with no renewing minutes turns the free
 tier into an unlimited extraction faucet: sign up, never start a session, extract
 decks forever at our cost with no metered minute ever consumed.
-
-```
-free      100 pages  LIFETIME
-starter   600 pages/month
-pro      1200 pages/month
-teams     600 pages/seat/month
-
-MAX_PAGES_PER_MATERIAL = 100
-MAX_UPLOAD_BYTES       = 25 MB
-DAILY_PAGE_CEILING     = 200
-```
-
-**Set as an invisible backstop, not a stated entitlement.** Real use is on the
-order of 40–80 pages a month, so no legitimate user meets these. Nothing is shown
-in the UI — a visible page budget would contradict §4.4's *"unlimited material
-storage"* in spirit, and a counter of any kind runs into the rule against
-depleting counters. Exceeding it is an error, never a paywall.
-
-Worst case at Pro is roughly $12 a month against $29.90 of margin, on an
-unverified ~$0.01/page. That estimate is the weakest number here and the reason
-these are provisional: tighten them against observed `extraction_costs`, not
-against this paragraph.
 
 Exceeding a limit is a typed 422 with an `audit_events` row; the material stays
 `pending` rather than failing, so it extracts when the window rolls over.
@@ -365,10 +395,13 @@ Follows the mandatory rules rather than restating them; the ones with teeth here
 
 ## Open
 
-- **Every limit above is provisional**, resting on an unverified ~$0.01 per page.
-  They are deliberately set as a backstop rather than a budget, so being wrong by
-  2× is survivable — but they are the first thing to revisit once
-  `extraction_costs` has real data, and they must not be cited as if measured.
+- **Every limit above is provisional**, resting on an unverified ~$0.01 per page,
+  and two of them are now *published*. That asymmetry is the risk to watch: an
+  unpublished backstop can be tightened silently, a tier card cannot. **The
+  per-file caps should not appear on a real pricing page until §4.3 has measured
+  a page** — publishing them is a pricing action, and CLAUDE.md bars shipping
+  pricing that cost instrumentation does not back. Building the per-tier
+  mechanism now is not the same act and is not blocked.
 - **Two dependencies to justify when they land:** LibreOffice (a large binary, run
   as a subprocess) and `python-pptx`. Both are PPTX-only; nothing else in the
   pipeline needs either.
