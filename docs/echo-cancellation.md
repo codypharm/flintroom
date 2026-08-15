@@ -132,6 +132,49 @@ whichever audio library is underneath it. See task #26.
 
 Until that lands, **treat every number above as provisional.**
 
+## On the loudspeaker, which is the configuration we ship
+
+Task #26 landed, so the run below is the first one taken in the product's actual
+acoustic configuration: `MODE_IN_COMMUNICATION`, panel audio out of the built-in
+loudspeaker, phone flat on a desk. Confirmed from `dumpsys audio` during the run
+— `mAudioModeOwner: mMode=MODE_IN_COMMUNICATION` and
+`AUDIO_STREAM_VOICE_CALL: Devices: speaker` — and confirmed released afterwards,
+owner cleared and routing back to earpiece.
+
+**The residual is exact digital zero.** 7.70 s, every sample zero, peak
+−120.0 dBFS. Not "below the threshold": nothing at all.
+
+That number cannot be banked on its own, because **perfect cancellation and a
+dead microphone are indistinguishable in it**, and one of those ships a product
+where nobody can hear the user. So a second capture was taken under identical
+conditions with a human deliberately talking over the panelist for the full
+line:
+
+| Capture | Peak | Overall RMS |
+| --- | --- | --- |
+| Silent room, panel playing | −120.0 dBFS | −120.0 dBFS |
+| Talking over the panel | **−4.9 dBFS** | **−26.7 dBFS** |
+
+The microphone is fine, and the same code path that returned silence returns
+healthy near-end speech. **That is the go.**
+
+**The talk-over capture also proves the silence is cancellation rather than a
+mic that mutes whenever the far end plays.** The panel line is 6.61 s long and
+the capture is 7.72 s, so anything before ~6.7 s has the far end active. Within
+that window the recording drops to exact digital zero during the speaker's
+natural pauses — 0.0–0.8 s, 2.0–2.1 s, 6.0–6.3 s — and carries voice at −16 to
+−30 dBFS either side of them. Far end playing plus near end silent gives zero;
+far end playing plus near end talking gives the near end. That is the behaviour
+the product needs, and it is barge-in working.
+
+**What the zeros say about the mechanism.** Exact digital silence is not what
+subtraction produces; subtraction leaves a low-level residual. This is a
+residual-echo suppressor gating the output hard when it detects no near-end
+speech. Worth knowing because it predicts the failure mode: the risk is not echo
+leaking through, it is the gate swallowing a *quiet* interruption. The tested
+voice was at conversational level and passed easily. Someone interrupting the
+panel timidly, or from across a room, is untested.
+
 ## Settled by the same run
 
 **The recorder returns the sample rate it is asked for.** 16000 Hz requested,
@@ -143,19 +186,13 @@ contract. This closes task #18.
 
 ## Open
 
-- **Whether −44.9 dBFS is quiet enough for the provider's VAD.** The acoustic
-  proxy has run out of resolution, and this is the question it was standing in
-  for. Answering it needs the end-to-end run task #17 originally specified:
-  play panel audio, watch whether `vad_score` crosses 0.5. That test is now
-  worth its cost, which it was not while the answer was 30 dB of obvious echo.
-- **`MODE_IN_COMMUNICATION` is untried,** and is now known to be a prerequisite
-  rather than a further lever — without it, playback is on the wrong speaker and
-  the measurement is not of our configuration. Task #26.
-- **The test signal is harsher than a panelist.** A 0.9-amplitude harmonic stack
-  under a 4 Hz envelope is a deliberately unkind input. Real speech has gaps and
-  a lower crest factor, so the residual against real panel audio is likely
-  quieter than measured here — which argues for the end-to-end test over more
-  tuning against this surrogate.
+- **Whether the gate swallows a quiet interruption.** The acoustic question has
+  flipped: it is no longer whether echo reaches the provider's VAD — nothing
+  reaches it — but whether a *hesitant* barge-in survives the residual-echo
+  suppressor. The end-to-end run answers it directly: talk over the panel
+  softly and watch whether `vad_score` crosses 0.5. Note that `vad_score` is
+  bimodal in practice (`docs/voice-latency.md`), so it reads as a decision, not
+  a level.
 - **iOS is unmeasured.** There is no iPhone on this project; the simulator
   routes audio through the host Mac and cannot answer an acoustic question. The
   code sets `voiceChat` and `defaultToSpeaker`, which *should* be sufficient,
@@ -168,3 +205,19 @@ contract. This closes task #18.
 `npx expo start --dev-client`, open **Echo spike** from the home screen, put the
 phone flat on a desk, turn the volume up, tap **Run measurement**, and stay
 quiet for ten seconds.
+
+Then take both residual captures, because neither means anything alone — one
+says the far end is gone, the other says the microphone was alive to notice.
+Tap **Capture residual for VAD test** and stay silent; tap it again and talk
+straight through the panelist for the whole line, without waiting for gaps. Pull
+them and measure:
+
+```bash
+adb shell "run-as com.flintroom.app cat cache/AudioAPI/<file>.wav" > capture.wav
+uv run python -m scripts.wav_level capture.wav   # from backend/
+```
+
+They land in the app's *cache* directory, so Android may evict them and a
+reinstall will clear them — pull before rebuilding. `adb pull` cannot read that
+path directly; `run-as` is what makes it readable, and the byte count must match
+`ls -l` on the device or the shell has mangled the file.
