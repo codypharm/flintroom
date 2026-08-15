@@ -1,0 +1,13 @@
+-- A development database, separate from the test one.
+--
+-- The suite drops and truncates everything in `flintroom_test` on every run, so
+-- a shared database means `pytest` silently deletes whatever you were looking
+-- at. Two databases in one container costs nothing and removes the question.
+--
+-- Runs only when Postgres initialises an empty data directory — so on a fresh
+-- `docker compose up`, and not on a restart of an existing container. Creating
+-- it by hand once is equivalent:
+--
+--   docker exec flintroom-db psql -U flintroom -d flintroom_test \
+--     -c 'CREATE DATABASE flintroom_dev OWNER flintroom;'
+CREATE DATABASE flintroom_dev OWNER flintroom;

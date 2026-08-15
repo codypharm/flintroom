@@ -8,6 +8,11 @@ services:
       POSTGRES_DB: flintroom_test
     ports:
       - "55432:5432"
+    volumes:
+      # Adds `flintroom_dev` alongside the test database, so running the suite
+      # does not wipe whatever you are developing against. Applied only when the
+      # data directory is empty — see the file for the one-line equivalent.
+      - ./scripts/init-dev-db.sql:/docker-entrypoint-initdb.d/10-dev-db.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U flintroom -d flintroom_test"]
       interval: 2s
