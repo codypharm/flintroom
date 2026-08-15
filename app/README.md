@@ -28,6 +28,31 @@ TypeScript does not need one.
 Because the phone is a different machine, the API base URL must be your
 development machine's LAN address. `localhost` on the phone means the phone.
 
+## Getting an Android phone attached
+
+Wireless debugging over a shared Wi-Fi network works and is the usual route:
+enable it in Developer options, `adb pair` once with the code the phone shows,
+and afterwards adb finds the device over mDNS by itself.
+
+**The phone's own hotspot is not a substitute.** Android binds wireless
+debugging to the Wi-Fi connection, so a phone that drops Wi-Fi to *become* a
+hotspot switches wireless debugging off with it — tried, and it stays off. The
+phone still answers ping (it is the gateway) while nothing listens on the adb
+port, which makes this look like a stale port rather than an unavailable
+feature. It is not recoverable from the Mac side.
+
+So away from a router, the options are a USB **data** cable — a charge-only
+cable presents no device and gives no dialog, which is indistinguishable from a
+broken setup — or the emulator, which cannot answer acoustic questions at all.
+
+`npx expo run:android --device` cannot select a device whose adb serial
+contains a space (mDNS appends ` (2)` when it sees a duplicate record). Build
+and install directly instead, which also skips starting a second Metro:
+
+```bash
+android/gradlew -p android installDebug -PreactNativeArchitectures=arm64-v8a
+```
+
 ## Android needs JDK 17, not the one Android Studio ships
 
 Android Studio bundles its own JDK and points `JAVA_HOME` at it. On current
