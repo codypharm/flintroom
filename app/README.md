@@ -44,6 +44,12 @@ throws at startup, naming the variable. That is deliberate: the alternative is
 a plausible-looking default that fails later as a connection timeout on a
 user's phone, where nothing reports which address was tried.
 
+`.env.example` lists this and the OAuth client IDs the sign-in screen will
+need; copy it to `.env`. Everything in it is prefixed `EXPO_PUBLIC_`, which
+means Expo inlines it into the bundle — so it ships to the device and can be
+read by anyone who unzips the app. Base URLs and OAuth client IDs are public
+identifiers and belong there. Secrets never do; those live in `backend/.env`.
+
 ## Getting an Android phone attached
 
 Wireless debugging over a shared Wi-Fi network works and is the usual route:
