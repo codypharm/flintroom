@@ -112,6 +112,27 @@ This also follows Apple HIG, which matters against Open Risk #5 — a mic-access
 app draws review scrutiny, and asking for the microphone before showing anything
 is the pattern reviewers look for.
 
+**The permission is settled before the session is minted**, not after. `POST
+/v1/sessions` creates a session row and a stream ticket, and the ticket expires
+in seconds — so minting first and asking second leaves a user who taps "don't
+allow" holding a dead ticket against a live session, and the room they cannot
+speak in has to be reaped rather than simply never created. `ensureMicrophone`
+(`app/src/lib/audio/permission.ts`) returns the outcome that decides this, and
+the caller entering the room is where the ordering is enforced.
+
+**A refusal is never re-prompted.** The platform reports `Denied` without saying
+whether asking again would show anything, and on iOS it never will — the call
+resolves `Denied` immediately, with no dialog. So a refusal routes to our own
+explanation and a deep link into Settings, identically on both platforms. A
+retry button that silently does nothing reads as a broken app rather than as a
+setting the user controls, and Android gains little from the branch: a second
+denial there is equally permanent.
+
+A permission call that *throws* is reported separately from a refusal
+(`unavailable`). It is our failure, not the user's, and sending them to Settings
+to fix a permission they never refused — where they would find it already
+granted — is how an app teaches someone not to trust what it says.
+
 ### Sign in with Apple + Google
 
 Two taps, no password storage, no reset flow, both platforms covered. The
