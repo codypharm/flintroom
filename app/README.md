@@ -25,8 +25,24 @@ npx expo start --dev-client
 hot-reloads JavaScript. Rebuild only when native dependencies change — editing
 TypeScript does not need one.
 
-Because the phone is a different machine, the API base URL must be your
-development machine's LAN address. `localhost` on the phone means the phone.
+## Where the API is
+
+Because the phone is a different machine, `localhost` on the phone means the
+phone. In development you do not have to configure anything: the app takes the
+host it already reached Metro on and points at port 8000, so it follows your
+laptop onto whatever network it joins.
+
+Set `EXPO_PUBLIC_API_URL` to override that — pointing at staging, or at a
+backend on a different port:
+
+```bash
+EXPO_PUBLIC_API_URL=http://192.168.0.5:9000 npx expo start --dev-client
+```
+
+**Any build that is not a development build requires it.** Without it the app
+throws at startup, naming the variable. That is deliberate: the alternative is
+a plausible-looking default that fails later as a connection timeout on a
+user's phone, where nothing reports which address was tried.
 
 ## Getting an Android phone attached
 
