@@ -203,15 +203,59 @@ no revenue attached**, and the abuse case is precisely a deck that is extracted 
 never becomes a session. Attributing cost to the session that used the material
 would leave exactly that case invisible.
 
-The circuit breaker is a **per-account daily page ceiling**, which CLAUDE.md
-already mandates in principle. It caps pages, not stored materials, and the
-distinction is deliberate: §4.4 sells *"unlimited material storage"* as a Pro
-capability, and storage is nearly free here by construction since originals are
-deleted and thumbnails are tiny. Pages extracted and materials stored are
-different nouns, and only one of them costs money.
+It caps pages, not stored materials, and the distinction is deliberate: §4.4
+sells *"unlimited material storage"* as a Pro capability, and storage is nearly
+free here by construction since originals are deleted and thumbnails are tiny.
+Pages extracted and materials stored are different nouns, and only one of them
+costs money.
 
-Exceeding the ceiling is a typed 422 with an `audit_events` row; the material
-stays `pending` rather than failing, so it extracts when the window rolls over.
+**Two controls, doing two different jobs.** A single daily number cannot do
+both — rehearsal is bursty by the same logic that put the minutes allowance on a
+monthly reset, so a ceiling loose enough for a real preparation evening is
+catastrophic if drawn every day for a month.
+
+| Control | Where | Varies by tier | Job |
+| --- | --- | --- | --- |
+| Monthly page budget | `billing/tiers.py` | **Yes** | Protects margin, which is measured monthly |
+| Daily page ceiling | `Settings` | No | Stops a runaway — a loop, a bug, a script |
+| Max pages per material | `Settings` | No | A 500-page PDF is a parsing problem at any price |
+| Max upload bytes | `Settings` | No | Memory during render, and mobile upload reality |
+
+The budget goes beside `MONTHLY_ALLOWANCE_SECONDS`, whose docstring already
+states the terms this inherits: *"policy, not arithmetic — they move when pricing
+moves, and pricing cannot move without the §4.3 cost-instrumentation task behind
+it."*
+
+**The free tier's budget is lifetime, not monthly.** Its minutes already are —
+`FREE_TIER_LIFETIME_SECONDS`, granted once, deliberately absent from the monthly
+table. A renewing page budget on a tier with no renewing minutes turns the free
+tier into an unlimited extraction faucet: sign up, never start a session, extract
+decks forever at our cost with no metered minute ever consumed.
+
+```
+free      100 pages  LIFETIME
+starter   600 pages/month
+pro      1200 pages/month
+teams     600 pages/seat/month
+
+MAX_PAGES_PER_MATERIAL = 100
+MAX_UPLOAD_BYTES       = 25 MB
+DAILY_PAGE_CEILING     = 200
+```
+
+**Set as an invisible backstop, not a stated entitlement.** Real use is on the
+order of 40–80 pages a month, so no legitimate user meets these. Nothing is shown
+in the UI — a visible page budget would contradict §4.4's *"unlimited material
+storage"* in spirit, and a counter of any kind runs into the rule against
+depleting counters. Exceeding it is an error, never a paywall.
+
+Worst case at Pro is roughly $12 a month against $29.90 of margin, on an
+unverified ~$0.01/page. That estimate is the weakest number here and the reason
+these are provisional: tighten them against observed `extraction_costs`, not
+against this paragraph.
+
+Exceeding a limit is a typed 422 with an `audit_events` row; the material stays
+`pending` rather than failing, so it extracts when the window rolls over.
 
 ---
 
@@ -226,7 +270,8 @@ backend/app/modules/ingestion/
   router.py             thin: presign, complete, read, delete
   service.py            material lifecycle, claim persistence, page ceiling
   extractor.py          the sweep pass — claim, extract, settle, requeue stale
-  parsing.py            PDF/PPTX/image → rendered pages + text (no model)
+  parsing.py            PDF/PPTX/image → rendered pages + text + exact
+                        chart values where the format carries them (no model)
   model.py              ExtractionModel protocol
   models/
     __init__.py         build_extraction_model(settings)
@@ -248,12 +293,41 @@ Four inputs, one pipeline. Everything below `parsing.py` is identical.
 | Input | Pages | Vision needed | Notes |
 | --- | --- | --- | --- |
 | PDF | many | Yes — chart values | Native document input on the first adapter |
-| PPTX | many | Yes — chart values | Converted to rendered pages first |
+| PPTX | many | Partly — see below | Rendered *and* read structurally |
 | Slide/whiteboard photo | one | Yes | The mobile-native case, §3.2 |
 | Pasted text | one | No | Skips rasterization entirely |
 
 Pasted text still needs the model, because identifying a *claim* in text is a
 semantic job even when no image is involved. Only rasterization is skipped.
+
+### PPTX is read twice, and the exact numbers win
+
+Headless LibreOffice converts to PDF so PPTX rejoins the PDF path for thumbnails
+and vision. Separately, `python-pptx` reads the file structurally — and for a
+chart authored in PowerPoint, `Series.values` is documented as *"a sequence
+containing the float values for this series, in the order they appear on the
+chart."*
+
+**Those exact values beat anything vision infers from pixels, and win on
+conflict.** A misread figure put confidently into a panelist's mouth is the one
+failure `docs/auditor-grounding.md` says the grounding story cannot survive, so
+where PowerPoint stored the number, we read the number.
+
+Rendering is still required rather than optional, for two reasons that are easy
+to miss:
+
+- **A pasted chart image has no XML data.** Screenshotting from Excel or Tableau
+  into a slide is common, and only vision reads that.
+- **The thumbnail.** PDFs render easily; PPTX cannot be rendered without
+  LibreOffice, so dropping it would mean a placeholder for exactly the file type
+  business users bring most.
+
+A hosted conversion API was refused outright: it would ship confidential decks to
+a third party, which contradicts the retention decision above.
+
+LibreOffice is a large binary in the image and a subprocess with its own failure
+modes. Both were accepted; the alternative was losing pasted charts and PPTX
+thumbnails together.
 
 ---
 
@@ -291,11 +365,13 @@ Follows the mandatory rules rather than restating them; the ones with teeth here
 
 ## Open
 
-- **Concrete limits are unset.** Max pages per material, max upload size, and the
-  daily page ceiling need numbers. They are cost decisions, so they should be set
-  against observed `extraction_costs` rather than guessed — but a provisional
-  ceiling has to exist from the first extraction, because the runaway it guards
-  against is available on day one.
-- **PPTX rendering has no chosen tool.** `python-pptx` reads structure but does
-  not render; producing page images needs something else, and whatever it is
-  becomes a dependency to justify.
+- **Every limit above is provisional**, resting on an unverified ~$0.01 per page.
+  They are deliberately set as a backstop rather than a budget, so being wrong by
+  2× is survivable — but they are the first thing to revisit once
+  `extraction_costs` has real data, and they must not be cited as if measured.
+- **Two dependencies to justify when they land:** LibreOffice (a large binary, run
+  as a subprocess) and `python-pptx`. Both are PPTX-only; nothing else in the
+  pipeline needs either.
+- **Per-seat accounting for Teams is unspecified.** The budget is written per
+  seat, and nothing yet says whether an unused seat's pages pool across the
+  organisation. It does not block anything until Teams ships.
