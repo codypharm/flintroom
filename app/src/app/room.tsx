@@ -72,6 +72,10 @@ export default function RoomScreen() {
   const [error, setError] = useState<string | null>(null);
   const [captions, setCaptions] = useState<Caption[]>([]);
   const [ending, setEnding] = useState<string | null>(null);
+  // On screen rather than in a log, because the phone is the only place this is
+  // observable and reading logcat is a second thing to get right while holding
+  // a handset.
+  const [audio, setAudio] = useState<string | null>(null);
 
   const room = useRef<Room | null>(null);
   const context = useRef<AudioContext | null>(null);
@@ -122,6 +126,16 @@ export default function RoomScreen() {
       recorder.current = capture;
       const playback = new AudioContext();
       context.current = playback;
+
+      // A context that is not running renders nothing, and renders it silently:
+      // frames enqueue without complaint and no sound arrives. That is
+      // indistinguishable from a panel that never spoke, which is exactly how
+      // the first room with a working microphone read — captions on screen,
+      // nothing audible.
+      if (playback.state !== 'running') {
+        await playback.resume();
+      }
+      setAudio(`${playback.state} @ ${playback.sampleRate}Hz`);
 
       const response = await fetch(`${API_BASE_URL}/v1/sessions`, {
         method: 'POST',
@@ -220,6 +234,10 @@ export default function RoomScreen() {
           <Pressable onPress={leave} style={[styles.button, { borderColor: colors.notification }]}>
             <Text style={[styles.buttonText, { color: colors.notification }]}>Leave</Text>
           </Pressable>
+        )}
+
+        {audio !== null && (
+          <Text style={[styles.hint, { color: colors.text }]}>audio: {audio}</Text>
         )}
 
         {ending !== null && (
