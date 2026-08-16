@@ -79,6 +79,21 @@ dependencies = [
     # sniffio and typing-extensions are already installed. Confined to
     # `extraction_models/claude.py`, so a second vendor is a sibling module.
     "anthropic>=0.69",
+    # Reading a PPTX structurally — the half of PPTX support that is not a
+    # render. `docs/ingestion.md`: a chart authored in PowerPoint stores its
+    # numbers, and `Series.values` is documented as *"a sequence containing the
+    # float values for this series, in the order they appear on the chart"*.
+    #
+    # Nothing it replaces, because nothing else can do it. The rendered slide
+    # goes to a vision model, and a model reading a bar chart off pixels is
+    # inferring magnitudes from bar heights — which is exactly the misread figure
+    # `docs/auditor-grounding.md` says the grounding story cannot survive. Where
+    # PowerPoint stored the number, we read the number.
+    #
+    # A PPTX is a zip of XML, so the alternative is `zipfile` plus ElementTree
+    # plus the DrawingML schema by hand. MIT, pure Python, one dependency
+    # (`lxml`), no system binary. Confined to `parsing.py`.
+    "python-pptx>=1.0",
 ]
 
 [dependency-groups]

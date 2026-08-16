@@ -16,10 +16,15 @@ process — so `parse` is the only public entry point and it is a coroutine that
 does its work in a thread. Exposing the synchronous half would make forgetting
 that a one-line mistake with no visible symptom until the box is busy.
 
-PPTX is not here yet. It converts to PDF through headless LibreOffice and
-rejoins this path, and it is separately read with `python-pptx` for exact chart
-series — the numbers PowerPoint stored, which beat anything vision infers from
-pixels. That lands with its own dependency justification.
+**PPTX is half here.** `pptx_slides` reads the file structurally — text, tables,
+and the exact chart values PowerPoint stored, which beat anything vision infers
+from bar heights. The other half converts the file to PDF through headless
+LibreOffice so it rejoins `_parse_pdf`, and that half is not built: without it
+there is no PPTX thumbnail and a chart pasted in as an image has no XML for
+anyone to read. Until both halves are here `_parse` has no PPTX branch, so a
+PPTX reaching it is still failed as unreadable — and it can reach it, because
+`ACCEPTED_CONTENT_TYPES` has always accepted the type. That gap is older than
+this module and is closed by the render, not by this half.
 """
 
 from __future__ import annotations
@@ -27,10 +32,14 @@ from __future__ import annotations
 import asyncio
 import io
 from dataclasses import dataclass
+from zipfile import BadZipFile
 
 import pillow_heif
 import pypdfium2 as pdfium
 from PIL import Image, ImageOps, UnidentifiedImageError
+from pptx import Presentation
+from pptx.enum.shapes import MSO_SHAPE_TYPE
+from pptx.exc import PackageNotFoundError
 
 from app.core.errors import MaterialTooManyPages, MaterialUnreadable
 from app.core.logging import get_logger
@@ -77,6 +86,9 @@ _PHOTO_QUALITY = 88
 #: agree, and the moment one gains an entry the other lacks, an upload succeeds
 #: and extraction dies.
 PDF_CONTENT_TYPE = "application/pdf"
+PPTX_CONTENT_TYPE = (
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+)
 IMAGE_CONTENT_TYPES = frozenset(
     {"image/jpeg", "image/png", "image/heic", "image/heif"}
 )
@@ -95,6 +107,64 @@ class RenderedPage:
 
     image: bytes
     image_media_type: str
+
+
+@dataclass(frozen=True)
+class ChartSeries:
+    """One series of a chart, as the numbers the author typed.
+
+    `python-pptx` documents `Series.values` as *"a sequence containing the float
+    values for this series, in the order they appear on the chart"* — so this is
+    not an interpretation of the chart, it is the data behind it.
+    """
+
+    #: What the series is measuring. Empty when the author never named it, which
+    #: is common on a single-series chart where the slide's heading says it.
+    name: str
+
+    #: One value per category, `None` where the chart has a gap.
+    #:
+    #: The gap is kept rather than dropped or zeroed, and both alternatives are
+    #: worse in the same way. Zero says the quarter made nothing. Dropping it
+    #: shifts every later value onto the wrong category, so a missing Q2 makes
+    #: Q3's revenue read as Q2's — a figure that is exactly right and attached to
+    #: the wrong period, which is how a false accusation is made from correct
+    #: data. Positional alignment with `SlideChart.categories` is the whole
+    #: contract here.
+    values: tuple[float | None, ...]
+
+
+@dataclass(frozen=True)
+class SlideChart:
+    """A chart, without its picture.
+
+    Kept apart from the slide's text rather than flattened into it, because the
+    two have different standing: text is something a model has to interpret, and
+    these numbers are already exact. Merging them would lose the distinction that
+    makes them worth reading separately.
+    """
+
+    #: Empty when the chart has no title of its own.
+    title: str
+
+    #: The x-axis labels, which are usually the period a figure covers — and
+    #: `docs/auditor-grounding.md` will not compare two figures without one.
+    categories: tuple[str, ...]
+
+    series: tuple[ChartSeries, ...]
+
+
+@dataclass(frozen=True)
+class SlideContent:
+    """One slide, read structurally rather than rasterized."""
+
+    #: 1-based, matching `RenderedPage.number`, because a claim's locator is
+    #: quoted back at the user by a panelist: *"on slide four you said"*.
+    number: int
+
+    text: str
+
+    charts: tuple[SlideChart, ...]
 
 
 @dataclass(frozen=True)
@@ -189,6 +259,112 @@ def _parse_photograph(data: bytes) -> ParsedMaterial:
         ),
         thumbnail=_thumbnail(image),
     )
+
+
+def pptx_slides(data: bytes) -> tuple[SlideContent, ...]:
+    """Read a PPTX for what PowerPoint stored, without rendering anything.
+
+    The structural half of PPTX support. The other half converts the file to PDF
+    and rejoins `_parse_pdf`, because a pasted chart *image* has no XML and only
+    vision reads that — but where the author typed a number, this is where the
+    number is, and `docs/ingestion.md` says those values win on conflict.
+
+    Synchronous, like everything else here, and called from `parse`'s thread. It
+    is XML rather than rasterization so it is cheap, but "cheap" on a
+    three-hundred-slide deck is still not something to do on the event loop.
+    """
+    try:
+        presentation = Presentation(io.BytesIO(data))
+        slides = list(presentation.slides)
+    except (PackageNotFoundError, BadZipFile, KeyError) as exc:
+        # A PPTX is a zip of XML, and it fails in three shapes: no such package,
+        # bytes that are not an archive at all, and a perfectly good archive
+        # whose parts are not where the schema says (a KeyError from the part
+        # lookup — a .docx renamed to .pptx lands here). All three are the same
+        # fact, which is that the declared type was a claim and the bytes
+        # disagree.
+        #
+        # Typed rather than allowed to escape, for the reason `_parse_pdf` gives:
+        # this runs inside the sweep, where an unhandled error marks nothing and
+        # leaves the material claimed until the requeue notices.
+        log.warning("material_unreadable", content_type=PPTX_CONTENT_TYPE)
+        raise MaterialUnreadable() from exc
+
+    return tuple(
+        SlideContent(
+            number=index + 1,
+            text="\n".join(_shape_text(_flatten(slide.shapes))),
+            charts=tuple(_charts(_flatten(slide.shapes))),
+        )
+        for index, slide in enumerate(slides)
+    )
+
+
+def _flatten(shapes) -> list:
+    """Every shape on a slide, including the ones inside groups.
+
+    PowerPoint groups shapes whenever somebody selects a few and presses ⌘G, and
+    a template's furniture usually arrives grouped already. Iterating only the
+    top level silently returns an empty slide for a deck that is full of text —
+    no error, nothing in a log, just a deck that grounds nothing.
+    """
+    found = []
+    for shape in shapes:
+        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            found.extend(_flatten(shape.shapes))
+        else:
+            found.append(shape)
+    return found
+
+
+def _shape_text(shapes) -> list[str]:
+    """Text from anything on the slide that holds any.
+
+    Tables are read cell by cell rather than skipped. A table is where a deck
+    puts the numbers it is most confident about, and cells are not text frames
+    on the shape — so asking only for `has_text_frame` returns nothing for the
+    densest page in the file.
+    """
+    lines = []
+    for shape in shapes:
+        if shape.has_text_frame and shape.text_frame.text.strip():
+            lines.append(shape.text_frame.text)
+        if getattr(shape, "has_table", False):
+            for row in shape.table.rows:
+                cells = [cell.text.strip() for cell in row.cells]
+                lines.append("\t".join(cells))
+    return lines
+
+
+def _charts(shapes) -> list[SlideChart]:
+    """Every chart on the slide, as the values behind it rather than its picture."""
+    charts = []
+    for shape in shapes:
+        if not getattr(shape, "has_chart", False):
+            continue
+        chart = shape.chart
+        charts.append(
+            SlideChart(
+                # `chart_title` raises when there is none, and most charts in a
+                # real deck have none — the slide's heading is doing that job.
+                title=chart.chart_title.text_frame.text if chart.has_title else "",
+                categories=tuple(str(category) for category in chart.plots[0].categories),
+                series=tuple(
+                    ChartSeries(
+                        name=series.name or "",
+                        # Positional, gaps included. See `ChartSeries.values`:
+                        # the index into `categories` is what makes a number a
+                        # claim about a period, so nothing may shift.
+                        values=tuple(
+                            None if value is None else float(value)
+                            for value in series.values
+                        ),
+                    )
+                    for series in chart.series
+                ),
+            )
+        )
+    return charts
 
 
 def _render(page: pdfium.PdfPage) -> Image.Image:
