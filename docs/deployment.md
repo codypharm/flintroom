@@ -100,6 +100,15 @@ The permissions the app actually needs are `s3:PutObject`, `s3:GetObject` and
 never needs `s3:ListBucket`: every read is by key, and a credential that can
 enumerate is a credential that turns one leak into every user's deck.
 
+The upload handshake also issues a `HEAD` before it lets a material become
+extractable, and **`HeadObject` is authorised by `s3:GetObject`** — there is no
+separate head permission. A policy that grants `PutObject` and `DeleteObject` but
+withholds `GetObject`, on the reasoning that the server never downloads anything,
+breaks every upload completion. It surfaces as a 500 rather than as "we did not
+receive that file" — `exists()` only reads a 404 as absence and re-raises
+everything else, deliberately, so a permissions mistake cannot be reported to
+users as their own upload failing.
+
 **The bucket must not be publicly readable.** Every path in and out is a
 presigned URL that expires in fifteen minutes, and a public-read bucket makes
 that expiry decorative while looking completely correct from inside the app —

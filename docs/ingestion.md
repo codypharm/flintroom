@@ -294,6 +294,90 @@ pre-session refusal on a published limit the user chose their plan against, whic
 is a different thing entirely. It should name the tier that would accept the file
 and offer the upgrade. Do not let this precedent drift toward the forbidden case.
 
+### The byte cap is enforced by the signature, not by our arithmetic
+
+**Decided 2026-08-16, after probing a real S3 server.** SigV4 covers every header
+it lists in `SignedHeaders`, and `Content-Length` and `Content-Type` can both be
+put there. Verified against MinIO rather than assumed:
+
+```
+X-Amz-SignedHeaders=content-length;host
+  a body of the declared length      200
+  a larger body                      403 SignatureDoesNotMatch
+  no Content-Length at all           411 MissingContentLength
+  a different Content-Type           403
+```
+
+So `presign_put(key, content_length=, content_type=)` takes both, and the tier
+cap becomes a property of the upload rather than a number checked once at
+registration. Without this, the declared size is a courtesy: a client asks for a
+URL saying 8MB and then sends four hundred, and the only limit is whatever the
+bucket happens to allow.
+
+Two consequences to know before they bite:
+
+- **It signs one exact length, not a range.** A client that does not know its own
+  file size cannot upload. Every source we accept comes from a file handle that
+  does, so this costs nothing today — but it rules out a streaming producer.
+- **It is a single PUT, so there is no resume.** A dropped mobile connection
+  restarts the whole upload, which is tolerable at 10MB and unpleasant at 100.
+  The fix when it bites is a multipart presign, which boto3 already implements —
+  one of the reasons it is the SDK in `storage_s3.py`.
+
+`byte_size` is therefore safe to store and compare against without re-reading the
+object: the row's number and the object's number cannot disagree.
+
+### The refusal states the fact and then the fix
+
+**Decided 2026-08-16.** The tone is fixed, and it is the tone of a limit rather
+than of a pitch:
+
+> That file is 12 MB. Your plan accepts up to 10 MB. Starter accepts up to 25 MB.
+
+No apology, no verb of persuasion. The upgrade is stated as an available fact and
+the client draws the button beside it. Three rules follow, each of which is a way
+the message could quietly stop being true:
+
+- **It names the cheapest tier that would take the file, not the largest.** The
+  message's entire credibility comes from reading as a fact, and a fact that
+  happens to sell the most expensive plan is not one.
+- **When no tier accepts the file, it offers nothing** and states the ceiling
+  instead. Selling a plan that still refuses the upload is the one outcome this
+  paywall may not produce.
+- **A wrong file type is a separate error and never carries an upgrade**, because
+  no tier accepts an executable. Merging the two is how a type refusal grows an
+  upsell it has no right to make.
+
+The file's size rounds **up** to one decimal and the cap does not, so the two
+numbers in the message can never collide. A file one byte over the cap would
+otherwise read *"That file is 10 MB. Your plan accepts up to 10 MB"* — a message
+that earns a support ticket where it should have earned an upgrade.
+
+### The caps are published, and the client refuses locally
+
+`GET /v1/materials/limits` returns the caller's caps, the accepted content types,
+and the rung above if there is one. The app refuses an oversized file against
+that — instantly, offline, before it reads a byte — and the server refusal stays
+the real wall.
+
+The alternative was the app holding its own copy of the tier table, where a
+pricing change ships as an app release and the two disagree without anyone
+noticing. Since `Product.md` §4.4 already publishes these numbers on tier cards,
+serving them is not a disclosure; holding them in two places is just a way for
+one of them to go stale.
+
+### `complete` checks the store before believing the client
+
+The client saying the bytes landed is a claim, and it is verified with one HEAD
+before the material moves to `pending`.
+
+`pending` is the state the extraction sweep claims, so it is the moment a
+material starts costing money. Without the check, a client that never uploaded —
+or whose PUT failed while its retry logic reported success — puts a row into the
+queue pointing at nothing: the sweep claims it, pays to open an object that is
+not there, fails, and requeues. One round trip turns that into a refusal at the
+handshake, while the user is still on the screen that can do something about it.
+
 **The free tier's budget is lifetime, not monthly.** Its minutes already are —
 `FREE_TIER_LIFETIME_SECONDS`, granted once, deliberately absent from the monthly
 table. A renewing page budget on a tier with no renewing minutes turns the free

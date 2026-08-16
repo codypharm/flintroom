@@ -32,6 +32,11 @@ def storage() -> S3ObjectStorage:
     )
 
 
+#: A body and the two facts we sign alongside it.
+BODY = b"%PDF-1.7 a deck, for the purposes of this test"
+PDF = "application/pdf"
+
+
 async def test_presigned_put_accepts_bytes_a_presigned_get_returns(storage):
     """The tracer bullet: a signed URL round-trips real bytes through real S3.
 
@@ -40,16 +45,81 @@ async def test_presigned_put_accepts_bytes_a_presigned_get_returns(storage):
     signing version; whether the object arrived is ours.
     """
     key = f"test/{uuid.uuid4()}.pdf"
-    body = b"%PDF-1.7 a deck, for the purposes of this test"
+    url = storage.presign_put(key, content_length=len(BODY), content_type=PDF)
 
     async with httpx.AsyncClient() as http:
-        stored = await http.put(storage.presign_put(key), content=body)
+        stored = await http.put(url, content=BODY, headers={"Content-Type": PDF})
         assert stored.status_code == 200, stored.text
 
         fetched = await http.get(storage.presign_get(key))
 
     assert fetched.status_code == 200, fetched.text
-    assert fetched.content == body
+    assert fetched.content == BODY
+
+
+async def test_a_body_larger_than_we_signed_for_is_refused_by_the_store(storage):
+    """The byte cap is enforced by the signature, not by our arithmetic.
+
+    Without this, the size a client declares is a courtesy: it asks for a URL
+    saying "8MB", and then uploads four hundred. Signing `Content-Length` puts
+    the declared size inside the signature, so the store itself rejects a body
+    that disagrees — and the tier limit becomes a fact about the upload rather
+    than a number we checked once and hoped about.
+
+    The failure is a signature mismatch rather than a size error, because from
+    S3's side that is what it is. It is also why this is asserted against a real
+    server: nothing about the URL reveals whether the header was signed.
+    """
+    key = f"test/{uuid.uuid4()}.pdf"
+    url = storage.presign_put(key, content_length=len(BODY), content_type=PDF)
+
+    async with httpx.AsyncClient() as http:
+        refused = await http.put(
+            url, content=BODY + b"and then some", headers={"Content-Type": PDF}
+        )
+
+    assert refused.status_code == 403, refused.text
+
+
+async def test_a_type_other_than_the_one_we_signed_for_is_refused(storage):
+    """Same mechanism, for the declared type.
+
+    `docs/ingestion.md` validates the type before the presign so a wrong one
+    costs no upload. That check is worth nothing if the client can then send
+    something else to the URL it was given — the row would say `application/pdf`
+    and the object would be whatever arrived.
+    """
+    key = f"test/{uuid.uuid4()}.pdf"
+    url = storage.presign_put(key, content_length=len(BODY), content_type=PDF)
+
+    async with httpx.AsyncClient() as http:
+        refused = await http.put(
+            url, content=BODY, headers={"Content-Type": "application/x-msdownload"}
+        )
+
+    assert refused.status_code == 403, refused.text
+
+
+async def test_exists_tells_a_finished_upload_from_a_url_nobody_used(storage):
+    """What `complete` asks before it lets a material cost money.
+
+    A client that says "uploaded" without uploading would otherwise put a row
+    into the extraction queue pointing at nothing: the sweep claims it, pays to
+    open an object that is not there, and fails. One HEAD turns that into a
+    refusal at the handshake.
+    """
+    key = f"test/{uuid.uuid4()}.pdf"
+
+    assert await storage.exists(key) is False
+
+    async with httpx.AsyncClient() as http:
+        await http.put(
+            storage.presign_put(key, content_length=len(BODY), content_type=PDF),
+            content=BODY,
+            headers={"Content-Type": PDF},
+        )
+
+    assert await storage.exists(key) is True
 
 
 async def test_delete_removes_the_object(storage):
@@ -62,13 +132,18 @@ async def test_delete_removes_the_object(storage):
     key = f"test/{uuid.uuid4()}.pdf"
 
     async with httpx.AsyncClient() as http:
-        await http.put(storage.presign_put(key), content=b"a deck")
+        await http.put(
+            storage.presign_put(key, content_length=len(BODY), content_type=PDF),
+            content=BODY,
+            headers={"Content-Type": PDF},
+        )
 
         await storage.delete(key)
 
         fetched = await http.get(storage.presign_get(key))
 
     assert fetched.status_code == 404
+    assert await storage.exists(key) is False
 
 
 def test_signed_urls_carry_the_lifetime_they_were_configured_with():
@@ -91,7 +166,11 @@ def test_signed_urls_carry_the_lifetime_they_were_configured_with():
         expiry_seconds=90,
     )
 
-    for url in (storage.presign_put("deck.pdf"), storage.presign_get("deck.pdf")):
+    signed = (
+        storage.presign_put("deck.pdf", content_length=10, content_type=PDF),
+        storage.presign_get("deck.pdf"),
+    )
+    for url in signed:
         assert "X-Amz-Expires=90" in url
 
 

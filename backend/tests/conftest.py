@@ -13,6 +13,7 @@ from sqlalchemy import text
 
 from app.core.database import Base, get_db
 from app.core.errors import NotAuthenticated
+from app.core.storage_s3 import S3ObjectStorage
 from app.main import create_app
 from app.modules.auth.dependencies import get_access_tokens, get_verifiers
 from app.modules.auth.oidc import ProviderIdentity
@@ -25,6 +26,7 @@ from app.modules.auth.models import (  # noqa: F401  (registers the tables)
     RefreshToken,
 )
 from app.modules.billing.models import Account
+from app.modules.ingestion.dependencies import get_object_storage
 from app.modules.ingestion.models import Material  # noqa: F401  (registers the table)
 from app.modules.ingestion.service import IngestionService
 from app.modules.audit_log.admin import AdminService
@@ -49,6 +51,9 @@ TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
     "postgresql+asyncpg://flintroom:flintroom@localhost:55432/flintroom_test",
 )
+
+TEST_S3_ENDPOINT_URL = os.getenv("TEST_S3_ENDPOINT_URL", "http://localhost:59000")
+TEST_S3_BUCKET = os.getenv("TEST_S3_BUCKET", "flintroom-material")
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -111,8 +116,28 @@ def sessions(db) -> SessionService:
 
 
 @pytest.fixture
-def ingestion(db) -> IngestionService:
-    return IngestionService(db)
+def storage() -> S3ObjectStorage:
+    """The MinIO in `docker-compose.yml`, not a stub.
+
+    `docs/ingestion.md` refused a filesystem shim for development because a
+    filesystem cannot do direct-to-storage PUT without proxying — so a shim
+    would leave the presigned path unexercised until deploy. The same argument
+    applies to the service tests: the byte cap is enforced by the signature, and
+    a fake that returns a plausible URL would prove nothing about it.
+    """
+    return S3ObjectStorage(
+        endpoint_url=TEST_S3_ENDPOINT_URL,
+        access_key_id="flintroom",
+        secret_access_key="flintroom",
+        bucket=TEST_S3_BUCKET,
+        region="us-east-1",
+        addressing_style="path",
+    )
+
+
+@pytest.fixture
+def ingestion(db, storage) -> IngestionService:
+    return IngestionService(db, storage=storage)
 
 
 @pytest_asyncio.fixture
@@ -224,7 +249,7 @@ async def auth(db, google, apple) -> AuthService:
 
 
 @pytest_asyncio.fixture
-async def client(db, google, apple):
+async def client(db, google, apple, storage):
     """The app, wired to the test session and to providers that need no network.
 
     The lifespan is deliberately not run: it starts the sweep loop and opens a
@@ -237,6 +262,9 @@ async def client(db, google, apple):
     # signing key — which also means a test cannot rely on ambient env.
     app.dependency_overrides[get_access_tokens] = lambda: AccessTokens(secret=SECRET)
     app.dependency_overrides[get_verifiers] = lambda: {"google": google, "apple": apple}
+    # The real store, not a fake. Substituted rather than read off app state
+    # because that is populated by the lifespan, which is deliberately not run.
+    app.dependency_overrides[get_object_storage] = lambda: storage
 
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"

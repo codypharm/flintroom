@@ -261,6 +261,149 @@ paths:
                 $ref: '#/components/schemas/BalanceRead'
       security:
       - HTTPBearer: []
+  /v1/materials/limits:
+    get:
+      tags:
+      - materials
+      summary: Read Limits
+      description: 'What this caller may upload, and what the rung above would allow.
+
+
+        Published so the app can refuse an oversized file locally, before it reads
+        a
+
+        byte. The refusal in `register_material` stays the real wall — this exists
+        so
+
+        the tier table has one home rather than a second copy shipped in an app
+
+        release.'
+      operationId: materials_read_limits
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialLimits'
+      security:
+      - HTTPBearer: []
+  /v1/materials:
+    post:
+      tags:
+      - materials
+      summary: Register Material
+      description: 'Claim somewhere to put a deck, and get the one URL that may fill
+        it.
+
+
+        The user is taken from the credential, never from the body: a client that
+
+        could name the account would be able to upload into somebody else''s storage
+
+        prefix and read it back.
+
+
+        Refusals happen inside the service and before anything is signed, so an
+
+        oversized or unreadable file costs no upload and leaves no row behind.'
+      operationId: materials_register_material
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MaterialDeclaration'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialUpload'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /v1/materials/{material_id}/complete:
+    post:
+      tags:
+      - materials
+      summary: Complete Upload
+      description: 'The client reports the bytes landed, and we check before believing
+        it.
+
+
+        This is the moment a material becomes extractable, which is the moment it
+
+        starts costing money — so the state it moves into is the one the sweep
+
+        claims, and a claim with no object behind it is refused here rather than
+
+        discovered by a model call that fails.'
+      operationId: materials_complete_upload
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: material_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Material Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/materials/{material_id}:
+    get:
+      tags:
+      - materials
+      summary: Read Material
+      description: 'One material, if it belongs to the caller.
+
+
+        No upload URL. Re-signing on every read would turn a lookup into a fresh
+
+        write capability against a material that may already hold an extracted deck.'
+      operationId: materials_read_material
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: material_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Material Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     BalanceRead:
@@ -341,6 +484,197 @@ components:
         fields, and this endpoint''s job is answering "is this credential still
 
         good", not returning a profile.'
+    MaterialDeclaration:
+      properties:
+        filename:
+          type: string
+          maxLength: 255
+          minLength: 1
+          title: Filename
+        content_type:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Content Type
+        byte_size:
+          type: integer
+          maximum: 1073741824.0
+          exclusiveMinimum: 0.0
+          title: Byte Size
+      additionalProperties: false
+      type: object
+      required:
+      - filename
+      - content_type
+      - byte_size
+      title: MaterialDeclaration
+      description: 'What the client says it is about to upload.
+
+
+        Every field is a claim, and each is made binding by something other than
+
+        trust: the size and the type are signed into the URL, so the store refuses
+        a
+
+        body that disagrees, and the filename is display-only and never reaches a
+
+        path.
+
+
+        `byte_size` is bounded on both ends here rather than only against the tier
+
+        cap. The lower bound is what stops a negative length reaching the signer,
+
+        where it becomes a vendor-specific error instead of a refusal; the upper is
+
+        a sanity bound well above the largest tier, so an absurd number is a 422
+
+        from the schema rather than arithmetic anybody has to reason about.'
+    MaterialLimits:
+      properties:
+        tier:
+          type: string
+          title: Tier
+        max_upload_bytes:
+          type: integer
+          title: Max Upload Bytes
+        max_pages_per_material:
+          type: integer
+          title: Max Pages Per Material
+        accepted_content_types:
+          items:
+            type: string
+          type: array
+          title: Accepted Content Types
+        upgrade:
+          anyOf:
+          - $ref: '#/components/schemas/TierUpload'
+          - type: 'null'
+      type: object
+      required:
+      - tier
+      - max_upload_bytes
+      - max_pages_per_material
+      - accepted_content_types
+      title: MaterialLimits
+      description: 'The caller''s own caps, and the rung above if there is one.
+
+
+        Published so the app can refuse an oversized file locally — instantly, with
+
+        no round trip and no partial upload — while the server refusal stays the
+
+        real wall. The alternative was the client holding its own copy of the tier
+
+        table, where a pricing change ships as an app release and the two can
+
+        disagree without anyone noticing.'
+    MaterialRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        state:
+          $ref: '#/components/schemas/MaterialState'
+        filename:
+          type: string
+          title: Filename
+        content_type:
+          type: string
+          title: Content Type
+        byte_size:
+          type: integer
+          title: Byte Size
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - state
+      - filename
+      - content_type
+      - byte_size
+      - created_at
+      title: MaterialRead
+      description: 'One material, as the client sees it.
+
+
+        `storage_key` is deliberately absent. It is an internal locator, and the
+
+        only legitimate way to reach an object is a presigned URL this service
+
+        issues after checking ownership — a key in a response is an invitation to
+
+        build a client that constructs its own.'
+    MaterialState:
+      type: string
+      enum:
+      - awaiting_upload
+      - pending
+      - extracting
+      - ready
+      - failed
+      title: MaterialState
+      description: "The five states an attached material can be in.\n\n```\nawaiting_upload\
+        \ ──► pending ──► extracting ──► ready\n       │                         \
+        \        └──► failed\n       └──► (reaped — a presign nobody used)\n```\n\n\
+        `awaiting_upload` exists because the row precedes the object: the presign\
+        \ is\nsigned against a key, and ownership is checked on a row. Without it,\n\
+        `pending` would mean both \"no bytes yet\" and \"bytes here, waiting its turn\"\
+        ,\nand the extraction sweep claims `pending` — so it would pick up materials\n\
+        nobody ever uploaded and pay a model to read nothing.\n\n`extracting` exists\
+        \ for the same reason `finalizing` does on a session:\nwithout it nothing\
+        \ separates \"still working\" from \"the process died\", and\nthe requeue\
+        \ cannot be safe. Unlike settlement, a duplicate run here is not a\nrefused\
+        \ write — it is a second invoice.\n\n`failed` is terminal and deliberately\
+        \ not retried in place. A material that\ncould not be read is re-uploaded,\
+        \ because the source document is deleted on\nsuccess and there is nothing\
+        \ to reprocess from."
+    MaterialUpload:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        state:
+          $ref: '#/components/schemas/MaterialState'
+        filename:
+          type: string
+          title: Filename
+        content_type:
+          type: string
+          title: Content Type
+        byte_size:
+          type: integer
+          title: Byte Size
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        upload_url:
+          type: string
+          title: Upload Url
+      type: object
+      required:
+      - id
+      - state
+      - filename
+      - content_type
+      - byte_size
+      - created_at
+      - upload_url
+      title: MaterialUpload
+      description: 'A registered material, and the one URL that may receive its bytes.
+
+
+        Returned only from the register call, never from a read. The URL is a bearer
+
+        credential for a single object at a single size — short-lived by
+
+        construction, and not the kind of thing to hand back on every GET.'
     RefreshRequest:
       properties:
         refresh_token:
@@ -527,6 +861,24 @@ components:
         token rotates on use. A client that keeps the old one will be treated as a
 
         replay and lose the session, so "always store both" is the contract.'
+    TierUpload:
+      properties:
+        tier:
+          type: string
+          title: Tier
+        max_upload_bytes:
+          type: integer
+          title: Max Upload Bytes
+        max_pages_per_material:
+          type: integer
+          title: Max Pages Per Material
+      type: object
+      required:
+      - tier
+      - max_upload_bytes
+      - max_pages_per_material
+      title: TierUpload
+      description: What a tier accepts, for a client drawing an upgrade prompt.
     ValidationError:
       properties:
         loc:

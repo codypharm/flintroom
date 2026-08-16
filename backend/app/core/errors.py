@@ -113,6 +113,47 @@ class MaterialNotFound(NotFound):
     message = "No such material."
 
 
+# --- Refused uploads ------------------------------------------------------
+#
+# Both are raised *before* a presigned URL is issued, so neither costs the user
+# an upload. They are deliberately different errors rather than one "we won't
+# take that", because only one of them has anything to sell.
+
+
+class MaterialTooLarge(FlintroomError):
+    """Over the caller's per-file byte cap.
+
+    The one legitimate paywall in ingestion: a pre-session refusal on a limit
+    that is published on the tier card the user chose their plan against. That
+    is a different thing from interrupting a live session to show a paywall,
+    which CLAUDE.md forbids outright — do not let this precedent drift toward
+    it.
+
+    The message is assembled by the caller because it names three numbers and a
+    tier, none of which this class can know. Its tone is fixed: state the file's
+    size, state the cap, name the cheapest tier that would accept it. No
+    apology, no verb of persuasion — the upgrade is offered as an available fact
+    and the client renders the button.
+    """
+
+    status_code = 413
+    code = "material_too_large"
+    message = "That file is larger than your plan accepts."
+
+
+class UnsupportedMaterialType(FlintroomError):
+    """Not a format the extraction pipeline can read.
+
+    Never carries an upgrade, because no tier accepts an executable. Keeping it
+    separate from `MaterialTooLarge` is what stops a wrong-type refusal quietly
+    growing an upsell it has no right to make.
+    """
+
+    status_code = 415
+    code = "unsupported_material_type"
+    message = "We cannot read that kind of file."
+
+
 # --- Conflicts ------------------------------------------------------------
 
 
@@ -177,6 +218,18 @@ class InvalidMaterialState(BusinessRuleViolation):
 
     code = "invalid_material_state"
     message = "That material is not in a state that allows this."
+
+
+class MaterialNotUploaded(BusinessRuleViolation):
+    """The client said the bytes landed, and there is no object there.
+
+    Separate from `InvalidMaterialState`: the material is in exactly the right
+    state, and the store disagrees with the client about the world. The caller's
+    correct response is to upload again, not to stop asking.
+    """
+
+    code = "material_not_uploaded"
+    message = "We did not receive that file. Please upload it again."
 
 
 class NoMinutesRemaining(BusinessRuleViolation):

@@ -1,7 +1,16 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, Index, String, func, text
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    DateTime,
+    Enum,
+    Index,
+    String,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -91,6 +100,12 @@ class Material(Base):
     #: wrong type costs no upload. Re-checked against the extracted bytes later:
     #: this value is a claim by the caller until something has read the file.
     content_type: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    #: Declared by the client, and binding rather than advisory: it is signed
+    #: into the presigned PUT, so the object either has exactly this many bytes
+    #: or it was never accepted. That is what makes this column safe to compare
+    #: a tier cap against without re-reading the object.
+    byte_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
     #: Where the object lives, derived rather than chosen by the caller. A
     #: caller-supplied key is a caller who can write over somebody else's.

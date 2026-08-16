@@ -16,6 +16,7 @@ import asyncio
 
 import boto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
 
 from app.core.config import Settings
 from app.core.storage import ObjectStorage
@@ -66,10 +67,26 @@ class S3ObjectStorage:
             ),
         )
 
-    def presign_put(self, key: str) -> str:
+    def presign_put(self, key: str, *, content_length: int, content_type: str) -> str:
+        """Sign one object, at one size, of one type.
+
+        Both extra params land in `SignedHeaders`, which is what makes them
+        binding rather than declarative — verified against a real server in
+        `tests/test_storage.py` rather than assumed from the SDK's shape.
+
+        A consequence worth knowing before a 100MB tier is real: this is a
+        single PUT, so a dropped mobile connection restarts the whole upload.
+        The fix when it bites is a multipart presign, which is why the SDK that
+        already implements one is the one in this module.
+        """
         return self._client.generate_presigned_url(
             "put_object",
-            Params={"Bucket": self._bucket, "Key": key},
+            Params={
+                "Bucket": self._bucket,
+                "Key": key,
+                "ContentLength": content_length,
+                "ContentType": content_type,
+            },
             ExpiresIn=self._expiry_seconds,
         )
 
@@ -79,6 +96,24 @@ class S3ObjectStorage:
             Params={"Bucket": self._bucket, "Key": key},
             ExpiresIn=self._expiry_seconds,
         )
+
+    async def exists(self, key: str) -> bool:
+        """HEAD, and read the absence rather than letting it raise.
+
+        `ClientError` is caught narrowly and only for 404: any other status —
+        403 from a bad credential, 503 from a store having a bad day — is a real
+        failure and must not be reported to the caller as "the user never
+        uploaded", which is the answer that silently loses their deck.
+        """
+        try:
+            await asyncio.to_thread(
+                self._client.head_object, Bucket=self._bucket, Key=key
+            )
+        except ClientError as exc:
+            if exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
+                return False
+            raise
+        return True
 
     async def delete(self, key: str) -> None:
         await asyncio.to_thread(

@@ -47,6 +47,16 @@ RATE_LIMIT_WINDOW = timedelta(minutes=1)
 #: every iteration of one is provider time on our invoice.
 SESSION_START_LIMIT = 10
 
+#: Materials registered per minute per account.
+#:
+#: Looser than session start, because the thing being protected is smaller: this
+#: endpoint writes a row and signs a URL, neither of which costs a provider
+#: invoice. It is limited at all because every call hands out a bearer credential
+#: for a writable object, and a loop that never uploads leaves rows for the
+#: reaper. Loose enough that attaching a folder of slide photos in one go — the
+#: mobile-native case — is ordinary use rather than a refusal.
+MATERIAL_REGISTER_LIMIT = 60
+
 #: How long a finished window is kept before deletion.
 #:
 #: Not zero, and not "anything not current". A pass that deleted every window

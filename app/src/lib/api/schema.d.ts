@@ -207,6 +207,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/materials/limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Limits
+         * @description What this caller may upload, and what the rung above would allow.
+         *
+         *     Published so the app can refuse an oversized file locally, before it reads a
+         *     byte. The refusal in `register_material` stays the real wall — this exists so
+         *     the tier table has one home rather than a second copy shipped in an app
+         *     release.
+         */
+        get: operations["materials_read_limits"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/materials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register Material
+         * @description Claim somewhere to put a deck, and get the one URL that may fill it.
+         *
+         *     The user is taken from the credential, never from the body: a client that
+         *     could name the account would be able to upload into somebody else's storage
+         *     prefix and read it back.
+         *
+         *     Refusals happen inside the service and before anything is signed, so an
+         *     oversized or unreadable file costs no upload and leaves no row behind.
+         */
+        post: operations["materials_register_material"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/materials/{material_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Upload
+         * @description The client reports the bytes landed, and we check before believing it.
+         *
+         *     This is the moment a material becomes extractable, which is the moment it
+         *     starts costing money — so the state it moves into is the one the sweep
+         *     claims, and a claim with no object behind it is refused here rather than
+         *     discovered by a model call that fails.
+         */
+        post: operations["materials_complete_upload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/materials/{material_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Material
+         * @description One material, if it belongs to the caller.
+         *
+         *     No upload URL. Re-signing on every read would turn a lookup into a fresh
+         *     write capability against a material that may already hold an extracted deck.
+         */
+        get: operations["materials_read_material"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -260,6 +360,134 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+        };
+        /**
+         * MaterialDeclaration
+         * @description What the client says it is about to upload.
+         *
+         *     Every field is a claim, and each is made binding by something other than
+         *     trust: the size and the type are signed into the URL, so the store refuses a
+         *     body that disagrees, and the filename is display-only and never reaches a
+         *     path.
+         *
+         *     `byte_size` is bounded on both ends here rather than only against the tier
+         *     cap. The lower bound is what stops a negative length reaching the signer,
+         *     where it becomes a vendor-specific error instead of a refusal; the upper is
+         *     a sanity bound well above the largest tier, so an absurd number is a 422
+         *     from the schema rather than arithmetic anybody has to reason about.
+         */
+        MaterialDeclaration: {
+            /** Filename */
+            filename: string;
+            /** Content Type */
+            content_type: string;
+            /** Byte Size */
+            byte_size: number;
+        };
+        /**
+         * MaterialLimits
+         * @description The caller's own caps, and the rung above if there is one.
+         *
+         *     Published so the app can refuse an oversized file locally — instantly, with
+         *     no round trip and no partial upload — while the server refusal stays the
+         *     real wall. The alternative was the client holding its own copy of the tier
+         *     table, where a pricing change ships as an app release and the two can
+         *     disagree without anyone noticing.
+         */
+        MaterialLimits: {
+            /** Tier */
+            tier: string;
+            /** Max Upload Bytes */
+            max_upload_bytes: number;
+            /** Max Pages Per Material */
+            max_pages_per_material: number;
+            /** Accepted Content Types */
+            accepted_content_types: string[];
+            upgrade?: components["schemas"]["TierUpload"] | null;
+        };
+        /**
+         * MaterialRead
+         * @description One material, as the client sees it.
+         *
+         *     `storage_key` is deliberately absent. It is an internal locator, and the
+         *     only legitimate way to reach an object is a presigned URL this service
+         *     issues after checking ownership — a key in a response is an invitation to
+         *     build a client that constructs its own.
+         */
+        MaterialRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            state: components["schemas"]["MaterialState"];
+            /** Filename */
+            filename: string;
+            /** Content Type */
+            content_type: string;
+            /** Byte Size */
+            byte_size: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * MaterialState
+         * @description The five states an attached material can be in.
+         *
+         *     ```
+         *     awaiting_upload ──► pending ──► extracting ──► ready
+         *            │                                 └──► failed
+         *            └──► (reaped — a presign nobody used)
+         *     ```
+         *
+         *     `awaiting_upload` exists because the row precedes the object: the presign is
+         *     signed against a key, and ownership is checked on a row. Without it,
+         *     `pending` would mean both "no bytes yet" and "bytes here, waiting its turn",
+         *     and the extraction sweep claims `pending` — so it would pick up materials
+         *     nobody ever uploaded and pay a model to read nothing.
+         *
+         *     `extracting` exists for the same reason `finalizing` does on a session:
+         *     without it nothing separates "still working" from "the process died", and
+         *     the requeue cannot be safe. Unlike settlement, a duplicate run here is not a
+         *     refused write — it is a second invoice.
+         *
+         *     `failed` is terminal and deliberately not retried in place. A material that
+         *     could not be read is re-uploaded, because the source document is deleted on
+         *     success and there is nothing to reprocess from.
+         * @enum {string}
+         */
+        MaterialState: "awaiting_upload" | "pending" | "extracting" | "ready" | "failed";
+        /**
+         * MaterialUpload
+         * @description A registered material, and the one URL that may receive its bytes.
+         *
+         *     Returned only from the register call, never from a read. The URL is a bearer
+         *     credential for a single object at a single size — short-lived by
+         *     construction, and not the kind of thing to hand back on every GET.
+         */
+        MaterialUpload: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            state: components["schemas"]["MaterialState"];
+            /** Filename */
+            filename: string;
+            /** Content Type */
+            content_type: string;
+            /** Byte Size */
+            byte_size: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Upload Url */
+            upload_url: string;
         };
         /**
          * RefreshRequest
@@ -393,6 +621,18 @@ export interface components {
             token_type: string;
             /** Expires In */
             expires_in: number;
+        };
+        /**
+         * TierUpload
+         * @description What a tier accepts, for a client drawing an upgrade prompt.
+         */
+        TierUpload: {
+            /** Tier */
+            tier: string;
+            /** Max Upload Bytes */
+            max_upload_bytes: number;
+            /** Max Pages Per Material */
+            max_pages_per_material: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -631,6 +871,121 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BalanceRead"];
+                };
+            };
+        };
+    };
+    materials_read_limits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialLimits"];
+                };
+            };
+        };
+    };
+    materials_register_material: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaterialDeclaration"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialUpload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    materials_complete_upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    materials_read_material: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
