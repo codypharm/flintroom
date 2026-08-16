@@ -161,5 +161,78 @@ for the voice loop.
 - **Difficulty calibration across sessions** (§3.3) has no design. It needs
   something durable per user, and `docs/minutes-ledger-and-sessions.md` has no
   opinion on where that lives.
-- **The latency budget is unmeasured.** Every decision above assumes the chain
-  fits in ~1.5s and none of them has been tested against a clock.
+- **The two-call design does not fit the budget, measured.** This is the open
+  item now, and it is load-bearing rather than a tuning question — see below.
+
+
+---
+
+## Measured, 2026-08-16
+
+`scripts/panel_spike.py`, real Gemini, three turns against a scripted presenter
+with a deck that contradicts them.
+
+| | |
+| --- | --- |
+| Selection (`gemini-3.5-flash-lite`) | ~0.8s |
+| Composition (`gemini-3.5-flash-lite`) | ~0.8s |
+| **Both, per turn** | **1.49s – 2.37s, mean 1.90s** |
+| Budget (Open Risk #3) | 1.5s **for the whole chain** |
+
+Transcription and speech are not in that number. They are unbuilt and unchosen,
+so the real chain is this plus two hops.
+
+### Three things the spike found that argument had not
+
+**The cheap model wins twice.** The design said a cheap model routes and a
+stronger one writes, on the reasoning that interrogation is the product. Measured,
+`gemini-3.7-flash` took 2.11s and spent 383 tokens thinking; `gemini-3.5-flash-lite`
+took 0.82s and wrote the better line:
+
+> *"Slide four says sixty-one. You just said seventy. Which one is lying to me?"*
+
+against
+
+> *"Slide four says sixty-one percent in 2026, but you just told us seventy
+> today—where did those nine hundred basis points come from?"*
+
+A panelist says one short thing. A reasoning model produces a considered
+paragraph, which is worse as well as slower. Both calls now use the fast model.
+
+**A reasoning model cannot be talked out of reasoning.**
+`thinkingConfig: {thinkingBudget: 0}` is a 400 on flash-lite and is accepted then
+ignored on 3.7-flash — the response still carried a `thoughtSignature` and still
+spent the tokens. Worse, those tokens come out of `maxOutputTokens`, so a tight
+ceiling returns `"Slide"` or an empty string with `finishReason: MAX_TOKENS` and
+the room says nothing. The answer was to choose a model that does not reason.
+
+**Streaming does not rescue the number.** A panelist's line is ~25 tokens, so the
+first streamed chunk and the last arrive together (1.09s / 1.09s). There is no
+time-to-first-audio advantage to hide the second call behind.
+
+### So the open question is the shape, not the tuning
+
+Grounding works — the room caught a contradiction with no Auditor involved, from
+the deck alone. What does not work is two serial model calls inside 1.5s.
+
+Four ways out, none free:
+
+1. **Deterministic selection.** Route in code — domain match against the last
+   answer, who has been quiet, whose thesis was contradicted — and spend zero on
+   the hop that buys the least. Saves the whole 0.8s and leaves composition at
+   ~0.8s. Costs comprehension: keyword-shaped routing where a model understood
+   the answer. `_owner` already routes findings this way, so it is a widening of
+   something that exists rather than a new idea.
+2. **One call plays the whole room**, the alternative rejected above. ~0.8s and
+   inter-panelist disagreement comes free. Costs the voice separation the two-step
+   design exists for, which was rejected on a risk that is real but unmeasured —
+   and is now the cheaper of two evils rather than the more expensive.
+3. **Speculative composition.** Start writing for the most likely archetype while
+   selection runs, discard when wrong. Hides the latency, pays roughly double on
+   the turns it guesses wrong, and doubles the complexity of the loop.
+4. **Move the threshold.** 1.5s is `Product.md`'s number and it is itself an
+   assumption. Worth saying out loud rather than treating as physics — but it is
+   the one number in this area with a product argument behind it, and moving it
+   because the implementation is slow is the wrong direction of travel.
+
+This is an architecture decision and it is not the agent's to make.

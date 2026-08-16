@@ -48,17 +48,55 @@ API_KEY_HEADER = "x-goog-api-key"
 #: Routing is a classification over a short context, so the cheapest model.
 DEFAULT_SELECTION_MODEL = "gemini-3.5-flash-lite"
 
-#: The line itself is the product. Stable rather than preview: a room somebody is
-#: paying for by the minute is the wrong place for a model that can be withdrawn.
-DEFAULT_COMPOSITION_MODEL = "gemini-3.7-flash"
+#: The line itself is the product — and **measured, the cheap model wins twice**.
+#:
+#: `scripts/panel_spike.py` against a real contradiction, 2026-08-16:
+#:
+#:   gemini-3.7-flash       2.11s   383 thinking tokens
+#:     "Slide four says sixty-one percent in 2026, but you just told us seventy
+#:      today—where did those nine hundred basis points come from?"
+#:
+#:   gemini-3.5-flash-lite  0.82s   no thinking
+#:     "Slide four says sixty-one. You just said seventy.
+#:      Which number is lying to me?"
+#:
+#: Two and a half times faster on a path with ~1.5s in total, and the better
+#: line: a panelist says one short thing, and a reasoning model produces a
+#: considered paragraph. The assumption going in — cheap model routes, strong
+#: model speaks — was wrong in the direction that costs money, which is why
+#: `docs/panel-orchestration.md` said to measure it rather than argue it.
+#:
+#: Stable rather than preview either way: a room somebody is paying for by the
+#: minute is the wrong place for a model that can be withdrawn.
+DEFAULT_COMPOSITION_MODEL = "gemini-3.5-flash-lite"
 
-#: A panelist says one thing. This is a ceiling against a model that decides to
-#: deliver a paragraph, which costs latency the room does not have and produces a
-#: speech rather than a question.
-MAX_LINE_TOKENS = 160
+#: A ceiling, not a target. The prompt is what keeps a line short — measured, the
+#: model stops itself at twenty-odd tokens — and this only has to be high enough
+#: that nothing is ever cut mid-sentence.
+#:
+#: Deliberately generous, because the failure it prevents is silent and was
+#: observed: a *reasoning* model spends this budget thinking before it writes, so
+#: a tight ceiling returns "Slide" or an empty string with `finishReason:
+#: MAX_TOKENS` and the room says nothing at all. The models configured here do no
+#: thinking, but the next one somebody points this at might.
+MAX_LINE_TOKENS = 512
 
-#: Selection returns a name. Anything longer is the model explaining itself.
+#: Selection returns a name. Anything longer is the model explaining itself,
+#: and sixteen was measured sufficient — `gemini-3.5-flash-lite` answers `cfo` in
+#: two tokens with room to spare.
 MAX_SELECTION_TOKENS = 16
+
+#: Nothing here asks a model to stop reasoning, and the attempt is worth
+#: recording so it is not made twice.
+#:
+#: `thinkingConfig: {thinkingBudget: 0}` is rejected outright by
+#: `gemini-3.5-flash-lite` — 400, INVALID_ARGUMENT — and on `gemini-3.7-flash` it
+#: was accepted and then ignored: the response still carried a `thoughtSignature`
+#: and still spent 383 tokens thinking. Neither model can be talked out of its
+#: own default.
+#:
+#: The answer was to choose a model that does not reason rather than to argue
+#: with one that does. See `DEFAULT_COMPOSITION_MODEL`.
 
 
 class GeminiPanelModel:
@@ -106,7 +144,12 @@ class GeminiPanelModel:
         return _bare_name(answered)
 
     async def _generate(
-        self, *, model: str, system: str, prompt: str, max_tokens: int
+        self,
+        *,
+        model: str,
+        system: str,
+        prompt: str,
+        max_tokens: int,
     ) -> str:
         try:
             response = await self._http.post(

@@ -158,6 +158,34 @@ class Settings(BaseSettings):
     #: same organisation.
     anthropic_api_key: str | None = None
 
+    #: Which vendor writes the panel's lines. A `Literal` for the same reason
+    #: `extraction_provider` is one: a typo should refuse to boot rather than
+    #: produce a deployment that signs people in, opens rooms, and has nobody in
+    #: them.
+    #:
+    #: Gemini first because it has a free tier and the Anthropic account does
+    #: not yet have credit — the adapter that can be measured rather than only
+    #: stubbed. `docs/panel-orchestration.md` puts both behind one interface so
+    #: that ordering costs nothing.
+    panel_provider: Literal["gemini"] = "gemini"
+
+    #: Which model picks the speaker. Routing is a classification over a short
+    #: context, so the cheapest one — and it is the hop that buys the least on a
+    #: chain with ~1.5s in total.
+    panel_selection_model: str = "gemini-3.5-flash-lite"
+
+    #: Which model writes the line. **Measured, the cheap one wins** — 0.82s
+    #: against 2.11s, and a sharper line, because a panelist says one short thing
+    #: and a reasoning model produces a considered paragraph. The assumption going
+    #: in was the opposite; see `panel_models/gemini.py` for the transcript.
+    #:
+    #: Stable rather than preview, deliberately: a room somebody is paying for by
+    #: the minute is the wrong place for a model that can be withdrawn. Both are
+    #: settings rather than constants because the panel runs on *every turn of a
+    #: metered session*, which puts them inside the §4.4 margins that Open Risk
+    #: #4 already says rest on an unverified number.
+    panel_composition_model: str = "gemini-3.5-flash-lite"
+
     #: The second panel vendor, held for comparison rather than for failover.
     #:
     #: `docs/panel-orchestration.md` puts the panel model behind an interface

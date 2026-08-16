@@ -21,9 +21,23 @@ import pytest
 from app.agents.archetypes import DEFAULT_PANEL, by_name
 from app.core.errors import ProviderUnavailable
 from app.agents.panel import Asked, Grounding, TurnContext
+from app.agents.panel_models import build_panel_model
 from app.agents.panel_models.gemini import GeminiPanelModel
+from app.core.config import Settings
 
 CONTEXT = TurnContext(said="We hold 61% gross margin.", grounding=Grounding())
+
+#: `_env_file=None` matters more than it looks. Without it `Settings` reads the
+#: developer's real `backend/.env`, so the no-key test passes on a machine with no
+#: Gemini key and fails on one that has it — a test whose result depends on who is
+#: running it, which is worse than no test.
+BASE_ENVIRONMENT = {
+    "DATABASE_URL": "postgresql+asyncpg://user:pw@localhost:5432/flintroom",
+    "JWT_SECRET": "x" * 48,
+    "GOOGLE_CLIENT_ID": "297.apps.googleusercontent.com",
+    "APPLE_CLIENT_ID": "com.flintroom.app",
+    "_env_file": None,
+}
 
 
 def answering(text: str, *, status: int = 200):
@@ -220,3 +234,35 @@ async def test_the_selector_sees_everything_the_room_has_asked():
     body = (seen[0]).content.decode()
     assert "What is your CAC payback?" in body
     assert "Who is your reference customer?" in body
+
+
+def test_the_configured_models_reach_the_adapter():
+    """A setting nothing reads is a knob that does not turn.
+
+    The realistic failure is the one this closes: somebody moves composition to a
+    cheaper model on the evening the bill arrives, deploys, and nothing changes —
+    because the builder was still passing the default. Both figures sit inside the
+    §4.4 margins, since the panel runs on every turn of a metered session.
+    """
+    model = build_panel_model(
+        Settings(
+            **BASE_ENVIRONMENT,
+            GEMINI_API_KEY="a-key-with-no-production-counterpart",
+            PANEL_SELECTION_MODEL="gemini-3.1-flash-lite",
+            PANEL_COMPOSITION_MODEL="gemini-3.6-flash",
+        ),
+        httpx.AsyncClient(),
+    )
+
+    assert model._selection_model == "gemini-3.1-flash-lite"
+    assert model._composition_model == "gemini-3.6-flash"
+
+
+def test_a_deployment_with_no_key_has_no_panel_rather_than_no_boot():
+    """Absent, not fatal — the rule the voice provider and the bucket follow.
+
+    A deployment without a panel key still signs people in, tracks balances and
+    ingests decks. It cannot hold an interrogation, and refusing to boot would
+    take everything else down with the one thing that is not ready.
+    """
+    assert build_panel_model(Settings(**BASE_ENVIRONMENT), httpx.AsyncClient()) is None
