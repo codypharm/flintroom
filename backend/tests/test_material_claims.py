@@ -27,6 +27,7 @@ from app.modules.ingestion.extraction_model import (
     ExtractionUsage,
 )
 from app.modules.ingestion.models import ExtractionCost, Material, MaterialClaim
+from app.modules.ingestion.service import MAX_EXTRACTION_ATTEMPTS
 from app.modules.ingestion.schemas import (
     AssertionClaim,
     MAX_FIGURE,
@@ -546,3 +547,99 @@ async def test_a_failed_extraction_stores_no_claims(ingestion, account, db):
         .where(MaterialClaim.material_id == material.id)
     )
     assert stored == 0
+
+
+RATE_LIMITED = ExtractionResult(
+    claims=(), usage=USAGE, complete=False, retryable=True
+)
+
+
+async def test_a_rate_limited_deck_goes_back_in_the_queue(ingestion, account, db):
+    """`pending` is the queue, so requeueing is one UPDATE.
+
+    A busy minute must cost the user latency, not their deck. `failed` is
+    terminal and tells them to re-upload a file that was never the problem.
+    """
+    material = await extracting_material(db, account)
+
+    requeued = await ingestion.requeue_extraction(material.id, result=RATE_LIMITED)
+
+    assert requeued.state is MaterialState.PENDING
+    assert requeued.claimed_at is None
+    assert requeued.attempts == 1
+
+
+async def test_a_requeued_deck_waits_before_it_is_claimed_again(
+    ingestion, account, db
+):
+    """Without a wait it spins: claimed, 429, requeued, claimed, on the same tick.
+
+    `retry_at` is what makes the backoff live in the queue rather than in a
+    sleeping worker, which matters because the worker that would sleep is the
+    one every other deck is waiting on.
+    """
+    material = await extracting_material(db, account)
+
+    requeued = await ingestion.requeue_extraction(material.id, result=RATE_LIMITED)
+
+    assert requeued.retry_at is not None
+    assert requeued.retry_at > datetime.now(UTC)
+
+
+async def test_the_wait_grows_with_each_attempt(ingestion, account, db):
+    """Backing off linearly against a rate limit is just a slower stampede."""
+    material = await extracting_material(db, account)
+    waits = []
+
+    for _ in range(3):
+        requeued = await ingestion.requeue_extraction(
+            material.id, result=RATE_LIMITED
+        )
+        waits.append(requeued.retry_at - datetime.now(UTC))
+        material.state = MaterialState.EXTRACTING
+        material.claimed_at = datetime.now(UTC)
+        await db.commit()
+
+    assert waits[0] < waits[1] < waits[2]
+
+
+async def test_a_deck_that_never_gets_through_eventually_stops(
+    ingestion, account, db
+):
+    """A retryable failure still needs a floor, or a pathological deck loops.
+
+    The budget is deliberately generous — a rate limit is our problem, not the
+    user's, and giving up early is the data loss the classifier exists to
+    prevent. But a deck that times out on every attempt for a day is not going
+    to start working, and it must not be claimed forever.
+    """
+    material = await extracting_material(db, account)
+
+    for attempt in range(1, MAX_EXTRACTION_ATTEMPTS + 1):
+        given_back = await ingestion.requeue_extraction(
+            material.id, result=RATE_LIMITED
+        )
+        if attempt < MAX_EXTRACTION_ATTEMPTS:
+            # Still in the queue, so the sweep may take it again.
+            assert given_back.state is MaterialState.PENDING
+            material.state = MaterialState.EXTRACTING
+            material.claimed_at = datetime.now(UTC)
+            await db.commit()
+
+    assert given_back.state is MaterialState.FAILED
+    assert given_back.retry_at is None
+
+
+async def test_a_settled_deck_carries_no_stale_wait(ingestion, account, db):
+    """A material that made it through is not waiting for anything."""
+    material = await extracting_material(db, account)
+    await ingestion.requeue_extraction(material.id, result=RATE_LIMITED)
+    material.state = MaterialState.EXTRACTING
+    material.claimed_at = datetime.now(UTC)
+    await db.commit()
+
+    settled = await ingestion.settle_extraction(
+        material.id, result=ExtractionResult(claims=(MARGIN,), usage=USAGE)
+    )
+
+    assert settled.retry_at is None

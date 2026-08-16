@@ -77,9 +77,19 @@ class Material(Base):
         # accumulate for the life of the account and are never claimed —
         # indexing them would grow a hot index forever to answer a question
         # nobody asks about them.
+        # The extraction sweep's claim query. Partial, because `ready` materials
+        # accumulate for the life of the account and are never claimed —
+        # indexing them would grow a hot index forever to answer a question
+        # nobody asks about them.
+        #
+        # `retry_at` leads `created_at` because the claim filters on it before
+        # it orders by anything: a requeued deck is not a candidate until its
+        # wait is over, and scanning past every backed-off material to find that
+        # out is what makes a rate-limit event slow down the decks that are fine.
         Index(
             "ix_materials_extractable",
             "state",
+            "retry_at",
             "created_at",
             postgresql_where=text("state IN ('pending', 'extracting')"),
         ),
@@ -128,6 +138,30 @@ class Material(Base):
     #: it against the database's clock.
     claimed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+    #: Do not claim this material before this moment, or null for "any time".
+    #:
+    #: The backoff lives in the queue rather than in a sleeping worker, which
+    #: matters because the worker that would sleep is the one every other deck
+    #: is waiting on. Written with the database's clock, because the claim query
+    #: compares it against the database's clock.
+    retry_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    #: How many times extraction was given back rather than finished.
+    #:
+    #: Only counts *retryable* endings — a rate limit, a timeout, an overloaded
+    #: provider. A deck the API refuses outright fails on the first attempt,
+    #: because retrying produces the same refusal, so it needs no budget.
+    #:
+    #: The budget this counts against is deliberately generous. A rate limit is
+    #: our capacity problem and not the user's file, so giving up early is
+    #: exactly the data loss the classifier exists to prevent. The floor is
+    #: there only so a pathological deck cannot be claimed forever.
+    attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
     )
 
 

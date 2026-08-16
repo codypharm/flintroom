@@ -14,16 +14,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 
 import httpx
 import pytest
 
 from app.core.config import ConfigurationError, Settings
-from app.core.errors import ProviderUnavailable
 from app.modules.ingestion.extraction_model import ExtractionUsage
 from app.modules.ingestion.extraction_models import build_extraction_model
 from app.modules.ingestion.extraction_models.claude import (
-    CONCURRENT_CALLS,
+    DEFAULT_CONCURRENT_CALLS,
     ClaudeExtractionModel,
     to_claims,
 )
@@ -523,21 +523,33 @@ async def test_usage_comes_back_so_the_extraction_can_be_costed():
     )
 
 
-async def test_a_provider_failure_never_names_the_vendor():
-    """CLAUDE.md: `ProviderUnavailable` must not say who was unavailable.
+async def test_a_provider_failure_reaches_no_client_at_all(caplog):
+    """CLAUDE.md: a provider failure must not name the vendor to the client.
 
-    It exposes internal architecture and goes stale the moment the provider is
-    swapped, which the interface exists to allow.
+    Extraction now satisfies that by having nothing to say to a client: it
+    returns an incomplete result rather than raising, so a failed read surfaces
+    as a material that is still `pending` and never as an error carrying a
+    message. Strictly safer than a carefully worded one.
+
+    Rewritten when `extract` stopped raising (the classifier). The rule did not
+    change; the surface it applied to disappeared. What survives is the other
+    half — the vendor is named in the log, where it belongs and where a client
+    cannot read it.
     """
 
     def failing(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(500, json={"error": {"message": "anthropic exploded"}})
+        return httpx.Response(
+            400, json={"error": {"message": "anthropic exploded"}}
+        )
 
-    with pytest.raises(ProviderUnavailable) as failure:
-        await model_with(failing).extract([page(1)])
+    with caplog.at_level(logging.ERROR):
+        result = await model_with(failing).extract([page(1)])
 
-    assert "anthropic" not in failure.value.message.lower()
-    assert "claude" not in failure.value.message.lower()
+    assert result.complete is False
+    assert any(
+        getattr(record, "context", {}).get("provider") == "claude"
+        for record in caplog.records
+    )
 
 
 # --- Wiring ---------------------------------------------------------------
@@ -693,11 +705,18 @@ async def test_claims_from_every_call_come_back_as_one_deck():
     assert len(result.claims) == 1
 
 
-def refusing(first_pages: set[int], payload: dict, *, usage: dict | None = None):
+def refusing(
+    first_pages: set[int],
+    payload: dict,
+    *,
+    usage: dict | None = None,
+    status: int = 400,
+):
     """A handler that fails the calls starting at the given pages.
 
-    400 rather than 500 so the SDK does not retry it — these tests are about
+    400 by default so the SDK does not retry — most of these tests are about
     what happens once a call has genuinely given up, not about the retry itself.
+    `retry-after: 0` keeps the retryable statuses instant.
     """
     reply = replying(payload, usage=usage)
 
@@ -705,7 +724,8 @@ def refusing(first_pages: set[int], payload: dict, *, usage: dict | None = None)
         handler.requests.append(request)
         if pages_in(request)[0] in first_pages:
             return httpx.Response(
-                400,
+                status,
+                headers={"retry-after": "0"},
                 json={
                     "type": "error",
                     "error": {"type": "invalid_request_error", "message": "no"},
@@ -757,34 +777,20 @@ async def test_a_failed_deck_still_reports_what_it_cost():
     assert result.usage.output_tokens == 4_000
 
 
-async def test_a_provider_that_answers_nothing_is_unavailable():
-    """Told apart from a deck that could not be read, deliberately.
+async def test_a_deck_nothing_answered_records_no_spend():
+    """A refusal before any answer costs nothing, so it records nothing.
 
-    Nothing succeeding is indistinguishable from the provider being down or
-    misconfigured. Raising leaves the material `pending` for a later sweep; the
-    alternative is that an outage permanently fails every deck uploaded during
-    it, because `failed` is terminal and the user is told to re-upload a file
-    that was never the problem.
+    `docs/ingestion.md`: *"`extraction_costs` records work performed; a material
+    refused before a model call has no row."* The same holds for calls that were
+    made and refused — nothing was billed, so an empty usage keeps the cost
+    table free of rows that describe no work.
     """
     handler = refusing({1, 21, 41}, answer(figures=()))
 
-    with pytest.raises(ProviderUnavailable):
-        await model_with(handler).extract([page(n) for n in range(1, 46)])
+    result = await model_with(handler).extract([page(n) for n in range(1, 46)])
 
-
-async def test_the_vendor_is_never_named_when_a_deck_fails():
-    """CLAUDE.md: a provider failure must not name the vendor to the client.
-
-    It exposes internal architecture and goes stale the moment the provider is
-    swapped — which is the whole point of the interface it sits behind.
-    """
-    handler = refusing({1}, answer(figures=()))
-
-    with pytest.raises(ProviderUnavailable) as refused:
-        await model_with(handler).extract([page(1)])
-
-    assert "claude" not in str(refused.value).lower()
-    assert "anthropic" not in str(refused.value).lower()
+    assert result.usage.input_tokens == 0
+    assert result.usage.output_tokens == 0
 
 
 async def test_calls_run_in_parallel_but_not_all_at_once():
@@ -812,7 +818,7 @@ async def test_calls_run_in_parallel_but_not_all_at_once():
 
     await model_with(handler).extract([page(n) for n in range(1, 201)])
 
-    assert handler.peak == CONCURRENT_CALLS
+    assert handler.peak == DEFAULT_CONCURRENT_CALLS
 
 
 async def test_a_transient_failure_is_retried_before_the_deck_is_lost():
@@ -848,3 +854,100 @@ async def test_a_transient_failure_is_retried_before_the_deck_is_lost():
 
     assert attempts == 3
     assert result.complete is True
+
+
+# --- Whose fault was it -----------------------------------------------------
+
+
+async def test_a_rate_limited_deck_says_it_is_worth_trying_again():
+    """A 429 is not the deck's fault, and must not be treated as one.
+
+    Under load, retries exhaust *unevenly* — some chunks land, some do not — so
+    a partial failure is the likely shape of a rate-limit event rather than a
+    rare one. Marking the material `failed` there would tell the user to
+    re-upload a deck that was never the problem, turning a capacity problem into
+    data loss.
+    """
+    handler = refusing({21}, answer(figures=()), status=429)
+
+    result = await model_with(handler).extract([page(n) for n in range(1, 46)])
+
+    assert result.complete is False
+    assert result.retryable is True
+
+
+async def test_a_deck_the_api_refuses_outright_is_not_worth_retrying():
+    """A 400 is about this content, and trying again produces the same 400.
+
+    Left retryable it would spin through the sweep forever, failing identically
+    and burning a claim every pass — the failure `docs/ingestion.md` already
+    names for the per-file page cap.
+    """
+    handler = refusing({21}, answer(figures=()))
+
+    result = await model_with(handler).extract([page(n) for n in range(1, 46)])
+
+    assert result.complete is False
+    assert result.retryable is False
+
+
+async def test_a_deck_is_never_failed_without_evidence_the_request_works():
+    """Nothing answered means we have no reason to blame the deck.
+
+    A malformed tool schema or a bad model name is a 400 on *every* call, and
+    reading that as "this deck is unreadable" would permanently fail every deck
+    uploaded while the bug was live. A sibling chunk succeeding is the evidence
+    that the request shape is fine and the content is not — without it, the
+    honest answer is that we do not know.
+    """
+    handler = refusing({1, 21, 41}, answer(figures=()))
+
+    result = await model_with(handler).extract([page(n) for n in range(1, 46)])
+
+    assert result.complete is False
+    assert result.retryable is True
+
+
+async def test_a_permanent_failure_outranks_a_transient_one():
+    """Retrying cannot fix the 400, so the deck is not worth requeueing for it."""
+    handler = refusing({21}, answer(figures=()))
+    rate_limited = refusing({41}, answer(figures=()), status=429)
+
+    def both(request: httpx.Request) -> httpx.Response:
+        if pages_in(request)[0] == 41:
+            return rate_limited(request)
+        return handler(request)
+
+    result = await model_with(both).extract([page(n) for n in range(1, 46)])
+
+    assert result.complete is False
+    assert result.retryable is False
+
+
+async def test_a_whole_deck_that_was_read_is_not_retryable():
+    """`retryable` is only a question once something went wrong."""
+    handler = recording(answer(figures=()))
+
+    result = await model_with(handler).extract([page(1)])
+
+    assert result.complete is True
+    assert result.retryable is False
+
+
+def test_the_configured_concurrency_reaches_the_model():
+    """A setting nothing reads is a knob that does not turn.
+
+    The realistic failure is the one this closes: somebody lowers
+    `EXTRACTION_CONCURRENT_CALLS` on the evening it starts rate-limiting,
+    deploys, and nothing changes — because the builder was still passing the
+    default.
+    """
+    model = build_extraction_model(
+        Settings(
+            **BASE_ENVIRONMENT,
+            ANTHROPIC_API_KEY="test-key-with-no-production-counterpart",
+            EXTRACTION_CONCURRENT_CALLS=2,
+        )
+    )
+
+    assert model._concurrent_calls == 2

@@ -36,6 +36,7 @@ def build_extraction_model(settings: Settings) -> ExtractionModel | None:
         return ClaudeExtractionModel(
             api_key=settings.anthropic_api_key,
             model=settings.extraction_model,
+            concurrent_calls=settings.extraction_concurrent_calls,
         )
 
     return None

@@ -48,6 +48,8 @@ statement caching needs care with asyncpg.
 | Read replicas for balance reads | Read load measurably competes with the tick write path | Balance reads are O(1) single-row lookups on the primary key. Replicas add replication lag to a number that is money — a user could see a stale balance after a top-up. |
 | Cache balances in Redis | Primary cannot serve balance reads at the session-start rate | Introduces a second source of truth for money. The cached balance in `accounts` is already the cache over `ledger_entries`; a third layer needs a real measured reason. |
 | Batch or queue ticks through a broker | Ledger writes approach the primary's sustained write ceiling | Ticking in arrears depends on the charge being durable when it returns. A queue puts money in flight and turns every retry into a distributed-systems question. |
+| A broker for extraction work (Celery/SQS/pgmq) | Extraction workers need scaling that a separate deployment of the sweep loop cannot satisfy, or queue claim latency shows up in a profile | The bottleneck is the vendor's tokens-per-minute, not the queue — see the arithmetic below. Extraction is also not idempotent (a duplicate run is a second invoice and a second set of claims), so at-least-once delivery means the `extracting`/`claimed_at` claim stays either way: a broker is added *to* the state machine, not instead of it, and two systems then hold opinions about what work exists. |
+| Throttle on the provider's rate-limit response headers | Sustained 429s at a concurrency nobody wants to keep tuning by hand | `extraction_concurrent_calls` is a knob that can be turned in config today, and with zero users there is no number to size a limiter against. Deriving concurrency from a declared allowance was refused outright: the arithmetic needs seconds-per-call, which nothing can currently measure, so it would launder a guess into a formula that reads as computed. Headers are the honest version and need traffic to be worth it. |
 
 ### Rough arithmetic behind the deferral
 
@@ -62,6 +64,32 @@ a funded problem, not a design problem.
 
 Both figures inherit §4.3's unverified vendor list-rate assumptions (Open Risk
 #4), so treat them as order-of-magnitude only.
+
+### Rough arithmetic behind deferring an extraction broker
+
+At a 20-page deck per call and ~55k input tokens per call, with a 3× evening
+peak over the daily average:
+
+| Decks/day | Calls/min (peak) | Tokens/min (peak) | DB claims/sec |
+| --- | --- | --- | --- |
+| 1,000 | 2 | 115k | 0.03 |
+| 10,000 | 21 | **1.1M** | 0.35 |
+| 100,000 | 208 | **11.5M** | 3.5 |
+| 1,000,000 | 2,083 | **115M** | 35 |
+
+The two columns never bind together. **Token throughput saturates a typical
+organisation allowance at roughly 10,000 decks a day, where the database is
+doing 0.35 claims a second** — three orders of magnitude below anything
+`SKIP LOCKED` notices. A broker would be optimising the least loaded component
+in the system at every volume this product plausibly reaches.
+
+What does scale, in order: a limiter that understands tokens rather than tasks
+(no broker provides one), tokens per page (2,750 is a choice, not a constant),
+the Batch API's separate high-throughput lane, and running the sweep as its own
+deployment — which needs no broker either.
+
+The 55k and the 3× peak are estimates, not measurements. The conclusion survives
+being wrong by 2× in either direction; the crossover point does not.
 
 ---
 

@@ -134,6 +134,21 @@ class ExtractionResult:
     #: cost that was wasted.
     complete: bool = True
 
+    #: Whether trying the same deck later could produce a different answer.
+    #:
+    #: Only meaningful when `complete` is false, and it is the difference
+    #: between a slow evening and data loss. A rate limit, a timeout or an
+    #: overloaded provider is not the deck's fault — the material goes back to
+    #: `pending` and waits. A request the API refuses outright is about this
+    #: content, and retrying produces the same refusal forever while burning a
+    #: claim every sweep pass.
+    #:
+    #: An adapter must not report a deck unretryable without evidence that its
+    #: requests work at all: a malformed tool schema fails every call
+    #: identically, and reading that as "this deck is unreadable" would
+    #: permanently fail every deck uploaded while the bug was live.
+    retryable: bool = False
+
 
 class ExtractionModel(Protocol):
     """Reads pages, returns figures. One instance per process."""

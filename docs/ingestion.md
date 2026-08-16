@@ -360,24 +360,60 @@ than the user believes, nothing downstream can tell the difference, and the
 source is deleted on success — the gap would be permanent and invisible, against
 *"extraction completeness is a one-way door, not a backlog item."*
 
-Two failures, told apart by whether **anything** succeeded:
+What varies is whether it is worth trying again, and that is decided by **why**
+calls failed rather than by how many:
 
-| | What the adapter does | What the sweep does |
+| The failure | `retryable` | Ending |
 | --- | --- | --- |
-| No call answered | Raises `ProviderUnavailable` | Material stays `pending`, tried again later |
-| Some answered, some did not | Returns `complete=False`, claims discarded, usage filled in | `fail_extraction` — records the cost, material → `failed` |
+| Every call answered | — | `settle_extraction` → `ready` |
+| 400, 413, 422 **and a sibling chunk succeeded** | false | `fail_extraction` → `failed` |
+| Rate limit, timeout, 5xx, bad credential | true | `requeue_extraction` → `pending`, later |
+| Nothing answered at all | true | `requeue_extraction` → `pending`, later |
 
-The distinction is load-bearing. `failed` is terminal and tells the user to
-re-upload, so an outage that failed every deck uploaded during it would be
-telling people to re-send a file that was never the problem. Nothing succeeding
-is indistinguishable from the provider being down, so that case never marks a
-deck.
+Three details are load-bearing, and each closes a way of destroying a deck that
+was never the problem:
 
-Returning rather than raising on a partial failure is what makes the cost
-recordable: those calls are on the invoice whether or not their answers were
-usable, and cost that cannot be reconciled is worse than cost that was wasted.
+- **Under load, retries exhaust unevenly.** Some chunks land and some do not, so
+  a *partial* failure is the likely shape of a rate-limit event rather than a
+  rare one. Reading that as "this deck is unreadable" turns a capacity problem
+  into data loss, because `failed` is terminal and tells the user to re-upload.
+- **A permanent refusal needs a sibling that worked.** A malformed tool schema
+  is a 400 on every call, and without that evidence we would permanently fail
+  every deck uploaded while the bug was live. Deny by default, applied to
+  destroying somebody's document.
+- **One permanent refusal outranks any number of transient ones.** Retrying
+  cannot fix it, and a deck left retryable would spin through the sweep failing
+  identically every pass.
+
+`extract` never raises. A caller that has to handle both a return value and an
+exception for the same question is one that will handle a case wrong, and this
+is the seam a second vendor implements. It also makes the cost recordable:
+calls are on the invoice whether or not their answers were usable, and cost that
+cannot be reconciled is worse than cost that was wasted.
+
 `settle_extraction` refuses an incomplete result outright — `ready` is the
 promise the panel grounds itself on.
+
+### A requeued deck waits, and eventually gives up
+
+`pending` **is** the queue, so requeueing is one `UPDATE` — no broker, no second
+source of truth about what work exists.
+
+`retry_at` puts the backoff on the row rather than in a sleeping worker, because
+the worker that would sleep is the one every other deck is waiting on. It doubles
+per attempt from one minute, capped at thirty: linear backoff against a rate
+limit is a slower stampede rather than a smaller one, since every requeued deck
+returns together and spends the allowance in the instant it recovered.
+
+`attempts` counts **only retryable endings** — ten of them, spanning a few hours.
+A deck the API refuses outright fails on the first attempt and needs no budget.
+The generosity is the point: a small budget would deliver exactly the data loss
+the classifier prevents, just an hour later. The floor exists only so a
+pathological deck cannot be claimed forever.
+
+`extraction_costs` gets no row when nothing was billed. An attempt where every
+call was rate-limited describes no work, and a row per failed sweep pass would
+bury the rows that do.
 
 ### A claim records whether its citation was checked
 

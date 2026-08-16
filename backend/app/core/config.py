@@ -146,6 +146,28 @@ class Settings(BaseSettings):
     #: `extraction_costs` — not to whoever is editing the adapter.
     extraction_model: str = "claude-sonnet-5"
 
+    #: How many model calls one deck may have in flight at once.
+    #:
+    #: A setting rather than a constant because the right value depends on a
+    #: number invisible from code — the deployment's input-tokens-per-minute
+    #: allowance, which is per *organisation* and shared by every user, not per
+    #: account. One call held continuously costs `tokens_per_call × 60 /
+    #: call_seconds` tokens a minute, so the ceiling moves with the tier and
+    #: with how long a call takes.
+    #:
+    #: Four is a bet, not a derivation: at a low allowance and a fast call it is
+    #: already too high, and at a generous one it wastes capacity. It stays a
+    #: bet until a real deck has been timed, and the point of the setting is
+    #: that losing the bet is a config change on the evening it starts
+    #: rate-limiting rather than a deploy.
+    #:
+    #: Deriving it from a declared allowance was considered and refused: the
+    #: arithmetic needs seconds-per-call, which nothing can currently measure,
+    #: so it would launder one guess into a formula that reads as computed. The
+    #: closed-loop answer is to throttle on the rate-limit headers the provider
+    #: already returns, and that needs traffic to be worth building.
+    extraction_concurrent_calls: int = Field(default=4, ge=1, le=64)
+
     def __init__(self, **values: object) -> None:
         """Fail as `ConfigurationError`, carrying nothing underneath it.
 

@@ -21,12 +21,12 @@ from __future__ import annotations
 import asyncio
 import base64
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
 from anthropic import AsyncAnthropic, AnthropicError
 
-from app.core.errors import ProviderUnavailable
 from app.core.logging import get_logger
 from app.modules.ingestion.extraction_model import (
     ExtractedClaim,
@@ -67,18 +67,24 @@ MAX_OUTPUT_TOKENS = 16384
 #: applied to context instead of cost.
 PAGES_PER_CALL = 20
 
-#: Calls in flight at once, **per deck**. A 300-page deck is fifteen calls; run
-#: one after another that is minutes of wall clock for somebody who uploaded a
-#: deck in order to rehearse against it now.
+#: Calls in flight at once, **per deck**, when nothing configures it. A 300-page
+#: deck is fifteen calls; run one after another that is minutes of wall clock
+#: for somebody who uploaded a deck in order to rehearse against it now.
 #:
 #: This is not the fleet's ceiling and must not be mistaken for one. The
 #: semaphore is created per `extract` call, and the API key is one credential
-#: for the whole deployment — so the rate limit is spent by every user at once,
-#: not by each user separately. A user works one deck at a time; fifty users on
-#: a busy evening do not. Whatever decides how many materials the extraction
-#: sweep claims per pass is choosing the real number, and it should own that
-#: rather than discover it in a wall of 429s.
-CONCURRENT_CALLS = 4
+#: for the whole deployment — so the rate-limit allowance is spent by every user
+#: at once, not by each user separately. A user works one deck at a time; fifty
+#: users on a busy evening do not. Whatever decides how many materials the
+#: extraction sweep claims per pass is choosing the real number.
+#:
+#: **Unvalidated against token throughput.** One call held continuously costs
+#: `55,000 × 60 / call_seconds` tokens a minute, so at a low allowance and a
+#: fast call four is already over the line with a single deck and no other
+#: users. It is `extraction_concurrent_calls` in `Settings` for exactly that
+#: reason — see the reasoning there, and lower it the evening it starts
+#: rate-limiting.
+DEFAULT_CONCURRENT_CALLS = 4
 
 #: Retries per call, set here rather than inherited.
 #:
@@ -92,6 +98,16 @@ CONCURRENT_CALLS = 4
 #: throws away fourteen calls that were already paid for. Backoff caps at eight
 #: seconds, so four attempts is a few seconds of insurance against that.
 MAX_RETRIES = 4
+
+#: Statuses that mean *this request*, not *right now*. Retrying produces the
+#: same refusal, so a deck that hits one is not worth requeueing — provided
+#: something else in the same deck succeeded, which is the evidence that the
+#: request shape itself is fine.
+#:
+#: Everything else — 429, 529, 5xx, timeouts, connection failures, and a
+#: credential we got wrong — is a "come back later", because none of them are
+#: anything the user's file did.
+DECK_FATAL_STATUSES = frozenset({400, 413, 422})
 
 TOOL_NAME = "record_claims"
 
@@ -206,6 +222,18 @@ INSTRUCTION = (
 )
 
 
+@dataclass(frozen=True)
+class _Failed:
+    """A call that gave up, and whether later could go differently.
+
+    A record rather than `None`, because "it did not work" and "it will never
+    work" are different answers and collapsing them is what turns a busy
+    minute into somebody re-uploading a deck that was fine.
+    """
+
+    retryable: bool
+
+
 class ClaudeExtractionModel:
     """One client for the process, as the voice provider is."""
 
@@ -214,9 +242,11 @@ class ClaudeExtractionModel:
         *,
         api_key: str,
         model: str,
+        concurrent_calls: int = DEFAULT_CONCURRENT_CALLS,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self._model = model
+        self._concurrent_calls = concurrent_calls
         # `http_client` exists so the tests drive a real SDK client over a
         # transport that never leaves the process. Translation is where the bugs
         # live, and it should not need an account to exercise.
@@ -233,7 +263,7 @@ class ClaudeExtractionModel:
         rather than a change to the pipeline.
         """
         chunks = _chunked(pages, PAGES_PER_CALL)
-        at_once = asyncio.Semaphore(CONCURRENT_CALLS)
+        at_once = asyncio.Semaphore(self._concurrent_calls)
         readings = await asyncio.gather(
             *(self._read(chunk, at_once) for chunk in chunks)
         )
@@ -241,8 +271,8 @@ class ClaudeExtractionModel:
 
     async def _read(
         self, pages: Sequence[RenderedPage], at_once: asyncio.Semaphore
-    ) -> ExtractionResult | None:
-        """One call. `None` where the provider would not answer.
+    ) -> ExtractionResult | _Failed:
+        """One call, or why it did not happen.
 
         Failure is returned rather than raised so the other chunks still finish.
         They are in flight and already billable, and cancelling them would lose
@@ -258,18 +288,20 @@ class ClaudeExtractionModel:
                     tool_choice={"type": "tool", "name": TOOL_NAME},
                     messages=[{"role": "user", "content": _content(pages)}],
                 )
-            except AnthropicError:
+            except AnthropicError as exc:
                 # The vendor is never named to the caller. CLAUDE.md: a vendor
                 # in an error message exposes internal architecture and goes
                 # stale the moment the provider is swapped, which this interface
                 # exists to allow. It is named in the log, where it belongs.
+                status = getattr(exc, "status_code", None)
                 log.error(
                     "extraction_call_failed",
                     provider=PROVIDER,
+                    status=status,
                     pages=len(pages),
                     first_page=pages[0].number if pages else None,
                 )
-                return None
+                return _Failed(retryable=status not in DECK_FATAL_STATUSES)
 
         claims, dropped, corrected = to_claims(_tool_input(message), pages=pages)
 
@@ -294,30 +326,46 @@ class ClaudeExtractionModel:
 
     def _merged(
         self,
-        readings: Sequence[ExtractionResult | None],
+        readings: Sequence[ExtractionResult | _Failed],
         *,
         pages: Sequence[RenderedPage],
     ) -> ExtractionResult:
         """Every call's answer, as one deck's worth.
 
-        Two different failures, told apart by whether anything succeeded:
+        An incomplete deck always drops its claims: a partially-read deck
+        grounds less than the user believes, nothing downstream can tell, and
+        the source is deleted on success — the gap would be permanent and
+        invisible.
 
-        - **Nothing worked.** Indistinguishable from the provider being down or
-          misconfigured, so it raises. The sweep leaves the material `pending`
-          and tries again later — an outage must not permanently fail every deck
-          uploaded during it, because `failed` is terminal and the user would be
-          told to re-upload a file that was never the problem.
-        - **Some worked.** Real cost was incurred and has to be recorded, so it
-          returns rather than raising. `complete` is false and the claims are
-          dropped: a partially-read deck grounds less than the user believes,
-          nothing downstream can tell, and the source is deleted on success —
-          the gap would be permanent and invisible.
+        What varies is whether it is worth trying again, and that is decided by
+        *why* calls failed rather than by how many:
+
+        - **A call the API refused outright** — 400, 413, 422. About this
+          content, and retrying produces the same refusal forever. Not
+          retryable, but only when some sibling chunk succeeded: that success is
+          the evidence the request shape works. A malformed tool schema fails
+          every call identically, and reading that as "this deck is unreadable"
+          would permanently fail every deck uploaded while the bug was live.
+        - **Anything else** — rate limits, timeouts, an overloaded provider, a
+          credential we got wrong. Not the deck's fault, so the material waits
+          and is tried again.
+
+        It never raises. A caller that has to handle both a return value and an
+        exception for the same question is one that will handle one of them
+        wrong, and this is the seam a second vendor implements.
         """
-        answered = [reading for reading in readings if reading is not None]
-        if not answered:
-            raise ProviderUnavailable(reason="extraction_unavailable")
+        answered = [r for r in readings if isinstance(r, ExtractionResult)]
+        failures = [r for r in readings if isinstance(r, _Failed)]
 
-        complete = len(answered) == len(readings)
+        complete = not failures
+        # Deny by default, applied to destroying somebody's deck: unretryable
+        # requires both a permanent refusal *and* a sibling that worked.
+        # `all`, not `any`: one permanent refusal outranks any number of
+        # transient ones, because retrying cannot fix it and the deck would
+        # spin through the sweep failing identically.
+        retryable = bool(failures) and (
+            not answered or all(failure.retryable for failure in failures)
+        )
         claims = (
             tuple(claim for reading in answered for claim in reading.claims)
             if complete
@@ -355,6 +403,7 @@ class ClaudeExtractionModel:
             dropped=dropped,
             corrected=corrected,
             complete=complete,
+            retryable=retryable,
             usage=ExtractionUsage(
                 provider=PROVIDER,
                 model=self._model,

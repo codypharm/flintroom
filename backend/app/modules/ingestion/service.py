@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import math
 import uuid
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import NamedTuple
 
@@ -135,6 +136,34 @@ def _extracted_claim(row: MaterialClaim) -> ExtractedClaim:
     return ExtractedClaim(
         page=row.page, claim=claim, quote_verified=row.quote_verified
     )
+
+
+#: How many retryable endings a material gets before it is failed.
+#:
+#: Generous on purpose. A rate limit is our capacity problem and not the user's
+#: file, so a small budget would deliver exactly the data loss the failure
+#: classifier exists to prevent — just an hour later. Ten attempts on the
+#: backoff below spans a few hours, which is long enough to ride out any
+#: throughput event we would not otherwise notice and alert on.
+MAX_EXTRACTION_ATTEMPTS = 10
+
+#: The first wait, doubled per attempt.
+BACKOFF_BASE = timedelta(minutes=1)
+
+#: The ceiling on that doubling. Without one, attempt ten waits over eight
+#: hours — long past the point where a deck the user is waiting on has stopped
+#: being useful to them.
+BACKOFF_CAP = timedelta(minutes=30)
+
+
+def _backoff(attempts: int) -> timedelta:
+    """How long a requeued material waits before it may be claimed again.
+
+    Exponential rather than linear, because backing off linearly against a rate
+    limit is a slower stampede rather than a smaller one — every requeued deck
+    returns together and spends the allowance in the same instant it recovered.
+    """
+    return min(BACKOFF_BASE * 2 ** (attempts - 1), BACKOFF_CAP)
 
 
 class RegisteredUpload(NamedTuple):
@@ -341,6 +370,47 @@ class IngestionService:
             material, result, state=MaterialState.FAILED, claims=0
         )
 
+    async def requeue_extraction(
+        self, material_id: uuid.UUID, *, result: ExtractionResult
+    ) -> Material:
+        """Put a deck back in the queue, later, and record what it already cost.
+
+        The third ending, and the one that keeps a capacity problem from
+        becoming data loss. `pending` *is* the queue, so requeueing is one
+        `UPDATE` — no broker, no second source of truth about what work exists.
+
+        The wait is written on the row rather than slept off in the worker,
+        because the worker that would sleep is the one every other deck is
+        waiting on.
+
+        A budget still exists, because a deck that times out on every attempt
+        for a day is not going to start working and must not be claimed forever.
+        It is deliberately generous: a rate limit is our capacity problem and
+        not the user's file, so giving up early is the failure this method was
+        built to prevent, arriving late instead.
+        """
+        material = await self._claimed(material_id)
+        material.attempts += 1
+
+        if material.attempts >= MAX_EXTRACTION_ATTEMPTS:
+            log.warning(
+                "material_extraction_gave_up",
+                material_id=str(material.id),
+                user_id=str(material.user_id),
+                attempts=material.attempts,
+            )
+            return await self._close(
+                material, result, state=MaterialState.FAILED, claims=0
+            )
+
+        return await self._close(
+            material,
+            result,
+            state=MaterialState.PENDING,
+            claims=0,
+            retry_after=_backoff(material.attempts),
+        )
+
     async def _claimed(self, material_id: uuid.UUID) -> Material:
         """The material a sweep is holding, or a refusal.
 
@@ -364,34 +434,47 @@ class IngestionService:
         *,
         state: MaterialState,
         claims: int,
+        retry_after: timedelta | None = None,
     ) -> Material:
         """The cost row and the state move, in one transaction.
 
-        Shared by both endings because they are the same write with a different
-        final state. Splitting them would be two places to remember that a cost
-        row is owed, and the one that gets forgotten is the failure path — where
-        the money is least visible and most easily denied.
+        Shared by all three endings because they are the same write with a
+        different final state. Splitting them would be three places to remember
+        that a cost row is owed, and the one that gets forgotten is the failure
+        path — where the money is least visible and most easily denied.
         """
         tier = await self._tier_of(material.user_id)
+        spent = result.usage.input_tokens or result.usage.output_tokens
 
-        self._db.add(
-            ExtractionCost(
-                material_id=material.id,
-                user_id=material.user_id,
-                tier=tier,
-                provider=result.usage.provider,
-                model=result.usage.model,
-                pages=result.usage.pages,
-                calls=result.usage.calls,
-                input_tokens=result.usage.input_tokens,
-                output_tokens=result.usage.output_tokens,
-                claims_recorded=claims,
-                claims_dropped=result.dropped,
-                pages_corrected=result.corrected,
+        if spent:
+            # `docs/ingestion.md`: *"`extraction_costs` records work
+            # performed."* An attempt refused before anything was billed —
+            # every call rate-limited, a credential rejected — describes no
+            # work, and a row per failed sweep pass would bury the rows that do.
+            self._db.add(
+                ExtractionCost(
+                    material_id=material.id,
+                    user_id=material.user_id,
+                    tier=tier,
+                    provider=result.usage.provider,
+                    model=result.usage.model,
+                    pages=result.usage.pages,
+                    calls=result.usage.calls,
+                    input_tokens=result.usage.input_tokens,
+                    output_tokens=result.usage.output_tokens,
+                    claims_recorded=claims,
+                    claims_dropped=result.dropped,
+                    pages_corrected=result.corrected,
+                )
             )
-        )
 
         material.state = state
+        # Cleared on every ending but a requeue. A stale wait on a `ready` or
+        # `failed` row means nothing, and a wait left behind on a row that is
+        # about to be claimed again would be honoured a second time.
+        material.retry_at = (
+            datetime.now(UTC) + retry_after if retry_after else None
+        )
         # The claim mark and `extracting` are one fact, and a CHECK constraint
         # says so. Clearing it is not tidying up — leaving it would fail the
         # write.
