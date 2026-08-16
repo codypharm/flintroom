@@ -97,6 +97,29 @@ class S3ObjectStorage:
             ExpiresIn=self._expiry_seconds,
         )
 
+    async def get(self, key: str) -> bytes | None:
+        """Read one object into memory, off the event loop.
+
+        Whole rather than streamed, because the caller renders every page of it
+        and a PDF cannot be parsed from a prefix. The ceiling is the tier's
+        upload cap, which is the number to look at if this ever needs to be
+        spooled to disk instead — 100MB at the top rung, held by one worker at
+        a time.
+
+        The 404 is caught and the rest re-raised, for the reason `exists` gives
+        just below: a 403 read as "no object" is somebody's deck marked failed
+        because a credential expired.
+        """
+        try:
+            response = await asyncio.to_thread(
+                self._client.get_object, Bucket=self._bucket, Key=key
+            )
+        except ClientError as exc:
+            if exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
+                return None
+            raise
+        return await asyncio.to_thread(response["Body"].read)
+
     async def exists(self, key: str) -> bool:
         """HEAD, and read the absence rather than letting it raise.
 

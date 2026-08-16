@@ -168,6 +168,19 @@ class Settings(BaseSettings):
     #: already returns, and that needs traffic to be worth building.
     extraction_concurrent_calls: int = Field(default=4, ge=1, le=64)
 
+    #: Pages one account may have extracted in a rolling twenty-four hours.
+    #:
+    #: A circuit breaker, not an entitlement — the same category as §4.7's
+    #: per-account daily spend ceiling, and uniform across tiers on purpose. The
+    #: per-tier budget in `billing/tiers.py` protects margin over a month; this
+    #: one exists for the failure that has nothing to do with plans, where a
+    #: loop, a bug or a script spends a month's budget in an afternoon.
+    #:
+    #: Here rather than in the tier table because it is not a pricing figure and
+    #: must not read as one. It is a number to turn down at 3am without shipping
+    #: a release, and real use — 40–80 pages a month — is nowhere near it.
+    daily_page_ceiling: int = Field(default=200, ge=1)
+
     def __init__(self, **values: object) -> None:
         """Fail as `ConfigurationError`, carrying nothing underneath it.
 

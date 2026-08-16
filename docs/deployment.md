@@ -47,6 +47,29 @@ the absence of it is the only available signal.
 `sweep_pass_failed` firing repeatedly is the milder version — the loop is alive
 but cannot reach the database.
 
+**Alert on the absence of `extraction_swept` too, at greater than one interval.**
+
+Extraction runs in a *second* loop (`ingestion/runner.py`), separate from the
+billing sweeps because a pro-tier deck takes minutes to read and would stall the
+meter if it shared a pass. It has the same silent-failure shape and the same
+answer: one line per pass, empty ones included, and the absence of it is the
+signal.
+
+The consequence differs, though, and it is worth knowing which alert is which.
+The meter stopping loses money quietly. Extraction stopping loses nothing and
+charges nothing — uploads keep succeeding, materials pile up in `pending`, and
+every session started against one is refused as not ready. It presents to users
+as decks that never finish, and to us as nothing at all.
+
+Two lines nearby that mean something specific:
+
+- `extraction_sweep_disabled` at startup — the deployment has no bucket or no
+  extraction key, so the loop was never started. Expected in an environment
+  running without them; a defect anywhere material is meant to work.
+- `material_extraction_released` — a deck was taken back from a process that
+  stopped holding it. One after a deploy is the design working. A steady stream
+  is a worker dying mid-read, and each one costs a re-extraction.
+
 ## Migrations run before the new version serves
 
 Alembic reads `DATABASE_URL` from the environment, never from `alembic.ini`

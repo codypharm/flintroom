@@ -107,6 +107,40 @@ Two things this must carry, both of which fail quietly if forgotten:
   request in that process. The dominant cost is model calls, which are IO, so this
   is cheap to get right and invisible when got wrong.
 
+**Built 2026-08-16, and it is a second loop rather than a third sweep.**
+`SweepRunner` awaits its sweeps in sequence on a fifteen-second pass. Reading a
+pro-tier deck is fifteen model calls behind a CPU-bound render of three hundred
+pages — minutes, not seconds — so hanging extraction off that pass would stop
+the meter for the duration, and a stopped meter is money never charged for rooms
+the provider is still billing us for. That is not a scale concern; it would have
+been a billing outage on the first large deck.
+
+The loop paces itself only when idle: it comes straight back while there is a
+queue, so a backlog does not cost a user one interval per deck ahead of them.
+
+**Shutdown may cancel it, and that is the second real difference.**
+`SweepRunner.stop()` is deliberately not a cancellation because it writes money.
+Nothing in extraction is half-writable — the claim, the three endings and the
+release are each one transaction — so an abandoned deck is a stale `claimed_at`
+that the next process gives back. A deploy takes the deck back rather than
+waiting minutes for it, and both alerts are in `docs/deployment.md`.
+
+**One deck per process at a time, which is the deliberate concurrency ceiling.**
+The trap named below is that the adapter's four-at-once bounds one *material*
+while the rate limit is per organisation. Holding one material per process makes
+the fleet's ceiling `processes × EXTRACTION_CONCURRENT_CALLS` — a number that
+can be reasoned about before it is met, rather than discovered as a wall of
+429s. It is also the first knob to turn if extraction is too slow, and the
+trigger to revisit is unchanged: wait-to-claim p95 above one interval.
+
+**The extractor reads the object's bytes directly** (`ObjectStorage.get`), which
+is the one method on that interface that returns content. It is not the
+delivery path the *"never proxied"* rule governs: that rule is about a deck
+travelling through a request handler to a client. Something has to open the file
+in order to render it, and the alternative was fetching it from ourselves over
+HTTP with a bearer URL minted for the purpose — slower, more code, and one
+stray log line away from leaking a credential to a confidential deck.
+
 Both a broker and a separate worker entrypoint were considered. Neither buys
 throughput at any volume this product will reach — `FOR UPDATE SKIP LOCKED`
 sustains thousands of claims per second, and extraction arrives at roughly one per
@@ -588,8 +622,14 @@ starter         100 pages         25 MB      600 pages/month
 pro             300 pages        100 MB     1200 pages/month
 teams           100 pages         25 MB      600 pages/seat/month
 
-DAILY_PAGE_CEILING = 200          (Settings, uniform)
+DAILY_PAGE_CEILING = 200          (Settings, uniform, rolling 24h)
 ```
+
+The first two live in `billing/tiers.py` beside `MAX_UPLOAD_BYTES`, because they
+are per tier and therefore pricing. The daily ceiling lives in `Settings`
+because it is not: it is a circuit breaker in the same category as §4.7's
+per-account daily spend ceiling, and putting it in the tier table would make it
+read as an entitlement somebody bought.
 
 ### Why the per-file cap is the published one
 
@@ -755,6 +795,38 @@ Two rules that follow, both of which fail quietly if forgotten:
 - **Neither refusal charges for the pages it did not extract.** `extraction_costs`
   records work performed; a material refused before a model call has no row.
 
+**Built 2026-08-16.** Both budgets are conditions inside the claim query rather
+than checks around it, and the second reason for that turned out to matter as
+much as the first: a check *after* the claim would let one user with nothing
+left sit at the head of the queue being picked and declined on every pass,
+stopping extraction for everybody.
+
+The window is the account's own entitlement period — `period_ends_at` minus
+`PERIOD_LENGTH`, the same clock the minutes allowance runs on, not a calendar
+month. A null `period_ends_at` means a tier that never renews, and the absence
+of a lower bound is exactly what makes the free budget lifetime. A stale
+boundary (one passed, with `ensure_current_period` not yet run for that account)
+widens the window rather than narrowing it, so the error is a deck that waits
+rather than a budget that overspends, and the next thing that touches billing
+repairs it.
+
+**The overshoot this accepts.** The budget is compared against pages *already*
+billed, and a deck's own page count is not knowable until it has been parsed —
+so a user one page under can extract a full deck and land over. It is bounded by
+`MAX_PAGES_PER_MATERIAL`: 300 against a 1200-page budget at the top rung, 20
+against 100 on free. Closing it exactly would mean parsing every deck before
+deciding whether it was allowed to be parsed. Reopen it if measured
+`extraction_costs` show the overshoot is a real share of spend rather than a
+rounding error.
+
+Two failures reach the same terminal ending as the page cap, and for the same
+reason — no window rolls over into them:
+
+| Failure | Ending |
+| --- | --- |
+| The stored object is gone | `failed`. A HEAD at the handshake makes it rare, but waiting cannot bring back a deleted object |
+| The file will not parse | `failed`. A corrupt or password-protected PDF does not repair itself |
+
 ---
 
 ## Modules
@@ -766,8 +838,9 @@ backend/app/core/
 
 backend/app/modules/ingestion/
   router.py             thin: presign, complete, read, delete
-  service.py            material lifecycle, claim persistence, page ceiling
-  extractor.py          the sweep pass — claim, extract, settle, requeue stale
+  service.py            material lifecycle, claim persistence, page budgets
+  extractor.py          the sweep pass — release stale, claim, read, end
+  runner.py             the loop that runs it, separate from the billing sweeps
   parsing.py            PDF/PPTX/image → rendered pages + text + exact
                         chart values where the format carries them (no model)
   extraction_model.py   ExtractionModel protocol
@@ -882,12 +955,20 @@ Follows the mandatory rules rather than restating them; the ones with teeth here
   are pure Python and needed no system package, so PPTX is the only input still
   waiting on a 400 MB binary decision, and it waits alone rather than holding the
   module back.
-- **The sweep has not implemented the limit table yet.** *Exceeding a limit does
-  two different things* above was corrected on 2026-08-16 and only half of it is
-  built: `MaterialTooManyPages` exists and is terminal, and the monthly and daily
-  budgets have no refusal at all — nothing yet counts pages against a period. Both
-  land with the extraction sweep, and until they do the only page limit with teeth
-  is the per-file one.
+- **The page budgets are enforced but not surfaced.** All four controls now have
+  teeth (2026-08-16), but a material held back by a budget is simply not claimed:
+  it stays `pending`, indistinguishable through the API from one that is merely
+  next in line. Nothing tells the user *"this extracts when your period resets"*.
+  That is a product decision about what a waiting material says, and it belongs
+  with the setup screen rather than with the sweep — but it should not ship
+  without an answer, because a deck that appears stuck forever is a support
+  ticket either way.
+- **A budget refusal writes no `audit_events` row.** The section above says every
+  refusal here is a typed 422 with one, and a budget hold is neither: it is a row
+  the claim query passed over, with no request behind it and no client to answer.
+  The material's own state is the durable record for now. If a dispute ever needs
+  *"why did this deck wait"* answered, the honest place is an audit row written
+  when the claim query first declines a material, not a log line.
 - **Per-seat accounting for Teams is unspecified.** The budget is written per
   seat, and nothing yet says whether an unused seat's pages pool across the
   organisation. It does not block anything until Teams ships.

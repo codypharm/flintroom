@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import NamedTuple
 
-from sqlalchemy import select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import (
@@ -30,9 +30,12 @@ from app.core.errors import (
 from app.core.logging import get_logger
 from app.core.storage import ObjectStorage
 from app.modules.billing.models import Account
+from app.modules.billing.service import PERIOD_LENGTH
 from app.modules.billing.tiers import (
+    FREE_TIER_LIFETIME_PAGES,
     MAX_PAGES_PER_MATERIAL,
     MAX_UPLOAD_BYTES,
+    MONTHLY_PAGE_BUDGET,
     UPGRADE_LADDER,
     next_tier_above,
     smallest_tier_accepting,
@@ -164,6 +167,82 @@ def _backoff(attempts: int) -> timedelta:
     returns together and spends the allowance in the same instant it recovered.
     """
     return min(BACKOFF_BASE * 2 ** (attempts - 1), BACKOFF_CAP)
+
+
+def _pages_this_period():
+    """Pages this material's owner has been billed for in their current window.
+
+    Correlated against the row being considered, so it is one subquery inside
+    the claim rather than a lookup per candidate.
+
+    The window is the account's own entitlement period — the same clock the
+    minutes allowance runs on — rather than a calendar month. A null
+    `period_ends_at` means a tier that never renews, which is the free one, and
+    the absence of a lower bound is exactly what makes its budget lifetime.
+
+    A stale `period_ends_at` (a boundary passed, and `ensure_current_period` not
+    yet run for that account) widens the window rather than narrowing it, so the
+    error is a deck that waits rather than a budget that overspends. The next
+    thing the user does that touches billing repairs it.
+    """
+    return (
+        select(func.coalesce(func.sum(ExtractionCost.pages), 0))
+        .where(
+            ExtractionCost.user_id == Material.user_id,
+            or_(
+                Account.period_ends_at.is_(None),
+                ExtractionCost.recorded_at >= Account.period_ends_at - PERIOD_LENGTH,
+            ),
+        )
+        .correlate(Material, Account)
+        .scalar_subquery()
+    )
+
+
+def _pages_today():
+    """Pages billed in the last twenty-four hours, for the runaway ceiling.
+
+    Rolling rather than calendar, which sidesteps the question of whose midnight
+    and makes the release gradual — a calendar day would hold a runaway until
+    a moment and then let all of it through at once.
+    """
+    return (
+        select(func.coalesce(func.sum(ExtractionCost.pages), 0))
+        .where(
+            ExtractionCost.user_id == Material.user_id,
+            ExtractionCost.recorded_at >= func.now() - timedelta(days=1),
+        )
+        .correlate(Material)
+        .scalar_subquery()
+    )
+
+
+def _period_budget():
+    """The owner's page budget, as SQL, built from the tier table itself.
+
+    Generated from `MONTHLY_PAGE_BUDGET` rather than written out, so a tier
+    added to pricing cannot be silently missing here — it falls to the free
+    allowance, which throttles early and visibly instead of quietly granting
+    unlimited extraction to whoever bought it.
+    """
+    return case(
+        MONTHLY_PAGE_BUDGET,
+        value=Account.entitlement_tier,
+        else_=FREE_TIER_LIFETIME_PAGES,
+    )
+
+
+class ClaimedMaterial(NamedTuple):
+    """A material a sweep now holds, and the page cap it must be read under.
+
+    The cap travels with the claim rather than being looked up by the caller,
+    so the sweep never reads the tier table. Tier policy is billing's, and a
+    second reader of it is a second place to forget that the free tier's budget
+    is lifetime rather than monthly.
+    """
+
+    material: Material
+    max_pages: int
 
 
 class RegisteredUpload(NamedTuple):
@@ -309,6 +388,144 @@ class IngestionService:
         )
         return material
 
+    async def release_stalled(self, *, timeout: timedelta) -> int:
+        """Give back every deck held longer than a read can plausibly take.
+
+        The crash-safety half of the claim. A process that dies mid-extraction
+        leaves a row saying `extracting` with nothing behind it: no sweep will
+        claim it, no user action can clear it, and the material simply never
+        becomes ready. Same problem `finalizing` already solves for settlement —
+        *"nothing separates 'finished settling' from 'died halfway'"* — and the
+        same answer.
+
+        Row by row rather than one `UPDATE`, following the reaper: a stalled
+        claim is exceptional, the count is small, and the branch at the budget
+        is far easier to read here than as a `CASE`.
+
+        The attempt is counted even though a crash is not the file's fault. It
+        is not free either — a deck that reliably kills the worker would
+        otherwise be claimed forever, once per pass, in perpetuity.
+
+        No backoff. Unlike a rate limit, a dead process says nothing about
+        whether the next attempt will work, and the deck has already waited out
+        the timeout.
+        """
+        stalled = await self._db.scalars(
+            select(Material)
+            .where(
+                Material.state == MaterialState.EXTRACTING,
+                Material.claimed_at < func.now() - timeout,
+            )
+            # Locked for the same reason the claim is. Every process runs this,
+            # and two of them releasing the same row would each add one to
+            # `attempts` — a deck that gives up on its budget twice as fast as
+            # the number says, in proportion to how many workers are deployed.
+            .with_for_update(skip_locked=True)
+        )
+
+        released = 0
+        for material in stalled:
+            material.attempts += 1
+            material.claimed_at = None
+            material.state = (
+                MaterialState.FAILED
+                if material.attempts >= MAX_EXTRACTION_ATTEMPTS
+                else MaterialState.PENDING
+            )
+            released += 1
+            log.warning(
+                "material_extraction_released",
+                material_id=str(material.id),
+                user_id=str(material.user_id),
+                attempts=material.attempts,
+                state=material.state.value,
+            )
+
+        if released:
+            await self._db.commit()
+        return released
+
+    async def claim_for_extraction(
+        self, *, daily_page_ceiling: int
+    ) -> ClaimedMaterial | None:
+        """Take the oldest material waiting to be read, or nothing.
+
+        `SKIP LOCKED` rather than idempotency, and the difference from the other
+        sweeps is the whole reason this one needs a lock. The meter and the
+        reaper derive what they owe from the database's clock, so two workers
+        reach the same answer and the second one's writes are refused as
+        duplicates. **A duplicate extraction is not a refused write, it is a
+        second invoice** — so overlap is made impossible here rather than
+        harmless.
+
+        Oldest first, because the alternative is a queue where an unlucky deck
+        can be passed over indefinitely while newer ones arrive.
+
+        **Both page budgets are conditions of the claim, not checks after it.**
+        A material left `pending` under an exhausted budget is a candidate on
+        every pass until the window rolls, so refusing it afterwards would burn
+        one of its ten retryable attempts each time and fail the deck hours
+        before it was ever allowed to extract. As a condition it is skipped
+        instead, and — because it is in the query rather than around it — one
+        user with nothing left cannot sit at the head of the queue declining
+        work for everybody else.
+
+        The overshoot this accepts: the budget is compared against pages
+        *already* billed, and a deck's own page count is not knowable until it
+        has been parsed. So a user one page under can extract a full deck and
+        land over. It is bounded by `MAX_PAGES_PER_MATERIAL` — 300 at the top
+        rung, on a 1200-page budget — and closing it exactly would mean parsing
+        every deck before deciding whether it was allowed to be parsed.
+        """
+        claimed = (
+            await self._db.execute(
+                select(Material, Account.entitlement_tier)
+                .join(Account, Account.user_id == Material.user_id)
+                .where(
+                    Material.state == MaterialState.PENDING,
+                    # The backoff a requeue wrote. Filtered here rather than
+                    # slept off in the worker, because the worker that would
+                    # sleep is the one every other deck is waiting on — and
+                    # forgetting it makes the wait decoration: a rate-limited
+                    # deck comes straight back on the next pass, into the limit
+                    # that caused it. Nothing else fails when it is missed.
+                    or_(
+                        Material.retry_at.is_(None),
+                        Material.retry_at <= func.now(),
+                    ),
+                    _pages_this_period() < _period_budget(),
+                    _pages_today() < daily_page_ceiling,
+                )
+                .order_by(Material.created_at)
+                .limit(1)
+                .with_for_update(skip_locked=True, of=Material)
+            )
+        ).first()
+
+        if claimed is None:
+            return None
+
+        material, tier = claimed
+        material.state = MaterialState.EXTRACTING
+        # The database's clock, because the stale-claim query compares it
+        # against the database's clock. A worker with a skewed clock would
+        # otherwise either hold a deck forever or have it taken back mid-read.
+        material.claimed_at = func.now()
+        await self._db.commit()
+        # The claim mark was written as SQL, so the in-memory value is still the
+        # expression until it is read back. Cheap — once per pass — and it keeps
+        # the returned row honest for anything that inspects it.
+        await self._db.refresh(material)
+
+        log.info(
+            "material_claimed",
+            material_id=str(material.id),
+            user_id=str(material.user_id),
+            tier=tier,
+            attempts=material.attempts,
+        )
+        return ClaimedMaterial(material, MAX_PAGES_PER_MATERIAL[tier])
+
     async def settle_extraction(
         self, material_id: uuid.UUID, *, result: ExtractionResult
     ) -> Material:
@@ -346,7 +563,7 @@ class IngestionService:
         )
 
     async def fail_extraction(
-        self, material_id: uuid.UUID, *, result: ExtractionResult
+        self, material_id: uuid.UUID, *, result: ExtractionResult | None = None
     ) -> Material:
         """Record what a failed attempt cost, and stop trying.
 
@@ -371,7 +588,7 @@ class IngestionService:
         )
 
     async def requeue_extraction(
-        self, material_id: uuid.UUID, *, result: ExtractionResult
+        self, material_id: uuid.UUID, *, result: ExtractionResult | None = None
     ) -> Material:
         """Put a deck back in the queue, later, and record what it already cost.
 
@@ -430,7 +647,7 @@ class IngestionService:
     async def _close(
         self,
         material: Material,
-        result: ExtractionResult,
+        result: ExtractionResult | None,
         *,
         state: MaterialState,
         claims: int,
@@ -444,9 +661,15 @@ class IngestionService:
         path — where the money is least visible and most easily denied.
         """
         tier = await self._tier_of(material.user_id)
-        spent = result.usage.input_tokens or result.usage.output_tokens
+        # `None` is an attempt that ended before a model was reached at all — a
+        # deck over the tier's page cap, an object that vanished, a store having
+        # a bad day. There is nothing to bill and nothing to report but the
+        # ending itself.
+        spent = result is not None and (
+            result.usage.input_tokens or result.usage.output_tokens
+        )
 
-        if spent:
+        if result is not None and spent:
             # `docs/ingestion.md`: *"`extraction_costs` records work
             # performed."* An attempt refused before anything was billed —
             # every call rate-limited, a credential rejected — describes no
@@ -488,11 +711,11 @@ class IngestionService:
             user_id=str(material.user_id),
             tier=tier,
             state=state.value,
-            pages=result.usage.pages,
-            calls=result.usage.calls,
+            pages=result.usage.pages if result else 0,
+            calls=result.usage.calls if result else 0,
             claims=claims,
-            dropped=result.dropped,
-            corrected=result.corrected,
+            dropped=result.dropped if result else 0,
+            corrected=result.corrected if result else 0,
         )
         return material
 

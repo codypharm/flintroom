@@ -88,6 +88,15 @@ What does scale, in order: a limiter that understands tokens rather than tasks
 the Batch API's separate high-throughput lane, and running the sweep as its own
 deployment — which needs no broker either.
 
+**The sweep landed 2026-08-16 as its own loop** (`ingestion/runner.py`), holding
+one material per process. That is deliberately the throughput knob: extraction
+capacity is `processes × EXTRACTION_CONCURRENT_CALLS`, and both halves are
+configuration. Running the loop as a separate deployment is therefore already a
+deployment change rather than a rewrite — the property this document protects
+everywhere else — and it is the step that comes *before* a broker, not after it.
+Raising the per-pass claim count is the other lever and the more dangerous one,
+because it multiplies concurrency against a rate limit that is per organisation.
+
 The 55k and the 3× peak are estimates, not measurements. The conclusion survives
 being wrong by 2× in either direction; the crossover point does not.
 

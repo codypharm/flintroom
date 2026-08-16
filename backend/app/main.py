@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.database import create_engine, create_session_factory
 from app.core.errors import FlintroomError
 from app.core.logging import configure_logging, get_logger
@@ -20,12 +20,20 @@ from app.modules.auth.router import router as auth_router
 from app.modules.billing.router import router as billing_router
 from app.modules.ingestion.extraction_models import build_extraction_model
 from app.modules.ingestion.router import router as materials_router
+from app.modules.ingestion.runner import ExtractionRunner
 from app.modules.sessions.router import router as sessions_router
-from app.modules.sessions.runner import SweepRunner
+from app.modules.sessions.runner import SessionFactory, SweepRunner
 from app.modules.voice.providers import build_voice_provider
 from app.modules.voice.router import router as voice_router
 
 log = get_logger(__name__, tag="http")
+
+#: How long shutdown lets the extraction loop notice it was asked to stop.
+#:
+#: Not a wait for the deck it is reading — that can be minutes, and abandoning
+#: it is safe. This is only enough for an idle loop to wake from its poll and
+#: say so, which is what nearly every deploy meets.
+EXTRACTION_SHUTDOWN_GRACE = 1.0
 
 
 @asynccontextmanager
@@ -81,6 +89,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     runner = SweepRunner(session_factory)
     sweeps = asyncio.create_task(runner.run())
 
+    # A second loop, deliberately. Reading a pro-tier deck is minutes of model
+    # calls behind a CPU-bound render, and `SweepRunner` awaits its sweeps in
+    # sequence — so hanging extraction off that pass would stop the meter for
+    # the duration, which is money never charged for rooms the provider is
+    # still billing us for. See `ingestion/runner.py`.
+    extraction = _extraction_runner(app, settings, session_factory)
+    extractions = (
+        asyncio.create_task(extraction.run()) if extraction else None
+    )
+
     try:
         yield
     finally:
@@ -89,9 +107,56 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # the exact damage the reaper exists to repair.
         runner.stop()
         await sweeps
+
+        if extraction and extractions:
+            # Asked, given a moment, then cancelled — and the cancellation is
+            # the difference from above. Nothing in extraction is half-writable
+            # (the claim, the three endings and the release are each one
+            # transaction), so an abandoned deck is a stale `claimed_at` that
+            # the next process gives back. Waiting for a deck to finish would
+            # hold a deploy for minutes to avoid a recovery that already works.
+            #
+            # The grace is for the idle case, which is nearly every deploy: the
+            # loop is sitting on the stop event and needs one scheduling turn to
+            # notice it and log that it stopped.
+            extraction.stop()
+            _, running = await asyncio.wait(
+                {extractions}, timeout=EXTRACTION_SHUTDOWN_GRACE
+            )
+            for task in running:
+                task.cancel()
+            await asyncio.gather(extractions, return_exceptions=True)
+
         await http.aclose()
         await engine.dispose()
         log.info("api_stopped")
+
+
+def _extraction_runner(
+    app: FastAPI, settings: Settings, session_factory: SessionFactory
+) -> ExtractionRunner | None:
+    """The extraction loop, if this deployment has what it needs to run one.
+
+    Both halves or neither: a bucket with no model reads nothing, and a model
+    with no bucket has nothing to read. Absent rather than fatal, on the same
+    grounds as the pieces themselves — auth, balances and the voice loop all
+    work without extraction, and `docs/auditor-grounding.md` makes the deckless
+    path first-class rather than degraded.
+
+    Said once, loudly, at startup. The failure this avoids is a deployment that
+    accepts uploads all day and never grounds a session, with nothing in the log
+    to say why.
+    """
+    if app.state.object_storage is None or app.state.extraction_model is None:
+        log.warning("extraction_sweep_disabled")
+        return None
+
+    return ExtractionRunner(
+        session_factory,
+        storage=app.state.object_storage,
+        model=app.state.extraction_model,
+        daily_page_ceiling=settings.daily_page_ceiling,
+    )
 
 
 #: Versioned from the first endpoint. A mobile client cannot be force-updated,

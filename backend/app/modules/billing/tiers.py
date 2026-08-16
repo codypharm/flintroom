@@ -58,6 +58,46 @@ MAX_PAGES_PER_MATERIAL: dict[str, int] = {
     "teams": 100,
 }
 
+#: Pages one account may have extracted within its entitlement period.
+#:
+#: **Unpublished, and that is what keeps it a dial.** The two caps above are on
+#: tier cards; this one is a backstop in the same category as §4.7's per-account
+#: daily spend ceiling. Real use is 40–80 pages a month against 600 allowed, so
+#: no legitimate user meets it — and leaving it unpublished means it can be
+#: tightened against measured `extraction_costs` without notifying customers,
+#: which matters because it rests on an unverified ~$0.01 per page.
+#:
+#: The window is the account's own entitlement period, so this moves with the
+#: minutes allowance rather than with the calendar. Free is absent for the same
+#: reason it is absent from `MONTHLY_ALLOWANCE_SECONDS`: it has no renewing
+#: period at all.
+MONTHLY_PAGE_BUDGET: dict[str, int] = {
+    "starter": 600,
+    "pro": 1200,
+    "pro_annual": 1200,
+    "teams": 600,
+}
+
+#: The free tier's whole allowance of extraction, ever.
+#:
+#: Lifetime rather than monthly, exactly like `FREE_TIER_LIFETIME_SECONDS`. A
+#: renewing page budget on a tier whose minutes do not renew is an unlimited
+#: extraction faucet: sign up, never start a session, extract decks forever at
+#: our cost with no metered minute ever consumed against them.
+FREE_TIER_LIFETIME_PAGES = 100
+
+
+def page_budget(tier: str) -> int:
+    """How many pages this tier may extract in one window.
+
+    Every unknown tier falls to the free allowance rather than to a generous
+    default, which is the direction a missing entry should fail in: a tier added
+    to pricing and forgotten here throttles early and visibly, instead of
+    quietly granting unlimited extraction to whoever bought it.
+    """
+    return MONTHLY_PAGE_BUDGET.get(tier, FREE_TIER_LIFETIME_PAGES)
+
+
 #: The rungs a user can actually climb, cheapest first.
 #:
 #: Neither `pro_annual` nor `teams` is on it, for opposite reasons. `pro_annual`

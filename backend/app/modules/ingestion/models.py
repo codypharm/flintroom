@@ -152,9 +152,15 @@ class Material(Base):
 
     #: How many times extraction was given back rather than finished.
     #:
-    #: Only counts *retryable* endings — a rate limit, a timeout, an overloaded
-    #: provider. A deck the API refuses outright fails on the first attempt,
-    #: because retrying produces the same refusal, so it needs no budget.
+    #: Counts the two endings that leave the deck worth trying again: a
+    #: *retryable* result — a rate limit, a timeout, an overloaded provider —
+    #: and a claim released because the process holding it died. A deck the API
+    #: refuses outright fails on the first attempt, because retrying produces
+    #: the same refusal, so it needs no budget.
+    #:
+    #: A crash is not the file's fault either, but it is counted for the same
+    #: reason a rate limit is: without it, a deck that reliably kills the worker
+    #: is claimed once per pass forever.
     #:
     #: The budget this counts against is deliberately generous. A rate limit is
     #: our capacity problem and not the user's file, so giving up early is

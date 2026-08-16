@@ -6,9 +6,17 @@ one that had to import us, so a vendor SDK wrapper never acquires a dependency
 on our module graph.
 
 **The contract is the presigned URL, not the vendor SDK** (CLAUDE.md). Every
-method here returns a URL the caller hands to the client, or acts on a key.
-Nothing returns bytes, because a method that returned bytes would be the
-proxying that uploaded material is forbidden to go through.
+method that *delivers* material returns a URL the caller hands to the client, so
+a deck never travels through a request handler — that is what "never proxied"
+forbids, and it is a rule about the client's path to the bytes.
+
+`get` is the one method that returns bytes, and it is not that path. Extraction
+runs inside the process: something has to open a deck in order to render it, and
+the alternative is not "no bytes in the worker" but "the same bytes, fetched
+from ourselves over HTTP with a bearer URL we minted for the purpose". That
+would be slower, more code, and one accidental log line away from leaking a
+credential to somebody's confidential deck. Never call it from a request
+handler.
 
 Two levels of escape, and they cost differently. Moving between S3, R2, B2 or a
 self-hosted MinIO is an endpoint and a credential — the implementation below
@@ -51,6 +59,23 @@ class ObjectStorage(Protocol):
         Scoped to a single key by construction. Whether the caller is allowed to
         read that key is the service's question, answered before it asks for a
         URL — this layer signs what it is told to sign.
+        """
+        ...
+
+    async def get(self, key: str) -> bytes | None:
+        """One object's bytes, for the extractor, or nothing if it is gone.
+
+        The server-side read, and the only method here that yields content. It
+        exists because extraction has to rasterize the pages, and it is *not*
+        the delivery path — see the module docstring for the line between them.
+
+        `None` rather than an exception for an absent object, matching `exists`
+        above. A deck that is not there is a fact the caller has to act on
+        rather than an error condition: waiting will not produce it, so the
+        material fails terminally instead of being retried against nothing.
+        Every other failure — a bad credential, a store having a bad day —
+        still raises, because those are exactly the ones that must not be read
+        as "the user never uploaded".
         """
         ...
 
