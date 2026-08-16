@@ -27,7 +27,11 @@ from app.modules.auth.models import (  # noqa: F401  (registers the tables)
 )
 from app.modules.billing.models import Account
 from app.modules.ingestion.dependencies import get_object_storage
-from app.modules.ingestion.models import Material  # noqa: F401  (registers the table)
+from app.modules.ingestion.models import (  # noqa: F401  (registers the tables)
+    ExtractionCost,
+    Material,
+    MaterialClaim,
+)
 from app.modules.ingestion.service import IngestionService
 from app.modules.audit_log.admin import AdminService
 from app.modules.audit_log.service import AuditService

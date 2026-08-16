@@ -8,7 +8,13 @@ from datetime import datetime
 from enum import Enum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    field_validator,
+)
 
 
 class MaterialState(str, Enum):
@@ -150,6 +156,43 @@ def _is_number(text: str) -> bool:
     return True
 
 
+def _printable(value: object) -> object:
+    """Drop the bytes a document carries and a database will not store.
+
+    A PDF text layer can contain a NUL, which is not valid UTF-8 to Postgres.
+    Settling an extraction is one transaction, so one stray byte in one quote
+    would refuse every claim on the deck, leave the material `extracting`, and
+    be requeued to fail identically while charging for each attempt.
+
+    Dropped rather than refused, because unlike a hallucinated figure the claim
+    is not wrong — the surrounding words are still the citation the panel needs,
+    and the byte was never part of what the slide said. A string that was
+    nothing *but* control characters fails `min_length` afterwards and lands in
+    the adapter's drop path, which is the right answer for a quote that quotes
+    nothing.
+
+    Tab, newline and carriage return survive: a quote spanning two lines of a
+    slide is ordinary, and flattening it would change the text a citation is
+    checked against.
+    """
+    if not isinstance(value, str):
+        return value
+    return "".join(ch for ch in value if ch in "\t\n\r" or ch.isprintable())
+
+
+#: Every text field on a claim. Applied through the type rather than at the
+#: adapter, so a second extraction model cannot be the one that forgot.
+Prose = Annotated[str, BeforeValidator(_printable)]
+
+
+#: The largest figure a claim may carry, set by what `material_claims.value`
+#: can store: `Numeric(20, 6)` leaves fourteen digits ahead of the point. World
+#: GDP is around a tenth of this, so nothing a deck legitimately asserts comes
+#: near it — the bound exists to stop a hallucinated magnitude reaching a column
+#: that would refuse it mid-transaction.
+MAX_FIGURE = 10**14 - 1
+
+
 class ClaimKind(str, Enum):
     """The two things a deck asserts, and only one of them is a number.
 
@@ -174,7 +217,7 @@ class ClaimCore(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    quote: str = Field(min_length=1, max_length=2000)
+    quote: Prose = Field(min_length=1, max_length=2000)
 
 
 class QuantitativeClaim(ClaimCore):
@@ -194,19 +237,27 @@ class QuantitativeClaim(ClaimCore):
     kind: Literal[ClaimKind.QUANTITATIVE] = ClaimKind.QUANTITATIVE
 
     #: What is being measured — "gross margin", "ARR", "headcount".
-    metric: str = Field(min_length=1, max_length=120)
+    metric: Prose = Field(min_length=1, max_length=120)
 
     #: A number, never prose. "1.2M" is the shape a model reaches for and it is
     #: refused here rather than parsed: a parser is code guessing at magnitude,
     #: and a magnitude guessed wrong is a claim off by a factor of a million,
     #: asserted confidently in a panelist's voice.
-    value: float
+    #:
+    #: Bounded at what the `material_claims.value` column can hold. Settling an
+    #: extraction is one transaction, so a single hallucinated magnitude would
+    #: otherwise cost every other claim on the deck — and the material would be
+    #: requeued to fail identically, charging for each attempt. Refusing it here
+    #: puts it in the adapter's existing drop path, where it is counted.
+    #: `MAX_FIGURE` is past any figure a real deck asserts, so the bound loses
+    #: nothing legitimate.
+    value: float = Field(ge=-MAX_FIGURE, le=MAX_FIGURE)
 
     unit: Unit
 
     #: What the figure covers — "Q3 2026", "FY2025". Optional, because headcount
     #: today has no period and refusing it would drop a real claim.
-    period: str | None = Field(default=None, max_length=60)
+    period: Prose | None = Field(default=None, max_length=60)
 
     @field_validator("unit", mode="before")
     @classmethod
@@ -261,9 +312,9 @@ class AssertionClaim(ClaimCore):
     #: property", "competition". §3.3 assigns the interrupter by domain, and
     #: without this every assertion is unroutable and targeted interruption
     #: quietly covers only numbers.
-    subject: str = Field(min_length=1, max_length=120)
+    subject: Prose = Field(min_length=1, max_length=120)
 
-    statement: str = Field(min_length=1, max_length=600)
+    statement: Prose = Field(min_length=1, max_length=600)
 
 
 #: Either kind, discriminated by `kind` rather than by trial parsing. Pydantic

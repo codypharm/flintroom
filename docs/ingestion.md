@@ -362,12 +362,36 @@ The locators differ and so do the lifecycles, so the storage is separate:
 
 | Table | Locator | Retention |
 | --- | --- | --- |
-| `material_claims` | `material_id`, `slide_no` | Until the user deletes the Material |
+| `material_claims` | `material_id`, `page` | Until the user deletes the Material |
 | `session_claims` | `session_id`, `offset_ms` | Undecided — task #29 |
 
 One table with a source discriminator would be a simpler query and was refused for
 that retention split: deleting a session would mean surgically removing some rows
 from a store governed by another policy, which is where retention bugs live.
+
+**Both claim kinds share one table, and a CHECK constraint keeps them honest.**
+The Auditor reads them together — a panelist's ammunition for one slide is its
+figures *and* its assertions — so a `UNION` at every read would be a poor trade
+for two sets of nullable columns the database enforces anyway. The constraint is
+written as one exhaustive disjunction rather than two implications, because two
+implications permit an assertion that also carries a metric: a row no reader
+expects and every reader would interpret differently.
+
+**Two bounds live in the Pydantic type because a column enforces them, and
+settling is one transaction.** Either would otherwise let one bad entry refuse
+every claim on the deck, leave the material `extracting`, and be requeued to
+fail identically while charging for each attempt.
+
+| Bound | Why the column has it | What the type does |
+| --- | --- | --- |
+| Figure magnitude | `value` is `Numeric(20, 6)` — fourteen digits ahead of the point | Refuses past `MAX_FIGURE`; the adapter's drop path counts it |
+| Control characters | A NUL is not valid UTF-8 to Postgres, and a PDF text layer can carry one | Strips them; the surrounding words are still the citation |
+
+The difference in treatment is deliberate. A hallucinated magnitude makes the
+claim wrong, so the claim goes. A stray byte does not — the slide still said
+what it said, and only the byte is dropped. A quote that was *nothing but*
+control characters then fails `min_length`, which is the right answer for a
+citation citing nothing.
 
 ### The source document is deleted once extraction succeeds
 
@@ -399,6 +423,30 @@ only live interrogation is metered — so **extraction is a real per-user cost w
 no revenue attached**, and the abuse case is precisely a deck that is extracted and
 never becomes a session. Attributing cost to the session that used the material
 would leave exactly that case invisible.
+
+**One row per attempt, not per material.** A stalled `extracting` row is
+requeued by design, and a requeue is a second invoice — a table keyed on
+`material_id` would either refuse the second row or overwrite the first, and
+both under-report money already spent.
+
+**No foreign key to `materials`, which is the one place this departs from
+`session_costs`.** Materials are user-deletable, so a cascading delete would let
+"upload, extract, delete, repeat" erase its own trail: the abuse case above
+would be the one shape of usage leaving no record. Same reasoning as
+`audit_events` — a row must survive deletion of whatever it describes.
+
+`tier` is denormalised onto the row for the reason `session_costs` denormalises
+it: cost analysis groups by tier, and reading it live would re-price every past
+extraction the moment somebody upgraded. It is also the number that answers
+whether the free tier's page cap is set anywhere near right.
+
+Three counters ride along on the same row, because it is the only per-attempt
+record there is to hang them on. `claims_recorded` over `pages` is the
+cost-per-claim §4.3 needs. `claims_dropped` is a deck grounding less than it
+appears to. `pages_corrected` — how often the text layer disagreed with the
+model's page — is the only measure of how far the model's own page attribution
+can be trusted, and the number that should decide whether a page stays the
+locator at all.
 
 It caps pages, not stored materials, and the distinction is deliberate: §4.4
 sells *"unlimited material storage"* as a Pro capability, and storage is nearly

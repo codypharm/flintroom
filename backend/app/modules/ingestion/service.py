@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import math
 import uuid
+from decimal import Decimal
 from typing import NamedTuple
 
 from sqlalchemy import select
@@ -34,11 +35,15 @@ from app.modules.billing.tiers import (
     next_tier_above,
     smallest_tier_accepting,
 )
-from app.modules.ingestion.models import Material
+from app.modules.ingestion.extraction_model import ExtractedClaim, ExtractionResult
+from app.modules.ingestion.models import ExtractionCost, Material, MaterialClaim
 from app.modules.ingestion.schemas import (
     ACCEPTED_CONTENT_TYPES,
+    AssertionClaim,
+    ClaimKind,
     MaterialLimits,
     MaterialState,
+    QuantitativeClaim,
     TierUpload,
 )
 
@@ -70,6 +75,65 @@ def megabytes(byte_size: int, *, round_up: bool = False) -> str:
     tenths = byte_size / MB * 10
     value = (math.ceil if round_up else round)(tenths) / 10
     return f"{value:g} MB"
+
+
+def _claim_row(material: Material, extracted: ExtractedClaim) -> MaterialClaim:
+    """One extracted claim, as the row that outlives the document.
+
+    The kind is dispatched on explicitly and an unhandled one raises. A third
+    claim kind added to the union would otherwise land in the `else` branch and
+    be written as an assertion — a silent corruption that the CHECK constraint
+    could not catch, because the row it produced would be a perfectly valid
+    assertion.
+    """
+    claim = extracted.claim
+    row = MaterialClaim(
+        material_id=material.id,
+        user_id=material.user_id,
+        page=extracted.page,
+        kind=claim.kind,
+        quote=claim.quote,
+        quote_verified=extracted.quote_verified,
+    )
+
+    if isinstance(claim, QuantitativeClaim):
+        row.metric = claim.metric
+        # Via `str`, not `Decimal(float)`. The float already holds whatever
+        # binary approximation it holds; going through its shortest repr is what
+        # puts 61.1 in the column instead of 61.099999999999994049...
+        row.value = Decimal(str(claim.value))
+        row.unit = claim.unit
+        row.period = claim.period
+    elif isinstance(claim, AssertionClaim):
+        row.subject = claim.subject
+        row.statement = claim.statement
+    else:
+        raise ValueError(f"no column mapping for claim kind {claim.kind}")
+
+    return row
+
+
+def _extracted_claim(row: MaterialClaim) -> ExtractedClaim:
+    """A row, back as the typed claim the Auditor can compare."""
+    claim: QuantitativeClaim | AssertionClaim
+    if row.kind is ClaimKind.QUANTITATIVE:
+        claim = QuantitativeClaim(
+            quote=row.quote,
+            metric=row.metric,
+            value=float(row.value),
+            unit=row.unit,
+            period=row.period,
+        )
+    elif row.kind is ClaimKind.ASSERTION:
+        claim = AssertionClaim(
+            quote=row.quote, subject=row.subject, statement=row.statement
+        )
+    else:
+        raise ValueError(f"no claim type for kind {row.kind}")
+
+    return ExtractedClaim(
+        page=row.page, claim=claim, quote_verified=row.quote_verified
+    )
 
 
 class RegisteredUpload(NamedTuple):
@@ -214,6 +278,100 @@ class IngestionService:
             "material_uploaded", material_id=str(material_id), user_id=str(user_id)
         )
         return material
+
+    async def settle_extraction(
+        self, material_id: uuid.UUID, *, result: ExtractionResult
+    ) -> Material:
+        """Write what a model found, what it cost, and close the material.
+
+        One transaction, deliberately. The claims, the cost row and the state
+        move are the same fact — a material that is `ready` with no claims is a
+        deck the panel will silently ground nothing against, and a cost row
+        without a settled material is money attributed to work that gets done
+        again.
+
+        No `user_id` parameter. The caller is the extraction sweep, which is
+        SYSTEM rather than a request — and the owner is on the row, which is a
+        better authority than anything a background worker could pass in.
+
+        Nothing here is logged with content. Quotes, metrics and statements are
+        ingested material contents, forbidden in logs by CLAUDE.md and, unlike a
+        secret, not detectable by key name — so counts go to the log and text
+        does not.
+        """
+        material = await self._db.get(Material, material_id)
+        if material is None:
+            raise MaterialNotFound(material_id=str(material_id))
+
+        if material.state is not MaterialState.EXTRACTING:
+            raise InvalidMaterialState(
+                material_id=str(material_id), state=material.state.value
+            )
+
+        tier = await self._tier_of(material.user_id)
+
+        for extracted in result.claims:
+            self._db.add(_claim_row(material, extracted))
+
+        self._db.add(
+            ExtractionCost(
+                material_id=material.id,
+                user_id=material.user_id,
+                tier=tier,
+                provider=result.usage.provider,
+                model=result.usage.model,
+                pages=result.usage.pages,
+                input_tokens=result.usage.input_tokens,
+                output_tokens=result.usage.output_tokens,
+                claims_recorded=len(result.claims),
+                claims_dropped=result.dropped,
+                pages_corrected=result.corrected,
+            )
+        )
+
+        material.state = MaterialState.READY
+        # The claim mark and `extracting` are one fact, and a CHECK constraint
+        # says so. Clearing it is not tidying up — leaving it would fail the
+        # write.
+        material.claimed_at = None
+
+        await self._db.commit()
+
+        log.info(
+            "material_extracted",
+            material_id=str(material.id),
+            user_id=str(material.user_id),
+            tier=tier,
+            pages=result.usage.pages,
+            claims=len(result.claims),
+            dropped=result.dropped,
+            corrected=result.corrected,
+        )
+        return material
+
+    async def claims(
+        self, material_id: uuid.UUID, *, user_id: uuid.UUID
+    ) -> list[ExtractedClaim]:
+        """Everything this material asserts, in reading order.
+
+        Returned as the same typed claims the extraction produced rather than as
+        rows, because the Auditor compares a slide's figure against a spoken one
+        and the comparison lives on the type. A caller handed ORM rows would
+        have to rebuild `comparable_to` by hand, and the first one to get it
+        slightly wrong invents an agreement between figures that never agreed.
+
+        Ownership is checked by loading the material through `get`, so a
+        material id belonging to somebody else is a 404 here for the same reason
+        it is one there.
+        """
+        await self.get(material_id, user_id=user_id)
+
+        rows = await self._db.scalars(
+            select(MaterialClaim)
+            .where(MaterialClaim.material_id == material_id)
+            .order_by(MaterialClaim.page, MaterialClaim.created_at)
+        )
+        return [_extracted_claim(row) for row in rows]
 
     async def get(self, material_id: uuid.UUID, *, user_id: uuid.UUID) -> Material:
         """The caller's material, or `MaterialNotFound`.
