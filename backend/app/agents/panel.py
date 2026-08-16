@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from app.agents.archetypes import Archetype, by_name
+from app.agents.model import PanelModel
 from app.core.errors import ArchetypeNotFound, PanelTooLarge
 from app.core.logging import get_logger
 from app.modules.billing.tiers import UPGRADE_LADDER, max_panel_size
@@ -138,7 +139,7 @@ async def interrogate(
     panel: Sequence[Archetype],
     *,
     said: str,
-    model,
+    model: PanelModel,
     grounding: Grounding | None = None,
     finding: Finding | None = None,
 ) -> PanelTurn:

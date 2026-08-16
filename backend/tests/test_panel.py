@@ -11,8 +11,11 @@ exactly where this one sits — what is under test is the loop around it.
 
 from __future__ import annotations
 
+from inspect import signature
+
 from app.agents.panel import Finding, Grounding, interrogate
 from app.agents.archetypes import DEFAULT_PANEL, LIBRARY
+from app.agents.model import PanelModel
 
 
 class FakePanelModel:
@@ -211,3 +214,22 @@ async def test_a_room_with_no_deck_still_runs():
     (context, _), = model.composed_with
     assert context.grounding.claims == ()
     assert turn.line
+
+
+def test_the_fake_the_tests_run_against_is_the_shape_a_vendor_must_fit():
+    """A fake that has drifted from the Protocol tests nothing about the real thing.
+
+    Every test in this module drives `FakePanelModel`, so if its signatures stop
+    matching `PanelModel` the suite goes on passing while proving progressively
+    less — and the first vendor adapter would then be written against a shape
+    nothing else agrees with.
+
+    Parameter names rather than `isinstance`, deliberately. A runtime-checkable
+    Protocol compares method *names* only, so a fake whose `compose` had quietly
+    lost its `finding` argument would still pass — which is exactly the drift
+    worth catching, since every call here is keyword-only.
+    """
+    for method in ("select", "compose"):
+        expected = signature(getattr(PanelModel, method)).parameters.keys()
+        actual = signature(getattr(FakePanelModel, method)).parameters.keys()
+        assert set(expected) == set(actual), method
