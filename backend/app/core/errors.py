@@ -232,6 +232,37 @@ class MaterialNotUploaded(BusinessRuleViolation):
     message = "We did not receive that file. Please upload it again."
 
 
+class MaterialTooManyPages(BusinessRuleViolation):
+    """More pages than the caller's tier extracts from one file.
+
+    Cannot be refused at upload time the way the byte cap is — counting pages
+    means reading the file — so this arrives after the bytes have landed, and
+    the material fails terminally rather than waiting: no window rolls over into
+    a file being shorter.
+
+    Distinct from the monthly page budget, which *is* a window and does leave a
+    material `pending`. Sharing an error between them would make the two
+    indistinguishable in a log, and they call for opposite handling.
+    """
+
+    code = "material_too_many_pages"
+    message = "That file has more pages than your plan extracts."
+
+
+class MaterialUnreadable(BusinessRuleViolation):
+    """The bytes are not the document they were declared to be.
+
+    The presigned upload binds the type the client *sent* to the type we
+    recorded; it cannot make the claim true. This is where the difference
+    surfaces, and it is typed rather than an escaping exception because it runs
+    inside the extraction sweep — where an unhandled error marks nothing and
+    leaves the material claimed until the requeue notices.
+    """
+
+    code = "material_unreadable"
+    message = "We could not read that file. It may be damaged or password-protected."
+
+
 class NoMinutesRemaining(BusinessRuleViolation):
     """Raised when *starting*, never mid-session.
 

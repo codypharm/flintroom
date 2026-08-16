@@ -36,6 +36,33 @@ dependencies = [
     # PPTX rendering. Confined to `core/storage_s3.py`, so replacing it — or the
     # storage vendor — touches one module.
     "boto3>=1.35",
+    # Reading a deck. `docs/ingestion.md` §3.2 wants claims, figures and chart
+    # data per slide, and chart values are not in a PDF's text layer — a text-only
+    # parser returns a chart's axis labels and none of its numbers. So every page
+    # is needed twice: as text, and as an image a vision model can look at.
+    #
+    # pypdfium2 does both, so this is one dependency rather than two, and PDFium
+    # is the engine in Chrome — it renders what the author saw. 7.3 MB, wheels
+    # only, no system binary to install or version.
+    #
+    # PyMuPDF is the better extractor and was rejected on its licence: AGPL-3.0
+    # or an Artifex commercial licence, and AGPL §13 obliges a *network service*
+    # to offer source to its users. That is this backend exactly. pypdf plus a
+    # poppler subprocess was the other alternative — two dependencies for one
+    # job, one of them a second external binary to install and debug.
+    "pypdfium2>=5.0",
+    # Downscaling and encoding. A page renders at ~1568px because that is where
+    # vision models stop gaining detail, and the thumbnail that outlives the
+    # deleted source document is a downscale of page one — neither is something
+    # pypdfium2 does. It also normalises uploaded photos, which arrive at
+    # whatever resolution a phone camera produces.
+    "pillow>=11.0",
+    # HEIC, which is what an iPhone camera produces by default. Pillow cannot
+    # read it, and photographing a whiteboard is the mobile-native input in §3.2
+    # — so without this the most likely photo from the most likely device is the
+    # one format we accept and then fail to open. Registers a Pillow plugin and
+    # is otherwise never imported.
+    "pillow-heif>=0.21",
 ]
 
 [dependency-groups]

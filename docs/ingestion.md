@@ -163,6 +163,55 @@ The interface takes rendered pages plus text, not a PDF. A model without native
 document input must still be usable, and an interface that promises what only some
 vendors can honour turns a configuration error into a runtime failure.
 
+### The PDF engine is pypdfium2, and the reason is a licence
+
+**Decided 2026-08-16.** Verified from installed package metadata rather than
+recalled:
+
+| Library | Licence | Size |
+| --- | --- | --- |
+| `pypdfium2` 5.13 | BSD-3-Clause, Apache-2.0 | 7.3 MB |
+| `PyMuPDF` 1.28 | **AGPL-3.0 or Artifex commercial** | 54 MB |
+| `pypdf` + poppler | MIT + GPL-2.0 binary | small + a system package |
+
+PyMuPDF is the better extractor and was refused on its licence. AGPL §13 obliges
+software that users *interact with over a network* to offer them its source, and
+a hosted backend is that case exactly — so it is a licence purchase and a vendor
+relationship rather than a dependency. Not a decision to take by accident, which
+is what taking it on extraction quality alone would have been.
+
+pypdfium2 does rendering and text in one library, ships wheels, and needs no
+system binary. PDFium is the engine in Chrome, so a page renders the way the
+author's browser would show it. Its layout reconstruction is weaker than
+PyMuPDF's, which matters less here than it looks: the model sees the image of
+every page as well as the text, and exact chart values come from PPTX XML where
+they exist at all.
+
+`pypdf` plus a poppler subprocess was the third option — two dependencies for one
+job, one of them a second external binary to install, version and debug beside
+LibreOffice.
+
+### A page is rendered at 1568px, and stripped of everything the camera attached
+
+`RENDER_LONG_EDGE = 1568` is where vision models stop gaining detail. Larger and
+the model downscales it anyway, so the extra pixels are paid for in memory and
+upload and then discarded; smaller and small figures on a dense slide stop being
+legible — the failure that matters, since a misread number in a panelist's mouth
+is what `docs/auditor-grounding.md` says the grounding story cannot survive.
+
+Rendered pages are PNG and photographs are JPEG. Not an inconsistency: a rendered
+slide is flat colour and sharp type, where PNG compresses well and JPEG puts
+ringing artefacts around exactly the small digits being read; a photograph is
+sensor noise, where PNG is enormous and losslessness buys nothing.
+
+**EXIF orientation is applied and the rest is dropped.** Phones record which way
+is up rather than rotating the pixels, so a portrait whiteboard arrives as a
+landscape image with a note attached — ignore the note and the model gets a
+sideways slide, which reads as a bad model rather than as a bug. Everything else
+in that block is metadata nobody uploaded, and a photograph of a whiteboard
+records where it was taken. The page image outlives the source document, so this
+is not a detail that can be added later.
+
 ### The model extracts, code computes — inherited, not restated
 
 `docs/auditor-grounding.md` fixes this and ingestion does not get to differ: the
@@ -504,7 +553,17 @@ Follows the mandatory rules rather than restating them; the ones with teeth here
   mechanism now is not the same act and is not blocked.
 - **Two dependencies to justify when they land:** LibreOffice (a large binary, run
   as a subprocess) and `python-pptx`. Both are PPTX-only; nothing else in the
-  pipeline needs either.
+  pipeline needs either. `parsing.py` shipped without them — PDF and photographs
+  are pure Python and needed no system package, so PPTX is the only input still
+  waiting on a 400 MB binary decision, and it waits alone rather than holding the
+  module back.
+- **The per-file page cap fails a material terminally; the monthly budget does
+  not.** This document says *"the material stays `pending` rather than failing, so
+  it extracts when the window rolls over"* — true of the budget and the daily
+  ceiling, which are windows, and wrong for the per-file page cap, where no window
+  rolls over into a file being shorter. `MaterialTooManyPages` and the budget
+  refusal are therefore separate errors. The sweep that acts on them is slice 6
+  and this is the reading it should implement.
 - **Per-seat accounting for Teams is unspecified.** The budget is written per
   seat, and nothing yet says whether an unused seat's pages pool across the
   organisation. It does not block anything until Teams ships.
