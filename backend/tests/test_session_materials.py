@@ -19,8 +19,6 @@ import uuid
 import pytest
 
 from app.core.errors import MaterialNotFound, MaterialNotReady
-from app.modules.auth.tokens import AccessTokens
-from tests.conftest import SECRET
 from tests.materials import extracted, uploaded
 from tests.pdfs import minimal_pdf
 
@@ -176,16 +174,6 @@ async def can_still_open_a_room(sessions, account) -> bool:
 
 
 # --- Over the wire ---------------------------------------------------------
-
-
-@pytest.fixture
-def bearer():
-    """Headers that authenticate as a given user."""
-
-    def headers(user_id: uuid.UUID) -> dict[str, str]:
-        return {"Authorization": f"Bearer {AccessTokens(secret=SECRET).issue(user_id=user_id)}"}
-
-    return headers
 
 
 async def test_starting_a_room_over_http_echoes_its_grounding(

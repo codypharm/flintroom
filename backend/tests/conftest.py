@@ -209,6 +209,29 @@ def meter(db) -> MeterService:
 SECRET = "test-signing-key-with-no-production-counterpart"
 
 
+@pytest.fixture
+def bearer():
+    """Headers that authenticate as a given user.
+
+    Minted rather than obtained by signing in. Every module with an HTTP test
+    needs a credential, and routing all of them through the provider stub would
+    make one sign-in regression fail in six places that have nothing to say
+    about sign-in.
+
+    Here rather than copied per module, which is what it was until six copies
+    existed and had already drifted. Nothing asserts anything about the token's
+    shape, so a change to how one is issued — an audience claim, a key id, a
+    rotation — would be missed in whichever copy nobody edited, and those tests
+    would keep passing while quietly authenticating nothing.
+    """
+
+    def headers(user_id: uuid.UUID) -> dict[str, str]:
+        token = AccessTokens(secret=SECRET).issue(user_id=user_id)
+        return {"Authorization": f"Bearer {token}"}
+
+    return headers
+
+
 class StubProvider:
     """A provider that vouches for whatever it was told to vouch for."""
 

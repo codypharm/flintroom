@@ -23,7 +23,6 @@ import pytest
 from sqlalchemy import select
 
 from app.core.actors import ActorContext
-from app.modules.auth.tokens import AccessTokens
 from app.modules.audit_log.models import AuditEvent
 from app.modules.audit_log.schemas import AuditEventType
 from app.modules.billing.models import Account
@@ -31,7 +30,6 @@ from app.modules.ingestion.models import ExtractionCost, Material, MaterialClaim
 from app.modules.ingestion.schemas import MaterialState
 from app.modules.ingestion.service import IngestionService
 from app.modules.sessions.schemas import EndReason
-from tests.conftest import SECRET
 from tests.materials import (
     MARGIN,
     FakeExtractionModel,
@@ -43,17 +41,6 @@ from tests.materials import (
 )
 from tests.pdfs import minimal_pdf
 from tests.test_retention import RefusesToDelete
-
-
-@pytest.fixture
-def bearer():
-    """Headers that authenticate as a given user."""
-
-    def headers(user_id: uuid.UUID) -> dict[str, str]:
-        token = AccessTokens(secret=SECRET).issue(user_id=user_id)
-        return {"Authorization": f"Bearer {token}"}
-
-    return headers
 
 
 def deleting(db, storage, account) -> IngestionService:

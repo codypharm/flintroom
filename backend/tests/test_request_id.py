@@ -12,22 +12,9 @@ from __future__ import annotations
 import logging
 import uuid
 
-import pytest
 
 from app.modules.audit_log.schemas import AuditEventType
 from app.modules.audit_log.service import AuditService
-from app.modules.auth.tokens import AccessTokens
-
-from tests.conftest import SECRET
-
-
-@pytest.fixture
-def bearer():
-    def headers(user_id: uuid.UUID) -> dict[str, str]:
-        token = AccessTokens(secret=SECRET).issue(user_id=user_id)
-        return {"Authorization": f"Bearer {token}"}
-
-    return headers
 
 
 async def test_a_request_stamps_its_id_on_what_it_writes(

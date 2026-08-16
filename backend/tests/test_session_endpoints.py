@@ -11,34 +11,15 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
 import pytest_asyncio
 from sqlalchemy import func, select
 
 from app.modules.auth.rate_limit import SESSION_START_LIMIT
-from app.modules.auth.tokens import AccessTokens
 from app.modules.sessions.models import Session as SessionModel
 from app.modules.sessions.schemas import EndReason, SessionState
 from app.modules.voice.tickets import VoiceTicketService
 
-from tests.conftest import SECRET, create_funded_account
-
-
-@pytest.fixture
-def bearer():
-    """Headers that authenticate as a given user.
-
-    Minted rather than obtained by signing in: these tests are about sessions,
-    and routing every one of them through the provider stub would make a
-    sign-in regression fail here too, in a module that has nothing to say
-    about it.
-    """
-
-    def headers(user_id: uuid.UUID) -> dict[str, str]:
-        token = AccessTokens(secret=SECRET).issue(user_id=user_id)
-        return {"Authorization": f"Bearer {token}"}
-
-    return headers
+from tests.conftest import create_funded_account
 
 
 async def test_starting_a_room_opens_one_for_the_caller(

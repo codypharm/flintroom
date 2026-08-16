@@ -10,24 +10,12 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-import pytest
 from freezegun import freeze_time
 
-from app.modules.auth.tokens import AccessTokens
 from app.modules.billing.tiers import MONTHLY_ALLOWANCE_SECONDS
 
-from tests.conftest import SECRET
 
 STARTER_MINUTES = MONTHLY_ALLOWANCE_SECONDS["starter"] // 60
-
-
-@pytest.fixture
-def bearer():
-    def headers(user_id: uuid.UUID) -> dict[str, str]:
-        token = AccessTokens(secret=SECRET).issue(user_id=user_id)
-        return {"Authorization": f"Bearer {token}"}
-
-    return headers
 
 
 async def test_a_caller_reads_their_own_remaining_minutes(

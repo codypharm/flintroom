@@ -16,30 +16,16 @@ import io
 import uuid
 
 import httpx
-import pytest
 from PIL import Image
 
-from app.modules.auth.tokens import AccessTokens
 from app.modules.billing.models import Account
 from app.modules.ingestion.schemas import MaterialState
 
-from tests.conftest import SECRET
 from tests.materials import FakeExtractionModel, extracted, extraction, reading, uploaded
 from tests.pdfs import minimal_pdf
 
 PDF = "application/pdf"
 DECK = b"%PDF-1.7 a deck, for the purposes of this test"
-
-
-@pytest.fixture
-def bearer():
-    """Headers that authenticate as a given user."""
-
-    def headers(user_id: uuid.UUID) -> dict[str, str]:
-        token = AccessTokens(secret=SECRET).issue(user_id=user_id)
-        return {"Authorization": f"Bearer {token}"}
-
-    return headers
 
 
 def declaration(byte_size: int = len(DECK), content_type: str = PDF) -> dict:
