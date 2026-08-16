@@ -322,6 +322,80 @@ def test_attribution_survives_the_whitespace_a_pdf_puts_in():
     assert claims[0].page == 2
 
 
+def test_a_quote_found_in_the_deck_is_marked_verified():
+    """One bit saying "these are really the deck's words".
+
+    Open Risk #2 is that ungrounded questions kill retention, and CLAUDE.md
+    refuses interrogation logic that cannot cite its source. This is the
+    difference between a citation that was checked and one that was accepted —
+    and it costs nothing, because the search that answers it already runs for
+    attribution.
+    """
+    pages = deck("Title", "Gross margin held at 61% in Q3.")
+
+    claims, _, _ = to_claims(answer(figures=({**FIGURE, "page": 2},)), pages=pages)
+
+    assert claims[0].quote_verified is True
+
+
+def test_a_chart_value_is_marked_unverified():
+    """The claims nothing can check, made visible instead of silently mixed in.
+
+    A figure read off a chart is in the pixels and appears in no text layer, so
+    neither its wording nor its page can be confirmed. Those are also exactly
+    the figures a CFO archetype would attack hardest — so the panel should be
+    able to tell them apart when choosing what to press on.
+    """
+    pages = deck("Title", "Revenue by quarter")
+
+    claims, _, _ = to_claims(answer(figures=({**FIGURE, "page": 2},)), pages=pages)
+
+    assert claims[0].quote_verified is False
+
+
+def test_a_quote_on_several_pages_is_still_the_decks_words():
+    """Verification and attribution are different questions.
+
+    A running header appears on every slide: *which* page it came from is
+    genuinely ambiguous, but that the deck says it is not in doubt. Marking it
+    unverified would throw away a fact we have, over one we do not.
+    """
+    repeated = "Gross margin held at 61% in Q3."
+    pages = deck(repeated, repeated, repeated)
+
+    claims, _, corrected = to_claims(
+        answer(figures=({**FIGURE, "page": 3},)), pages=pages
+    )
+
+    assert claims[0].quote_verified is True
+    assert (claims[0].page, corrected) == (3, 0)
+
+
+def test_an_assertion_is_verified_the_same_way():
+    """Both kinds, because both are spoken and both need to cite something."""
+    pages = deck("Title", "Exclusive distribution — Walmart, signed Q2.")
+
+    claims, _, _ = to_claims(
+        answer(figures=(), assertions=({**ASSERTION, "page": 2},)), pages=pages
+    )
+
+    assert claims[0].quote_verified is True
+
+
+def test_verification_is_off_unless_something_checked_it():
+    """The default has to be the unproven one.
+
+    A flag defaulting to True is a future adapter — or a hand-built fixture —
+    silently asserting that a citation was confirmed when nothing looked.
+    """
+    from app.modules.ingestion.extraction_model import ExtractedClaim
+
+    fields = {k: v for k, v in FIGURE.items() if k != "page"}
+    built = ExtractedClaim(page=1, claim={**fields, "kind": "quantitative"})
+
+    assert built.quote_verified is False
+
+
 def test_a_payload_is_not_mutated_by_being_read():
     """It is the caller's dict, and it is what gets inspected when this goes wrong.
 

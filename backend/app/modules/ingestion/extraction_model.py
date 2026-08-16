@@ -51,6 +51,23 @@ class ExtractedClaim(BaseModel):
     page: int = Field(gt=0)
     claim: Claim
 
+    #: Whether the quote was found in the deck's own text.
+    #:
+    #: The difference between a citation that was checked and one that was
+    #: accepted. Open Risk #2 is that ungrounded questions kill retention, and
+    #: CLAUDE.md refuses interrogation logic that cannot cite its source — so
+    #: the panel should be able to tell which of its ammunition is confirmed
+    #: verbatim before deciding what to press hardest on.
+    #:
+    #: False for a figure read off a chart: it lives in the pixels and appears
+    #: in no text layer, which is the whole reason a vision model is here. Those
+    #: claims are not worse, they are unconfirmable — and being unconfirmable is
+    #: worth recording rather than silently mixing in.
+    #:
+    #: Defaults to False, because a flag that defaults to True is a future
+    #: adapter silently asserting a check nothing performed.
+    quote_verified: bool = False
+
 
 @dataclass(frozen=True)
 class ExtractionUsage:

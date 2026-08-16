@@ -199,14 +199,24 @@ class ClaudeExtractionModel:
             # contents in logs — undetectable by key name, so never passed.
             log.warning("extraction_claims_dropped", provider=PROVIDER, dropped=dropped)
 
-        if corrected:
-            # Not a warning: a correction is this working. It is logged because
-            # the rate is the only measure of how far the model's own page
-            # attribution can be trusted — and that number decides whether the
-            # locator stays a page at all.
-            log.info(
-                "extraction_pages_corrected", provider=PROVIDER, corrected=corrected
-            )
+        # Counts only, never the claims. These are figures and statements read
+        # off a confidential deck; CLAUDE.md forbids ingested material contents
+        # in logs, and unlike a secret they are not detectable by key name.
+        #
+        # Neither number is an error. `corrected` is the attribution check
+        # working, and it is the only measure of how far the model's own page
+        # numbers can be trusted — the number that should decide whether a page
+        # stays the locator at all. `unverified` is how much of a deck is
+        # grounded in text nothing could confirm, which is Open Risk #2 made
+        # countable rather than argued about.
+        log.info(
+            "extraction_completed",
+            provider=PROVIDER,
+            pages=len(pages),
+            claims=len(claims),
+            corrected=corrected,
+            unverified=sum(not claim.quote_verified for claim in claims),
+        )
 
         return ExtractionResult(
             claims=claims,
@@ -276,10 +286,17 @@ def _normalized(text: str) -> str:
     return " ".join(text.split()).casefold()
 
 
-def _attributed(
+def _located(
     claim: ExtractedClaim, pages: Sequence[RenderedPage]
 ) -> ExtractedClaim:
-    """Move a claim to the page its quote is actually on, if that is knowable.
+    """Answer two questions with one search: are these the deck's words, and where.
+
+    They are different questions and the answers can differ. A running header
+    appears on every slide — that the deck says it is not in doubt, while *which*
+    page it came from genuinely is. Marking that unverified would throw away a
+    fact we have over one we do not.
+
+    Move a claim to the page its quote is actually on, if that is knowable.
 
     Which page a piece of text is on is a fact about the deck, not an opinion of
     the model's — so where the text layer settles it, it is looked up rather
@@ -301,10 +318,13 @@ def _attributed(
         return claim
 
     found = [page.number for page in pages if quote in _normalized(page.text)]
-    if len(found) != 1 or found[0] == claim.page:
+    if not found:
         return claim
 
-    return claim.model_copy(update={"page": found[0]})
+    located = {"quote_verified": True}
+    if len(found) == 1:
+        located["page"] = found[0]
+    return claim.model_copy(update=located)
 
 
 def to_claims(
@@ -357,10 +377,10 @@ def to_claims(
                 found = ExtractedClaim(
                     page=entry["page"], claim={**fields, "kind": kind}
                 )
-                # Attribution first, then the range check — a claim the quote
+                # Located first, then the range check — a claim the quote
                 # places on a real page is a good claim, however it was
                 # originally labelled, and checking first would throw it away.
-                placed = _attributed(found, pages)
+                placed = _located(found, pages)
                 corrected += placed.page != found.page
 
                 if placed.page not in page_numbers:

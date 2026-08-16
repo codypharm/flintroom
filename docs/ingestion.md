@@ -305,6 +305,28 @@ survives being handed a slice of a deck — once pages are chunked across calls
 (task #31), a chunk holding pages 51–100 has a length of fifty and numbers
 starting at fifty-one, and a length check would drop every claim in it.
 
+### A claim records whether its citation was checked
+
+The same search answers two questions, and they are not the same question:
+
+- **Is this really the deck's words?** → `ExtractedClaim.quote_verified`
+- **Which page did they come from?** → `ExtractedClaim.page`
+
+A running header appears on every slide: that the deck says it is not in doubt,
+while *which* page it came from genuinely is. So a quote found on several pages
+is verified but not moved — marking it unverified would throw away a fact we have
+over one we do not.
+
+`quote_verified` is False for a figure read off a chart, which appears in no text
+layer. **Those claims are not worse, they are unconfirmable** — and being
+unconfirmable is worth recording rather than silently mixing in, because they are
+also exactly the figures a CFO archetype would press hardest on. Open Risk #2 is
+that ungrounded questions kill retention; this makes the ungrounded share
+countable instead of argued about.
+
+Defaults to False. A flag defaulting to True is a future adapter silently
+asserting a check that nothing performed.
+
 **`ExtractionResult.corrected` counts the moves, and it is not an error count.**
 It is the only measure of how far the model's own attribution can be trusted, and
 that rate is what should decide whether a page stays the locator at all. If it
