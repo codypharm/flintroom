@@ -308,8 +308,8 @@ seven strings are the deliverable.
   tester account mints minutes against production; refusing it means a staging
   deployment sharing the production database cannot be tested end to end. Undecided
   — the handler slice needs an answer.
-- **The credit-toward-upgrade rule** (§4.5) has no store mechanism behind it yet.
-  Apple will not discount a subscription because of a prior consumable purchase,
-  so honouring "we'll put this $35 toward it" means crediting minutes on our side
-  after the upgrade lands, not a cheaper price at the till. That is a ledger
-  decision and it is not made.
+- ~~The credit-toward-upgrade rule needs a store mechanism.~~ **Resolved
+  2026-08-16.** It needs none: top-up minutes live in their own bucket and are
+  untouched by a reset or an upgrade, so a user who tops up and then subscribes
+  keeps both. §4.5 point 3 was rewritten from a price discount to a statement of
+  what the ledger already does, and no code changed.

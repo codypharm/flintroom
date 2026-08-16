@@ -238,12 +238,16 @@ Top-ups carry the highest margin in the product and are bought at the user's wor
 
 **Implementation:**
 
-1. On the **first** top-up, present the upgrade alongside it, with the credit stated plainly: *"$35 for 90 minutes now — or $59 for 3 hours every month, and we'll put this $35 toward it."*
+1. On the **first** top-up, present the upgrade alongside it, and state plainly that the minutes are kept: *"$35 for 90 minutes now — or $59 for 3 hours every month. Either way the 90 minutes stay yours."*
 2. On the **second** top-up in any rolling 30-day window, make the upgrade the default option and the top-up the secondary one.
-3. **Honour the credit for 30 days.** Money already spent on top-ups is deducted from the first month of any upgrade taken within that window.
+3. **The minutes are the credit.** Top-up minutes never expire and are untouched by an upgrade, so a user who tops up and then subscribes holds both — 90 bought minutes plus a full monthly allowance, and the 90 survive every reset after that.
 4. Never gate the top-up behind the upgrade prompt. One tap to decline, always.
 
 A user who tops up three times in a month is a pricing failure, not a revenue win. The plan should have caught them at the first.
+
+**Revised 2026-08-16.** Point 3 previously promised that top-up spend would be *"deducted from the first month of any upgrade"* — a price discount. Two things were wrong with it. Neither store will discount a subscription on account of a prior consumable purchase, so the promise could not be kept at the till without per-user promotional offers on both platforms. And it was compensating for a loss that does not occur: it was written as though upgrading stranded the top-up the way a monthly allowance is stranded at a reset, but the ledger keeps top-up minutes in their own bucket precisely so that never happens.
+
+What remains is a real premium — those minutes were bought at $0.39 against Pro's $0.33, about $5 on a $35 pack — and the answer to it is the upgrade prompt itself rather than a credit. The rule's purpose is unchanged: steer a repeat top-up toward the plan that should have caught them.
 
 Design rules for the flow:
 
