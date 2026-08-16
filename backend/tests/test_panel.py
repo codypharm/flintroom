@@ -12,7 +12,7 @@ exactly where this one sits — what is under test is the loop around it.
 from __future__ import annotations
 
 from app.agents.panel import Finding, interrogate
-from app.agents.archetypes import DEFAULT_PANEL
+from app.agents.archetypes import DEFAULT_PANEL, LIBRARY
 
 
 class FakePanelModel:
@@ -120,3 +120,39 @@ async def test_the_interrupting_archetype_is_told_what_was_caught():
 
     (_, composed_finding), = model.composed_with
     assert composed_finding is finding
+
+
+def test_no_two_archetypes_claim_the_same_domain():
+    """Domain ownership decides who interrupts, and `_owner` takes the first match.
+
+    With three archetypes an overlap was unlikely; with a library of eight it is
+    one careless entry away, and the failure is silent. A finding tagged `market`
+    would go to whoever happens to sit earlier in the tuple — a panel routing by
+    declaration order rather than by expertise, which is indistinguishable from a
+    panel that is not listening.
+
+    Whoever adds the ninth archetype should be told by a red test, not by a
+    transcript that reads oddly six weeks later.
+    """
+    seen: dict[str, str] = {}
+    clashes = []
+
+    for archetype in LIBRARY:
+        for domain in archetype.domains:
+            if domain in seen:
+                clashes.append(f"{domain}: {seen[domain]} and {archetype.name}")
+            seen[domain] = archetype.name
+
+    assert clashes == []
+
+
+def test_the_default_room_is_mixed_rather_than_uniformly_hostile():
+    """`CLAUDE.md`: ship a champion, a skeptic and a neutral, and let them disagree.
+
+    Asserted because it is a product decision a later "let's make it harder"
+    change would quietly undo. Open Risk #1 is that people may not tolerate being
+    attacked at all, and a room with no ally in it is the version of this product
+    most likely to be uninstalled after one session.
+    """
+    assert len(DEFAULT_PANEL) == 3
+    assert "champion" in {archetype.name for archetype in DEFAULT_PANEL}

@@ -56,13 +56,19 @@ class Archetype(BaseModel):
     voice_id: str | None = None
 
 
-#: The panel a session gets when nobody has chosen one.
+#: Every archetype the product ships with.
 #:
-#: **Mixed, not uniformly hostile** (`CLAUDE.md`): a champion, a skeptic and a
-#: neutral. A room where every voice is against you is not a harder room, it is a
-#: less informative one — there is nothing to lose and nothing to win, and Open
-#: Risk #1 is already that people may not tolerate being attacked at all.
-DEFAULT_PANEL: tuple[Archetype, ...] = (
+#: **Written to transfer, not to serve founders.** The four primary audiences —
+#: corporate presenters, product managers, consultants, founders — face
+#: structurally the same room in different clothes: somebody who owns the money,
+#: somebody who owns delivery risk, somebody who loses if you win, somebody who
+#: is not listening. An archetype phrased for a fund pitch is dead weight to a PM
+#: defending a roadmap, and three quarters of the audience is not founders.
+#:
+#: So personas describe a *stance*, and never an industry. "Attacks the numbers"
+#: works in a board room, a client meeting and a sprint review; "asks about your
+#: cap table" works in one.
+LIBRARY: tuple[Archetype, ...] = (
     Archetype(
         name="margin_hawk",
         title="The CFO",
@@ -96,15 +102,124 @@ DEFAULT_PANEL: tuple[Archetype, ...] = (
         name="champion",
         title="The Champion",
         persona=(
-            "Already persuaded, and therefore the most dangerous person in the "
-            "room to disappoint. Warm, quick, and asks the questions that would "
-            "let them defend this to somebody else."
+            "Wants this to succeed and will have to defend it in a room you are "
+            "not in. Warm and quick, but not soft: the questions come from "
+            "imagining the argument they will lose without an answer."
         ),
         attack_strategy=(
-            "Ask for the ammunition needed to argue this internally. Push for "
-            "the proof point, the reference customer, the number that survives "
-            "a hostile committee. Reward a strong answer by pressing further."
+            "Ask for the ammunition needed to argue this to somebody else. The "
+            "proof point, the reference, the one number that survives a hostile "
+            "committee. Reward a strong answer by pressing further rather than "
+            "by agreeing."
         ),
-        domains=("market", "traction", "customers", "positioning"),
+        domains=("proof", "references"),
+    ),
+    Archetype(
+        name="growth_maximalist",
+        title="The Growth Maximalist",
+        persona=(
+            "Impatient with caution and interested only in size and speed. "
+            "Talks over hedging, and treats a conservative estimate as a "
+            "confession."
+        ),
+        attack_strategy=(
+            "Attack the ceiling and the timing. How big can this get, why is "
+            "now the moment, what happens if somebody moves faster, and why the "
+            "plan is not more ambitious than it is."
+        ),
+        domains=("market", "growth", "timing", "competition"),
+    ),
+    Archetype(
+        name="distracted_executive",
+        title="The Distracted Executive",
+        persona=(
+            "Half-listening, one eye on a phone, and will decide within ninety "
+            "seconds whether this deserves attention. Interrupts to ask for the "
+            "point. Not hostile — busy, which is worse."
+        ),
+        attack_strategy=(
+            "Attack the framing rather than the content. Interrupt long "
+            "build-ups to demand the conclusion first. Ask what the ask is, why "
+            "it matters, and what happens if nothing changes. Punish any answer "
+            "that takes more than two sentences to reach its point."
+        ),
+        # No domains, and deliberately: "you are not making the point clearly"
+        # is never a numeric contradiction, so this archetype is never handed a
+        # targeted interruption. It earns the floor by ordinary selection.
+        domains=(),
+    ),
+    Archetype(
+        name="internal_blocker",
+        title="The Internal Blocker",
+        persona=(
+            "The peer whose team loses budget, headcount or ownership if this "
+            "wins. Never says so. Objects on process, sequencing and risk, and "
+            "is unfailingly reasonable about it."
+        ),
+        attack_strategy=(
+            "Attack the plan's dependencies and its claim on shared resources. "
+            "Who else has to change what they are doing, what is being taken "
+            "from somebody, whether this was socialised, and why it should go "
+            "ahead of what is already committed."
+        ),
+        domains=("resourcing", "dependencies", "ownership"),
+    ),
+    Archetype(
+        name="customer_voice",
+        title="The Customer Advocate",
+        persona=(
+            "Speaks for the people who will actually have to use this, and has "
+            "watched confident plans die on adoption. Concrete, unimpressed by "
+            "strategy, and always asks about the person at the far end."
+        ),
+        attack_strategy=(
+            "Attack the gap between what is being described and what somebody "
+            "will really do on a Tuesday. Who asked for this, what they do "
+            "today instead, what it costs them to switch, and what happens to "
+            "the ones it makes worse off."
+        ),
+        domains=("customers", "adoption", "retention", "usability"),
+    ),
+    Archetype(
+        name="risk_officer",
+        title="The Risk Officer",
+        persona=(
+            "Paid to find the thing that ends badly. Unhurried and literal, "
+            "reads the caveat rather than the headline, and is entirely "
+            "comfortable being the reason something does not ship."
+        ),
+        attack_strategy=(
+            "Attack exposure. What data this touches, who is liable when it "
+            "fails, which approval has not been obtained, what the disclosure "
+            "obligation is, and what the plan is for the case nobody wants to "
+            "discuss."
+        ),
+        domains=("compliance", "legal", "privacy", "data"),
     ),
 )
+
+
+#: The archetypes a session gets when nobody has chosen.
+#:
+#: **Mixed, not uniformly hostile** (`CLAUDE.md`): a champion, a skeptic and a
+#: neutral. A room where every voice is against you is not a harder room, it is a
+#: less informative one — there is nothing to lose and nothing to win, and Open
+#: Risk #1 is already that people may not tolerate being attacked at all.
+#:
+#: Three, because the constraint is the session rather than the cost. Only one
+#: archetype speaks per turn, so a larger panel is nearly free — but a ten-minute
+#: interrogation split six ways gives everybody two questions and nobody a line
+#: of attack that goes anywhere. Depth is what makes the room worth sitting in.
+DEFAULT_PANEL: tuple[Archetype, ...] = tuple(
+    archetype
+    for archetype in LIBRARY
+    if archetype.name in {"margin_hawk", "technical_skeptic", "champion"}
+)
+
+
+def by_name(name: str) -> Archetype | None:
+    """One archetype from the library, or nothing."""
+    for archetype in LIBRARY:
+        if archetype.name == name:
+            return archetype
+    return None
