@@ -320,10 +320,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/archetypes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Archetypes
+         * @description Who may be seated, and how many of them this caller's plan allows.
+         *
+         *     Authenticated even though the roster is the same for everybody, because the
+         *     seat count is not: an unauthenticated version would have to answer with the
+         *     free tier's number and would be wrong for every paying caller. Splitting it
+         *     into a public roster and a private cap would be two round trips for one
+         *     screen.
+         */
+        get: operations["panels_read_archetypes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ArchetypeCatalogue
+         * @description Everybody available, and how many of them this plan seats.
+         *
+         *     The caps travel with the catalogue rather than sitting on a separate limits
+         *     endpoint, because they are read at the same moment and by the same screen: a
+         *     picker that knows the roster but not the seat count can only find out a
+         *     fourth choice is refused by posting it.
+         *
+         *     Same reasoning as `MaterialLimits` — the client refuses instantly with no
+         *     round trip, and the server refusal stays the real wall.
+         */
+        ArchetypeCatalogue: {
+            /** Archetypes */
+            archetypes: components["schemas"]["ArchetypeRead"][];
+            /** Seats */
+            seats: number;
+            /**
+             * May Author
+             * @default false
+             */
+            may_author: boolean;
+            /** Upgrade Seats */
+            upgrade_seats?: number | null;
+        };
+        /**
+         * ArchetypeRead
+         * @description One panelist, as offered.
+         *
+         *     Built from an `Archetype` by field name rather than by `model_validate`, so
+         *     that adding a field to the library does not publish it. That is the whole
+         *     safety property of this schema: the default has to be *withheld*, because the
+         *     field most likely to be added next is another line of prompt text.
+         */
+        ArchetypeRead: {
+            /** Name */
+            name: string;
+            /** Title */
+            title: string;
+            /** Blurb */
+            blurb: string;
+        };
         /**
          * BalanceRead
          * @description What a client is told about its own balance.
@@ -1067,6 +1135,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    panels_read_archetypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchetypeCatalogue"];
                 };
             };
         };

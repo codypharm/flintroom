@@ -36,7 +36,21 @@ class Archetype(BaseModel):
     #: Skeptic". Deliberately a role rather than a person.
     title: str = Field(min_length=1, max_length=64)
 
-    #: Who this archetype is and how they behave in a room.
+    #: One line for the person choosing, and the **only** prose that leaves the
+    #: server. Separate from `persona` for two reasons of different weight.
+    #:
+    #: The real one: a picker that prints the attack strategy is a rehearsal the
+    #: user has already had. The product is a room that gets past what they
+    #: prepared for, so a blurb says who is in the chair and never what they will
+    #: go after.
+    #:
+    #: The lesser one: `persona` is prompt text. It gets tuned for model
+    #: behaviour, and publishing it would make every tuning change a user-visible
+    #: copy change.
+    blurb: str = Field(min_length=1, max_length=200)
+
+    #: Who this archetype is and how they behave in a room. Prompt text — never
+    #: sent to a client.
     persona: str = Field(min_length=1, max_length=2000)
 
     #: What they go after. Separate from `persona` because the two change for
@@ -72,6 +86,9 @@ LIBRARY: tuple[Archetype, ...] = (
     Archetype(
         name="cfo",
         title="The CFO",
+        blurb=(
+            "Unhurried, unimpressed, and not interested in vision until the arithmetic holds."
+        ),
         persona=(
             "A margin-obsessed CFO. Unhurried, unimpressed, and entirely "
             "uninterested in vision until the arithmetic holds. Speaks in short "
@@ -87,6 +104,9 @@ LIBRARY: tuple[Archetype, ...] = (
     Archetype(
         name="technical_skeptic",
         title="The Technical Skeptic",
+        blurb=(
+            "A senior engineer who has watched confident demos fail in production."
+        ),
         persona=(
             "A senior engineer who has watched confident demos fail in "
             "production. Polite, precise, and hard to satisfy with an analogy."
@@ -101,6 +121,9 @@ LIBRARY: tuple[Archetype, ...] = (
     Archetype(
         name="champion",
         title="The Champion",
+        blurb=(
+            "On your side, and will have to defend this in a room you are not in."
+        ),
         persona=(
             "Wants this to succeed and will have to defend it in a room you are "
             "not in. Warm and quick, but not soft: the questions come from "
@@ -117,6 +140,9 @@ LIBRARY: tuple[Archetype, ...] = (
     Archetype(
         name="growth_maximalist",
         title="The Growth Maximalist",
+        blurb=(
+            "Impatient with caution. Treats a conservative estimate as a confession."
+        ),
         persona=(
             "Impatient with caution and interested only in size and speed. "
             "Talks over hedging, and treats a conservative estimate as a "
@@ -132,6 +158,9 @@ LIBRARY: tuple[Archetype, ...] = (
     Archetype(
         name="distracted_executive",
         title="The Distracted Executive",
+        blurb=(
+            "Half-listening, and deciding within ninety seconds whether this deserves attention."
+        ),
         persona=(
             "Half-listening, one eye on a phone, and will decide within ninety "
             "seconds whether this deserves attention. Interrupts to ask for the "
@@ -151,6 +180,9 @@ LIBRARY: tuple[Archetype, ...] = (
     Archetype(
         name="internal_blocker",
         title="The Internal Blocker",
+        blurb=(
+            "The peer whose team loses something if this wins. Unfailingly reasonable about it."
+        ),
         persona=(
             "The peer whose team loses budget, headcount or ownership if this "
             "wins. Never says so. Objects on process, sequencing and risk, and "
@@ -167,6 +199,9 @@ LIBRARY: tuple[Archetype, ...] = (
     Archetype(
         name="customer_advocate",
         title="The Customer Advocate",
+        blurb=(
+            "Speaks for the people who will actually have to use this."
+        ),
         persona=(
             "Speaks for the people who will actually have to use this, and has "
             "watched confident plans die on adoption. Concrete, unimpressed by "
@@ -183,6 +218,9 @@ LIBRARY: tuple[Archetype, ...] = (
     Archetype(
         name="risk_officer",
         title="The Risk Officer",
+        blurb=(
+            "Paid to find the thing that ends badly, and comfortable being why it does not ship."
+        ),
         persona=(
             "Paid to find the thing that ends badly. Unhurried and literal, "
             "reads the caveat rather than the headline, and is entirely "

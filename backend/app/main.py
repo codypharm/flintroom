@@ -20,6 +20,7 @@ from app.modules.auth.router import router as auth_router
 from app.modules.billing.router import router as billing_router
 from app.modules.ingestion.extraction_models import build_extraction_model
 from app.modules.ingestion.router import router as materials_router
+from app.modules.panels.router import router as panels_router
 from app.modules.ingestion.runner import ExtractionRunner
 from app.modules.sessions.router import router as sessions_router
 from app.modules.sessions.runner import SessionFactory, SweepRunner
@@ -194,6 +195,7 @@ def create_app() -> FastAPI:
     app.include_router(sessions_router, prefix=API_PREFIX)
     app.include_router(billing_router, prefix=API_PREFIX)
     app.include_router(materials_router, prefix=API_PREFIX)
+    app.include_router(panels_router, prefix=API_PREFIX)
     app.include_router(voice_router, prefix=API_PREFIX)
     return app
 

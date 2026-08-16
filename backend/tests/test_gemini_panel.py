@@ -238,6 +238,7 @@ async def test_a_custom_archetype_routes_with_nothing_registered_anywhere():
     mine = Archetype(
         name="vc_partner",
         title="The Partner",
+        blurb="Has seen four hundred decks this year.",
         persona="A partner who has seen four hundred decks this year.",
         attack_strategy="Attack the story. Why this, why you, why now.",
     )

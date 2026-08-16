@@ -461,8 +461,104 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/archetypes:
+    get:
+      tags:
+      - panels
+      summary: Read Archetypes
+      description: 'Who may be seated, and how many of them this caller''s plan allows.
+
+
+        Authenticated even though the roster is the same for everybody, because the
+
+        seat count is not: an unauthenticated version would have to answer with the
+
+        free tier''s number and would be wrong for every paying caller. Splitting
+        it
+
+        into a public roster and a private cap would be two round trips for one
+
+        screen.'
+      operationId: panels_read_archetypes
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArchetypeCatalogue'
+      security:
+      - HTTPBearer: []
 components:
   schemas:
+    ArchetypeCatalogue:
+      properties:
+        archetypes:
+          items:
+            $ref: '#/components/schemas/ArchetypeRead'
+          type: array
+          title: Archetypes
+        seats:
+          type: integer
+          title: Seats
+        may_author:
+          type: boolean
+          title: May Author
+          default: false
+        upgrade_seats:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Upgrade Seats
+      type: object
+      required:
+      - archetypes
+      - seats
+      title: ArchetypeCatalogue
+      description: 'Everybody available, and how many of them this plan seats.
+
+
+        The caps travel with the catalogue rather than sitting on a separate limits
+
+        endpoint, because they are read at the same moment and by the same screen:
+        a
+
+        picker that knows the roster but not the seat count can only find out a
+
+        fourth choice is refused by posting it.
+
+
+        Same reasoning as `MaterialLimits` — the client refuses instantly with no
+
+        round trip, and the server refusal stays the real wall.'
+    ArchetypeRead:
+      properties:
+        name:
+          type: string
+          title: Name
+        title:
+          type: string
+          title: Title
+        blurb:
+          type: string
+          title: Blurb
+      type: object
+      required:
+      - name
+      - title
+      - blurb
+      title: ArchetypeRead
+      description: 'One panelist, as offered.
+
+
+        Built from an `Archetype` by field name rather than by `model_validate`, so
+
+        that adding a field to the library does not publish it. That is the whole
+
+        safety property of this schema: the default has to be *withheld*, because
+        the
+
+        field most likely to be added next is another line of prompt text.'
     BalanceRead:
       properties:
         remaining_minutes:
