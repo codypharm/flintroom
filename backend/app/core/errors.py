@@ -232,6 +232,24 @@ class MaterialNotUploaded(BusinessRuleViolation):
     message = "We did not receive that file. Please upload it again."
 
 
+class ExtractionIncomplete(BusinessRuleViolation):
+    """Something tried to settle a deck that was only partly read.
+
+    A programming error rather than anything a user did, and typed rather than
+    an assertion because of what it guards. A long deck takes several model
+    calls and one can fail after the others have been paid for; settling that
+    would mark the material `ready`, and `ready` is the promise the panel
+    grounds itself on. Since the source document is deleted on success, the gap
+    would be permanent and invisible.
+
+    The correct response is `fail_extraction`, which records what the attempt
+    cost and leaves the material `failed`.
+    """
+
+    code = "extraction_incomplete"
+    message = "That material was not fully read."
+
+
 class MaterialTooManyPages(BusinessRuleViolation):
     """More pages than the caller's tier extracts from one file.
 

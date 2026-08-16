@@ -91,6 +91,14 @@ class ExtractionUsage:
     output_tokens: int
     pages: int
 
+    #: How many requests the adapter made to read those pages. One for a
+    #: photograph; fifteen for a full pro-tier deck, which does not fit in any
+    #: context window in one piece. Reported because it is the only number that
+    #: says whether the chunk size is set anywhere near right — and because
+    #: per-call overhead is repeated instruction tokens somebody will eventually
+    #: want to see separated from the pages themselves.
+    calls: int = 1
+
 
 @dataclass(frozen=True)
 class ExtractionResult:
@@ -109,6 +117,22 @@ class ExtractionResult:
     #: attribution can be trusted, and that number is what should decide whether
     #: a page stays the locator at all.
     corrected: int = 0
+
+    #: Whether every page of the deck was read.
+    #:
+    #: A long deck takes several calls, and one of them can fail after the
+    #: others have already cost money. When that happens the claims are
+    #: discarded and this is false: a partially-read deck grounds less than the
+    #: user believes, nothing downstream can tell the difference, and the source
+    #: document is deleted on success — so the gap would be permanent and
+    #: invisible. `docs/ingestion.md`: *"extraction completeness is a one-way
+    #: door, not a backlog item."*
+    #:
+    #: The usage is still filled in, and that is the point of returning at all
+    #: rather than raising. Those calls are on the invoice whether or not their
+    #: answers were usable, and cost that cannot be reconciled is worse than
+    #: cost that was wasted.
+    complete: bool = True
 
 
 class ExtractionModel(Protocol):

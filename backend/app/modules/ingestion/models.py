@@ -304,6 +304,14 @@ class ExtractionCost(Base):
     model: Mapped[str] = mapped_column(String(64), nullable=False)
 
     pages: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+
+    #: How many requests it took to read those pages. A full pro-tier deck does
+    #: not fit in any context window in one piece, so it is read in chunks —
+    #: and per-call overhead is repeated instruction tokens that `input_tokens`
+    #: alone cannot be separated into. It is also the number that says whether
+    #: the chunk size is set anywhere near right once real decks have run.
+    calls: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+
     input_tokens: Mapped[int] = mapped_column(
         BigInteger, nullable=False, server_default="0"
     )

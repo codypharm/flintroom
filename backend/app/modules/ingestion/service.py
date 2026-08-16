@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import (
     AccountNotFound,
+    ExtractionIncomplete,
     InvalidMaterialState,
     MaterialNotFound,
     MaterialNotUploaded,
@@ -299,6 +300,53 @@ class IngestionService:
         secret, not detectable by key name — so counts go to the log and text
         does not.
         """
+        if not result.complete:
+            # Before the row is even loaded. A deck read in fifteen calls can
+            # lose one of them, and `ready` is the promise the panel grounds
+            # itself on — the source document is deleted on success, so a
+            # partially-stored deck is a gap nothing can find later.
+            raise ExtractionIncomplete(material_id=str(material_id))
+
+        material = await self._claimed(material_id)
+
+        for extracted in result.claims:
+            self._db.add(_claim_row(material, extracted))
+
+        return await self._close(
+            material, result, state=MaterialState.READY, claims=len(result.claims)
+        )
+
+    async def fail_extraction(
+        self, material_id: uuid.UUID, *, result: ExtractionResult
+    ) -> Material:
+        """Record what a failed attempt cost, and stop trying.
+
+        The twin of `settle_extraction`, and the reason the adapter returns an
+        incomplete result rather than raising: a deck read in several calls can
+        lose one after the others have already been billed. Those calls are on
+        the invoice whether or not their answers were usable, and §4.3 measures
+        margin against observed spend — cost that cannot be reconciled is worse
+        than cost that was wasted.
+
+        No claims are written, whatever the result carries. Failing is not a
+        quieter way of storing part of a deck.
+
+        `failed` is terminal. A material that could not be read is re-uploaded
+        rather than retried in place, which is a separate decision from a
+        provider being unreachable — that case never reaches here, because the
+        adapter raises and the sweep leaves the material `pending`.
+        """
+        material = await self._claimed(material_id)
+        return await self._close(
+            material, result, state=MaterialState.FAILED, claims=0
+        )
+
+    async def _claimed(self, material_id: uuid.UUID) -> Material:
+        """The material a sweep is holding, or a refusal.
+
+        Requiring `extracting` is what stops two workers settling the same
+        material — and what stops a settle arriving for a deck nobody extracted.
+        """
         material = await self._db.get(Material, material_id)
         if material is None:
             raise MaterialNotFound(material_id=str(material_id))
@@ -307,11 +355,24 @@ class IngestionService:
             raise InvalidMaterialState(
                 material_id=str(material_id), state=material.state.value
             )
+        return material
 
+    async def _close(
+        self,
+        material: Material,
+        result: ExtractionResult,
+        *,
+        state: MaterialState,
+        claims: int,
+    ) -> Material:
+        """The cost row and the state move, in one transaction.
+
+        Shared by both endings because they are the same write with a different
+        final state. Splitting them would be two places to remember that a cost
+        row is owed, and the one that gets forgotten is the failure path — where
+        the money is least visible and most easily denied.
+        """
         tier = await self._tier_of(material.user_id)
-
-        for extracted in result.claims:
-            self._db.add(_claim_row(material, extracted))
 
         self._db.add(
             ExtractionCost(
@@ -321,15 +382,16 @@ class IngestionService:
                 provider=result.usage.provider,
                 model=result.usage.model,
                 pages=result.usage.pages,
+                calls=result.usage.calls,
                 input_tokens=result.usage.input_tokens,
                 output_tokens=result.usage.output_tokens,
-                claims_recorded=len(result.claims),
+                claims_recorded=claims,
                 claims_dropped=result.dropped,
                 pages_corrected=result.corrected,
             )
         )
 
-        material.state = MaterialState.READY
+        material.state = state
         # The claim mark and `extracting` are one fact, and a CHECK constraint
         # says so. Clearing it is not tidying up — leaving it would fail the
         # write.
@@ -338,12 +400,14 @@ class IngestionService:
         await self._db.commit()
 
         log.info(
-            "material_extracted",
+            "material_extraction_closed",
             material_id=str(material.id),
             user_id=str(material.user_id),
             tier=tier,
+            state=state.value,
             pages=result.usage.pages,
-            claims=len(result.claims),
+            calls=result.usage.calls,
+            claims=claims,
             dropped=result.dropped,
             corrected=result.corrected,
         )

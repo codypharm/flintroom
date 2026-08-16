@@ -301,9 +301,72 @@ dropped rather than clamped, because a guessed citation is worse than a missing
 claim.
 
 The existence check uses the page *numbers* sent rather than a count, so it
-survives being handed a slice of a deck — once pages are chunked across calls
-(task #31), a chunk holding pages 51–100 has a length of fifty and numbers
-starting at fifty-one, and a length check would drop every claim in it.
+survives being handed a slice of a deck — pages are chunked across calls, and a
+chunk holding pages 51–100 has a length of fifty and numbers starting at
+fifty-one, so a length check would drop every claim in it.
+
+### A deck is read twenty pages at a time
+
+A full deck does not fit in one call, and the fix lives inside the adapter — a
+context window is a vendor constraint, so nothing above `ExtractionModel` learns
+that a deck became several requests.
+
+**The chunk size is set by the output limit, not the context window**, which is
+the part that surprises. A rendered page costs roughly `width × height / 750`
+input tokens — measured at 2,534 for a letter page through this pipeline, about
+1,850 for a 16:9 slide — so a pro-tier 300-page deck is ~600k input against a
+200k context. But output binds first: at ~6 claims a page and ~60 tokens a
+claim, forty pages already brushes `MAX_OUTPUT_TOKENS` and fifty exceeds it.
+
+| Pages per call | Input | Output | |
+| --- | --- | --- | --- |
+| 20 | ~55k | ~7k | **Chosen** — roughly 2× headroom on the binding constraint |
+| 40 | ~110k | ~14k | Output nearly capped |
+| 50 | ~137k | ~18k | Truncates |
+| 70 | ~190k | — | Context error before it gets there |
+
+The headroom matters more than it sounds. A truncated claim list looks exactly
+like a deck with fewer figures on it, nothing downstream can tell, and the
+source is deleted afterwards. These numbers are **estimated, not observed** —
+`extraction_completed` logs claims per call, so after real decks have run the
+size can be set from a measured claims-per-page figure rather than arithmetic.
+That is the §4.3 argument applied to context instead of cost.
+
+Calls run four at a time. Sequentially a fifteen-call deck is minutes of wall
+clock for somebody who uploaded it in order to rehearse against it now;
+unbounded, one user spends an account-wide rate limit and every other deck being
+read at that moment gets a 429.
+
+**Retries are configured, not inherited.** The SDK retries twice by default;
+the adapter asks for four, because one chunk that gives up discards every other
+chunk's claims. A second retry layer on top was refused — it would multiply into
+nine attempts for one page range, none of them aware of the others.
+
+### One failed call fails the whole deck
+
+Partial storage was considered and rejected. A partially-read deck grounds less
+than the user believes, nothing downstream can tell the difference, and the
+source is deleted on success — the gap would be permanent and invisible, against
+*"extraction completeness is a one-way door, not a backlog item."*
+
+Two failures, told apart by whether **anything** succeeded:
+
+| | What the adapter does | What the sweep does |
+| --- | --- | --- |
+| No call answered | Raises `ProviderUnavailable` | Material stays `pending`, tried again later |
+| Some answered, some did not | Returns `complete=False`, claims discarded, usage filled in | `fail_extraction` — records the cost, material → `failed` |
+
+The distinction is load-bearing. `failed` is terminal and tells the user to
+re-upload, so an outage that failed every deck uploaded during it would be
+telling people to re-send a file that was never the problem. Nothing succeeding
+is indistinguishable from the provider being down, so that case never marks a
+deck.
+
+Returning rather than raising on a partial failure is what makes the cost
+recordable: those calls are on the invoice whether or not their answers were
+usable, and cost that cannot be reconciled is worse than cost that was wasted.
+`settle_extraction` refuses an incomplete result outright — `ready` is the
+promise the panel grounds itself on.
 
 ### A claim records whether its citation was checked
 
@@ -772,14 +835,6 @@ Follows the mandatory rules rather than restating them; the ones with teeth here
   are pure Python and needed no system package, so PPTX is the only input still
   waiting on a 400 MB binary decision, and it waits alone rather than holding the
   module back.
-- **A full-tier deck does not fit in one extraction call.** The adapter sends
-  every page in a single request, and at ~1600 input tokens per rendered page
-  that is ~32k for free's 20 pages, ~160k for starter's 100, and ~480k for pro's
-  300 — the last far past any context window, and the middle one already
-  crowding a 200k one before the tool schema and text layers are counted. It
-  fails after upload, after the sweep has claimed the row, and identically on
-  every retry. Task #31; chunking belongs inside the adapter, because a context
-  window is a vendor constraint.
 - **The sweep has not implemented the limit table yet.** *Exceeding a limit does
   two different things* above was corrected on 2026-08-16 and only half of it is
   built: `MaterialTooManyPages` exists and is terminal, and the monthly and daily

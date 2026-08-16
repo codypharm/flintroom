@@ -12,6 +12,7 @@ would be a working integration that quietly loses every chart value.
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import httpx
@@ -22,6 +23,7 @@ from app.core.errors import ProviderUnavailable
 from app.modules.ingestion.extraction_model import ExtractionUsage
 from app.modules.ingestion.extraction_models import build_extraction_model
 from app.modules.ingestion.extraction_models.claude import (
+    CONCURRENT_CALLS,
     ClaudeExtractionModel,
     to_claims,
 )
@@ -579,3 +581,270 @@ def test_a_provider_nobody_implemented_is_a_boot_refusal():
             ANTHROPIC_API_KEY="key",
             EXTRACTION_PROVIDER="cluade",
         )
+
+
+# --- Chunking -------------------------------------------------------------
+
+
+def recording(payload: dict, *, usage: dict | None = None):
+    """A handler that keeps every request, not only the last.
+
+    Chunking is invisible in a single request, which is exactly why the bug it
+    replaces went unnoticed: a deck too long for the context failed at the
+    provider, identically, forever.
+    """
+    reply = replying(payload, usage=usage)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        handler.requests.append(request)
+        return reply(request)
+
+    handler.requests = []
+    return handler
+
+
+def pages_in(request: httpx.Request) -> list[int]:
+    """Which pages a request carried, read off the wire."""
+    content = json.loads(request.content)["messages"][0]["content"]
+    return [
+        int(block["text"].split()[1])
+        for block in content
+        if block["type"] == "text" and block["text"].startswith("Page ")
+    ]
+
+
+async def test_a_deck_too_long_for_one_call_is_read_in_several():
+    """The tracer, and the reason this task exists.
+
+    A rendered page is ~2,000-2,500 input tokens, so a full pro-tier deck is
+    around 600k against a 200k context. Unchunked it does not fail gracefully:
+    it fails at the provider, identically, on every sweep.
+    """
+    handler = recording(answer(figures=()))
+
+    await model_with(handler).extract([page(n) for n in range(1, 46)])
+
+    assert len(handler.requests) == 3
+
+
+async def test_every_page_is_read_exactly_once():
+    """Chunking must not lose or duplicate a page.
+
+    A dropped page is a claim the panel never has and cannot know it is
+    missing; a duplicated one is the same figure twice, which reads to the
+    Auditor as a deck agreeing with itself.
+    """
+    handler = recording(answer(figures=()))
+
+    await model_with(handler).extract([page(n) for n in range(1, 46)])
+
+    seen = [number for request in handler.requests for number in pages_in(request)]
+    assert sorted(seen) == list(range(1, 46))
+
+
+async def test_a_chunk_is_a_contiguous_stretch_of_the_deck():
+    """Contiguous, not interleaved.
+
+    A chunk should read as a stretch of the deck's argument, and the quote
+    lookup should see the neighbouring pages a repeated header would appear on.
+    """
+    handler = recording(answer(figures=()))
+
+    await model_with(handler).extract([page(n) for n in range(1, 46)])
+
+    ranges = sorted(pages_in(request) for request in handler.requests)
+    assert ranges == [
+        list(range(1, 21)),
+        list(range(21, 41)),
+        list(range(41, 46)),
+    ]
+
+
+async def test_a_deck_that_fits_is_still_one_call():
+    """The common case pays nothing for the long one.
+
+    Most attached material is a photograph or a twelve-slide deck, and splitting
+    those would repeat the instruction block for no reason.
+    """
+    handler = recording(answer(figures=()))
+
+    await model_with(handler).extract([page(n) for n in range(1, 13)])
+
+    assert len(handler.requests) == 1
+
+
+async def test_claims_from_every_call_come_back_as_one_deck():
+    """Chunking stops inside the adapter.
+
+    Nothing above this learns that a deck became several requests — which is
+    what lets a vendor with a larger context be a sibling module rather than a
+    change to the pipeline.
+    """
+    handler = recording(answer(figures=({**FIGURE, "page": 1},)))
+
+    result = await model_with(handler).extract([page(n) for n in range(1, 46)])
+
+    assert len(handler.requests) == 3
+    assert result.usage.calls == 3
+    assert result.complete is True
+    # Page 1 is only in the first chunk, so the other two calls answer with a
+    # claim citing a page they were not given — and `to_claims` drops it. That
+    # is the range check doing its job, not a chunking bug.
+    assert len(result.claims) == 1
+
+
+def refusing(first_pages: set[int], payload: dict, *, usage: dict | None = None):
+    """A handler that fails the calls starting at the given pages.
+
+    400 rather than 500 so the SDK does not retry it — these tests are about
+    what happens once a call has genuinely given up, not about the retry itself.
+    """
+    reply = replying(payload, usage=usage)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        handler.requests.append(request)
+        if pages_in(request)[0] in first_pages:
+            return httpx.Response(
+                400,
+                json={
+                    "type": "error",
+                    "error": {"type": "invalid_request_error", "message": "no"},
+                },
+            )
+        return reply(request)
+
+    handler.requests = []
+    return handler
+
+
+async def test_one_failed_call_discards_the_whole_deck():
+    """Fail whole, not partial — the decision behind task #31.
+
+    A partially-read deck grounds less than the user believes, nothing
+    downstream can tell the difference, and the source document is deleted on
+    success. The gap would be permanent and invisible, which is why
+    `docs/ingestion.md` calls extraction completeness *"a one-way door, not a
+    backlog item."*
+    """
+    handler = refusing({21}, answer(figures=({**FIGURE, "page": 1},)))
+
+    result = await model_with(handler).extract([page(n) for n in range(1, 46)])
+
+    assert result.complete is False
+    assert result.claims == ()
+
+
+async def test_a_failed_deck_still_reports_what_it_cost():
+    """The reason this returns rather than raises.
+
+    Those calls are on the invoice whether or not their answers were usable, and
+    cost that cannot be reconciled is worse than cost that was wasted —
+    §4.3 measures margin against observed spend, not against spend that
+    succeeded.
+    """
+    handler = refusing(
+        {21},
+        answer(figures=()),
+        usage={"input_tokens": 40_000, "output_tokens": 2_000},
+    )
+
+    result = await model_with(handler).extract([page(n) for n in range(1, 46)])
+
+    assert result.usage.calls == 3
+    assert result.usage.pages == 45
+    # Two calls answered, and only those two were billed for tokens.
+    assert result.usage.input_tokens == 80_000
+    assert result.usage.output_tokens == 4_000
+
+
+async def test_a_provider_that_answers_nothing_is_unavailable():
+    """Told apart from a deck that could not be read, deliberately.
+
+    Nothing succeeding is indistinguishable from the provider being down or
+    misconfigured. Raising leaves the material `pending` for a later sweep; the
+    alternative is that an outage permanently fails every deck uploaded during
+    it, because `failed` is terminal and the user is told to re-upload a file
+    that was never the problem.
+    """
+    handler = refusing({1, 21, 41}, answer(figures=()))
+
+    with pytest.raises(ProviderUnavailable):
+        await model_with(handler).extract([page(n) for n in range(1, 46)])
+
+
+async def test_the_vendor_is_never_named_when_a_deck_fails():
+    """CLAUDE.md: a provider failure must not name the vendor to the client.
+
+    It exposes internal architecture and goes stale the moment the provider is
+    swapped — which is the whole point of the interface it sits behind.
+    """
+    handler = refusing({1}, answer(figures=()))
+
+    with pytest.raises(ProviderUnavailable) as refused:
+        await model_with(handler).extract([page(1)])
+
+    assert "claude" not in str(refused.value).lower()
+    assert "anthropic" not in str(refused.value).lower()
+
+
+async def test_calls_run_in_parallel_but_not_all_at_once():
+    """Bounded, in both directions.
+
+    Sequentially, fifteen calls is minutes of wall clock for somebody who
+    uploaded a deck in order to rehearse against it now. Unbounded, one
+    enthusiastic user spends an account-wide rate limit — and the failure that
+    causes is a 429 on every other deck being read at the same time.
+    """
+    inflight = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal inflight
+        inflight += 1
+        handler.peak = max(handler.peak, inflight)
+        # Yield, so an overlapping call has somewhere to be scheduled. Without
+        # it every request would finish before the next began and the test would
+        # pass against a sequential loop.
+        await asyncio.sleep(0.01)
+        inflight -= 1
+        return replying(answer(figures=()))(request)
+
+    handler.peak = 0
+
+    await model_with(handler).extract([page(n) for n in range(1, 201)])
+
+    assert handler.peak == CONCURRENT_CALLS
+
+
+async def test_a_transient_failure_is_retried_before_the_deck_is_lost():
+    """Retries are configured here, not inherited.
+
+    The SDK retries twice by default; this asks for four, because one chunk that
+    gives up discards every other chunk's claims. A transient overload on call
+    eight of fifteen would otherwise throw away fourteen calls that were already
+    paid for.
+
+    `retry-after: 0` keeps the test instant — the backoff is the SDK's and not
+    what is being asserted. What is asserted is that a call which fails twice
+    still produces a read deck.
+    """
+    reply = replying(answer(figures=()))
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts <= 2:
+            return httpx.Response(
+                429,
+                headers={"retry-after": "0"},
+                json={
+                    "type": "error",
+                    "error": {"type": "rate_limit_error", "message": "slow down"},
+                },
+            )
+        return reply(request)
+
+    result = await model_with(handler).extract([page(1)])
+
+    assert attempts == 3
+    assert result.complete is True

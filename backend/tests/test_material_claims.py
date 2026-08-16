@@ -16,7 +16,11 @@ from pydantic import ValidationError
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 
-from app.core.errors import InvalidMaterialState, MaterialNotFound
+from app.core.errors import (
+    ExtractionIncomplete,
+    InvalidMaterialState,
+    MaterialNotFound,
+)
 from app.modules.ingestion.extraction_model import (
     ExtractedClaim,
     ExtractionResult,
@@ -487,3 +491,58 @@ async def test_settling_never_logs_what_the_deck_said(ingestion, account, db, ca
     assert MARGIN.claim.quote not in logged
     assert EXCLUSIVE.claim.statement not in logged
     assert "gross margin" not in logged
+
+
+INCOMPLETE = ExtractionResult(claims=(), usage=USAGE, complete=False)
+
+
+async def test_a_half_read_deck_is_never_settled_as_ready(ingestion, account, db):
+    """`ready` is a promise the panel relies on.
+
+    A long deck takes several calls and one can fail after the others have been
+    paid for. Marking that material ready would hand the panel a deck it grounds
+    less of than anyone believes — and since the source is deleted on success,
+    the gap would be permanent and invisible.
+    """
+    material = await extracting_material(db, account)
+
+    with pytest.raises(ExtractionIncomplete):
+        await ingestion.settle_extraction(material.id, result=INCOMPLETE)
+
+    assert material.state is MaterialState.EXTRACTING
+
+
+async def test_a_failed_extraction_is_still_paid_for(ingestion, account, db):
+    """The calls that succeeded are on the invoice either way.
+
+    §4.3 measures margin against observed spend, not against spend that
+    happened to produce something — and the abuse case is a deck extracted and
+    never used, which looks identical whether or not the extraction finished.
+    """
+    material = await extracting_material(db, account)
+
+    failed = await ingestion.fail_extraction(material.id, result=INCOMPLETE)
+
+    assert failed.state is MaterialState.FAILED
+    assert failed.claimed_at is None
+
+    [cost] = await _cost_rows(db, material.id)
+    assert cost.input_tokens == USAGE.input_tokens
+    assert cost.claims_recorded == 0
+
+
+async def test_a_failed_extraction_stores_no_claims(ingestion, account, db):
+    """Failing is not a quieter way of storing part of a deck."""
+    material = await extracting_material(db, account)
+
+    await ingestion.fail_extraction(
+        material.id,
+        result=ExtractionResult(claims=(MARGIN,), usage=USAGE, complete=False),
+    )
+
+    stored = await db.scalar(
+        select(func.count())
+        .select_from(MaterialClaim)
+        .where(MaterialClaim.material_id == material.id)
+    )
+    assert stored == 0

@@ -18,6 +18,7 @@ impossible rather than discouraged (`docs/auditor-grounding.md`).
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from collections.abc import Sequence
 from typing import Any
@@ -45,6 +46,45 @@ PROVIDER = "claude"
 #: alongside figures: they are the more numerous kind on most slides, so the
 #: output roughly trebled while the input did not move.
 MAX_OUTPUT_TOKENS = 16384
+
+#: How many pages go in one call.
+#:
+#: Set by the *output* limit, not the context window, which is the part that
+#: surprises. A rendered page costs roughly `width × height / 750` input tokens
+#: — measured at 2,534 for a letter page through this pipeline, around 1,850 for
+#: a 16:9 slide — so twenty pages is ~55k input against a 200k context, with
+#: room to spare. Output is what binds: at ~6 claims a page and ~60 tokens a
+#: claim, forty pages already brushes `MAX_OUTPUT_TOKENS` and fifty exceeds it.
+#:
+#: Twenty leaves roughly twice the headroom on the binding constraint, so a
+#: genuinely dense deck can produce double the estimate and still not truncate.
+#: That matters more than it sounds: a truncated claim list looks exactly like a
+#: deck with fewer figures on it, and the source is deleted afterwards.
+#:
+#: Estimated, not observed. `extraction_completed` logs claims per call, so
+#: after real decks have run this becomes a measured claims-per-page figure and
+#: the number can be set from data rather than arithmetic — the §4.3 argument,
+#: applied to context instead of cost.
+PAGES_PER_CALL = 20
+
+#: Calls in flight at once. A 300-page deck is fifteen calls; run one after
+#: another that is minutes of wall clock for somebody who uploaded a deck in
+#: order to rehearse against it now. Bounded rather than unbounded because the
+#: rate limit is per account and one enthusiastic user should not spend it.
+CONCURRENT_CALLS = 4
+
+#: Retries per call, set here rather than inherited.
+#:
+#: The SDK already retries twice by default with exponential backoff, on the
+#: usual set — 408, 429, 5xx, connection failures. Raised rather than
+#: hand-rolled: a second retry layer on top would multiply into nine attempts
+#: for one page range, and none of them would know about the others.
+#:
+#: Four because of what a failure now costs. One chunk that gives up discards
+#: every other chunk's claims, so a transient overload on call eight of fifteen
+#: throws away fourteen calls that were already paid for. Backoff caps at eight
+#: seconds, so four attempts is a few seconds of insurance against that.
+MAX_RETRIES = 4
 
 TOOL_NAME = "record_claims"
 
@@ -173,23 +213,56 @@ class ClaudeExtractionModel:
         # `http_client` exists so the tests drive a real SDK client over a
         # transport that never leaves the process. Translation is where the bugs
         # live, and it should not need an account to exercise.
-        self._client = AsyncAnthropic(api_key=api_key, http_client=http_client)
+        self._client = AsyncAnthropic(
+            api_key=api_key, http_client=http_client, max_retries=MAX_RETRIES
+        )
 
     async def extract(self, pages: Sequence[RenderedPage]) -> ExtractionResult:
-        try:
-            message = await self._client.messages.create(
-                model=self._model,
-                max_tokens=MAX_OUTPUT_TOKENS,
-                tools=[CLAIM_TOOL],
-                tool_choice={"type": "tool", "name": TOOL_NAME},
-                messages=[{"role": "user", "content": _content(pages)}],
-            )
-        except AnthropicError as exc:
-            # Never named to the caller. CLAUDE.md: a vendor in an error message
-            # exposes internal architecture and goes stale the moment the
-            # provider is swapped, which this interface exists to allow.
-            log.error("extraction_provider_failed", provider=PROVIDER)
-            raise ProviderUnavailable(reason="extraction_unavailable") from exc
+        """Read a whole deck, however many calls that takes.
+
+        Chunking stops here. Nothing above this — not the service, not the
+        sweep — learns that a deck became more than one request, which is the
+        property that lets a vendor with a larger context be a sibling module
+        rather than a change to the pipeline.
+        """
+        chunks = _chunked(pages, PAGES_PER_CALL)
+        at_once = asyncio.Semaphore(CONCURRENT_CALLS)
+        readings = await asyncio.gather(
+            *(self._read(chunk, at_once) for chunk in chunks)
+        )
+        return self._merged(readings, pages=pages)
+
+    async def _read(
+        self, pages: Sequence[RenderedPage], at_once: asyncio.Semaphore
+    ) -> ExtractionResult | None:
+        """One call. `None` where the provider would not answer.
+
+        Failure is returned rather than raised so the other chunks still finish.
+        They are in flight and already billable, and cancelling them would lose
+        the usage numbers for calls the invoice will still show — cost that
+        cannot be reconciled is worse than cost that was wasted.
+        """
+        async with at_once:
+            try:
+                message = await self._client.messages.create(
+                    model=self._model,
+                    max_tokens=MAX_OUTPUT_TOKENS,
+                    tools=[CLAIM_TOOL],
+                    tool_choice={"type": "tool", "name": TOOL_NAME},
+                    messages=[{"role": "user", "content": _content(pages)}],
+                )
+            except AnthropicError:
+                # The vendor is never named to the caller. CLAUDE.md: a vendor
+                # in an error message exposes internal architecture and goes
+                # stale the moment the provider is swapped, which this interface
+                # exists to allow. It is named in the log, where it belongs.
+                log.error(
+                    "extraction_call_failed",
+                    provider=PROVIDER,
+                    pages=len(pages),
+                    first_page=pages[0].number if pages else None,
+                )
+                return None
 
         claims, dropped, corrected = to_claims(_tool_input(message), pages=pages)
 
@@ -198,25 +271,6 @@ class ClaudeExtractionModel:
             # confidential deck, and CLAUDE.md forbids ingested material
             # contents in logs — undetectable by key name, so never passed.
             log.warning("extraction_claims_dropped", provider=PROVIDER, dropped=dropped)
-
-        # Counts only, never the claims. These are figures and statements read
-        # off a confidential deck; CLAUDE.md forbids ingested material contents
-        # in logs, and unlike a secret they are not detectable by key name.
-        #
-        # Neither number is an error. `corrected` is the attribution check
-        # working, and it is the only measure of how far the model's own page
-        # numbers can be trusted — the number that should decide whether a page
-        # stays the locator at all. `unverified` is how much of a deck is
-        # grounded in text nothing could confirm, which is Open Risk #2 made
-        # countable rather than argued about.
-        log.info(
-            "extraction_completed",
-            provider=PROVIDER,
-            pages=len(pages),
-            claims=len(claims),
-            corrected=corrected,
-            unverified=sum(not claim.quote_verified for claim in claims),
-        )
 
         return ExtractionResult(
             claims=claims,
@@ -230,6 +284,98 @@ class ClaudeExtractionModel:
                 pages=len(pages),
             ),
         )
+
+    def _merged(
+        self,
+        readings: Sequence[ExtractionResult | None],
+        *,
+        pages: Sequence[RenderedPage],
+    ) -> ExtractionResult:
+        """Every call's answer, as one deck's worth.
+
+        Two different failures, told apart by whether anything succeeded:
+
+        - **Nothing worked.** Indistinguishable from the provider being down or
+          misconfigured, so it raises. The sweep leaves the material `pending`
+          and tries again later — an outage must not permanently fail every deck
+          uploaded during it, because `failed` is terminal and the user would be
+          told to re-upload a file that was never the problem.
+        - **Some worked.** Real cost was incurred and has to be recorded, so it
+          returns rather than raising. `complete` is false and the claims are
+          dropped: a partially-read deck grounds less than the user believes,
+          nothing downstream can tell, and the source is deleted on success —
+          the gap would be permanent and invisible.
+        """
+        answered = [reading for reading in readings if reading is not None]
+        if not answered:
+            raise ProviderUnavailable(reason="extraction_unavailable")
+
+        complete = len(answered) == len(readings)
+        claims = (
+            tuple(claim for reading in answered for claim in reading.claims)
+            if complete
+            else ()
+        )
+        dropped = sum(reading.dropped for reading in answered)
+        corrected = sum(reading.corrected for reading in answered)
+
+        # Counts only, never the claims. These are figures and statements read
+        # off a confidential deck; CLAUDE.md forbids ingested material contents
+        # in logs, and unlike a secret they are not detectable by key name.
+        #
+        # None of these is an error on its own. `corrected` is the attribution
+        # check working, and it is the only measure of how far the model's own
+        # page numbers can be trusted — the number that should decide whether a
+        # page stays the locator at all. `unverified` is how much of a deck is
+        # grounded in text nothing could confirm, which is Open Risk #2 made
+        # countable rather than argued about. `calls` is what task #31 added,
+        # and the number that says whether the chunk size is set anywhere near
+        # right once real decks have run through it.
+        log.info(
+            "extraction_completed",
+            provider=PROVIDER,
+            pages=len(pages),
+            calls=len(readings),
+            answered=len(answered),
+            complete=complete,
+            claims=len(claims),
+            corrected=corrected,
+            unverified=sum(not claim.quote_verified for claim in claims),
+        )
+
+        return ExtractionResult(
+            claims=claims,
+            dropped=dropped,
+            corrected=corrected,
+            complete=complete,
+            usage=ExtractionUsage(
+                provider=PROVIDER,
+                model=self._model,
+                input_tokens=sum(r.usage.input_tokens for r in answered),
+                output_tokens=sum(r.usage.output_tokens for r in answered),
+                pages=len(pages),
+                calls=len(readings),
+            ),
+        )
+
+
+def _chunked(
+    pages: Sequence[RenderedPage], size: int
+) -> list[Sequence[RenderedPage]]:
+    """A deck as page ranges, in order and without overlap.
+
+    Contiguous rather than interleaved, so a chunk is a stretch of the deck the
+    model can read as a narrative — and so the quote lookup in `_located` sees
+    the neighbours a repeated header would appear on.
+
+    An empty deck yields one empty call rather than none, deliberately: it keeps
+    "the provider was asked and did not answer" distinguishable from "there was
+    nothing to ask about", and the second is not a state this pipeline should
+    reach in silence.
+    """
+    if not pages:
+        return [pages]
+    return [pages[start : start + size] for start in range(0, len(pages), size)]
 
 
 def _content(pages: Sequence[RenderedPage]) -> list[dict[str, Any]]:
