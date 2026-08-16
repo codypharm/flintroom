@@ -259,3 +259,34 @@ async def test_a_deployment_with_no_key_has_no_voice_rather_than_no_room():
     settings = Settings(_env_file=None, **BASE_ENVIRONMENT)
 
     assert build_speaker(settings, httpx.AsyncClient()) is None
+
+
+async def test_a_panelist_never_arrives_half_a_sample_out_of_step():
+    """PCM16 is two bytes per sample, and HTTP chunks do not respect that.
+
+    Measured against the live vendor: 16 of 103 chunks came back with an odd
+    byte count, the very first among them. A consumer reading Int16s from a
+    stream that starts one byte late reads the low half of one sample against
+    the high half of the next, for the rest of the utterance — which is not a
+    glitch or a click but white noise, and it is what the first audible room on
+    a phone produced.
+
+    Whole samples out, and the stray byte carried into the next chunk rather
+    than dropped. Dropping it would re-align the stream by throwing away half a
+    sample sixteen times per line, which trades a permanent fault for an
+    intermittent one and is harder to notice.
+    """
+    body = bytes(range(256))
+    speaker, _ = speaker_over(
+        lambda request: httpx.Response(
+            200, stream=CountingStream(body[:3], body[3:10], body[10:11], body[11:])
+        )
+    )
+
+    heard = b""
+    async for chunk in speaker.speak(text="Where is that from?", voice="measured"):
+        assert len(chunk) % 2 == 0, "a consumer must never be handed half a sample"
+        heard += chunk
+
+    # Nothing lost but a trailing half-sample, if the vendor ended mid-sample.
+    assert heard == body[: len(body) - len(body) % 2]

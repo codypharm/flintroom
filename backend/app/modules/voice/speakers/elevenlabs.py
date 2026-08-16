@@ -168,8 +168,28 @@ class ElevenLabsSpeaker:
                 # sentence dies with it. Reading the whole body first would
                 # synthesise every word before the first reached a phone, and
                 # spend the entire budget on speech that may never be heard.
+                #
+                # Realigned to whole samples on the way past. PCM16 is two bytes
+                # per sample and their HTTP chunks respect no such boundary —
+                # measured live, 16 of 103 chunks came back odd-length, the
+                # first among them. A consumer reading Int16s from a stream that
+                # starts one byte late reads the low half of one sample against
+                # the high half of the next for the rest of the utterance, which
+                # is white noise rather than a glitch. It is what the first
+                # audible room on a phone produced.
+                #
+                # The stray byte is carried, not dropped. Dropping would
+                # re-align by discarding half a sample sixteen times a line,
+                # trading a permanent fault for an intermittent one that is
+                # harder to notice.
+                carry = b""
                 async for chunk in response.aiter_bytes():
-                    yield chunk
+                    whole = carry + chunk
+                    carry = b""
+                    if len(whole) % 2:
+                        whole, carry = whole[:-1], whole[-1:]
+                    if whole:
+                        yield whole
         except httpx.HTTPStatusError as exc:
             # The vendor goes to the log and never to the client. Naming it in a
             # response tells whoever is probing what our architecture is, and it
