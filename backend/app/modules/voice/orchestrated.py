@@ -196,10 +196,17 @@ class OrchestratedChannel:
         # the idle timeout is what decides otherwise.
         yield ChannelReady()
 
-        out: asyncio.Queue[VoiceEvent | None] = asyncio.Queue()
+        out: asyncio.Queue[VoiceEvent | BaseException | None] = asyncio.Queue()
         listener = asyncio.create_task(self._listen(out))
         try:
             while (event := await out.get()) is not None:
+                if isinstance(event, BaseException):
+                    # A turn that failed. Raised here rather than logged and
+                    # dropped, because the relay already knows what to do with
+                    # it — end the room as a provider failure, which settles and
+                    # refunds. Swallowing it left the meter running on a room
+                    # that would never speak again.
+                    raise event
                 yield event
         finally:
             # The consumer may stop early — the relay cancels this side whenever
@@ -278,8 +285,36 @@ class OrchestratedChannel:
         await asyncio.gather(speaking, return_exceptions=True)
         return None
 
-    async def _turn(self, said: str, out: asyncio.Queue[VoiceEvent | None]) -> None:
-        """One archetype's answer, from selection through to the last frame."""
+    async def _turn(
+        self, said: str, out: asyncio.Queue[VoiceEvent | BaseException | None]
+    ) -> None:
+        """One archetype's answer, from selection through to the last frame.
+
+        Failures are put on the queue rather than allowed to die with the task.
+        This runs beside the listener and its result is collected with
+        `return_exceptions=True`, so anything raised here used to vanish — and a
+        composer that had stopped answering produced a room that stayed open,
+        kept billing, and never spoke again. Silence is indistinguishable from a
+        slow model to somebody whose phone is face-down on a desk.
+
+        Cancellation is deliberately not caught. Barge-in cancels a turn on
+        every interruption, and treating that as a failure would end the room
+        and refund the user the first time they talked over a panelist.
+        """
+        try:
+            await self._answer(said, out)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            # Type only. A panelist's line quotes ingested material and
+            # `CLAUDE.md` forbids that in logs; an exception's message may carry
+            # whatever it was handed.
+            log.warning("panel_turn_failed", error=type(exc).__name__)
+            await out.put(exc)
+
+    async def _answer(
+        self, said: str, out: asyncio.Queue[VoiceEvent | BaseException | None]
+    ) -> None:
         turn = await interrogate(
             self._panel,
             said=said,

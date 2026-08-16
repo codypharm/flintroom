@@ -21,6 +21,7 @@ import pytest
 from app.agents.archetypes import DEFAULT_PANEL, Archetype
 from app.agents.context import Grounding
 from app.agents.model import ModelReply
+from app.core.errors import ProviderUnavailable
 from app.modules.voice.events import AgentTranscript, Spent
 from app.modules.voice.orchestrated import OrchestratedChannel
 from app.modules.voice.transcribers.elevenlabs import SAMPLE_RATE
@@ -511,3 +512,65 @@ async def test_the_audio_a_room_listened_to_is_charged_for_once():
 
     spent = [event for event in events if isinstance(event, Spent)]
     assert [report.stt_seconds for report in spent] == [3, 2]
+
+
+async def test_a_room_that_cannot_compose_ends_instead_of_billing_in_silence():
+    """A dead panel model must not read as a thoughtful pause.
+
+    The turn runs as a task beside the listener, and its exception was collected
+    with `return_exceptions=True` and dropped. So a `ProviderUnavailable` from
+    the composer produced a room that stayed open, kept the meter running, never
+    spoke, and never told the relay anything was wrong — the user paying by the
+    minute for silence, with no refund, because nothing had failed as far as the
+    session was concerned.
+
+    Surfaced through the event stream rather than logged, because the relay
+    already knows what to do with it: end the room as a provider failure, which
+    settles it and refunds the affected minutes. Nothing else in the pipeline
+    needs to change.
+    """
+
+    class BrokenModel(ScriptedPanelModel):
+        async def compose(self, *, archetype, context, finding=None) -> ModelReply:
+            raise ProviderUnavailable(reason="panel_model_error")
+
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=FakeTranscription(
+            [Transcription(text="Our margin is seventy percent.", final=True)]
+        ),
+        model=BrokenModel(),
+        grounding=Grounding(),
+    )
+
+    with pytest.raises(ProviderUnavailable):
+        await events_of(channel)
+
+
+async def test_a_panelist_cut_off_is_not_a_failure():
+    """Cancellation is the product working, and must stay silent.
+
+    Barge-in cancels a turn on every single interruption. If the guard above
+    treated a `CancelledError` like any other exception, the first time a user
+    talked over a panelist the room would end as a provider failure and refund
+    them — turning the feature the product is built around into an outage.
+    """
+    transcription = DrivenTranscription()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=transcription,
+        model=ScriptedPanelModel(),
+        speaker=GatedSpeaker(),
+        grounding=Grounding(),
+    )
+
+    async def interrupt():
+        transcription.feed(Transcription(text="Margin is seventy percent.", final=True))
+        await asyncio.sleep(0.05)
+        transcription.feed(Transcription(text="Well—", final=False))
+        await asyncio.sleep(0.05)
+        transcription.hang_up()
+
+    events, _ = await asyncio.gather(events_of(channel), interrupt())
+
+    assert any(type(event).__name__ == "Interrupted" for event in events)

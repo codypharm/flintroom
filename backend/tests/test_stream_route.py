@@ -21,7 +21,7 @@ from sqlalchemy import select
 
 from app.agents.model import ModelReply
 from app.core.errors import ProviderUnavailable
-from app.modules.sessions.schemas import SessionState
+from app.modules.sessions.schemas import EndReason, SessionState
 from app.modules.sessions.service import SessionService
 from app.modules.voice.dependencies import RoomParts
 from app.modules.voice.router import CLOSE_PROVIDER_UNAVAILABLE, stream_session
@@ -82,13 +82,13 @@ class FakeWebSocket:
     on behaviour.
     """
 
-    def __init__(self, *, hang_up_after_transcript: bool = True) -> None:
+    def __init__(self, *, hangs_up: str = "after_transcript") -> None:
         self.accepted = False
         self.closed_with: int | None = None
         self.transcripts: list[str] = []
         self.audio_sent: list[bytes] = []
         self._spoken = asyncio.Event()
-        self._hang_up = hang_up_after_transcript
+        self._hangs_up = hangs_up
 
     async def accept(self) -> None:
         self.accepted = True
@@ -105,8 +105,14 @@ class FakeWebSocket:
             self._spoken.set()
 
     async def receive(self) -> dict:
-        if self._hang_up:
+        if self._hangs_up == "after_transcript":
             await self._spoken.wait()
+        elif self._hangs_up == "never":
+            # A phone that stays on the desk. Without this the client side of
+            # the relay's pump always finishes first, so any test about the
+            # *provider* side failing would silently be testing a disconnect
+            # instead — and would pass for the wrong reason.
+            await asyncio.Event().wait()
         else:
             await asyncio.sleep(0)
         return {"type": "websocket.disconnect"}
@@ -193,7 +199,7 @@ async def test_a_deployment_that_cannot_hear_closes_before_metering(db, funded_a
     either, over a misconfiguration on our side.
     """
     session, ticket = await _admitted(db, funded_account)
-    websocket = FakeWebSocket(hang_up_after_transcript=False)
+    websocket = FakeWebSocket(hangs_up="immediately")
 
     await stream_session(
         websocket,
@@ -248,3 +254,41 @@ async def test_a_phone_that_hangs_up_mid_write_still_settles_the_room(db, funded
     )
     assert cost is not None
     assert cost.llm_input_tokens >= 0
+
+
+async def test_a_dead_panel_model_refunds_instead_of_billing_for_silence(db, funded_account):
+    """The failure this whole guard exists for, seen from the socket.
+
+    A composer that stops answering used to leave a room open and metered with
+    nobody speaking in it. `CLAUDE.md` is explicit that minutes must never be
+    silently over-charged and that a technical failure refunds automatically —
+    and neither could happen, because as far as the session was concerned
+    nothing had gone wrong.
+
+    Asserted at the route rather than the channel because the refund is the
+    point. The channel raising is only a means to it.
+    """
+
+    class BrokenModel(FakePanelModel):
+        async def compose(self, *, archetype, context, finding=None) -> ModelReply:
+            raise ProviderUnavailable(reason="panel_model_error")
+
+    session, ticket = await _admitted(db, funded_account, archetypes=["cfo"])
+    websocket = FakeWebSocket(hangs_up="never")
+
+    await stream_session(
+        websocket,
+        session.id,
+        ticket,
+        VoiceTicketService(db),
+        RoomParts(
+            transcriber=FakeTranscriber(),
+            model=BrokenModel(selects="cfo"),
+            speaker=None,
+        ),
+        db,
+    )
+
+    assert websocket.closed_with == CLOSE_PROVIDER_UNAVAILABLE
+    await db.refresh(session)
+    assert session.end_reason is EndReason.PROVIDER_FAILURE
