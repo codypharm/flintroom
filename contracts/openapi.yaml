@@ -393,7 +393,13 @@ paths:
 
         No upload URL. Re-signing on every read would turn a lookup into a fresh
 
-        write capability against a material that may already hold an extracted deck.'
+        write capability against a material that may already hold an extracted deck.
+
+        A thumbnail URL is a different thing and is issued here: it reads one
+
+        downscaled first page, which is the artefact deliberately kept when the
+
+        source document is destroyed.'
       operationId: materials_read_material
       security:
       - HTTPBearer: []
@@ -604,6 +610,11 @@ components:
           type: string
           format: date-time
           title: Created At
+        thumbnail_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Thumbnail Url
       type: object
       required:
       - id
@@ -616,13 +627,13 @@ components:
       description: 'One material, as the client sees it.
 
 
-        `storage_key` is deliberately absent. It is an internal locator, and the
+        `storage_key` and `thumbnail_key` are deliberately absent. They are internal
 
-        only legitimate way to reach an object is a presigned URL this service
+        locators, and the only legitimate way to reach an object is a presigned URL
 
-        issues after checking ownership — a key in a response is an invitation to
+        this service issues after checking ownership — a key in a response is an
 
-        build a client that constructs its own.'
+        invitation to build a client that constructs its own.'
     MaterialState:
       type: string
       enum:
@@ -668,6 +679,11 @@ components:
           type: string
           format: date-time
           title: Created At
+        thumbnail_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Thumbnail Url
         upload_url:
           type: string
           title: Upload Url

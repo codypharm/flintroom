@@ -297,6 +297,9 @@ export interface paths {
          *
          *     No upload URL. Re-signing on every read would turn a lookup into a fresh
          *     write capability against a material that may already hold an extracted deck.
+         *     A thumbnail URL is a different thing and is issued here: it reads one
+         *     downscaled first page, which is the artefact deliberately kept when the
+         *     source document is destroyed.
          */
         get: operations["materials_read_material"];
         put?: never;
@@ -409,10 +412,10 @@ export interface components {
          * MaterialRead
          * @description One material, as the client sees it.
          *
-         *     `storage_key` is deliberately absent. It is an internal locator, and the
-         *     only legitimate way to reach an object is a presigned URL this service
-         *     issues after checking ownership — a key in a response is an invitation to
-         *     build a client that constructs its own.
+         *     `storage_key` and `thumbnail_key` are deliberately absent. They are internal
+         *     locators, and the only legitimate way to reach an object is a presigned URL
+         *     this service issues after checking ownership — a key in a response is an
+         *     invitation to build a client that constructs its own.
          */
         MaterialRead: {
             /**
@@ -432,6 +435,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Thumbnail Url */
+            thumbnail_url?: string | null;
         };
         /**
          * MaterialState
@@ -486,6 +491,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Thumbnail Url */
+            thumbnail_url?: string | null;
             /** Upload Url */
             upload_url: string;
         };

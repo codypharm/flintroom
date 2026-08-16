@@ -50,6 +50,7 @@ from app.modules.ingestion.schemas import (
     AssertionClaim,
     ClaimKind,
     MaterialLimits,
+    MaterialRead,
     MaterialState,
     QuantitativeClaim,
     TierUpload,
@@ -904,6 +905,29 @@ class IngestionService:
             .order_by(MaterialClaim.page, MaterialClaim.created_at)
         )
         return [_extracted_claim(row) for row in rows]
+
+    def presented(self, material: Material) -> MaterialRead:
+        """One material as a client is allowed to see it, thumbnail included.
+
+        Here rather than in the router because signing is the store's business
+        and the store is this service's dependency — a handler that reached for
+        it would be a handler holding a storage client, one step from reaching
+        for the source key with it.
+
+        Not `async`: signing is an HMAC chain over a canonical request and
+        touches no network, so a read costs exactly the query it already made.
+
+        Ownership is not checked here and deliberately so. Every caller has
+        already resolved the material through `get`, which cannot return
+        somebody else's — a second check in this method would imply the first
+        one is optional.
+        """
+        read = MaterialRead.model_validate(material)
+        if material.thumbnail_key is None:
+            return read
+        return read.model_copy(
+            update={"thumbnail_url": self._storage.presign_get(material.thumbnail_key)}
+        )
 
     async def get(self, material_id: uuid.UUID, *, user_id: uuid.UUID) -> Material:
         """The caller's material, or `MaterialNotFound`.

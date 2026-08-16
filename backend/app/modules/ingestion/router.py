@@ -70,7 +70,7 @@ async def register_material(
         byte_size=declaration.byte_size,
     )
     return MaterialUpload(
-        **MaterialRead.model_validate(registered.material).model_dump(),
+        **ingestion.presented(registered.material).model_dump(),
         upload_url=registered.upload_url,
     )
 
@@ -88,16 +88,21 @@ async def complete_upload(
     claims, and a claim with no object behind it is refused here rather than
     discovered by a model call that fails.
     """
-    return MaterialRead.model_validate(
+    return ingestion.presented(
         await ingestion.mark_uploaded(material.id, user_id=user_id)
     )
 
 
 @router.get("/materials/{material_id}", response_model=MaterialRead)
-async def read_material(material: OwnedMaterial) -> MaterialRead:
+async def read_material(
+    material: OwnedMaterial, ingestion: IngestionServiceDep
+) -> MaterialRead:
     """One material, if it belongs to the caller.
 
     No upload URL. Re-signing on every read would turn a lookup into a fresh
     write capability against a material that may already hold an extracted deck.
+    A thumbnail URL is a different thing and is issued here: it reads one
+    downscaled first page, which is the artefact deliberately kept when the
+    source document is destroyed.
     """
-    return MaterialRead.model_validate(material)
+    return ingestion.presented(material)

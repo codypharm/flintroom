@@ -350,10 +350,10 @@ class MaterialDeclaration(BaseModel):
 class MaterialRead(BaseModel):
     """One material, as the client sees it.
 
-    `storage_key` is deliberately absent. It is an internal locator, and the
-    only legitimate way to reach an object is a presigned URL this service
-    issues after checking ownership — a key in a response is an invitation to
-    build a client that constructs its own.
+    `storage_key` and `thumbnail_key` are deliberately absent. They are internal
+    locators, and the only legitimate way to reach an object is a presigned URL
+    this service issues after checking ownership — a key in a response is an
+    invitation to build a client that constructs its own.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -364,6 +364,27 @@ class MaterialRead(BaseModel):
     content_type: str
     byte_size: int
     created_at: datetime
+
+    #: A short-lived signed URL for the downscaled first page, or null while
+    #: there is nothing to show yet.
+    #:
+    #: The visible half of the retention promise. `docs/ingestion.md` deletes the
+    #: source document once extraction succeeds and keeps a thumbnail precisely
+    #: so a material stays recognisable afterwards — kept and unreachable would
+    #: be the same as not kept.
+    #:
+    #: Null is a real answer rather than a missing one: every material spends its
+    #: first minutes without a render, and a client cannot tell a slow one from a
+    #: broken one if the field is populated either way. It is also still present
+    #: on a `failed` material, which is the state where recognising the document
+    #: matters most — the answer there is "upload it again", and that needs the
+    #: user to know which file to go and find.
+    #:
+    #: Not cacheable past its expiry, so it is issued per read rather than
+    #: stored. That is the cost of never proxying: the alternative is a route
+    #: that streams the bytes, which is the rule this design does not bend for
+    #: material of any size.
+    thumbnail_url: str | None = None
 
 
 class MaterialUpload(MaterialRead):

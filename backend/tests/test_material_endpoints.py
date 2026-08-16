@@ -12,16 +12,20 @@ the bytes must not pass through a route here at all.
 
 from __future__ import annotations
 
+import io
 import uuid
 
 import httpx
 import pytest
+from PIL import Image
 
 from app.modules.auth.tokens import AccessTokens
 from app.modules.billing.models import Account
 from app.modules.ingestion.schemas import MaterialState
 
 from tests.conftest import SECRET
+from tests.materials import FakeExtractionModel, extracted, extraction, reading, uploaded
+from tests.pdfs import minimal_pdf
 
 PDF = "application/pdf"
 DECK = b"%PDF-1.7 a deck, for the purposes of this test"
@@ -263,3 +267,88 @@ async def test_reading_a_material_back_does_not_hand_out_another_upload_url(
 
     assert read.status_code == 200
     assert "upload_url" not in read.json()
+
+
+async def test_a_read_hands_back_a_url_the_thumbnail_actually_comes_down(
+    client, db, ingestion, storage, account, bearer
+):
+    """The other half of the retention promise, and the half a user can see.
+
+    `test_retention.py` proves the thumbnail is kept when the deck is destroyed.
+    Kept and unreachable is the same as not kept: the material list would show a
+    grey rectangle for a document whose only surviving likeness is sitting in the
+    bucket. The URL is fetched here rather than merely asserted non-null, because
+    a plausible-looking signed URL that 403s looks identical from the row.
+    """
+    material = await extracted(db, ingestion, storage, account)
+
+    read = await client.get(
+        f"/v1/materials/{material.id}", headers=bearer(account.user_id)
+    )
+
+    assert read.status_code == 200, read.text
+    url = read.json()["thumbnail_url"]
+    assert url is not None
+
+    async with httpx.AsyncClient() as direct:
+        fetched = await direct.get(url)
+    assert fetched.status_code == 200, fetched.text
+    assert Image.open(io.BytesIO(fetched.content)).format == "JPEG"
+
+
+async def test_a_material_with_no_thumbnail_yet_says_so(client, account, bearer):
+    """Null rather than a URL that will 404 once somebody clicks it.
+
+    Every material spends its first minutes here — registered, uploaded, waiting
+    its turn in the queue — and a client cannot tell a slow render from a broken
+    one if the field is populated either way.
+    """
+    headers = bearer(account.user_id)
+    registered = await client.post("/v1/materials", json=declaration(), headers=headers)
+
+    read = await client.get(f"/v1/materials/{registered.json()['id']}", headers=headers)
+
+    assert read.json()["thumbnail_url"] is None
+
+
+async def test_a_deck_that_could_not_be_read_still_shows_what_it_was(
+    client, db, ingestion, storage, account, bearer
+):
+    """The one state where recognising the document matters most.
+
+    A failed material is terminal and the answer is "upload it again" — which
+    requires the user to know *which* of the four files on the screen to find
+    again. `filename` alone is `deck-final-v3.pdf`, twice.
+    """
+    material = await uploaded(ingestion, account, minimal_pdf("Gross margin 61%"))
+    model = FakeExtractionModel(reading(complete=False, retryable=False))
+    await extraction(db, storage, model).sweep()
+
+    read = await client.get(
+        f"/v1/materials/{material.id}", headers=bearer(account.user_id)
+    )
+
+    body = read.json()
+    assert body["state"] == MaterialState.FAILED.value
+    assert body["thumbnail_url"] is not None
+
+
+async def test_the_signed_url_reaches_the_thumbnail_and_not_the_deck(
+    client, db, ingestion, storage, account, bearer
+):
+    """A read capability for twenty kilobytes of downscaled first page.
+
+    The source document is deleted by the time this is issued, so today the
+    distinction is theoretical — but the URL is a bearer credential scoped to
+    exactly one key, and the key it is scoped to must never become the one the
+    user's confidential financials are under.
+    """
+    material = await extracted(db, ingestion, storage, account)
+
+    read = await client.get(
+        f"/v1/materials/{material.id}", headers=bearer(account.user_id)
+    )
+
+    url = read.json()["thumbnail_url"]
+    assert material.thumbnail_key in url
+    assert material.storage_key not in url

@@ -619,6 +619,24 @@ recognises and a grey rectangle. Object first, row second: the other order would
 record a key pointing at nothing the moment a write failed, which is a broken
 image on every screen showing that material and one nothing would ever retry.
 
+**The thumbnail is reachable as of 2026-08-16.** `MaterialRead` carries a
+`thumbnail_url` — a short-lived presigned GET, signed per read and null until
+there is something to show. Kept and unreachable is the same as not kept: the
+material list would have shown a grey rectangle for a document whose only
+surviving likeness was sitting in the bucket.
+
+It is signed rather than streamed, for the same reason nothing else here is
+proxied. `thumbnail_key` stays off the wire alongside `storage_key`, and the
+signing lives on the service rather than in the handler — a route holding a
+storage client is one step from signing the source key with it, which is the
+single mistake in this area that hands out a confidential document. There is a
+test that the URL reaches the thumbnail and not the deck, and it fails when that
+substitution is made.
+
+Still present on a `failed` material, deliberately. That is the state whose
+answer is *"upload it again"*, which needs the user to know which of four files
+to go and find — and `filename` alone is `deck-final-v3.pdf`, twice.
+
 ### Extraction cost is recorded, and page throughput is capped
 
 An `extraction_costs` table keyed by `material_id` and `user_id`, recording
@@ -1046,11 +1064,13 @@ Follows the mandatory rules rather than restating them; the ones with teeth here
   with the setup screen rather than with the sweep — but it should not ship
   without an answer, because a deck that appears stuck forever is a support
   ticket either way.
-- **The thumbnail is stored and unreachable.** Extraction writes it and nothing
-  serves it: `MaterialRead` carries no thumbnail URL, so the one artefact
-  deliberately kept when the source is destroyed cannot currently be shown to
-  the person it belongs to. A presigned GET on the read endpoint is the obvious
-  answer and it is API surface, so it lands with the contract rather than here.
+- **There is no way to list materials.** A material is reachable only by its own
+  id, so a client that lost track of one — a reinstall, a second device — cannot
+  find it again, and the thumbnail now has nowhere to be shown at scale. It is a
+  small endpoint and it waits on a product answer rather than a technical one:
+  what a material list is *for* (picking grounding for the next room, or managing
+  what is stored) decides whether it is filtered to `ready` and whether it
+  paginates.
 - **Nothing deletes a material on the user's behalf.** The retention story is
   complete for extraction — source out, claims and thumbnail in — and absent for
   deletion: there is no endpoint, so `material_claims`' *"until the user deletes
