@@ -76,12 +76,17 @@ DEFAULT_TRANSCRIPTION_MODEL = "scribe_v2_realtime"
 #: which would put the room near 2.9s — roughly twice the ~1.5s threshold at
 #: which `CLAUDE.md` says the illusion breaks.
 #:
-#: 0.7 is a starting point, not a measured value, and it is a genuine trade
-#: rather than a number to minimise: too low and the panel talks over somebody
-#: drawing breath mid-answer, which is worse than a pause, because a room that
-#: interrupts you cannot be argued with. Calibrating it needs real speech
-#: through a real account — the same spike that re-measures the budget end to
-#: end (Product.md §4.3).
+#: Measured at this value against live audio: the commit landed 0.77s after the
+#: speech stopped, so the threshold is very nearly the whole term and tuning it
+#: moves the budget. At 0.4s the commit came at 0.65s — engine overhead is real
+#: but small.
+#:
+#: 0.7 is still chosen rather than derived, and it is a genuine trade rather than
+#: a number to minimise: too low and the panel talks over somebody drawing breath
+#: mid-answer, which is worse than a pause, because a room that interrupts you
+#: cannot be argued with. Nothing measured so far bounds it from below —
+#: synthetic speech has no mid-sentence pauses, so only a real person can say
+#: where this becomes rude (Product.md §4.3).
 SILENCE_THRESHOLD_SECS = 0.7
 
 #: Errors the room cannot continue through. The account is wrong, out of
@@ -108,16 +113,19 @@ def to_transcription(message: dict[str, Any]) -> Transcription | None:
             return Transcription(text=message["text"], final=False)
 
         case "committed_transcript" | "final_transcript":
-            # Both, because their documentation does not say which one arrives
-            # under VAD and the difference is not one to guess at. Recognising
-            # only the wrong one leaves a room that hears every word and never
-            # answers — a silent failure that looks like a broken model rather
-            # than a missed message type.
+            # Measured against live audio: under VAD only `committed_transcript`
+            # arrives, and `final_transcript` never did. Both stay recognised
+            # anyway. Their documentation lists both without saying which VAD
+            # emits, so this costs nothing and covers a path we have not
+            # exercised — reconnection, or a fall back to manual commit. The
+            # failure it avoids is a room that hears every word and never
+            # answers, which looks like a broken model rather than a missed
+            # message type.
             #
-            # The cost of accepting both is a duplicate if they both arrive for
-            # one utterance, which would spend two metered turns on one
-            # sentence. `ElevenLabsTranscriptionStream` drops the repeat; see
-            # the note there.
+            # If both ever did arrive for one utterance, the panel would
+            # interrogate the same sentence twice: two model calls, two
+            # syntheses, two metered turns. `ElevenLabsTranscriptionStream`
+            # drops the repeat; see the note there.
             return Transcription(text=message["text"], final=True)
 
         case str(kind) if kind in FATAL_ERRORS:

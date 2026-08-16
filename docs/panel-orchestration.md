@@ -496,7 +496,35 @@ breath mid-answer, which is worse than a pause — a room that interrupts you
 cannot be argued with. **Re-measuring the budget end to end, with this term in
 it, is now part of the §4.3 spike** and needs the API key permission below.
 
-### Two things that could not be settled from documentation
+### Both open questions, settled against live audio
+
+Once the key permission was ticked, a synthesised line was fed back through the
+realtime socket at realtime pace. Both guesses above turned out to be safe, and
+one measurement changed what the budget looks like.
+
+```
+threshold 0.7s  ->  committed_transcript at +0.77s after the audio stopped
+threshold 0.4s  ->  complete partial      at +0.35s
+                    committed_transcript  at +0.65s
+```
+
+- **Only `committed_transcript` arrives under VAD.** `final_transcript` never
+  appeared. The dedupe guard is therefore insurance against a path we have not
+  exercised rather than a live correction — kept, because it is four lines and
+  the failure it prevents costs two metered turns, but no longer load-bearing.
+- **The VAD term is real and roughly tracks the threshold**, with ~0.1–0.25s of
+  engine overhead on top. It is not fixed cost that tuning cannot touch.
+- **The last partial before the commit can already hold the complete utterance.**
+  At 0.4s the full, correctly punctuated sentence arrived 0.30s *before* the
+  commit did. That is a lever worth taking seriously: composition currently waits
+  for the commit, and this says it need not always. Measured once, at one
+  threshold, on synthetic speech — so it is a lead, not a result.
+
+**What synthetic speech cannot tell us:** TTS has no natural mid-sentence pauses,
+so none of this exercises the risk that actually bounds the threshold from below
+— a panelist cutting off somebody drawing breath. That needs a person.
+
+### The two questions as they stood before the key worked
 
 - **`final_transcript` vs `committed_transcript`.** Both are documented; which
   one VAD emits is not stated anywhere. The adapter accepts **both**, because
@@ -519,9 +547,13 @@ correct once a live key can confirm them.
 
 ### Open
 
-- **The API key is missing the `speech_to_text` permission** — batch and realtime
-  both return 401 `missing_permissions`. It is a dashboard checkbox, not a plan
-  limit. Until it is ticked, nothing above can be confirmed against live audio.
+- **The budget does not close, and this is the live risk.** ~0.7s of VAD on top
+  of the 1.38s measured earlier is ~2.1s against a 1.5s threshold. Three levers
+  exist and none has been tried: lower the threshold, start composition on a
+  complete partial instead of the commit, or shorten the lines further. This is
+  Open Risk #3 with a number against it rather than a worry.
+- **The threshold has no lower bound from data.** 0.7s is chosen, not measured,
+  and only a person mid-sentence can say whether it is too low.
 - **Nothing routes a session through `OrchestratedProvider` yet.** The chain is
   complete as parts — transcriber, panel model, speaker, orchestrator — and the
   relay still dials ElevenLabs Agents. Wiring it is a rollout decision (flag,
