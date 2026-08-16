@@ -20,6 +20,7 @@ transport that a test can substitute without a live endpoint or a funded account
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 import httpx
@@ -65,6 +66,10 @@ API_KEY_HEADER = "x-goog-api-key"
 #: Stable rather than preview either way: a room somebody is paying for by the
 #: minute is the wrong place for a model that can be withdrawn.
 DEFAULT_COMPOSITION_MODEL = "gemini-3.5-flash-lite"
+
+#: Selection returns a name. Anything longer is the model explaining itself, and
+#: sixteen was measured sufficient — flash-lite answers `cfo` in two tokens.
+MAX_SELECTION_TOKENS = 16
 
 #: A ceiling, not a target. The prompt is what keeps a line short — measured, the
 #: model stops itself at twenty-odd tokens — and this only has to be high enough
@@ -121,6 +126,22 @@ class GeminiPanelModel:
             prompt=_composition_prompt(context, finding, archetype),
             max_tokens=MAX_LINE_TOKENS,
         )
+
+    async def select(self, *, candidates: Sequence[Archetype], context) -> str:
+        """Name whoever should take the floor.
+
+        Cheap by construction: the roster and one sentence, answered in two
+        tokens. Measured warm at 0.78-0.91s across the full eight-archetype
+        library, which is why it is meant to run against a partial transcript
+        while the user is still speaking rather than after they stop.
+        """
+        answered = await self._generate(
+            model=self._composition_model,
+            system=_SELECTION_INSTRUCTION,
+            prompt=_selection_prompt(candidates, context),
+            max_tokens=MAX_SELECTION_TOKENS,
+        )
+        return _bare_name(answered)
 
     async def _generate(
         self,
@@ -200,6 +221,47 @@ def _persona_of(archetype: Archetype) -> str:
         "challenge, in the voice described above. Never narrate, never explain "
         "that you are an AI, and never speak for anybody else in the room."
     )
+
+
+_SELECTION_INSTRUCTION = (
+    "You are directing a panel. Given what the presenter just said and who is in "
+    "the room, name the single panelist who should speak next. Prefer whoever's "
+    "expertise the answer just touched, whoever has been quiet, or whoever would "
+    "disagree with what was said last. Reply with the name and nothing else."
+)
+
+
+def _selection_prompt(candidates: Sequence[Archetype], context) -> str:
+    """The whole room, attributed.
+
+    Who has been quiet and what ground is covered is precisely what this call is
+    for. The roster is sent as written, which is what makes a custom archetype
+    work with nothing registered anywhere — its persona is just more text.
+    """
+    roster = "\n".join(
+        f"- {archetype.name}: {archetype.title}. {archetype.attack_strategy}"
+        for archetype in candidates
+    )
+    asked = "\n".join(
+        f"- {entry.archetype}: {entry.question}" for entry in context.grounding.asked
+    )
+    already = f"\n\nAlready asked:\n{asked}" if asked else ""
+    return f"In the room:\n{roster}{already}\n\nThey just said:\n{context.said}"
+
+
+def _bare_name(answered: str) -> str:
+    """An archetype name out of whatever the model wrapped it in.
+
+    Asked for a name, a model returns `**cfo**`, `"cfo"` or `cfo.` — all the same
+    answer, none of which match. Left alone they reach the caller's fallback and
+    the panel silently stops routing, which looks exactly like choosing at random.
+
+    Deliberately narrow: strip the decoration, take the first word, stop. Anything
+    cleverer starts guessing which archetype was meant, and a wrong guess is worse
+    than a fallback because it is confident.
+    """
+    stripped = answered.strip().strip('*"\'`.,:;!?')
+    return stripped.split()[0].lower() if stripped.split() else ""
 
 
 def _composition_prompt(context, finding, archetype: Archetype) -> str:

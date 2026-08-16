@@ -210,7 +210,45 @@ the room says nothing. The answer was to choose a model that does not reason.
 first streamed chunk and the last arrive together (1.09s / 1.09s). There is no
 time-to-first-audio advantage to hide the second call behind.
 
-### Resolved by moving selection into code, 2026-08-16
+### Corrected: a fast model routes, keywords are the fallback
+
+Moving selection into code was right about the number and wrong about the
+constraint, twice.
+
+**Keyword routing cannot see a custom archetype.** A persona a Pro user writes
+this morning has no entry in any vocabulary table, so it could never be chosen
+for relevance — only by having been quiet. §4.4 sells custom archetypes; routing
+that ignores them is not routing.
+
+**And it barely works for the shipped ones.** Measured against fifteen sentences
+of the kind a presenter actually says, matching canonical domain names routed
+**7%**. A hand-written synonym table lifted that to 53% on the default panel and
+80% on the full library — real, and still a table somebody has to maintain,
+against a model that measured warm at **0.78–0.91s** and routed every case
+correctly including the two the table misses.
+
+**The 0.8s objection dissolves.** It only bit because routing was assumed to run
+*after* the user stops speaking. It does not have to: we own the loop, so a
+partial transcript is available while they are still talking, and routing needs
+the gist rather than the final word.
+
+```
+user still speaking ──────────────┐
+   partial transcript ──► ROUTE ──┘   ~0.8s, hidden
+user stops ──► final transcript ──► COMPOSE ──► speech
+```
+
+Composition stays the only serial hop, at ~0.85s warm.
+
+**Keyword routing survives as the fallback**, which is a better job for it. When
+selection is late, fails, or names nobody, the room picks somebody instantly. A
+slow model then costs relevance rather than silence — and in a live metered room
+a pause with nobody in it is the failure a user notices first.
+
+That also takes the vocabulary table off the critical path: an incomplete entry
+is a slightly worse fallback rather than a broken feature.
+
+### The measurement that prompted all of it, 2026-08-16
 
 Option 1 taken. `agents/routing.py` picks the speaker from two signals already in
 the data — how many of an archetype's declared domains the answer used, and how

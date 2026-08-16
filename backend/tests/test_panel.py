@@ -16,15 +16,29 @@ from inspect import signature
 from app.agents.panel import Asked, Finding, Grounding, interrogate
 from app.agents.archetypes import DEFAULT_PANEL, LIBRARY
 from app.agents.model import PanelModel
+from app.core.errors import ProviderUnavailable
 
 
 class FakePanelModel:
     """A model that answers what it was told to, and remembers what it was asked."""
 
-    def __init__(self, *, writes: str = "Where does that number come from?") -> None:
+    def __init__(
+        self,
+        *,
+        writes: str = "Where does that number come from?",
+        selects: str | None = None,
+    ) -> None:
         self._writes = writes
+        self._selects = selects
         self.asked_to_write_as: list[str] = []
         self.composed_with: list[tuple] = []
+
+    async def select(self, *, candidates, context) -> str:
+        # No answer configured means "the model had no opinion", which is the
+        # case the fallback exists for rather than an exceptional one.
+        if self._selects is None:
+            raise ProviderUnavailable(reason="panel_model_error")
+        return self._selects
 
     async def compose(self, *, archetype, context, finding=None) -> str:
         self.asked_to_write_as.append(archetype.name)
@@ -222,3 +236,43 @@ def test_the_fake_the_tests_run_against_is_the_shape_a_vendor_must_fit():
         expected = signature(getattr(PanelModel, method)).parameters.keys()
         actual = signature(getattr(FakePanelModel, method)).parameters.keys()
         assert set(expected) == set(actual), method
+
+
+async def test_a_fast_model_decides_who_speaks():
+    """The normal path. Keywords were measured at 53% relevance against realistic
+    speech and cannot see a custom archetype at all — a user-authored panelist has
+    no entry in any vocabulary table, so it would never be chosen for relevance.
+
+    A model reads the roster as written, including a persona somebody typed this
+    morning, and needs nothing maintained.
+    """
+    model = FakePanelModel(selects="technical_skeptic", writes="Show me the load test.")
+
+    turn = await interrogate(
+        DEFAULT_PANEL, said="We're spending more to acquire each customer.", model=model
+    )
+
+    assert turn.archetype.name == "technical_skeptic"
+
+
+async def test_a_model_that_is_late_or_broken_never_silences_the_room():
+    """Routing runs while the user is still speaking, so it is usually done before
+    it is needed. When it is not — a slow call, a 502, a name nobody answers to —
+    the room falls back to keyword routing and somebody speaks immediately.
+
+    A slow model must cost relevance, never silence. This is a live metered room:
+    a pause with nobody in it is the failure users notice first, and the one they
+    are paying for by the minute.
+    """
+    class Broken(FakePanelModel):
+        async def select(self, *, candidates, context):
+            raise ProviderUnavailable(reason="panel_model_error")
+
+    turn = await interrogate(
+        DEFAULT_PANEL,
+        said="Our gross margin is around seventy percent.",
+        model=Broken(writes="Slide four says sixty-one."),
+    )
+
+    assert turn.archetype.name == "cfo"
+    assert turn.line == "Slide four says sixty-one."

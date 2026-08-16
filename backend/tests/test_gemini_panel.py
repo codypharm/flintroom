@@ -18,7 +18,7 @@ import json
 import httpx
 import pytest
 
-from app.agents.archetypes import DEFAULT_PANEL, by_name
+from app.agents.archetypes import DEFAULT_PANEL, Archetype, by_name
 from app.core.errors import ProviderUnavailable
 from app.agents.panel import Asked, Grounding, TurnContext
 from app.agents.panel_models import build_panel_model
@@ -221,3 +221,46 @@ def test_a_deployment_with_no_key_has_no_panel_rather_than_no_boot():
     take everything else down with the one thing that is not ready.
     """
     assert build_panel_model(Settings(**BASE_ENVIRONMENT), httpx.AsyncClient()) is None
+
+
+async def test_a_custom_archetype_routes_with_nothing_registered_anywhere():
+    """The reason routing is a model call rather than a lookup table.
+
+    A Pro user writes their own panelist this morning. It has no entry in any
+    vocabulary, and keyword routing measured 53% relevance even for the
+    archetypes it *does* know — so a custom one could never be chosen for
+    relevance at all, only by having been quiet.
+
+    The roster goes to the model as written, so a persona typed minutes ago is
+    exactly as routable as one that shipped with the product.
+    """
+    transport, seen = answering("vc_partner")
+    mine = Archetype(
+        name="vc_partner",
+        title="The Partner",
+        persona="A partner who has seen four hundred decks this year.",
+        attack_strategy="Attack the story. Why this, why you, why now.",
+    )
+
+    chosen = await model_with(transport).select(
+        candidates=(*DEFAULT_PANEL, mine), context=CONTEXT
+    )
+
+    assert chosen == "vc_partner"
+    assert "Attack the story" in seen[0].content.decode()
+
+
+async def test_a_selection_answered_with_flourish_still_names_somebody():
+    """`**cfo**`, `"cfo"` and `cfo.` are one answer and none of them match.
+
+    Unhandled they reach the caller's fallback, so the room keeps running and
+    quietly stops routing — which from outside is identical to a panel choosing
+    at random.
+    """
+    transport, _ = answering('  "**cfo**."\n')
+
+    chosen = await model_with(transport).select(
+        candidates=DEFAULT_PANEL, context=CONTEXT
+    )
+
+    assert chosen == "cfo"

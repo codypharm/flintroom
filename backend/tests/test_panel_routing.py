@@ -104,3 +104,63 @@ def test_a_domain_word_inside_another_word_is_not_a_match():
     )
 
     assert chosen.name == "champion"
+
+
+def test_the_numbers_person_hears_unit_economics_without_the_word():
+    """Measured, one canonical word per domain routed 7% of realistic utterances.
+
+    "We're spending more to acquire each customer than we make back" is textbook
+    CFO and contains none of `margin`, `revenue`, `cost`. So did most of a
+    fifteen-sentence sample: `ARR` is revenue, `the team is eight people` is
+    headcount, `SOC 2` is compliance. The domains named the right concepts and
+    then listened for exactly one spelling of each.
+
+    Without this the panel is round-robin with an occasional coincidence, which
+    is the mechanical failure §3.3 calls synthetic within two minutes.
+    """
+    # The CFO goes last so declaration order works *against* it: with nothing
+    # matching, everything ties on silence and the first archetype wins. Ordered
+    # the other way this passes without routing anything, which is how it was
+    # written first.
+    panel = (by_name("champion"), by_name("technical_skeptic"), by_name("cfo"))
+
+    chosen = choose(
+        panel,
+        context("We're spending more to acquire each customer than we make back."),
+    )
+
+    assert chosen.name == "cfo"
+
+
+def test_a_domain_with_no_vocabulary_still_answers_to_its_own_name():
+    """Archetypes are configuration, so somebody adds one before its words.
+
+    A domain absent from the table falls back to matching the canonical name —
+    the behaviour before the table existed. Degrading to the old routing is
+    acceptable; degrading to silence, where a new archetype never speaks and
+    nothing says why, is not.
+    """
+    from app.agents.vocabulary import terms_for
+
+    assert terms_for("a_domain_nobody_has_written_words_for") == (
+        "a_domain_nobody_has_written_words_for",
+    )
+
+
+def test_every_archetypes_domains_have_words_people_actually_say():
+    """A domain with no entry routes on one spelling, which measured 7%.
+
+    Cheap to assert and easy to forget: the vocabulary lives in a different file
+    from the archetypes, so adding a panelist and adding its words are two
+    separate acts and only one of them is obvious.
+    """
+    from app.agents.vocabulary import DOMAIN_TERMS
+
+    missing = [
+        domain
+        for archetype in LIBRARY
+        for domain in archetype.domains
+        if domain not in DOMAIN_TERMS
+    ]
+
+    assert missing == []

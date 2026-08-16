@@ -18,6 +18,7 @@ import re
 from collections.abc import Sequence
 
 from app.agents.archetypes import Archetype
+from app.agents.vocabulary import terms_for
 from app.core.logging import get_logger
 
 log = get_logger(__name__, tag="panel")
@@ -78,18 +79,29 @@ def _score(archetype: Archetype, context) -> int:
 def _domain_hits(archetype: Archetype, said: str) -> int:
     """How many of this archetype's domains the answer actually used.
 
+    Matched through `vocabulary.terms_for`, not against the canonical name.
+    Measured, the canonical name alone routed 7% of realistic utterances: `ARR`
+    is revenue, "the team is eight people" is headcount, and "spending more to
+    acquire each customer than we make back" is the CFO's whole reason for
+    existing while containing none of its words.
+
     Whole words, so `cost` does not match `costume` and `data` does not match
     `database` — a substring check reads as sophistication and behaves as noise.
 
-    Counted rather than boolean: an answer that touches margin *and* cost is more
-    the CFO's than one that mentions either alone, and that is a real ordering
-    rather than a tiebreak.
+    Counted per *domain* rather than per word, so a sentence saying "margin"
+    three times is not three times the CFO's. What should raise the score is
+    breadth — an answer touching margin *and* cost is more theirs than one
+    touching either alone.
     """
     if not archetype.domains:
         return 0
 
-    words = set(re.findall(r"[a-z]+", said.lower()))
-    return sum(1 for domain in archetype.domains if domain.lower() in words)
+    words = set(re.findall(r"[a-z0-9]+", said.lower()))
+    return sum(
+        1
+        for domain in archetype.domains
+        if words.intersection(terms_for(domain))
+    )
 
 
 def _quiet_for(archetype: Archetype, context) -> int:

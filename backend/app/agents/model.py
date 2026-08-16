@@ -5,17 +5,28 @@ Structural (`Protocol`) rather than inherited, like `voice.provider` and
 had to import us, so a vendor SDK wrapper never acquires a dependency on our
 module graph.
 
-**One call per turn, one adapter per vendor.** There were two until the spike
-timed them: a model round trip to pick the speaker cost ~0.8s of a 1.5s budget
-for what is mostly a lookup, so selection moved into `routing.py` and this
-interface lost a method.
+**Two calls per turn, one adapter per vendor.** Selection was moved into code
+when the spike timed it at ~0.8s against a 1.5s budget, and moved back when that
+turned out to be the wrong reading of the constraint twice over.
 
-What is left is the hop that cannot be done in code. Choosing who speaks is a
-lookup over declared domains; writing what they say in their own voice is not.
+Keyword routing measured 53% relevance against realistic speech — and, decisively,
+**cannot see a custom archetype at all**, since a persona somebody typed this
+morning has no entry in any vocabulary table. Pro sells custom archetypes; routing
+that ignores them is not a routing system.
+
+The 0.8s objection dissolves because routing does not have to run *after* the
+user stops. We own the loop, so a partial transcript is available while they are
+still speaking, and the gist is all this call needs. Routing overlaps the tail of
+the utterance; composition stays the only serial hop.
+
+Keyword routing survives as the fallback in `routing.py`, which is a better job
+for it: when this call is late or fails, the room picks somebody instantly. A slow
+model then costs relevance rather than silence.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Protocol
 
 from app.agents.archetypes import Archetype
@@ -23,6 +34,24 @@ from app.agents.archetypes import Archetype
 
 class PanelModel(Protocol):
     """Whatever decides who speaks, and writes what they say."""
+
+    async def select(self, *, candidates: Sequence[Archetype], context) -> str:
+        """Name the archetype that should take the floor.
+
+        Returns a `name`, not an `Archetype`, because a model returns text and
+        pretending otherwise would hide the parsing somewhere less obvious.
+
+        Sees the whole roster on purpose — including any custom archetype, whose
+        persona is just more text and needs nothing registered anywhere. This is
+        the one place the room exists as a room: who has been quiet, whose domain
+        the answer touched, whose thesis it contradicted. Inter-panelist
+        disagreement is a property of this call, because the composer only ever
+        sees one person.
+
+        **May raise, and the caller must survive it.** A room is live and metered;
+        a routing failure has to cost relevance, not silence.
+        """
+        ...
 
     async def compose(
         self, *, archetype: Archetype, context, finding=None

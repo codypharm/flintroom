@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from app.agents.archetypes import Archetype, by_name
 from app.agents.model import PanelModel
 from app.agents.routing import choose
-from app.core.errors import ArchetypeNotFound, PanelTooLarge
+from app.core.errors import ArchetypeNotFound, FlintroomError, PanelTooLarge
 from app.core.logging import get_logger
 from app.modules.billing.tiers import UPGRADE_LADDER, max_panel_size
 
@@ -189,11 +189,7 @@ async def interrogate(
     targeted = archetype is not None
 
     if archetype is None:
-        # In code, not in a model. Measured, a round trip here cost ~0.8s of a
-        # 1.5s budget for what is mostly a lookup — see the measurements in
-        # `docs/panel-orchestration.md`. The whole budget now goes to the hop
-        # that writes the line.
-        archetype = choose(panel, context)
+        archetype = await _speaker(panel, context, model)
 
     # The finding travels to the composer, not just to the routing. An archetype
     # handed the floor because of a contradiction and then not told what the
@@ -212,6 +208,38 @@ async def interrogate(
         already_asked=len(context.grounding.asked),
     )
     return PanelTurn(archetype=archetype, line=line, targeted=targeted)
+
+
+async def _speaker(
+    panel: Sequence[Archetype], context: TurnContext, model: PanelModel
+) -> Archetype:
+    """Who takes the floor when the Auditor has not decided it.
+
+    A model, because keyword routing measured 53% relevance against real speech
+    and is blind to custom archetypes — a persona somebody wrote this morning is
+    in no vocabulary table, so it could never be chosen for relevance. Pro sells
+    those; routing that cannot see them is not routing.
+
+    The call costs ~0.8s and is meant to run against a partial transcript while
+    the user is still speaking, so it lands before the turn needs it.
+
+    **Every failure falls through to keywords rather than up to the caller.** A
+    slow model, a 502, a name nobody answers to — all of them end with somebody
+    speaking. This is a live metered room, and a pause with nobody in it is the
+    failure a user notices first while paying by the minute.
+    """
+    try:
+        chosen = await model.select(candidates=panel, context=context)
+    except FlintroomError:
+        log.warning("panel_selection_failed", panel=len(panel))
+        return choose(panel, context)
+
+    for archetype in panel:
+        if archetype.name == chosen:
+            return archetype
+
+    log.warning("panel_selection_unrecognised", chosen=chosen)
+    return choose(panel, context)
 
 
 def _owner(panel: Sequence[Archetype], domain: str) -> Archetype | None:
