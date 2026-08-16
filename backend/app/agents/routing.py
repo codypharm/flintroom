@@ -18,6 +18,7 @@ import re
 from collections.abc import Sequence
 
 from app.agents.archetypes import Archetype
+from app.agents.context import USER
 from app.agents.vocabulary import terms_for
 from app.core.logging import get_logger
 
@@ -111,8 +112,10 @@ def _quiet_for(archetype: Archetype, context) -> int:
     for two minutes hears from the CFO and nobody else, which is not a panel — it
     is one person with an audience.
     """
-    asked = context.grounding.asked
-    for distance, entry in enumerate(reversed(asked)):
-        if entry.archetype == archetype.name:
+    spoken = [
+        line for line in context.grounding.transcript if line.speaker != USER
+    ]
+    for distance, line in enumerate(reversed(spoken)):
+        if line.speaker == archetype.name:
             return distance
     return NEVER_SPOKEN

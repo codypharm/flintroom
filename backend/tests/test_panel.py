@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from inspect import signature
 
-from app.agents.panel import Asked, Finding, Grounding, interrogate
+from app.agents.panel import Finding, Grounding, Said, interrogate
 from app.agents.archetypes import DEFAULT_PANEL, LIBRARY
 from app.agents.model import PanelModel
 from app.core.errors import ProviderUnavailable
@@ -190,7 +190,7 @@ async def test_an_archetype_is_given_the_deck_it_is_meant_to_attack():
     model = FakePanelModel()
     grounding = Grounding(
         claims=("Gross margin of 61% in Q3 2026",),
-        asked=(Asked(archetype="cfo", question="What is your CAC payback?"),),
+        transcript=(Said(speaker="cfo", text="What is your CAC payback?"),),
     )
 
     await interrogate(

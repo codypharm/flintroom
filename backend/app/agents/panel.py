@@ -1,5 +1,9 @@
 """One turn of the room.
 
+The types a turn is made of live in `context.py`; they are re-exported here
+because `interrogate` is the thing callers reach for and its inputs should not
+require a second import to find.
+
 Two steps, decided in `docs/panel-orchestration.md`: pick who speaks, then write
 that line with **only that archetype's** persona in context. The second half is
 the point — a single prompt holding four personas averages them into one voice
@@ -10,10 +14,17 @@ perfectly well in a transcript and feels flat in a room.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
-from typing import Literal
 
 from app.agents.archetypes import Archetype, by_name
+from app.agents.context import (
+    USER,
+    Finding,
+    Grounding,
+    PanelTurn,
+    Said,
+    SelectedBy,
+    TurnContext,
+)
 from app.agents.model import PanelModel
 from app.agents.routing import choose
 from app.core.errors import ArchetypeNotFound, FlintroomError, PanelTooLarge
@@ -68,116 +79,6 @@ def _too_large_message(tier: str, asked: int) -> str:
     return f"{said} {upgrade.title()} seats {max_panel_size(upgrade)}." if upgrade else said
 
 
-@dataclass(frozen=True)
-class Asked:
-    """A question the room has already put, and who put it.
-
-    The attribution is what lets the two steps see different views of the same
-    history — panel-wide for selection, this archetype only for composition.
-    Without it both get a flat list and one of them is wrong.
-    """
-
-    archetype: str
-    question: str
-
-
-@dataclass(frozen=True)
-class Grounding:
-    """What the room is allowed to attack.
-
-    The whole of the wedge. `CLAUDE.md` refuses to ship interrogation logic that
-    cannot cite its source, and Open Risk #2 is that ungrounded generic questions
-    kill retention faster than any UI flaw — so a composer that receives only the
-    last sentence can produce nothing better than a hard-sounding question about
-    a subject it has never seen. That is the competitor product this one exists
-    to refuse.
-
-    Claims arrive **pre-rendered as citable lines** rather than as ingestion's
-    typed `ExtractedClaim`. It keeps the panel free of the ingestion module and
-    keeps the seam one-directional: whoever owns a claim owns how it reads, and
-    the panel only ever needs something it can quote back.
-    """
-
-    #: What the attached material asserts, one citable line each.
-    claims: tuple[str, ...] = ()
-
-    #: What the room has already put to this user, attributed.
-    #:
-    #: Not an optimisation. Without it every archetype re-asks the strongest
-    #: question in its strategy, and a room that asks the same thing four times
-    #: is not intimidating — it is broken, and obviously so within two minutes.
-    #:
-    #: Attributed rather than flat, because the two steps need opposite views and
-    #: a flat list makes one of them worse. Selection wants the whole room: who
-    #: has been quiet and what ground is covered is what decides who speaks next.
-    #: Composition wants this archetype alone — a CFO ten turns in would otherwise
-    #: carry six "do not repeat" items, all about margin, and be steered off the
-    #: subject it exists to press. A panelist who stops asking about margin is
-    #: worse than one who repeats himself.
-    asked: tuple[Asked, ...] = ()
-
-    def asked_by(self, archetype: str) -> tuple[str, ...]:
-        """Only what this archetype has already put to them."""
-        return tuple(
-            entry.question for entry in self.asked if entry.archetype == archetype
-        )
-
-
-@dataclass(frozen=True)
-class TurnContext:
-    """Everything the model is allowed to see about this moment.
-
-    One object rather than a widening parameter list, because both steps need
-    the same view and the two must never disagree about what happened — a
-    selector that knows about the deck and a composer that does not would pick
-    the right archetype to say the wrong thing.
-    """
-
-    said: str
-    grounding: Grounding
-
-
-@dataclass(frozen=True)
-class Finding:
-    """Something the Auditor caught, and the domain it belongs to.
-
-    The domain is what routes the interruption. `docs/auditor-grounding.md` has
-    each derivation pack declare which archetype domain owns a figure, so a
-    finding arrives already knowing who should raise it.
-    """
-
-    domain: str
-    summary: str
-
-
-#: What decided who speaks. Three paths, and they are not equally good.
-#:
-#: - `finding` — the Auditor caught a contradiction and the domain that owns the
-#:   figure owns the interruption. The best kind of turn there is.
-#: - `model` — the ordinary case. Reads the room, sees custom archetypes.
-#: - `fallback` — keyword routing, because selection was late, failed, or named
-#:   nobody. Measured at 53% relevance, so a turn chosen this way is a turn the
-#:   room got roughly half right.
-#:
-#: Carried on the turn rather than left to be inferred from which log lines
-#: appeared, because the failure this exists to expose is silent: a deployment
-#: where the model has been erroring for a week looks exactly like a healthy one.
-#: The room still speaks, transcripts still read plausibly, and the only symptom
-#: is that every choice is coming from the table.
-#:
-#: `chosen_by=model` over total turns is the health metric.
-SelectedBy = Literal["finding", "model", "fallback"]
-
-
-@dataclass(frozen=True)
-class PanelTurn:
-    """What the room says back, who said it, and what chose them."""
-
-    archetype: Archetype
-    line: str
-    chosen_by: SelectedBy
-
-
 async def interrogate(
     panel: Sequence[Archetype],
     *,
@@ -220,7 +121,7 @@ async def interrogate(
         archetype=archetype.name,
         chosen_by=chosen_by,
         claims=len(context.grounding.claims),
-        already_asked=len(context.grounding.asked),
+        turns_so_far=len(context.grounding.transcript),
     )
     return PanelTurn(archetype=archetype, line=line, chosen_by=chosen_by)
 

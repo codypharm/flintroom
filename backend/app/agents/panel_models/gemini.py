@@ -242,11 +242,14 @@ def _selection_prompt(candidates: Sequence[Archetype], context) -> str:
         f"- {archetype.name}: {archetype.title}. {archetype.attack_strategy}"
         for archetype in candidates
     )
-    asked = "\n".join(
-        f"- {entry.archetype}: {entry.question}" for entry in context.grounding.asked
+    # Both sides, in order. A list of the panel's questions with no answers
+    # under them cannot say whether one was evaded, and pressing an evaded
+    # question is the most useful thing a room does.
+    spoken = "\n".join(
+        f"- {line.speaker}: {line.text}" for line in context.grounding.transcript
     )
-    already = f"\n\nAlready asked:\n{asked}" if asked else ""
-    return f"In the room:\n{roster}{already}\n\nThey just said:\n{context.said}"
+    so_far = f"\n\nSo far:\n{spoken}" if spoken else ""
+    return f"In the room:\n{roster}{so_far}\n\nThey just said:\n{context.said}"
 
 
 def _bare_name(answered: str) -> str:

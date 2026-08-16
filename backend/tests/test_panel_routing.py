@@ -14,12 +14,12 @@ comprehension — a model would understand an answer that never uses the word
 from __future__ import annotations
 
 from app.agents.archetypes import DEFAULT_PANEL, LIBRARY, by_name
-from app.agents.panel import Asked, Grounding, TurnContext
+from app.agents.panel import Grounding, Said, TurnContext
 from app.agents.routing import choose
 
 
-def context(said: str, *asked: Asked) -> TurnContext:
-    return TurnContext(said=said, grounding=Grounding(asked=tuple(asked)))
+def context(said: str, *spoken: Said) -> TurnContext:
+    return TurnContext(said=said, grounding=Grounding(transcript=tuple(spoken)))
 
 
 def test_an_answer_about_the_numbers_reaches_the_numbers_person():
@@ -50,7 +50,7 @@ def test_the_person_who_just_spoke_yields_to_the_room():
     first = choose(DEFAULT_PANEL, context(said))
     second = choose(
         DEFAULT_PANEL,
-        context(said, Asked(archetype="cfo", question="Which number is lying?")),
+        context(said, Said(speaker="cfo", text="Which number is lying?")),
     )
 
     assert first.name == "cfo"
@@ -77,7 +77,7 @@ def test_the_same_room_and_the_same_answer_choose_the_same_person():
     the first question anybody asks about a room that went wrong.
     """
     said = "Our gross margin is around seventy percent."
-    history = (Asked(archetype="cfo", question="Which number is lying?"),)
+    history = (Said(speaker="cfo", text="Which number is lying?"),)
 
     picks = {choose(DEFAULT_PANEL, context(said, *history)).name for _ in range(10)}
 

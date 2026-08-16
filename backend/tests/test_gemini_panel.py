@@ -20,7 +20,7 @@ import pytest
 
 from app.agents.archetypes import DEFAULT_PANEL, Archetype, by_name
 from app.core.errors import ProviderUnavailable
-from app.agents.panel import Asked, Grounding, TurnContext
+from app.agents.panel import Grounding, Said, TurnContext
 from app.agents.panel_models import build_panel_model
 from app.agents.panel_models.gemini import GeminiPanelModel
 from app.core.config import Settings
@@ -179,9 +179,9 @@ async def test_an_archetype_is_told_only_what_it_has_asked_itself():
     context = TurnContext(
         said="Margins are strong.",
         grounding=Grounding(
-            asked=(
-                Asked(archetype="cfo", question="What is your CAC payback?"),
-                Asked(archetype="champion", question="Who is your reference customer?"),
+            transcript=(
+                Said(speaker="cfo", text="What is your CAC payback?"),
+                Said(speaker="champion", text="Who is your reference customer?"),
             )
         ),
     )
@@ -264,3 +264,30 @@ async def test_a_selection_answered_with_flourish_still_names_somebody():
     )
 
     assert chosen == "cfo"
+
+
+async def test_the_router_sees_the_conversation_and_not_just_the_questions():
+    """A list of questions is half a room.
+
+    Choosing who speaks next turns almost entirely on how the last answer went —
+    whether it landed, whether it dodged, whether it opened something. A model
+    given the panel's questions and none of the presenter's replies cannot tell
+    an answered question from an evaded one, and pressing an evaded question is
+    the single most useful thing a panel does.
+    """
+    transport, seen = answering("cfo")
+    context = TurnContext(
+        said="Margins are strong.",
+        grounding=Grounding(
+            transcript=(
+                Said(speaker="cfo", text="Where does four hundred thousand come from?"),
+                Said(speaker="user", text="Mostly two enterprise contracts."),
+            )
+        ),
+    )
+
+    await model_with(transport).select(candidates=DEFAULT_PANEL, context=context)
+
+    body = seen[0].content.decode()
+    assert "Where does four hundred thousand come from?" in body
+    assert "Mostly two enterprise contracts." in body

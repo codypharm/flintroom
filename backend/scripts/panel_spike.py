@@ -36,7 +36,8 @@ import time
 import httpx
 
 from app.agents.archetypes import DEFAULT_PANEL
-from app.agents.panel import Asked, Grounding, interrogate
+from app.agents.context import USER
+from app.agents.panel import Grounding, Said, interrogate
 from app.agents.panel_models import build_panel_model
 from app.core.config import Settings, get_settings
 
@@ -71,13 +72,13 @@ async def run(turns: int, grounded: bool) -> None:
 
         _report_configuration(settings, grounded)
 
-        asked: list[Asked] = []
+        transcript: list[Said] = []
         composes: list[float] = []
 
         for index in range(min(turns, len(SCRIPT))):
             said = SCRIPT[index]
             grounding = Grounding(
-                claims=CLAIMS if grounded else (), asked=tuple(asked)
+                claims=CLAIMS if grounded else (), transcript=tuple(transcript)
             )
 
             print(f"\n─── turn {index + 1}\nthem: {said}")
@@ -94,7 +95,10 @@ async def run(turns: int, grounded: bool) -> None:
             print(f"      {elapsed:.2f}s{'  ⚠ over threshold' if elapsed > THRESHOLD_SECONDS else ''}")
 
             composes.append(elapsed)
-            asked.append(Asked(archetype=turn.archetype.name, question=turn.line))
+            # Both sides, because the router's whole job is reading how the last
+            # answer went. A list of the panel's questions is half a room.
+            transcript.append(Said(speaker=USER, text=said))
+            transcript.append(Said(speaker=turn.archetype.name, text=turn.line))
 
         _report_timings(composes)
 
