@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import math
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import NamedTuple
@@ -23,6 +24,7 @@ from app.core.errors import (
     ExtractionIncomplete,
     InvalidMaterialState,
     MaterialNotFound,
+    MaterialNotReady,
     MaterialNotUploaded,
     MaterialTooLarge,
     UnsupportedMaterialType,
@@ -245,6 +247,63 @@ def _period_budget():
         value=Account.entitlement_tier,
         else_=FREE_TIER_LIFETIME_PAGES,
     )
+
+
+async def confirm_ready(
+    db: AsyncSession, *, user_id: uuid.UUID, material_ids: Sequence[uuid.UUID]
+) -> None:
+    """Every one of these is the caller's and finished extracting, or raise.
+
+    A module function rather than a method, because it is the one question
+    another module asks about material and it needs none of what an
+    `IngestionService` is built with — no object store, no presigning. Making
+    `sessions` construct a storage client to ask whether a deck is ready would
+    couple the session path to a bucket it never touches.
+
+    It lives in `ingestion` all the same. Which states count as usable is
+    ingestion's rule, and a copy of it inside `SessionService` is a copy that
+    stops agreeing the day a sixth state appears.
+
+    Not-yours and not-found are the same answer, as everywhere else here:
+    distinguishing them tells a prober which material ids exist.
+    """
+    if not material_ids:
+        return
+
+    wanted = set(material_ids)
+    rows = await db.execute(
+        select(Material.id, Material.state).where(
+            Material.id.in_(wanted), Material.user_id == user_id
+        )
+    )
+    found = dict(rows.all())
+
+    missing = wanted - found.keys()
+    if missing:
+        raise MaterialNotFound(
+            material_id=str(sorted(map(str, missing))[0]), user_id=str(user_id)
+        )
+
+    for material_id, state in found.items():
+        if state is MaterialState.READY:
+            continue
+        # Two messages, one refusal. A deck still extracting and a deck that
+        # failed are the same answer to the room and opposite advice to the
+        # person holding the phone.
+        log.info(
+            "session_material_not_ready",
+            material_id=str(material_id),
+            user_id=str(user_id),
+            state=state.value,
+        )
+        raise MaterialNotReady(
+            "That material could not be read. Please upload it again."
+            if state is MaterialState.FAILED
+            else None,
+            material_id=str(material_id),
+            user_id=str(user_id),
+            state=state.value,
+        )
 
 
 class ClaimedMaterial(NamedTuple):

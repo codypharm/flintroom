@@ -232,6 +232,34 @@ class MaterialNotUploaded(BusinessRuleViolation):
     message = "We did not receive that file. Please upload it again."
 
 
+class MaterialNotReady(BusinessRuleViolation):
+    """A room was asked to ground itself in a deck that is not finished.
+
+    Not a race the client should paper over by retrying blindly — extraction of
+    a long deck is minutes — but it is genuinely temporary, and the message says
+    so rather than implying the file is bad.
+
+    Why this is a refusal rather than a wait: `docs/ingestion.md` refused to let
+    slides land during a live interrogation on grounding correctness. The
+    Auditor's reference set would change mid-session, so the same spoken claim
+    could pass at minute two and fail at minute six, and *"why did the panel
+    miss that"* stops having an answer.
+
+    One error, two messages, chosen at the raise like `MaterialTooLarge`. A deck
+    still extracting and a deck that failed are the same refusal to the room and
+    opposite advice to the person: wait, or upload it again. Telling somebody to
+    wait for a deck that will never finish is how a user sits watching a spinner
+    that is not spinning.
+
+    A 422 rather than a 409, following `docs/ingestion.md` and CLAUDE.md's rule
+    that business-rule violations are 422. The state is a fact about the
+    material, not a conflict with another writer.
+    """
+
+    code = "material_not_ready"
+    message = "That material is still being read. Start the room in a moment."
+
+
 class ExtractionIncomplete(BusinessRuleViolation):
     """Something tried to settle a deck that was only partly read.
 

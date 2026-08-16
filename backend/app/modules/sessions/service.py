@@ -7,6 +7,7 @@ decides. Nothing money-relevant is taken from the client.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from typing import NoReturn
 
 from sqlalchemy import func, select
@@ -27,7 +28,8 @@ from app.core.logging import get_logger
 from app.modules.audit_log.schemas import AuditEventType
 from app.modules.audit_log.service import AuditService
 from app.modules.billing.service import LedgerService
-from app.modules.sessions.models import Session, SessionPhaseSpan
+from app.modules.ingestion.service import confirm_ready
+from app.modules.sessions.models import Session, SessionMaterial, SessionPhaseSpan
 from app.modules.sessions.schemas import (
     GRACE_LIMIT,
     METERED_PHASES,
@@ -64,6 +66,20 @@ TRANSITIONS: dict[SessionState, frozenset[SessionState]] = {
 log = get_logger(__name__, tag="sessions")
 
 
+def _distinct(material_ids: Sequence[uuid.UUID]) -> list[uuid.UUID]:
+    """The same ids, deduplicated, in the order they were given.
+
+    A client that names the same deck twice meant to attach it once, and the
+    composite primary key would turn that into an `IntegrityError` — a 500 for
+    what is at worst a clumsy request. Order is preserved because it is the
+    order the user chose, and nothing downstream should have to guess at it.
+    """
+    seen: dict[uuid.UUID, None] = {}
+    for material_id in material_ids:
+        seen.setdefault(material_id, None)
+    return list(seen)
+
+
 class SessionService:
     """The only path through which session state changes."""
 
@@ -75,12 +91,37 @@ class SessionService:
         # audit service attributing its writes to somebody else.
         self._audit = AuditService(db, self._actor, tag="sessions")
 
-    async def start(self, *, user_id: uuid.UUID) -> Session:
-        """Open a session in `provisioning`.
+    async def start(
+        self,
+        *,
+        user_id: uuid.UUID,
+        material_ids: Sequence[uuid.UUID] = (),
+    ) -> Session:
+        """Open a session in `provisioning`, grounded in whatever it was handed.
 
         Bills nothing: the room has not opened yet. The first ledger entry comes
         from the first tick after the voice channel is established.
+
+        Material is optional and the empty case is first-class, not degraded —
+        `docs/auditor-grounding.md` gives the deckless panel plenty to attack,
+        and a user who does not want to wait for extraction starts without a
+        deck rather than being blocked.
+
+        The set is fixed here and never afterwards. There is no attach endpoint
+        on a running session on purpose: the Auditor's reference set must not
+        move mid-interrogation, or the same spoken claim passes at minute two
+        and fails at minute six, and *"why did the panel miss that"* stops
+        having an answer.
         """
+        attaching = _distinct(material_ids)
+
+        # Before the balance check and before the insert, so a room is never
+        # opened against a deck that cannot ground it. Ordering matters for what
+        # the user is told: being refused for an unready deck is actionable,
+        # while being told you are out of minutes and *then* that your deck is
+        # not ready is two round trips for one attempt.
+        await confirm_ready(self._db, user_id=user_id, material_ids=attaching)
+
         if (existing := await self._active_session(user_id)) is not None:
             await self._deny_start(user_id, blocked_by=existing.id)
 
@@ -122,13 +163,38 @@ class SessionService:
                 raise
             await self._deny_start(user_id, reason="lost_start_race")
 
+        for material_id in attaching:
+            # Same commit as the session and its audit row. A room that exists
+            # without its grounding is one the panel would interrogate blind,
+            # and the user would have no way to tell which they got.
+            self._db.add(
+                SessionMaterial(session_id=session.id, material_id=material_id)
+            )
+
         # Staged, not recorded: both rows belong to one commit, so a crash
         # cannot leave a session nobody can account for.
         self._audit.stage(
-            AuditEventType.SESSION_STARTED, user_id=user_id, session_id=session.id
+            AuditEventType.SESSION_STARTED,
+            user_id=user_id,
+            session_id=session.id,
+            materials=len(attaching),
         )
         await self._db.commit()
         return session
+
+    async def materials(self, *, session_id: uuid.UUID) -> list[uuid.UUID]:
+        """What this room was grounded in, in the order it was attached.
+
+        Ids rather than rows: the Auditor wants the claims behind them and the
+        client wants to show what it attached, and neither is served by handing
+        out a join table.
+        """
+        rows = await self._db.scalars(
+            select(SessionMaterial.material_id)
+            .where(SessionMaterial.session_id == session_id)
+            .order_by(SessionMaterial.attached_at, SessionMaterial.material_id)
+        )
+        return list(rows)
 
     async def _deny_start(
         self,

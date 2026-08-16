@@ -531,6 +531,25 @@ export interface components {
             end_reason?: components["schemas"]["EndReason"] | null;
             /** Settled At */
             settled_at?: string | null;
+            /** Material Ids */
+            material_ids?: string[];
+        };
+        /**
+         * SessionStart
+         * @description What a room may be configured with, which today is only its grounding.
+         *
+         *     Panel composition, archetype selection and audience context all belong here
+         *     eventually and deliberately do not yet — `docs/ingestion.md` scopes those to
+         *     the panel work, and inventing the fields now would be guessing at a shape
+         *     the interrogation design has not settled.
+         *
+         *     Extra fields are refused rather than ignored. A client sending `materialIds`
+         *     or `archetypes` should be told, not silently given an ungrounded room —
+         *     which is the failure that looks exactly like the panel being bad at its job.
+         */
+        SessionStart: {
+            /** Material Ids */
+            material_ids?: string[];
         };
         /**
          * SessionStarted
@@ -562,6 +581,8 @@ export interface components {
             end_reason?: components["schemas"]["EndReason"] | null;
             /** Settled At */
             settled_at?: string | null;
+            /** Material Ids */
+            material_ids?: string[];
             /** Stream Ticket */
             stream_ticket: string;
         };
@@ -780,7 +801,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SessionStart"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             201: {
@@ -789,6 +814,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionStarted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

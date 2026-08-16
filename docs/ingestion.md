@@ -55,6 +55,35 @@ awaiting_upload ──► pending ──► extracting ──► ready
 
 `POST /v1/sessions` rejects a material that is not `ready` with a typed 422.
 
+**Built 2026-08-16**, and it is what made every earlier slice reachable: until
+then `POST /v1/sessions` took no request body at all, so material had nowhere to
+attach even once it existed.
+
+`session_materials` is a many-to-many join with a composite primary key, so
+attaching the same deck to one room twice is impossible rather than merely
+unlikely. Both sides cascade — deleting a material erases the record that a past
+session used it, which is deliberate: `material_claims` cascades too, so the
+grounding is gone either way and a link pointing at contents that no longer
+exist is a citation nobody can follow.
+
+Three details that are not obvious from the endpoint:
+
+- **The set is fixed at start and there is no attach endpoint.** That is the
+  same refusal as above, one layer up: a room that could gain a deck at minute
+  four has a reference set that moves mid-session.
+- **The readiness check runs before the session row is inserted.** A session
+  created and *then* refused would hold the user's one-live-session lock until
+  the reaper cleared it, so a mistyped material id would lock somebody out of
+  rehearsing for a minute over an attempt that never opened a room.
+- **`failed` and `extracting` are one refusal with two messages.** Same answer
+  to the room, opposite advice to the person: wait, or upload it again. Telling
+  somebody to wait for a deck that will never finish is how a user sits watching
+  a spinner that is not spinning.
+
+`MAX_SESSION_MATERIALS = 10` is a guard, not a considered limit. The real bound
+is claims rather than files — a single pro-tier deck already carries more than a
+context window wants — and whatever replaces it belongs with the panel work.
+
 **`awaiting_upload` was added 2026-08-16**, when building the model showed four
 states could not carry the upload handshake. A row has to exist before the bytes
 do — that is what the presign is signed against and what ownership is checked on
@@ -983,8 +1012,11 @@ Follows the mandatory rules rather than restating them; the ones with teeth here
   invent."* Material retention is settled here and does not settle that.
 - **Derivation packs.** `docs/auditor-grounding.md` specifies per-segment derived
   figures and plausibility bands. Those consume claims; they are Phase 3.
-- **Panel setup.** Sessions still take no configuration beyond material ids.
-  Archetype selection and audience context belong with the panel work.
+- **Panel setup.** `SessionStart` carries material ids and nothing else.
+  Archetype selection and audience context belong with the panel work, and
+  inventing those fields now would be guessing at a shape the interrogation
+  design has not settled. The schema forbids extra fields, so a client sending
+  one is told rather than silently given an ungrounded room.
 - **Reprocessing.** Deleting the source makes it impossible by design. If pipeline
   improvements later justify it, that is a retention change first and a feature
   second.

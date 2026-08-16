@@ -12,7 +12,12 @@ from app.modules.sessions.dependencies import (
     SessionServiceDep,
     SettlementServiceDep,
 )
-from app.modules.sessions.schemas import EndReason, SessionRead, SessionStarted
+from app.modules.sessions.schemas import (
+    EndReason,
+    SessionRead,
+    SessionStart,
+    SessionStarted,
+)
 from app.modules.voice.dependencies import VoiceTicketServiceDep
 
 router = APIRouter(tags=["sessions"])
@@ -28,6 +33,7 @@ async def start_session(
     user_id: CurrentUser,
     sessions: SessionServiceDep,
     tickets: VoiceTicketServiceDep,
+    body: SessionStart | None = None,
 ) -> SessionStarted:
     """Open a room for the caller, and hand them the key to its stream.
 
@@ -46,22 +52,27 @@ async def start_session(
     connection against the same database, so the case is nearly always "the
     database is gone", where the start would not have committed either.
     """
-    session = await sessions.start(user_id=user_id)
+    attaching = body.material_ids if body else []
+    session = await sessions.start(user_id=user_id, material_ids=attaching)
     return SessionStarted(
-        **SessionRead.model_validate(session).model_dump(),
+        **(await _read(session, sessions)).model_dump(),
         stream_ticket=await tickets.mint(session_id=session.id, user_id=user_id),
     )
 
 
 @router.get("/sessions/{session_id}", response_model=SessionRead)
-async def read_session(session: OwnedSession) -> SessionRead:
+async def read_session(
+    session: OwnedSession, sessions: SessionServiceDep
+) -> SessionRead:
     """One session, if it belongs to the caller."""
-    return SessionRead.model_validate(session)
+    return await _read(session, sessions)
 
 
 @router.post("/sessions/{session_id}/end", response_model=SessionRead)
 async def end_session(
-    session: OwnedSession, settlement: SettlementServiceDep
+    session: OwnedSession,
+    settlement: SettlementServiceDep,
+    sessions: SessionServiceDep,
 ) -> SessionRead:
     """The End button: an intent, honoured by the server.
 
@@ -70,6 +81,24 @@ async def end_session(
     decides whether minutes are refunded — a client that could name one would
     be choosing its own refund.
     """
-    return SessionRead.model_validate(
-        await settlement.close(session_id=session.id, end_reason=EndReason.USER_ENDED)
+    return await _read(
+        await settlement.close(session_id=session.id, end_reason=EndReason.USER_ENDED),
+        sessions,
+    )
+
+
+async def _read(session, sessions: SessionServiceDep) -> SessionRead:
+    """A session with the grounding it was started against.
+
+    A second query rather than an eager relationship on `Session`. The sweeps
+    that run every fifteen seconds select columns instead of rows, so they would
+    not pay for it — but `_active_session` does load a row, on every single
+    start, to answer a question that has nothing to do with material. Paying
+    there for something only three responses read is the wrong place to spend it.
+
+    Assembly, not a rule: no branch, no condition, nothing about *what* may
+    ground a room has leaked out of `SessionService`.
+    """
+    return SessionRead.model_validate(session).model_copy(
+        update={"material_ids": await sessions.materials(session_id=session.id)}
     )

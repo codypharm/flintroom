@@ -158,6 +158,14 @@ paths:
 
         database is gone", where the start would not have committed either.'
       operationId: sessions_start_session
+      requestBody:
+        content:
+          application/json:
+            schema:
+              anyOf:
+              - $ref: '#/components/schemas/SessionStart'
+              - type: 'null'
+              title: Body
       responses:
         '201':
           description: Successful Response
@@ -165,6 +173,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SessionStarted'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
       security:
       - HTTPBearer: []
   /v1/sessions/{session_id}:
@@ -713,6 +727,12 @@ components:
             format: date-time
           - type: 'null'
           title: Settled At
+        material_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Material Ids
       type: object
       required:
       - id
@@ -739,6 +759,36 @@ components:
         the depleting counter Product.md §4.6 forbids showing. The room keeps
 
         running either way; the user has no decision to make from it.'
+    SessionStart:
+      properties:
+        material_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          maxItems: 10
+          title: Material Ids
+      additionalProperties: false
+      type: object
+      title: SessionStart
+      description: 'What a room may be configured with, which today is only its grounding.
+
+
+        Panel composition, archetype selection and audience context all belong here
+
+        eventually and deliberately do not yet — `docs/ingestion.md` scopes those
+        to
+
+        the panel work, and inventing the fields now would be guessing at a shape
+
+        the interrogation design has not settled.
+
+
+        Extra fields are refused rather than ignored. A client sending `materialIds`
+
+        or `archetypes` should be told, not silently given an ungrounded room —
+
+        which is the failure that looks exactly like the panel being bad at its job.'
     SessionStarted:
       properties:
         id:
@@ -765,6 +815,12 @@ components:
             format: date-time
           - type: 'null'
           title: Settled At
+        material_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Material Ids
         stream_ticket:
           type: string
           title: Stream Ticket

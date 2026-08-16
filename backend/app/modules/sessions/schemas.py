@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timedelta
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 #: How often a live interrogation is billed — and, because the tick doubles as
 #: the heartbeat, how often the client proves it is still there. Declared here
@@ -120,6 +120,43 @@ class EndReason(str, Enum):
     PROVISIONING_FAILED = "provisioning_failed"
 
 
+#: How many materials one room may be grounded in.
+#:
+#: A guard rather than a considered limit, and the real bound is elsewhere: what
+#: the Auditor can hold is claims, not files, and a single pro-tier deck already
+#: carries more of those than a context window wants. Whatever replaces this
+#: will be counted in claims and will belong with the panel work.
+#:
+#: Ten is comfortably above the shape the product expects — a deck, perhaps an
+#: appendix, perhaps a photograph of the whiteboard — and low enough that
+#: nobody attaches a library by accident or on purpose.
+MAX_SESSION_MATERIALS = 10
+
+
+class SessionStart(BaseModel):
+    """What a room may be configured with, which today is only its grounding.
+
+    Panel composition, archetype selection and audience context all belong here
+    eventually and deliberately do not yet — `docs/ingestion.md` scopes those to
+    the panel work, and inventing the fields now would be guessing at a shape
+    the interrogation design has not settled.
+
+    Extra fields are refused rather than ignored. A client sending `materialIds`
+    or `archetypes` should be told, not silently given an ungrounded room —
+    which is the failure that looks exactly like the panel being bad at its job.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Optional, and the empty case is first-class rather than degraded.
+    #: `docs/auditor-grounding.md` gives the deckless panel abundant material to
+    #: attack, so a user who does not want to wait for extraction starts without
+    #: a deck instead of being blocked.
+    material_ids: list[uuid.UUID] = Field(
+        default_factory=list, max_length=MAX_SESSION_MATERIALS
+    )
+
+
 class SessionRead(BaseModel):
     """What a client is told about its own session.
 
@@ -142,6 +179,14 @@ class SessionRead(BaseModel):
     started_at: datetime
     end_reason: EndReason | None = None
     settled_at: datetime | None = None
+
+    #: What this room is grounded in, fixed when it started.
+    #:
+    #: Echoed back rather than left to the client to remember, because a client
+    #: that reopens the app mid-session has no other way to find out — and
+    #: "which deck is this room attacking" is not a question the user should
+    #: have to answer from memory.
+    material_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 class SessionStarted(SessionRead):

@@ -1,7 +1,16 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Index, func, text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    PrimaryKeyConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -215,4 +224,50 @@ class SessionPhaseSpan(Base):
     #: running — which is why it is never inferred from the session's state.
     ended_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+
+class SessionMaterial(Base):
+    """Which decks a room was grounded in.
+
+    A join rather than a column on either side, because the relationship is
+    genuinely many-to-many: `docs/ingestion.md` owns material by *account* so
+    that a deck uploaded once can be rehearsed against five times, and one
+    session can carry a deck plus a photograph of the whiteboard beside it.
+
+    The set is fixed when the session starts and never changes afterwards. That
+    is the whole point of the join existing at start rather than as an endpoint
+    you call later: the Auditor's reference set must not move mid-session, or
+    the same spoken claim passes at minute two and fails at minute six.
+    """
+
+    __tablename__ = "session_materials"
+    __table_args__ = (
+        # Every read is "what was this room grounded in", so the session leads.
+        # Composite primary key rather than a surrogate id: the pair *is* the
+        # fact, and it makes attaching the same deck twice impossible rather
+        # than merely unlikely.
+        PrimaryKeyConstraint("session_id", "material_id", name="pk_session_materials"),
+        Index("ix_session_materials_material_id", "material_id"),
+    )
+
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    #: Cascades too, and the consequence is deliberate: deleting a material
+    #: erases the record that a past session used it. The claims cascade with it
+    #: as well, so the grounding would be gone either way — a link pointing at a
+    #: deck whose contents no longer exist is a citation that cannot be followed,
+    #: which is worse than an honest absence.
+    material_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("materials.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    attached_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )

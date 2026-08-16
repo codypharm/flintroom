@@ -25,6 +25,7 @@ from app.modules.ingestion.extractor import (
 )
 from app.modules.ingestion.models import ExtractionCost, Material
 from app.modules.ingestion.schemas import QuantitativeClaim, Unit
+from tests.pdfs import minimal_pdf
 
 PDF = "application/pdf"
 
@@ -137,3 +138,19 @@ async def costs(db, material_id) -> list[ExtractionCost]:
         .order_by(ExtractionCost.recorded_at)
     )
     return list(rows)
+
+
+async def extracted(db, ingestion, storage, account, body: bytes | None = None) -> Material:
+    """A material all the way through: uploaded, read, and ready to ground a room.
+
+    The long way round rather than a row set to `ready` by hand, because what
+    callers of a ready material actually depend on is the claims behind it —
+    and a fixture that skips extraction produces a material that looks finished
+    and grounds nothing.
+    """
+    material = await uploaded(
+        ingestion, account, body if body is not None else minimal_pdf("Gross margin 61%")
+    )
+    await extraction(db, storage, FakeExtractionModel(reading(MARGIN))).sweep()
+    await db.refresh(material)
+    return material
