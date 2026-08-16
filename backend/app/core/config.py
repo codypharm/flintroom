@@ -151,7 +151,23 @@ class Settings(BaseSettings):
     #: means material cannot be read; it does not mean the process should refuse
     #: to start, because the deckless path is first-class rather than degraded
     #: (`docs/auditor-grounding.md`).
+    #:
+    #: Shared by extraction and — once it exists — the panel. One vendor, one
+    #: credential: splitting them would mean two keys to rotate and two places to
+    #: look when a 401 arrives, for no isolation that matters, since both bill the
+    #: same organisation.
     anthropic_api_key: str | None = None
+
+    #: The second panel vendor, held for comparison rather than for failover.
+    #:
+    #: `docs/panel-orchestration.md` puts the panel model behind an interface
+    #: precisely so Claude and Gemini can be measured against each other on cost
+    #: and latency per turn — the panel runs on every turn of a *metered* session,
+    #: so it lands inside the §4.4 margins that Open Risk #4 already flags.
+    #:
+    #: Inert until the Gemini adapter is written. Setting it early is harmless
+    #: and costs nothing; nothing reads it yet.
+    gemini_api_key: str | None = None
 
     #: Which model, within that vendor. A setting rather than a constant because
     #: it is the largest single lever on extraction cost, and every figure in
