@@ -27,6 +27,14 @@ export default function HomeScreen() {
           way in while task #17 is open; it is an instrument rather than a
           destination, and nothing should come to depend on this link.
         */}
+        {/*
+          The same kind of thing as the echo spike, and it leaves the same way.
+          The room has never met a phone; this is the door that lets it, until
+          sign-in exists and the real interrogation screen replaces it.
+        */}
+        <Link href="/room" style={[styles.link, { color: colors.primary }]}>
+          Room
+        </Link>
         <Link href="/echo-spike" style={[styles.link, { color: colors.primary }]}>
           Echo spike
         </Link>
