@@ -1,7 +1,13 @@
 # Panel Orchestration
 
-**Status:** decided 2026-08-16 via `grill-me`. Builds in Phase 3 (Weeks 5–6) per
-`Product.md` §7. Nothing here is built yet.
+**Status:** decided 2026-08-16 via `grill-me`; built through 2026-08-16, except
+speech recognition. Phase 3 (Weeks 5–6) per `Product.md` §7.
+
+The panel, routing, orchestration, barge-in, synthesis and casting all exist and
+are measured against live providers. **A transcriber is the one remaining vendor
+and the one remaining seam** — see *Open*. Everything below the Decisions section
+records what building it changed, and several decisions were revised by
+measurement rather than held.
 
 Resolves how a panel of archetypes actually holds a conversation. `Product.md`
 §3.3 specifies it in five bullets — turn-taking, inter-panelist disagreement,
@@ -150,14 +156,17 @@ for the voice loop.
 
 ## Open
 
-- **Speech recognition is undecided.** ElevenLabs Scribe keeps it to one vendor
-  and one key; Deepgram is the low-latency standard. It is a hop in the 1.5s
-  budget, so it should be decided by measurement rather than by preference.
-- **Barge-in is ours now.** The vendor's native handling was the reason
-  ElevenLabs was chosen, and owning the loop gives it back to us. Voice-activity
-  detection, endpointing, and discarding buffered playback on interrupt are all
-  unbuilt. `ClientChannel.discard_playback` already exists, which is the easy
-  half.
+- **Speech recognition is undecided**, and is now the *only* undecided vendor in
+  the chain. ElevenLabs Scribe keeps it to one vendor and one key; Deepgram is the
+  low-latency standard. Decide it by measurement rather than preference — and
+  weigh one requirement above latency: **it must emit interim results.** The whole
+  plan for holding 1.5s is running the ~0.8s selection hop against a partial
+  transcript while the user is still speaking. A transcriber that speaks only at
+  the end of an utterance makes that overlap impossible, and the room is over
+  budget by construction however fast the vendor itself is.
+- **Barge-in is ours now, and built** — see *Owning the loop*, below. What is
+  still outstanding is endpointing, which belongs to whichever transcriber is
+  chosen rather than to us.
 - **Difficulty calibration across sessions** (§3.3) has no design. It needs
   something durable per user, and `docs/minutes-ledger-and-sessions.md` has no
   opinion on where that lives.
@@ -303,3 +312,130 @@ Four ways out, none free:
    because the implementation is slow is the wrong direction of travel.
 
 This is an architecture decision and it is not the agent's to make.
+
+---
+
+## Owning the loop, 2026-08-16
+
+`OrchestratedProvider` and `OrchestratedChannel` satisfy the same `VoiceChannel`
+contract as the vendor adapter while running the conversation themselves —
+transcribe, select, compose, speak. Nothing in `relay.py` changed, so metering,
+idle detection and settlement all work unmodified against it.
+
+Two properties are worth stating because both were arrived at by being wrong
+first.
+
+**The channel listens while it speaks.** The first version read a transcription
+result, answered it, then read the next — a room that cannot be interrupted,
+because while a panelist speaks nothing is listening. A listener task now reads
+transcription continuously and a turn runs beside it. Cancelling the turn is what
+stops a panelist mid-word, which is why `Speaker.speak` is an iterator rather
+than a method returning bytes: dropping the iteration drops the utterance, and
+nothing needs a cancel call that could leave an adapter half-spoken. A **partial**
+takes the floor away, not a final — waiting for the final means waiting for the
+user to finish their sentence before conceding it.
+
+**The user's words are recorded outside the cancellable part.** A second finished
+utterance abandons the turn in flight, correctly: the room should answer the
+latest thing said rather than queue a challenge to a sentence the user has moved
+on from. But recording their line *inside* that task meant our choice not to
+reply erased what they said, and the next selection judged the conversation
+missing an answer it had been given.
+
+### Speech, measured against the live account
+
+| | |
+| --- | --- |
+| First frame, warm (`eleven_flash_v2_5`) | **0.38s**, steady across six of eight |
+| First frame, cold connection | 2.59s, 1.13s |
+| First frame (`eleven_v3`) | 0.76s |
+| Format | `pcm_16000` — S16LE 16 kHz mono, no transcode anywhere |
+
+Which closes the budget arithmetic that had been an estimate since the spike:
+
+| | Interrogate | Speech | Overlap | First audio |
+| --- | --- | --- | --- | --- |
+| Flash v2.5 | 1.80s | 0.38s | −0.80s | **1.38s** ✓ |
+| v3 | 1.80s | 0.76s | −0.80s | 1.76s ✗ |
+
+The selection overlap is no longer a hypothesis with one end measured. Both ends
+are now measured, and it works out — which also makes the transcriber's interim
+results a hard requirement rather than a preference.
+
+### Deferred: v3 for genuine expressiveness
+
+**Decided, not merely unbuilt.** The human wants the room expressive; the cost is
+not payable yet. Recorded here as well as in the task list because a task list is
+not a repository.
+
+Audio tags — `[sighs]`, `[laughs]`, `[sarcastic]` — are the difference between a
+panel that reads and a panel that performs. Flash v2.5 does not support them, and
+does **not** ignore them either: measured, it speaks them aloud. A tagged take ran
+5.7s against 3.6s for identical words, and the extra two seconds is the model
+saying "sighs" out loud. Documentation would not have caught this — the prompting
+guide calls tags "an Eleven v3 feature", the model page names v3 *Conversational*
+as the only model supporting them, and neither says what Flash does on receiving
+one. Only listening found it.
+
+`speakers/elevenlabs.TAG_PERFORMING_MODELS` strips tags for any model not known
+to perform them, and the composer prompt forbids brackets outright, since a
+stripped tag leaves a challenge missing the word it hinged on.
+
+**What we do instead, and it is most of the way there.** `Archetype.cadence`
+describes how a panelist's words land — sentence length, where the full stops
+fall, whether they open with a beat. It is the only expressive channel synthesis
+leaves us, and it is free. Measured on one utterance against live Gemini, the
+same four archetypes produced four structurally identical compound questions
+without it, and with it:
+
+> **Distracted Executive** — *"Replatform? Six months? What is the ask, and what
+> happens if we do nothing?"*
+>
+> **CFO** — *"Replatforming takes four quarters minimum. Where is the downtime
+> budget in your model?"*
+
+It also overshot, which is worth recording: with cadence and no ceiling the
+Internal Blocker produced 85 words — **27.9 seconds** of measured speech. A
+monologue in a room whose premise is that the user answers back, costing three
+ways at once: they wait half a minute for a turn, it consumes a third of the
+90-second idle window that only *user* speech resets, and synthesis bills per
+character. The prompt now bounds a turn at thirty words and two sentences
+however unhurried the manner, which took that line to 10.7s with the archetype
+still unmistakably itself.
+
+**Reopen when any of:**
+
+1. The ElevenLabs plan is upgraded and `eleven_v3_conversational` — built for
+   real time at ~280ms, currently `model_access_denied` — measures near spec. It
+   is the only option that takes both sides of the trade.
+2. Real users report the room feels flat or synthetic *despite* the cadence work.
+   Open Risk #1 is whether people tolerate being attacked at all, and a flat
+   reading is less confronting than a performed one.
+3. §4.3 cost instrumentation shows margin headroom for a pricier synthesis tier.
+   v3 costs more per character, and every tier margin still rests on an
+   unverified $0.12/min assumption.
+
+**When reopened:** add the model to `TAG_PERFORMING_MODELS` — the strip guard is
+already model-aware — and teach the composer prompt to emit tags, which it is
+currently instructed never to do.
+
+### Casting
+
+Eight voices, four and four by gender, three accents. Stored as characters in
+`agents/voices.py` — `measured`, `brisk` — never vendor identifiers.
+`ELEVENLABS_VOICES` in the adapter is the only place in the codebase that knows
+an ElevenLabs voice id.
+
+That indirection exists for the feature that does not exist yet. Shipped
+archetypes are config in one file, so a vendor swap there is a find-and-replace;
+a Pro user's custom archetype is a row **they** own, and a vendor id in one turns
+that swap into a migration over customer content. The cheap moment to avoid it
+was before any row existed.
+
+Custom archetypes get a voice **auto-assigned** — first unused in the seated room
+— with an optional override from the same eight. Decided rather than defaulted:
+most users writing a custom archetype care about the argument it makes, not its
+timbre, and making them cast it is a decision tax on the feature's main path. The
+uniqueness constraint is **per-room, not per-library**: two custom archetypes may
+share a voice safely if never seated together, so the check belongs in
+`assemble()` beside the tier cap.
