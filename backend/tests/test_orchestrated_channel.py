@@ -22,8 +22,8 @@ from app.agents.archetypes import DEFAULT_PANEL, Archetype
 from app.agents.context import Grounding
 from app.agents.model import ModelReply
 from app.core.errors import ProviderUnavailable
-from app.modules.voice.events import AgentTranscript, Spent
-from app.modules.voice.orchestrated import OrchestratedChannel
+from app.modules.voice.events import AgentTranscript, Heartbeat, Spent
+from app.modules.voice.orchestrated import HEARTBEAT_SECONDS, OrchestratedChannel
 from app.modules.voice.transcribers.elevenlabs import SAMPLE_RATE
 from app.modules.voice.transcription import Transcription
 
@@ -574,3 +574,39 @@ async def test_a_panelist_cut_off_is_not_a_failure():
     events, _ = await asyncio.gather(events_of(channel), interrupt())
 
     assert any(type(event).__name__ == "Interrupted" for event in events)
+
+
+async def test_a_room_says_it_is_alive_even_when_nobody_is_speaking():
+    """Without this the reaper kills every room at forty-five seconds.
+
+    `Heartbeat` is what the relay turns into `record_progress`, and the reaper
+    orphans any active session whose progress mark is older than
+    `ORPHAN_TIMEOUT` — three ticks, forty-five seconds. ElevenLabs Agents sent
+    pings and the adapter translated them; owning the loop removed the vendor
+    and took the heartbeat with it, so every orchestrated room was reaped
+    mid-conversation, settled as a client disconnect, and the phone was told the
+    room was over while the user was still talking to it.
+
+    It is deliberately not conditional on anybody speaking. A user thinking for
+    two minutes about a hostile question is in a live room; deciding otherwise
+    is the idle timeout's job, on a separate clock the session owns, and
+    conflating the two is what would make silence look like a dropped
+    connection.
+    """
+    transcription = DrivenTranscription()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=transcription,
+        model=ScriptedPanelModel(),
+        grounding=Grounding(),
+        heartbeat_seconds=0.02,
+    )
+
+    async def stay_quiet():
+        await asyncio.sleep(0.05)
+        transcription.hang_up()
+
+    events, _ = await asyncio.gather(events_of(channel), stay_quiet())
+
+    beats = [event for event in events if isinstance(event, Heartbeat)]
+    assert len(beats) >= 2, "a quiet room must keep reporting that it is open"

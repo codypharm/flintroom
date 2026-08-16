@@ -29,6 +29,7 @@ from app.modules.voice.events import (
     AgentAudio,
     AgentTranscript,
     ChannelReady,
+    Heartbeat,
     Interrupted,
     Spent,
     UserSpoke,
@@ -38,6 +39,19 @@ from app.modules.voice.speech import Speaker
 from app.modules.voice.transcription import Transcriber, TranscriptionStream
 
 log = get_logger(__name__, tag="voice")
+
+#: How often a live room reports that it is still open.
+#:
+#: The reaper orphans any active session whose progress mark is older than
+#: `ORPHAN_TIMEOUT` — three ticks, forty-five seconds — so this has to be
+#: comfortably inside that. Ten seconds leaves room for a missed sweep and a
+#: slow one without ever approaching the cutoff, and costs one small write.
+#:
+#: ElevenLabs Agents sent pings and the adapter translated them into
+#: `Heartbeat`. Owning the loop removed the vendor and took the heartbeat with
+#: it, and nothing failed loudly: rooms simply died at forty-five seconds,
+#: settled as a user who had hung up, while somebody was still talking to them.
+HEARTBEAT_SECONDS = 10.0
 
 #: What the transcriber is billed against. The relay carries PCM16 at 16 kHz
 #: mono in both directions, so a second of audio is a fixed number of bytes and
@@ -124,8 +138,12 @@ class OrchestratedChannel:
         model: PanelModel,
         speaker: Speaker | None = None,
         grounding: Grounding | None = None,
+        heartbeat_seconds: float = HEARTBEAT_SECONDS,
     ) -> None:
         self._panel = panel
+        # Injectable so a test can watch several beats without waiting for
+        # them. The default is the only value production uses.
+        self._heartbeat_seconds = heartbeat_seconds
         self._transcription = transcription
         self._model = model
         # Optional so the room can be exercised — and read in a transcript —
@@ -198,6 +216,7 @@ class OrchestratedChannel:
 
         out: asyncio.Queue[VoiceEvent | BaseException | None] = asyncio.Queue()
         listener = asyncio.create_task(self._listen(out))
+        beating = asyncio.create_task(self._beat(out))
         try:
             while (event := await out.get()) is not None:
                 if isinstance(event, BaseException):
@@ -214,7 +233,23 @@ class OrchestratedChannel:
             # own room, holding a transcription stream open on somebody's
             # invoice with nobody reading it.
             listener.cancel()
-            await asyncio.gather(listener, return_exceptions=True)
+            beating.cancel()
+            await asyncio.gather(listener, beating, return_exceptions=True)
+
+    async def _beat(self, out: asyncio.Queue[VoiceEvent | BaseException | None]) -> None:
+        """Report that the room is open, until it is not.
+
+        On a clock rather than on activity, because that is what the event
+        means: the channel is still delivering, not that anybody is
+        participating. A user thinking for two minutes about a hostile question
+        is in a live room, and deciding otherwise belongs to the idle timeout —
+        a separate clock the session owns, fed by `UserSpoke`. Conflating them
+        would make silence indistinguishable from a dropped connection, which is
+        exactly the distinction the two events exist to keep apart.
+        """
+        while True:
+            await asyncio.sleep(self._heartbeat_seconds)
+            await out.put(Heartbeat())
 
     async def _listen(self, out: asyncio.Queue[VoiceEvent | None]) -> None:
         """Read transcription forever; start, and stop, turns as it goes."""
