@@ -67,10 +67,17 @@ MAX_OUTPUT_TOKENS = 16384
 #: applied to context instead of cost.
 PAGES_PER_CALL = 20
 
-#: Calls in flight at once. A 300-page deck is fifteen calls; run one after
-#: another that is minutes of wall clock for somebody who uploaded a deck in
-#: order to rehearse against it now. Bounded rather than unbounded because the
-#: rate limit is per account and one enthusiastic user should not spend it.
+#: Calls in flight at once, **per deck**. A 300-page deck is fifteen calls; run
+#: one after another that is minutes of wall clock for somebody who uploaded a
+#: deck in order to rehearse against it now.
+#:
+#: This is not the fleet's ceiling and must not be mistaken for one. The
+#: semaphore is created per `extract` call, and the API key is one credential
+#: for the whole deployment — so the rate limit is spent by every user at once,
+#: not by each user separately. A user works one deck at a time; fifty users on
+#: a busy evening do not. Whatever decides how many materials the extraction
+#: sweep claims per pass is choosing the real number, and it should own that
+#: rather than discover it in a wall of 429s.
 CONCURRENT_CALLS = 4
 
 #: Retries per call, set here rather than inherited.

@@ -332,10 +332,21 @@ source is deleted afterwards. These numbers are **estimated, not observed** —
 size can be set from a measured claims-per-page figure rather than arithmetic.
 That is the §4.3 argument applied to context instead of cost.
 
-Calls run four at a time. Sequentially a fifteen-call deck is minutes of wall
-clock for somebody who uploaded it in order to rehearse against it now;
-unbounded, one user spends an account-wide rate limit and every other deck being
-read at that moment gets a 429.
+Calls run four at a time, **per deck**. Sequentially a fifteen-call deck is
+minutes of wall clock for somebody who uploaded it in order to rehearse against
+it now.
+
+**Four is not the fleet's ceiling, and the difference is a trap.** The semaphore
+is created inside `extract`, so it bounds one material; the API key is one
+credential for the whole deployment, so the rate limit is spent by every user at
+once. A user works one deck at a time — fifty users on a busy evening do not,
+and fifty decks at four calls each is two hundred concurrent requests against a
+limit that has no idea whose deck is whose.
+
+Nothing hits that today because nothing extracts two materials at once. It
+becomes real the moment the sweep exists: **whatever decides how many materials
+a sweep pass claims is choosing the actual concurrency ceiling**, and it should
+own that number deliberately rather than discover it as a wall of 429s.
 
 **Retries are configured, not inherited.** The SDK retries twice by default;
 the adapter asks for four, because one chunk that gives up discards every other
