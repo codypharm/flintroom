@@ -79,7 +79,9 @@ export function createPlayback({ context }: { context: PlaybackContext }): Playb
       // context's rate. `createBuffer` carries a sample rate but does not act
       // on it during playback, so a 16 kHz buffer in a 48 kHz context is
       // played as though it were 48 kHz — three times too fast.
-      const samples = resampleLinear(fromPcm16(pcm), WIRE_SAMPLE_RATE, context.sampleRate);
+      const samples = amplify(
+        resampleLinear(fromPcm16(pcm), WIRE_SAMPLE_RATE, context.sampleRate)
+      );
       const buffer = context.createBuffer(1, samples.length, context.sampleRate);
 
       buffer.copyToChannel(samples, 0);
@@ -98,4 +100,37 @@ export function createPlayback({ context }: { context: PlaybackContext }): Playb
       source.stop();
     },
   };
+}
+
+
+/**
+ * How much of the synthesiser's unused headroom to claim back.
+ *
+ * **Measured, not chosen.** ElevenLabs returns PCM peaking at exactly -6 dBFS —
+ * half of full scale — which is a mastering decision on their side rather than
+ * anything about the speech. On a phone that is six decibels discarded before
+ * the volume slider is consulted, and a room runs on the voice-call audio path
+ * (`modules/audio-routing`, and `docs/echo-cancellation.md` for why), which is
+ * quieter than media to begin with. The loss lands on top of a lower floor.
+ *
+ * It was audible before it was measured: a panel too quiet at maximum volume,
+ * on a device that is otherwise loud enough.
+ */
+const HEADROOM_GAIN = 2;
+
+/**
+ * Louder, and never wrapped.
+ *
+ * Clamped rather than trusted. The gain is right for this vendor and this
+ * measurement; a future synthesiser mastering at full scale would exceed it,
+ * and a sample allowed past 1.0 wraps to the opposite sign further down — a
+ * click, which is worse than the distortion a limiter produces and much harder
+ * to attribute.
+ */
+function amplify(samples: Float32Array): Float32Array {
+  for (let i = 0; i < samples.length; i += 1) {
+    samples[i] = Math.max(-1, Math.min(1, samples[i] * HEADROOM_GAIN));
+  }
+
+  return samples;
 }

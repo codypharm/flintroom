@@ -225,3 +225,35 @@ describe('starting the queue', () => {
     expect(context.sources[0].startedWith).toEqual([[0, 0]]);
   });
 });
+
+describe('loudness', () => {
+  it('recovers the headroom the synthesiser leaves unused', () => {
+    /**
+     * Measured against the live vendor: their PCM peaks at exactly -6 dBFS,
+     * half of full scale, which is a mastering choice on their side rather
+     * than a property of the speech. On a phone that is six decibels thrown
+     * away before the volume slider is even consulted — and a room runs on the
+     * voice-call audio path, which is quieter than media to begin with, so the
+     * loss lands on top of a quieter floor.
+     *
+     * It was audible before it was measured: a panel at maximum volume on a
+     * device that is otherwise loud enough.
+     *
+     * Clamped rather than trusted. The gain is right for this vendor and this
+     * measurement; a future one mastering at full scale would clip, and a
+     * limiter turns that into distortion on peaks instead of samples wrapping
+     * to the opposite sign, which is a click.
+     */
+    const context = new FakeContext(16_000);
+    const playback = createPlayback({ context });
+
+    // Full-scale positive, and half-scale — the level the vendor actually sends.
+    const pcm = new Int16Array([0x7fff, 0x4000, -0x4000]);
+    playback.enqueue(pcm.buffer);
+
+    const [written] = context.buffers[0].channels;
+    expect(written[0]).toBeCloseTo(1, 5); // clamped, not wrapped
+    expect(written[1]).toBeCloseTo(1, 2); // half scale doubled to full
+    expect(written[2]).toBeCloseTo(-1, 2);
+  });
+});
