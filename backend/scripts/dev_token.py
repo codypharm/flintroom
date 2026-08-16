@@ -22,15 +22,25 @@ Usage, from `backend/`:
 
     uv run python -m scripts.dev_token
 
-Prints a token. Paste it into the room screen on the phone. Re-running with the
-same `--email` returns a token for the same account, so a second run does not
-strand the balance from the first.
+Writes `EXPO_PUBLIC_DEV_TOKEN` into `app/.env.local` and prints it. Expo inlines
+that into the bundle, so the room screen comes up with the field already filled
+and the phone needs only a reload — pasting two hundred characters into a
+handset with a thumb is not a workflow, it is a deterrent.
+
+`.env.local` is already ignored by the root `.gitignore` (`.env.*`), and the
+screen only reads the variable under `__DEV__`, so a release build cannot carry
+one in even if the file were present when it was made.
+
+Re-running with the same `--email` returns a token for the same account, so a
+second run does not strand the balance from the first.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import pathlib
+import sys
 import uuid
 from datetime import timedelta
 
@@ -49,6 +59,9 @@ from app.modules.billing.tiers import FREE_TIER
 #: sign-in would leave it and a later real sign-in with the same email links to
 #: the same account rather than making a second one.
 PROVIDER = "google"
+
+#: What the room screen reads. `EXPO_PUBLIC_` is what makes Expo inline it.
+ENV_VAR = "EXPO_PUBLIC_DEV_TOKEN"
 
 
 async def issue(*, email: str, tier: str, hours: int) -> str:
@@ -116,9 +129,37 @@ def main() -> None:
         default=FREE_TIER,
         help="Entitlement tier for a newly created account. Ignored if it exists.",
     )
+    parser.add_argument(
+        "--no-write",
+        action="store_true",
+        help="Only print the token, leaving app/.env.local alone.",
+    )
     args = parser.parse_args()
 
-    print(asyncio.run(issue(email=args.email, tier=args.tier, hours=args.hours)))
+    token = asyncio.run(issue(email=args.email, tier=args.tier, hours=args.hours))
+    print(token)
+
+    if not args.no_write:
+        written = _write_env(token)
+        print(f"\nwritten to {written}", file=sys.stderr)
+        print("reload the app on the phone; the field will be filled", file=sys.stderr)
+
+
+def _write_env(token: str) -> pathlib.Path:
+    """Put the token where Expo will find it, without disturbing anything else.
+
+    Rewrites only our own line. A developer's `.env.local` is theirs and may
+    hold an `EXPO_PUBLIC_API_URL` pointing at staging — clobbering the file to
+    save a few lines here would be a script quietly undoing somebody's setup.
+    """
+    env = pathlib.Path(__file__).resolve().parents[2] / "app" / ".env.local"
+    keep = [
+        line
+        for line in (env.read_text().splitlines() if env.exists() else [])
+        if not line.startswith(f"{ENV_VAR}=")
+    ]
+    env.write_text("\n".join([*keep, f"{ENV_VAR}={token}"]) + "\n")
+    return env
 
 
 if __name__ == "__main__":

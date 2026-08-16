@@ -55,7 +55,19 @@ interface Caption {
 
 export default function RoomScreen() {
   const { colors } = useTheme();
-  const [token, setToken] = useState('');
+  // Prefilled from `app/.env.local`, which `scripts/dev_token.py` writes. Two
+  // hundred characters is not something anyone should type into a handset, and
+  // a measurement abandoned because pasting was annoying is a measurement not
+  // taken.
+  //
+  // `__DEV__` guards it rather than trusting the file to be absent. Expo inlines
+  // `EXPO_PUBLIC_*` into the bundle in plain text, so a release build made on a
+  // machine that happened to have the file would otherwise ship a working token
+  // for somebody's account. The variable is read statically because Expo only
+  // substitutes dot notation — `process.env['...']` is not replaced.
+  const [token, setToken] = useState(
+    __DEV__ ? (process.env.EXPO_PUBLIC_DEV_TOKEN ?? '') : ''
+  );
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [captions, setCaptions] = useState<Caption[]>([]);
