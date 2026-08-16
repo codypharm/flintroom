@@ -240,9 +240,56 @@ extraction model's only job is pulling figures into a typed claim. Every derived
 figure is ordinary arithmetic, so *"arithmetic hallucination becomes impossible
 rather than discouraged."*
 
+### A claim has two kinds, and only one of them is a number
+
+**Corrected 2026-08-16**, after the first adapter was built extracting figures
+only. `Product.md` asks extraction for *"claims, figures, and chart data"* (§3.2),
+asks the Auditor for *"contradictions, **unsupported claims**, and figures that
+moved"* (§3.3), and defines the wedge as *"a challenge that traces to a specific
+**claim, figure**, or slide"* (§9). Claims and figures are distinguished
+throughout. This document had collapsed them into one numeric shape.
+
+| Kind | Carries | Compares |
+| --- | --- | --- |
+| `QUANTITATIVE` | metric, value, unit, period | Exactly. Clears the live-interrupt bar |
+| `ASSERTION` | subject, statement | Fuzzily. Debrief only |
+
+**Most of what is attackable in a deck is not a number.** Exclusivity, a granted
+patent, a competitive absolute, a commitment about next quarter. Extracting only
+figures leaves the Technical Skeptic with no ammunition and makes the panel one
+archetype wearing four hats — and `docs/auditor-grounding.md` says qualitative
+findings are *"collected and surfaced in the debrief"*, which is impossible if
+extraction never captured them.
+
+`AssertionClaim` deliberately has **no** `comparable_to`. The bar for
+interrupting a live room is a contradiction stateable precisely — both figures,
+both moments — and an assertion cannot meet it. A method that accepted one would
+be the route by which fuzzy disagreement reaches the live panel, which is exactly
+the false-positive failure the grounding doc refuses.
+
+`subject` on an assertion is load-bearing rather than descriptive: §3.3 assigns
+the interrupter by domain, and without it every assertion is unroutable and
+targeted interruption quietly covers only numbers.
+
+**Why this could not wait.** The source document is deleted once extraction
+succeeds, and this document already accepts that *"improving the extraction
+pipeline cannot reprocess existing material."* Anything not extracted is gone
+permanently — so extraction completeness is a one-way door, not a backlog item.
+
+**What it costs.** Assertions are the more numerous kind on most slides, so
+output tokens roughly treble while input does not move. Output is the expensive
+side, and the ~$0.01/page assumption every limit in this document rests on was
+made against figures alone. It is now weaker still, which makes §4.3 more
+overdue rather than less.
+
+Retaining the raw page text was the cheap alternative and was refused: keeping a
+deck's full text indefinitely is retaining substantially the whole document, and
+contradicts the promise that *"what survives is the extracted claims and a
+downscaled first-page thumbnail"* — the one made to the App Store questionnaire.
+
 ### A claim is one shape, stored in two tables
 
-`Claim` — value, unit, metric, period — is shared, because the Auditor's entire
+The comparable core of a claim is shared, because the Auditor's entire
 function is comparing a slide claim against a spoken one and they must be
 comparable. Unit and period are load-bearing, not decoration: *"most false
 positives come from comparing figures that were never comparable."*
@@ -613,6 +660,14 @@ Follows the mandatory rules rather than restating them; the ones with teeth here
   are pure Python and needed no system package, so PPTX is the only input still
   waiting on a 400 MB binary decision, and it waits alone rather than holding the
   module back.
+- **A full-tier deck does not fit in one extraction call.** The adapter sends
+  every page in a single request, and at ~1600 input tokens per rendered page
+  that is ~32k for free's 20 pages, ~160k for starter's 100, and ~480k for pro's
+  300 — the last far past any context window, and the middle one already
+  crowding a 200k one before the tool schema and text layers are counted. It
+  fails after upload, after the sweep has claimed the row, and identically on
+  every retry. Task #31; chunking belongs inside the adapter, because a context
+  window is a vendor constraint.
 - **The sweep has not implemented the limit table yet.** *Exceeding a limit does
   two different things* above was corrected on 2026-08-16 and only half of it is
   built: `MaterialTooManyPages` exists and is terminal, and the monthly and daily

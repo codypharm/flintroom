@@ -33,39 +33,56 @@ from app.modules.ingestion.extraction_model import (
     ExtractionUsage,
 )
 from app.modules.ingestion.parsing import RenderedPage
+from app.modules.ingestion.schemas import ClaimKind
 
 log = get_logger(__name__, tag="ingestion")
 
 PROVIDER = "claude"
 
 #: Generous, because the failure it prevents is a truncated claim list on a
-#: dense deck — which looks exactly like a deck with fewer figures on it.
-MAX_OUTPUT_TOKENS = 8192
+#: dense deck — which looks exactly like a deck with fewer figures on it, and
+#: nothing downstream can tell the difference. Raised when assertions were added
+#: alongside figures: they are the more numerous kind on most slides, so the
+#: output roughly trebled while the input did not move.
+MAX_OUTPUT_TOKENS = 16384
 
 TOOL_NAME = "record_claims"
 
 #: The tool is the output format. A schema the provider enforces beats asking
 #: for JSON in prose and parsing whatever comes back, and it is why `to_claims`
 #: below is short enough to be obviously correct.
+_PAGE = {
+    "type": "integer",
+    "description": "The page number this appears on.",
+}
+_QUOTE = {
+    "type": "string",
+    "description": "The text it was read from, quoted.",
+}
+
+#: Two arrays rather than one array with a `kind` field.
+#:
+#: A single array needs `oneOf` to make `value` required for a figure and
+#: `statement` required for an assertion, and conditional JSON Schema is the
+#: part models honour least reliably. Two flat schemas, every field required in
+#: each, is the shape that comes back correct — and `to_claims` reads both.
 CLAIM_TOOL: dict[str, Any] = {
     "name": TOOL_NAME,
     "description": (
-        "Record every quantitative claim stated on these pages. One entry per "
-        "figure. Do not compute, infer, or combine figures — record only what "
-        "is written."
+        "Record what these pages claim. Figures go in `figures`; statements "
+        "that are not numbers go in `assertions`. Record only what is written — "
+        "never derive, convert, total, or infer."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "claims": {
+            "figures": {
                 "type": "array",
+                "description": "Every quantitative claim. One entry per figure.",
                 "items": {
                     "type": "object",
                     "properties": {
-                        "page": {
-                            "type": "integer",
-                            "description": "The page number the figure appears on.",
-                        },
+                        "page": _PAGE,
                         "metric": {
                             "type": "string",
                             "description": (
@@ -91,24 +108,54 @@ CLAIM_TOOL: dict[str, Any] = {
                                 "'FY2025'. Null if the figure states none."
                             ),
                         },
-                        "quote": {
-                            "type": "string",
-                            "description": "The text the figure was read from.",
-                        },
+                        "quote": _QUOTE,
                     },
                     "required": ["page", "metric", "value", "unit", "quote"],
                 },
-            }
+            },
+            "assertions": {
+                "type": "array",
+                "description": (
+                    "Every non-numeric claim: exclusivity, partnerships, "
+                    "patents and other IP, competitive absolutes ('nobody "
+                    "else offers X'), regulatory status, and commitments about "
+                    "the future. Skip description that asserts nothing."
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "page": _PAGE,
+                        "subject": {
+                            "type": "string",
+                            "description": (
+                                "The domain it belongs to: 'distribution', "
+                                "'intellectual property', 'competition', "
+                                "'regulatory', 'team'."
+                            ),
+                        },
+                        "statement": {
+                            "type": "string",
+                            "description": (
+                                "The claim in one sentence, as the deck makes "
+                                "it. Do not soften or hedge it."
+                            ),
+                        },
+                        "quote": _QUOTE,
+                    },
+                    "required": ["page", "subject", "statement", "quote"],
+                },
+            },
         },
-        "required": ["claims"],
+        "required": ["figures", "assertions"],
     },
 }
 
 INSTRUCTION = (
     "Each page is given as an image and its text layer. Read both: chart values "
-    "are usually in the image only. Record every quantitative claim with the "
-    "record_claims tool. Record figures exactly as stated — never derive, "
-    "convert, or total them."
+    "are usually in the image only. Record what the pages claim with the "
+    "record_claims tool — figures in `figures`, non-numeric claims in "
+    "`assertions`. Record exactly what is stated; never derive, convert, total, "
+    "or infer a figure, and never soften an assertion."
 )
 
 
@@ -220,21 +267,35 @@ def to_claims(payload: dict[str, Any]) -> tuple[tuple[ExtractedClaim, ...], int]
     fail for a reason no re-upload fixes. The count is returned because a silent
     drop is how a deck quietly grounds nothing.
     """
-    entries = payload.get("claims")
-    if not isinstance(entries, list):
-        return (), 0
-
     claims: list[ExtractedClaim] = []
     dropped = 0
-    for entry in entries:
-        try:
-            claims.append(ExtractedClaim.model_validate(entry))
-        except Exception:  # noqa: BLE001 - see below
-            # Deliberately broad, and deliberately not re-raised. Everything
-            # here is somebody else's output: `model_validate` raises
-            # `ValidationError` for a bad field and `AttributeError` for a
-            # non-mapping entry, and the correct response to both is the same.
-            # Nothing is swallowed — the count is returned and logged upstream.
-            dropped += 1
+
+    for field, kind in (("figures", ClaimKind.QUANTITATIVE), ("assertions", ClaimKind.ASSERTION)):
+        entries = payload.get(field)
+        if not isinstance(entries, list):
+            # A missing array is not a malformed claim — a deck of photographs
+            # legitimately has no figures on it. Only entries are counted.
+            continue
+
+        for entry in entries:
+            try:
+                # Copied rather than popped. `entry` belongs to the caller's
+                # payload, and mutating it would leave the provider's reply
+                # subtly different from what arrived — which matters most when
+                # something goes wrong and that payload is what gets inspected.
+                fields = {k: v for k, v in entry.items() if k != "page"}
+                claims.append(
+                    ExtractedClaim(
+                        page=entry["page"], claim={**fields, "kind": kind}
+                    )
+                )
+            except Exception:  # noqa: BLE001 - see below
+                # Deliberately broad, and deliberately not re-raised. Everything
+                # here is somebody else's output: a bad field raises
+                # `ValidationError`, a non-mapping entry raises `AttributeError`,
+                # and a missing page raises `KeyError`. The correct response to
+                # all three is the same. Nothing is swallowed — the count is
+                # returned, and logged by the caller.
+                dropped += 1
 
     return tuple(claims), dropped

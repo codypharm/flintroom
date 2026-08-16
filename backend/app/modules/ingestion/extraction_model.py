@@ -27,26 +27,29 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.ingestion.parsing import RenderedPage
 from app.modules.ingestion.schemas import Claim
 
 
-class ExtractedClaim(Claim):
+class ExtractedClaim(BaseModel):
     """A claim, and the page it was found on.
 
-    The locator is added here rather than sitting on `Claim` because the Auditor
+    The locator sits here rather than on the claim itself because the Auditor
     compares a slide's figure against a spoken one, and those two have different
     locators — a page here, an offset into the session there. Keeping the
-    comparable part shared is what makes the comparison possible at all.
+    comparable part free of either is what makes the comparison possible at all.
 
-    A subclass rather than a wrapper, so `comparable_to` and every field reach
-    through unchanged. A wrapper would need a forwarding property per field, and
-    the one somebody forgets to forward is the one that stops comparing.
+    A pairing rather than a subclass because `Claim` is a discriminated union
+    and a union cannot be subclassed. That turns out to be the honest shape
+    anyway: the claim is the thing, and the page is where it was found.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     page: int = Field(gt=0)
+    claim: Claim
 
 
 @dataclass(frozen=True)

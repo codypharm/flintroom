@@ -6,6 +6,7 @@ The lifecycle is specified in `docs/ingestion.md`.
 import uuid
 from datetime import datetime
 from enum import Enum
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -149,7 +150,34 @@ def _is_number(text: str) -> bool:
     return True
 
 
-class Claim(BaseModel):
+class ClaimKind(str, Enum):
+    """The two things a deck asserts, and only one of them is a number.
+
+    Carried explicitly rather than inferred from which fields happen to be set.
+    A discriminator reconstructed by looking for a null is one that starts
+    disagreeing with itself the moment a field becomes optional.
+    """
+
+    QUANTITATIVE = "quantitative"
+    ASSERTION = "assertion"
+
+
+class ClaimCore(BaseModel):
+    """What both kinds carry.
+
+    `quote` is the source text every claim traces back to. CLAUDE.md: *"do not
+    ship interrogation logic that can't cite its source"* — so it is required on
+    both kinds, and it is stored and **never logged**. Ingested material
+    contents are forbidden in logs and, unlike a secret, are not detectable by
+    key name, so the text must not be passed to a log call at all.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    quote: str = Field(min_length=1, max_length=2000)
+
+
+class QuantitativeClaim(ClaimCore):
     """One figure, captured with enough context to compare it to another.
 
     The shape is shared with the claims the Auditor pulls out of live speech
@@ -158,12 +186,12 @@ class Claim(BaseModel):
     *locator* differs — a slide number here, an offset into the session there —
     and lives on the row rather than in this type.
 
-    `quote` is the source text. It is stored and never logged: CLAUDE.md forbids
-    ingested material contents in logs, and unlike a secret it is not detectable
-    by key name, so it must not be passed to a log call at all.
+    This is the only kind that supports exact contradiction, which is the bar
+    `docs/auditor-grounding.md` sets for interrupting a live room: a
+    contradiction stateable precisely, both figures and both moments.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    kind: Literal[ClaimKind.QUANTITATIVE] = ClaimKind.QUANTITATIVE
 
     #: What is being measured — "gross margin", "ARR", "headcount".
     metric: str = Field(min_length=1, max_length=120)
@@ -180,8 +208,6 @@ class Claim(BaseModel):
     #: today has no period and refusing it would drop a real claim.
     period: str | None = Field(default=None, max_length=60)
 
-    quote: str = Field(min_length=1, max_length=2000)
-
     @field_validator("unit", mode="before")
     @classmethod
     def _normalize(cls, value: object) -> object:
@@ -193,7 +219,7 @@ class Claim(BaseModel):
         """
         return normalize_unit(value) if isinstance(value, str) else value
 
-    def comparable_to(self, other: Claim) -> bool:
+    def comparable_to(self, other: QuantitativeClaim) -> bool:
         """Whether these two figures may be checked against each other at all.
 
         Asked as a question rather than inferred from equality of units, because
@@ -210,6 +236,42 @@ class Claim(BaseModel):
             and self.unit is other.unit
             and self.period == other.period
         )
+
+
+class AssertionClaim(ClaimCore):
+    """A statement the deck makes that is not a number.
+
+    `Product.md` asks extraction for *"claims, figures, and chart data"* and the
+    Auditor for *"contradictions, unsupported claims, and figures that moved"* —
+    claims and figures distinguished throughout. Most of what is genuinely
+    attackable in a deck lives here: exclusivity, a granted patent, a
+    competitive absolute, a promise about next quarter. Without it the Technical
+    Skeptic has no ammunition and the panel is one archetype wearing four hats.
+
+    Deliberately has no `comparable_to`. Fuzzy disagreement must not reach a live
+    interruption — `docs/auditor-grounding.md` collects qualitative findings for
+    the debrief instead, because *"a false accusation is worse than a missed
+    catch"* and a panel that pounces on a paraphrase is not intimidating, it is
+    stupid.
+    """
+
+    kind: Literal[ClaimKind.ASSERTION] = ClaimKind.ASSERTION
+
+    #: The domain the statement belongs to — "distribution", "intellectual
+    #: property", "competition". §3.3 assigns the interrupter by domain, and
+    #: without this every assertion is unroutable and targeted interruption
+    #: quietly covers only numbers.
+    subject: str = Field(min_length=1, max_length=120)
+
+    statement: str = Field(min_length=1, max_length=600)
+
+
+#: Either kind, discriminated by `kind` rather than by trial parsing. Pydantic
+#: picks the member from the tag, so a malformed entry fails against one schema
+#: with a useful error instead of failing against both with a confusing union.
+Claim = Annotated[
+    QuantitativeClaim | AssertionClaim, Field(discriminator="kind")
+]
 
 
 class MaterialDeclaration(BaseModel):

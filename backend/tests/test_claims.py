@@ -17,17 +17,34 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.modules.ingestion.schemas import Claim, Unit, normalize_unit
+from app.modules.ingestion.schemas import (
+    AssertionClaim,
+    ClaimKind,
+    QuantitativeClaim,
+    Unit,
+    normalize_unit,
+)
 
 
-def claim(**overrides) -> Claim:
-    return Claim(
+def claim(**overrides) -> QuantitativeClaim:
+    return QuantitativeClaim(
         **{
             "metric": "gross margin",
             "value": 61.0,
             "unit": "%",
             "period": "Q3 2026",
             "quote": "Gross margin held at 61% in Q3.",
+            **overrides,
+        }
+    )
+
+
+def assertion(**overrides) -> AssertionClaim:
+    return AssertionClaim(
+        **{
+            "subject": "distribution",
+            "statement": "Exclusive distribution agreement with Walmart.",
+            "quote": "Exclusive distribution — Walmart, signed Q2.",
             **overrides,
         }
     )
@@ -141,3 +158,66 @@ def test_a_value_that_is_not_a_number_is_refused():
     """
     with pytest.raises(ValidationError):
         claim(value="1.2M")
+
+
+# --- Assertions -----------------------------------------------------------
+#
+# `Product.md` asks extraction for *"claims, figures, and chart data"* and its
+# Auditor for *"contradictions, unsupported claims, and figures that moved"*.
+# Claims and figures are distinguished throughout, and most of what is actually
+# attackable in a deck is the half that is not a number: exclusivity, a granted
+# patent, a competitive absolute, a promise about next quarter.
+
+
+def test_an_assertion_is_a_claim_without_a_number():
+    """The Technical Skeptic's ammunition, and the CFO has none of it.
+
+    A panel that can only challenge figures is a panel of one archetype. This is
+    also what `docs/auditor-grounding.md` means by qualitative findings
+    *"collected and surfaced in the debrief"* — uncollectable if extraction
+    never captured them.
+    """
+    recorded = assertion()
+
+    assert recorded.kind is ClaimKind.ASSERTION
+    assert recorded.subject == "distribution"
+    assert recorded.statement.startswith("Exclusive distribution")
+
+
+def test_an_assertion_carries_a_subject_so_the_right_archetype_can_own_it():
+    """§3.3: the domain that owns the figure owns the interruption.
+
+    That rule needs a domain on a non-numeric claim too, or every assertion is
+    unroutable and the targeted-interruption promise quietly covers only
+    numbers.
+    """
+    assert assertion(subject="intellectual property").subject == "intellectual property"
+
+
+def test_an_assertion_is_never_numerically_comparable_to_a_figure():
+    """Two kinds, and only one of them supports exact contradiction.
+
+    `docs/auditor-grounding.md` puts the bar for interrupting a live room at a
+    contradiction stateable precisely — both figures, both moments. An assertion
+    cannot meet that bar, and a `comparable_to` that accepted one would be the
+    route by which fuzzy disagreement reaches the live panel.
+    """
+    assert not hasattr(assertion(), "comparable_to")
+
+
+def test_a_kind_is_carried_explicitly_rather_than_inferred_from_shape():
+    """So storage and routing never guess from which fields happen to be set.
+
+    A discriminator that has to be reconstructed by looking for a null is the
+    kind that disagrees with itself once a field becomes optional.
+    """
+    assert claim().kind is ClaimKind.QUANTITATIVE
+    assert assertion().kind is ClaimKind.ASSERTION
+
+
+def test_an_assertion_without_a_statement_is_refused():
+    """An empty assertion is a claim that cites nothing, which is the failure
+    mode CLAUDE.md names outright: *"do not ship interrogation logic that can't
+    cite its source"*."""
+    with pytest.raises(ValidationError):
+        assertion(statement="")
