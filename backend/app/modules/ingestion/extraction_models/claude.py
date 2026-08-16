@@ -33,7 +33,7 @@ from app.modules.ingestion.extraction_model import (
     ExtractionResult,
     ExtractionUsage,
 )
-from app.modules.ingestion.parsing import RenderedPage
+from app.modules.ingestion.parsing import RenderedPage, SlideChart
 from app.modules.ingestion.schemas import ClaimKind
 
 log = get_logger(__name__, tag="ingestion")
@@ -215,10 +215,12 @@ CLAIM_TOOL: dict[str, Any] = {
 
 INSTRUCTION = (
     "Each page is given as an image and its text layer. Read both: chart values "
-    "are usually in the image only. Record what the pages claim with the "
-    "record_claims tool — figures in `figures`, non-numeric claims in "
-    "`assertions`. Record exactly what is stated; never derive, convert, total, "
-    "or infer a figure, and never soften an assertion."
+    "are usually in the image only. Some pages also carry chart data read "
+    "directly from the file that produced them — those numbers are exact, so "
+    "where they disagree with what the image appears to show, use them. Record "
+    "what the pages claim with the record_claims tool — figures in `figures`, "
+    "non-numeric claims in `assertions`. Record exactly what is stated; never "
+    "derive, convert, total, or infer a figure, and never soften an assertion."
 )
 
 
@@ -457,8 +459,42 @@ def _content(pages: Sequence[RenderedPage]) -> list[dict[str, Any]]:
         blocks.append(
             {"type": "text", "text": f"Page {page.number} text layer:\n{page.text}"}
         )
+        if page.charts:
+            blocks.append(
+                {
+                    "type": "text",
+                    "text": (
+                        f"Page {page.number} chart data, read from the file "
+                        f"(exact):\n{_charts(page.charts)}"
+                    ),
+                }
+            )
 
     return blocks
+
+
+def _charts(charts: Sequence[SlideChart]) -> str:
+    """Chart series as lines a model can read against the picture beside them.
+
+    Rendered as text rather than handed over as JSON because it sits in the same
+    message as the page image and the text layer, and one shape for all three is
+    what stops the model treating this block as a different kind of question.
+
+    A gap stays a gap and is written as such. `ChartSeries.values` is positional
+    against `categories`, and the entire reason a missing value is carried rather
+    than dropped is that dropping it would attach every later figure to the wrong
+    period — so it must not be flattened away here either.
+    """
+    lines = []
+    for chart in charts:
+        lines.append(f"chart: {chart.title or '(untitled)'}")
+        for series in chart.series:
+            pairs = ", ".join(
+                f"{category}={'no value' if value is None else value}"
+                for category, value in zip(chart.categories, series.values, strict=False)
+            )
+            lines.append(f"  {series.name or '(unnamed series)'}: {pairs}")
+    return "\n".join(lines)
 
 
 def _tool_input(message: Any) -> dict[str, Any]:

@@ -408,3 +408,21 @@ async def settled(factory, *material_ids, timeout: float = 10.0) -> None:
         await asyncio.sleep(0.02)
 
     pytest.fail(f"materials never became ready: {states}")
+
+
+def test_the_configured_converter_reaches_the_extraction_service():
+    """A path nothing reads is a setting that does not point anywhere.
+
+    The realistic failure: an image installs LibreOffice somewhere other than
+    PATH, `LIBREOFFICE_BINARY` is set to say so, and every PPTX still fails as
+    unreadable — because the runner was passing the default all along, and PDFs
+    kept working the whole time.
+    """
+    runner = ExtractionRunner(
+        None,
+        storage=object(),
+        model=object(),
+        libreoffice="/opt/libreoffice/program/soffice",
+    )
+
+    assert runner._libreoffice == "/opt/libreoffice/program/soffice"

@@ -131,3 +131,20 @@ def test_get_settings_reports_the_same_failure(environment, monkeypatch, tmp_pat
             get_settings()
     finally:
         get_settings.cache_clear()
+
+
+def test_the_converter_path_has_one_default_in_two_places():
+    """`Settings` holds the literal; `parsing` holds the constant it defaults to.
+
+    Split on purpose — importing `parsing` from `config` would pull pdfium,
+    Pillow and python-pptx into alembic and every script that reads a setting.
+    The cost of the split is that the two can disagree, and a disagreement is
+    silent: PPTX would fail as unreadable on a machine where the binary is
+    present, and PDFs would carry on working, so nothing would look broken.
+    """
+    from app.modules.ingestion.parsing import DEFAULT_LIBREOFFICE_BINARY
+
+    assert (
+        Settings.model_fields["libreoffice_binary"].default
+        == DEFAULT_LIBREOFFICE_BINARY
+    )

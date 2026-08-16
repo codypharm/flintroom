@@ -29,7 +29,7 @@ from app.core.errors import MaterialTooManyPages, MaterialUnreadable
 from app.core.logging import get_logger
 from app.core.storage import ObjectStorage
 from app.modules.ingestion.extraction_model import ExtractionModel
-from app.modules.ingestion.parsing import parse
+from app.modules.ingestion.parsing import DEFAULT_LIBREOFFICE_BINARY, parse
 from app.modules.ingestion.service import IngestionService
 
 log = get_logger(__name__, tag="ingestion")
@@ -71,11 +71,13 @@ class ExtractionService:
         storage: ObjectStorage,
         model: ExtractionModel,
         daily_page_ceiling: int = DEFAULT_DAILY_PAGE_CEILING,
+        libreoffice: str = DEFAULT_LIBREOFFICE_BINARY,
     ) -> None:
         self._ingestion = IngestionService(db, storage=storage)
         self._storage = storage
         self._model = model
         self._daily_page_ceiling = daily_page_ceiling
+        self._libreoffice = libreoffice
 
     async def sweep(self) -> bool:
         """One pass. True if a deck was read, so the loop can pace itself.
@@ -134,6 +136,7 @@ class ExtractionService:
                 data,
                 content_type=material.content_type,
                 max_pages=claimed.max_pages,
+                libreoffice=self._libreoffice,
             )
         except (MaterialTooManyPages, MaterialUnreadable):
             # Both terminal, and both decided before a model is reached. No

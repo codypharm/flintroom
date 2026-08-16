@@ -170,6 +170,37 @@ Getting it wrong is loud and immediate rather than quiet: a virtual-hosted URL
 against MinIO names a host that does not resolve, and the upload fails on the
 first attempt rather than at some later scale.
 
+## LibreOffice is in the image, or PPTX quietly stops working
+
+The extraction sweep converts a PPTX to PDF by running headless LibreOffice as a
+subprocess. It is the only system package this backend needs, and the only input
+type that needs it — `apt-get install -y libreoffice` on Debian, `brew install
+--cask libreoffice` locally. It is large, around 400 MB installed, and that was
+accepted deliberately: the alternative was a hosted conversion API, which would
+ship confidential decks to a third party and contradict the retention promise.
+
+`LIBREOFFICE_BINARY` overrides the path if an image puts it somewhere other than
+PATH. Leave it unset and it is `soffice`, which both packages provide.
+
+**The failure is one-sided and quiet, which is what makes it worth a section.**
+Without the binary, PPTX materials fail as unreadable while PDFs and photographs
+carry on working perfectly — so nothing looks broken, no health check goes red,
+and the only signal is `libreoffice_missing` in the logs with the path that was
+tried. Alert on it.
+
+Two more things this subprocess implies:
+
+- **Temporary space, and briefly confidential temporary space.** The tool takes a
+  path rather than a stream, so each conversion writes the deck and a private
+  LibreOffice profile into a temporary directory and removes both on the way out,
+  including on failure. Whatever `TMPDIR` points at is somewhere other people's
+  unannounced financials exist for a few seconds — it should be local disk, not a
+  shared volume, and not something backed up.
+- **A conversion is bounded at two minutes** and a timeout fails the material
+  terminally rather than requeueing it, because a deck that hangs the converter
+  hangs it again. `pptx_conversion_timed_out` repeating means decks are being
+  refused for a reason nobody is looking at.
+
 ## Start from `backend/`
 
 `Settings` reads `.env` relative to the working directory, and the scripts

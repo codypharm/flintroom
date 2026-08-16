@@ -195,6 +195,26 @@ class Settings(BaseSettings):
     #: notices, and at pro it still takes two days to get there.
     daily_page_ceiling: int = Field(default=600, ge=1)
 
+    #: Where headless LibreOffice is. A fact about the machine, not a knob.
+    #:
+    #: Reached only for PPTX, and only to convert the file to PDF so it rejoins
+    #: the PDF path — which is where the thumbnail and the page images come from,
+    #: and the only way to see a chart pasted into a slide as a screenshot.
+    #:
+    #: A `Settings` field rather than an `os.getenv` in `parsing.py`, because
+    #: `.env` is not loaded into the process environment: a variable read that way
+    #: is present in the file and absent from the process, which is the failure
+    #: `docs/deployment.md` calls the worst available one.
+    #:
+    #: Without the binary, PPTX fails as unreadable while PDFs and photographs
+    #: carry on working. That is the right way round and not one anybody diagnoses
+    #: quickly, so `libreoffice_missing` is logged with the path that was tried.
+    #: The literal rather than an import from `parsing`, which would pull
+    #: pdfium, Pillow and python-pptx into everything that reads a setting —
+    #: alembic and the scripts included. Same split as `daily_page_ceiling`, and
+    #: guarded the same way: `tests/test_config.py` fails if the two disagree.
+    libreoffice_binary: str = Field(default="soffice")
+
     def __init__(self, **values: object) -> None:
         """Fail as `ConfigurationError`, carrying nothing underneath it.
 

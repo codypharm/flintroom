@@ -156,6 +156,7 @@ def _extraction_runner(
         storage=app.state.object_storage,
         model=app.state.extraction_model,
         daily_page_ceiling=settings.daily_page_ceiling,
+        libreoffice=settings.libreoffice_binary,
     )
 
 

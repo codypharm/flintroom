@@ -32,6 +32,7 @@ from app.modules.ingestion.extractor import (
     DEFAULT_DAILY_PAGE_CEILING,
     ExtractionService,
 )
+from app.modules.ingestion.parsing import DEFAULT_LIBREOFFICE_BINARY
 
 log = get_logger(__name__, tag="ingestion")
 
@@ -57,12 +58,14 @@ class ExtractionRunner:
         storage: ObjectStorage,
         model: ExtractionModel,
         daily_page_ceiling: int = DEFAULT_DAILY_PAGE_CEILING,
+        libreoffice: str = DEFAULT_LIBREOFFICE_BINARY,
         interval: float = POLL_INTERVAL_SECONDS,
     ) -> None:
         self._session_factory = session_factory
         self._storage = storage
         self._model = model
         self._daily_page_ceiling = daily_page_ceiling
+        self._libreoffice = libreoffice
         self._interval = interval
         self._stopping = asyncio.Event()
 
@@ -127,6 +130,7 @@ class ExtractionRunner:
                     storage=self._storage,
                     model=self._model,
                     daily_page_ceiling=self._daily_page_ceiling,
+                    libreoffice=self._libreoffice,
                 ).sweep()
         except Exception:
             log.exception("extraction_pass_failed")

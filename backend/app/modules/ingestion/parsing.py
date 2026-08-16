@@ -16,22 +16,26 @@ process — so `parse` is the only public entry point and it is a coroutine that
 does its work in a thread. Exposing the synchronous half would make forgetting
 that a one-line mistake with no visible symptom until the box is busy.
 
-**PPTX is half here.** `pptx_slides` reads the file structurally — text, tables,
-and the exact chart values PowerPoint stored, which beat anything vision infers
-from bar heights. The other half converts the file to PDF through headless
-LibreOffice so it rejoins `_parse_pdf`, and that half is not built: without it
-there is no PPTX thumbnail and a chart pasted in as an image has no XML for
-anyone to read. Until both halves are here `_parse` has no PPTX branch, so a
-PPTX reaching it is still failed as unreadable — and it can reach it, because
-`ACCEPTED_CONTENT_TYPES` has always accepted the type. That gap is older than
-this module and is closed by the render, not by this half.
+**A PPTX is read twice, and that is not redundancy.** Headless LibreOffice
+converts it to PDF so it rejoins `_parse_pdf` — which is where the thumbnail and
+the images a vision model needs come from, and the only way to see a chart that
+was pasted in as a screenshot. Separately, `pptx_slides` opens the file for what
+PowerPoint stored: text, tables, and chart series as exact floats. Where the two
+disagree about a number, the stored one wins, because the alternative is a model
+inferring magnitudes from bar heights.
+
+LibreOffice is a subprocess and is treated like one — see `_convert_to_pdf` for
+the three ways it misbehaves and what each costs.
 """
 
 from __future__ import annotations
 
 import asyncio
 import io
-from dataclasses import dataclass
+import subprocess
+import tempfile
+from dataclasses import dataclass, replace
+from pathlib import Path
 from zipfile import BadZipFile
 
 import pillow_heif
@@ -81,10 +85,28 @@ THUMBNAIL_MEDIA_TYPE = "image/jpeg"
 _THUMBNAIL_QUALITY = 75
 _PHOTO_QUALITY = 88
 
-#: What this module has a path for. Narrower than `ACCEPTED_CONTENT_TYPES` while
-#: PPTX is outstanding, and checked rather than assumed — the two lists have to
-#: agree, and the moment one gains an entry the other lacks, an upload succeeds
-#: and extraction dies.
+#: How long one PPTX may take to become a PDF before the attempt is abandoned.
+#:
+#: Generous, because the first conversion in a fresh container pays for
+#: LibreOffice starting up as well as for the deck. Bounded because it is a
+#: subprocess holding a worker: without a limit, one deck that makes the
+#: converter hang stops extraction for everybody, and the symptom is a queue that
+#: silently stops moving.
+CONVERSION_TIMEOUT_SECONDS = 120
+
+#: What both packages install and put on PATH — the Homebrew cask and the Debian
+#: `libreoffice` package. Overridden through `Settings.libreoffice_binary` for an
+#: image that puts it somewhere else.
+#:
+#: A default rather than a required argument because only PPTX reaches it: a
+#: signature that forced every caller to name a converter would make parsing a
+#: photograph depend on an office suite.
+DEFAULT_LIBREOFFICE_BINARY = "soffice"
+
+#: What this module has a path for, and it now matches `ACCEPTED_CONTENT_TYPES`
+#: exactly. The two lists have to agree: the moment one gains an entry the other
+#: lacks, an upload succeeds and extraction dies — which is what PPTX did until
+#: the converter landed.
 PDF_CONTENT_TYPE = "application/pdf"
 PPTX_CONTENT_TYPE = (
     "application/vnd.openxmlformats-officedocument.presentationml.presentation"
@@ -107,6 +129,11 @@ class RenderedPage:
 
     image: bytes
     image_media_type: str
+
+    #: The charts on this page, as the numbers behind them rather than a picture
+    #: of them. Only ever populated for PPTX — a PDF has no chart XML left, which
+    #: is exactly why the vision half exists.
+    charts: tuple[SlideChart, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -178,7 +205,11 @@ class ParsedMaterial:
 
 
 async def parse(
-    data: bytes, *, content_type: str, max_pages: int
+    data: bytes,
+    *,
+    content_type: str,
+    max_pages: int,
+    libreoffice: str = DEFAULT_LIBREOFFICE_BINARY,
 ) -> ParsedMaterial:
     """Read a material into pages, off the event loop.
 
@@ -187,13 +218,21 @@ async def parse(
     applied afterwards is not a cap — it is a bill followed by a refusal.
     """
     return await asyncio.to_thread(
-        _parse, data, content_type=content_type, max_pages=max_pages
+        _parse,
+        data,
+        content_type=content_type,
+        max_pages=max_pages,
+        libreoffice=libreoffice,
     )
 
 
-def _parse(data: bytes, *, content_type: str, max_pages: int) -> ParsedMaterial:
+def _parse(
+    data: bytes, *, content_type: str, max_pages: int, libreoffice: str
+) -> ParsedMaterial:
     if content_type == PDF_CONTENT_TYPE:
         return _parse_pdf(data, max_pages=max_pages)
+    if content_type == PPTX_CONTENT_TYPE:
+        return _parse_pptx(data, max_pages=max_pages, libreoffice=libreoffice)
     if content_type in IMAGE_CONTENT_TYPES:
         return _parse_photograph(data)
 
@@ -259,6 +298,131 @@ def _parse_photograph(data: bytes) -> ParsedMaterial:
         ),
         thumbnail=_thumbnail(image),
     )
+
+
+def _parse_pptx(data: bytes, *, max_pages: int, libreoffice: str) -> ParsedMaterial:
+    """A deck read twice: converted for pixels, and opened for its numbers.
+
+    The conversion gives text and images by rejoining `_parse_pdf`, which is what
+    makes PPTX one pipeline rather than two. The structural read gives the chart
+    values PowerPoint stored, and `docs/ingestion.md` says those win on conflict —
+    a vision model reading a bar chart is inferring magnitudes from bar heights.
+
+    The cap is checked against the slide count *before* converting. Rendering is
+    expensive here in a way it is not for a PDF: it spawns an office suite. A cap
+    applied afterwards would be a bill followed by a refusal.
+    """
+    slides = pptx_slides(data)
+    if len(slides) > max_pages:
+        raise MaterialTooManyPages(page_count=len(slides), max_pages=max_pages)
+
+    rendered = _parse_pdf(
+        _convert_to_pdf(data, libreoffice=libreoffice), max_pages=max_pages
+    )
+    return ParsedMaterial(
+        pages=_merged(rendered.pages, slides), thumbnail=rendered.thumbnail
+    )
+
+
+def _merged(
+    pages: tuple[RenderedPage, ...], slides: tuple[SlideContent, ...]
+) -> tuple[RenderedPage, ...]:
+    """Put each slide's structural read onto the page it was rendered as.
+
+    Matched by position, which holds only while one slide is one page. A deck
+    with hidden slides is the case that breaks it: LibreOffice omits them from
+    the PDF, so every later page would pick up the chart from the wrong slide —
+    a figure that is exactly right and cited against a slide the user never
+    showed.
+
+    So the counts are compared, and a mismatch drops the structural half rather
+    than guessing at an alignment. The cost is the exact chart values on an
+    unusual deck; the alternative is a panelist confidently quoting the wrong
+    slide, which `docs/auditor-grounding.md` rates as the worse failure by a
+    distance.
+    """
+    if len(pages) != len(slides):
+        log.warning(
+            "pptx_slide_page_mismatch", pages=len(pages), slides=len(slides)
+        )
+        return pages
+
+    return tuple(
+        replace(
+            page,
+            charts=slide.charts,
+            # The converted PDF's text layer is authoritative for *position* —
+            # it is what the reader saw — but LibreOffice can drop text it could
+            # not lay out. The structural read is appended rather than
+            # substituted, so nothing the file said is lost and nothing the page
+            # showed is overwritten.
+            text=page.text if slide.text in page.text else f"{page.text}\n{slide.text}",
+        )
+        for page, slide in zip(pages, slides, strict=True)
+    )
+
+
+def _convert_to_pdf(data: bytes, *, libreoffice: str) -> bytes:
+    """Hand the deck to headless LibreOffice and take back a PDF.
+
+    Everything about this function is about a subprocess that misbehaves in
+    specific, documented ways:
+
+    - **Its own profile per conversion.** LibreOffice serializes on a shared user
+      profile, so without `-env:UserInstallation` a second instance waits on the
+      first — concurrent extraction silently becoming a queue, with no error to
+      explain it. The profile lives in the temporary directory and dies with it.
+    - **The exit code is not the signal.** `soffice` exits 0 on failures, so the
+      output *file* is what gets checked. Trusting the return code turns a failed
+      conversion into an empty deck reported as a success — and the source
+      document is deleted afterwards as though it had been read.
+    - **A timeout is terminal, not retryable.** A hang is a property of these
+      bytes, so the ten-attempt budget would spend an hour of worker time
+      reaching the same answer.
+
+    The deck is written to disk because the tool takes a path, not a stream. It
+    lands in a per-conversion temporary directory that is removed on the way out,
+    including when this raises — the same document whose whole retention story is
+    that it does not linger.
+    """
+    with tempfile.TemporaryDirectory(prefix="flintroom-pptx-") as workspace:
+        room = Path(workspace)
+        source = room / "material.pptx"
+        source.write_bytes(data)
+
+        try:
+            subprocess.run(
+                [
+                    libreoffice,
+                    f"-env:UserInstallation=file://{room / 'profile'}",
+                    "--headless",
+                    "--norestore",
+                    "--convert-to",
+                    "pdf",
+                    "--outdir",
+                    str(room),
+                    str(source),
+                ],
+                capture_output=True,
+                timeout=CONVERSION_TIMEOUT_SECONDS,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            log.warning("pptx_conversion_timed_out", seconds=CONVERSION_TIMEOUT_SECONDS)
+            raise MaterialUnreadable() from exc
+        except OSError as exc:
+            # No binary. A deployment fault rather than a bad file, and it must
+            # not be recorded as one — a material marked `failed` is terminal and
+            # tells the user to re-upload a deck that was never the problem.
+            log.error("libreoffice_missing", binary=libreoffice)
+            raise
+
+        converted = room / "material.pdf"
+        if not converted.exists():
+            log.warning("material_unreadable", content_type=PPTX_CONTENT_TYPE)
+            raise MaterialUnreadable()
+
+        return converted.read_bytes()
 
 
 def pptx_slides(data: bytes) -> tuple[SlideContent, ...]:

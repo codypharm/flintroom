@@ -228,3 +228,4 @@ async def test_one_pass_also_clears_expired_auth_rows(runner, account, db):
         await db.execute(select(func.count()).select_from(RefreshToken))
     ).scalar_one()
     assert remaining == 0
+

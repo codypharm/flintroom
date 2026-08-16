@@ -25,9 +25,10 @@ from app.modules.ingestion.extraction_models import build_extraction_model
 from app.modules.ingestion.extraction_models.claude import (
     DEFAULT_CONCURRENT_CALLS,
     ClaudeExtractionModel,
+    _content,
     to_claims,
 )
-from app.modules.ingestion.parsing import RenderedPage
+from app.modules.ingestion.parsing import ChartSeries, RenderedPage, SlideChart
 from app.modules.ingestion.schemas import ClaimKind, Unit
 
 BASE_ENVIRONMENT = {
@@ -951,3 +952,85 @@ def test_the_configured_concurrency_reaches_the_model():
     )
 
     assert model._concurrent_calls == 2
+
+
+# --- Chart data ------------------------------------------------------------
+
+
+def charted(*series: tuple[str, tuple[float | None, ...]]) -> RenderedPage:
+    """A page carrying what PowerPoint stored behind its chart."""
+    return RenderedPage(
+        number=1,
+        text="Revenue is up",
+        image=b"\x89PNG not really",
+        image_media_type="image/png",
+        charts=(
+            SlideChart(
+                title="ARR by quarter",
+                categories=("Q1", "Q2", "Q3"),
+                series=tuple(
+                    ChartSeries(name=name, values=values) for name, values in series
+                ),
+            ),
+        ),
+    )
+
+
+def _chart_blocks(blocks) -> list[str]:
+    """The per-page chart blocks, and not the instruction that mentions them.
+
+    Matched on the page prefix rather than on the words "chart data", which the
+    instruction also carries — the first version of this helper matched both and
+    reported a chart block on a page that had none.
+    """
+    return [
+        block["text"]
+        for block in blocks
+        if block["type"] == "text" and block["text"].startswith("Page 1 chart data")
+    ]
+
+
+def test_a_pages_exact_chart_values_are_put_in_front_of_the_model():
+    """Otherwise reading the PPTX structurally buys nothing.
+
+    `parsing.py` goes to the trouble of opening the file a second time because
+    `Series.values` is what the author typed and the image is something to infer
+    from. If those numbers never reach the request, the whole second read is
+    dead weight and the model is back to reading bar heights.
+    """
+    blocks = _content([charted(("ARR ($M)", (1.2, 3.45, 7.0)))])
+
+    chart_block = _chart_blocks(blocks)
+
+    assert len(chart_block) == 1
+    assert "ARR ($M)" in chart_block[0]
+    assert "Q2=3.45" in chart_block[0]
+    assert "exact" in chart_block[0]
+
+
+def test_a_gap_in_the_series_is_described_rather_than_dropped():
+    """The alignment the parser protects must survive being written out.
+
+    `ChartSeries.values` is positional against `categories` precisely so a
+    missing quarter cannot shift every later figure onto the wrong period.
+    Rendering it by zipping away the `None` would undo that here, at the last
+    step, where nothing else would catch it.
+    """
+    blocks = _content([charted(("Revenue", (5.0, None, 9.0)))])
+
+    (chart_block,) = _chart_blocks(blocks)
+
+    assert "Q2=no value" in chart_block
+    assert "Q3=9.0" in chart_block
+
+
+def test_a_page_with_no_chart_data_carries_no_chart_block():
+    """A PDF has no chart XML left, which is the reason the vision half exists.
+
+    An empty block would be a heading with nothing under it — an invitation to
+    treat "no data given" as "the chart is empty", which is a claim the deck
+    never made.
+    """
+    blocks = _content([page(1)])
+
+    assert _chart_blocks(blocks) == []
