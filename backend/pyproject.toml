@@ -22,6 +22,20 @@ dependencies = [
     # depends on our own Protocol, so replacing the library, or the provider,
     # touches one module.
     "websockets>=13.0",
+    # The S3 API, for material storage. CLAUDE.md requires uploaded material to
+    # be delivered by presigned URL and never proxied, and nothing already here
+    # can sign one: a presigned URL is an HMAC-SHA256 chain over a canonical
+    # request, not an HTTP call httpx could make.
+    #
+    # Hand-writing SigV4 was the alternative and is roughly seventy lines. boto3
+    # won on two counts: it is the reference implementation of the one protocol
+    # our storage contract depends on, and it already knows multipart presigning
+    # if a 100 MB deck over a phone connection ever needs resumable upload.
+    #
+    # 27 MB installed, against an image that will also carry LibreOffice for
+    # PPTX rendering. Confined to `core/storage_s3.py`, so replacing it — or the
+    # storage vendor — touches one module.
+    "boto3>=1.35",
 ]
 
 [dependency-groups]

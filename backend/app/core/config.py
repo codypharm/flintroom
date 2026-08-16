@@ -11,6 +11,7 @@ delete, because nobody can tell which entries are still load-bearing.
 """
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -88,6 +89,39 @@ class Settings(BaseSettings):
     #: boot; if that becomes the more expensive end, make these required.
     elevenlabs_api_key: str | None = None
     elevenlabs_agent_id: str | None = None
+
+    #: Where material lives. Optional on the same grounds as the voice keys —
+    #: a deployment without a bucket still signs in users, tracks balances and
+    #: runs the voice loop, and `docs/auditor-grounding.md` makes the deckless
+    #: path first-class rather than degraded. Absent means ingestion refuses.
+    #:
+    #: The endpoint is what makes this portable: MinIO in development, and AWS
+    #: S3, Cloudflare R2 or Backblaze B2 in production, with no code change.
+    #: It is required rather than defaulted to AWS, because a blank endpoint
+    #: that silently means "the real S3" is a credential sent to the wrong host.
+    s3_endpoint_url: str | None = None
+    s3_access_key_id: str | None = None
+    s3_secret_access_key: str | None = None
+    s3_bucket: str | None = None
+
+    #: SigV4 signs over a region whether or not the store has regions. MinIO
+    #: accepts any value; S3 does not, so this is a real setting with a default
+    #: that happens to be right for development.
+    s3_region: str = "us-east-1"
+
+    #: Where the bucket name goes — in the hostname, or in the path.
+    #:
+    #: Defaults to the hostname because AWS has said path-style URLs *"will be
+    #: discontinued in the future"*. That deprecation was delayed indefinitely
+    #: in September 2020 and carries a promise of a year's notice, so path-style
+    #: works everywhere today; it is still the wrong thing to bake into a
+    #: production deployment when the alternative is a default.
+    #:
+    #: `path` is for stores with no DNS to put a bucket in front of — MinIO in
+    #: development, and Cloudflare R2, which documents it. A `Literal`, so a
+    #: typo is a process that refuses to boot rather than a signature the store
+    #: rejects at upload time.
+    s3_addressing_style: Literal["virtual", "path", "auto"] = "virtual"
 
     def __init__(self, **values: object) -> None:
         """Fail as `ConfigurationError`, carrying nothing underneath it.

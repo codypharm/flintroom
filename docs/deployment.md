@@ -85,6 +85,45 @@ Two settings in it are not cosmetic:
 - Audio format must match on both legs. A mismatch arrives as noise rather than
   as an error.
 
+## The material bucket exists, and is private, and the app cannot create it
+
+**Create the bucket out of band. Do not grant the application `s3:CreateBucket`.**
+
+Nothing in the code creates it — `docker compose` does that for development with
+a one-shot `mc` container, and the equivalent in production is a console click or
+a line of Terraform. A process that can create buckets holds that permission for
+its entire life in exchange for one action taken once, and the failure it saves
+you from — a missing bucket — is loud, immediate, and fixed in a minute.
+
+The permissions the app actually needs are `s3:PutObject`, `s3:GetObject` and
+`s3:DeleteObject`, scoped to that bucket's ARN. Nothing else. In particular it
+never needs `s3:ListBucket`: every read is by key, and a credential that can
+enumerate is a credential that turns one leak into every user's deck.
+
+**The bucket must not be publicly readable.** Every path in and out is a
+presigned URL that expires in fifteen minutes, and a public-read bucket makes
+that expiry decorative while looking completely correct from inside the app —
+uploads work, downloads work, and the objects are also simply on the internet.
+On AWS this means Block Public Access on at the account level; on R2, no public
+`r2.dev` domain and no custom domain bound.
+
+This is portable by construction rather than by intent: the code speaks the S3
+API and holds no vendor SDK above `core/storage_s3.py`, so AWS S3, Cloudflare R2,
+Backblaze B2 and a self-hosted MinIO differ by four environment variables. Weigh
+egress when choosing — presigned GETs are served to phones, and that is billed
+traffic on S3 and free on R2.
+
+**`S3_ADDRESSING_STYLE=path` for anything without per-bucket DNS.** That is MinIO
+locally and Cloudflare R2, which documents path-style. AWS S3 needs nothing: the
+default is virtual-hosted, because AWS has said path-style URLs *"will be
+discontinued in the future"* — a deprecation delayed indefinitely in September
+2020 with a promise of a year's notice, so it works today and is still not worth
+depending on.
+
+Getting it wrong is loud and immediate rather than quiet: a virtual-hosted URL
+against MinIO names a host that does not resolve, and the upload fails on the
+first attempt rather than at some later scale.
+
 ## Start from `backend/`
 
 `Settings` reads `.env` relative to the working directory, and the scripts
