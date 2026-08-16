@@ -19,10 +19,12 @@ from typing import NamedTuple
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.actors import ActorContext
 from app.core.errors import (
     AccountNotFound,
     ExtractionIncomplete,
     InvalidMaterialState,
+    MaterialInUse,
     MaterialNotFound,
     MaterialNotReady,
     MaterialNotUploaded,
@@ -31,6 +33,8 @@ from app.core.errors import (
 )
 from app.core.logging import get_logger
 from app.core.storage import ObjectStorage
+from app.modules.audit_log.schemas import AuditEventType
+from app.modules.audit_log.service import AuditService
 from app.modules.billing.models import Account
 from app.modules.billing.service import PERIOD_LENGTH
 from app.modules.billing.tiers import (
@@ -274,7 +278,13 @@ async def confirm_ready(
     wanted = set(material_ids)
     rows = await db.execute(
         select(Material.id, Material.state).where(
-            Material.id.in_(wanted), Material.user_id == user_id
+            Material.id.in_(wanted),
+            Material.user_id == user_id,
+            # A destroyed material is not found, from the request that destroyed
+            # it. Its row survives that request by seconds so an extraction in
+            # flight has somewhere to write, and a room started in that window
+            # would attach a deck the user has already been told is gone.
+            Material.deleted_at.is_(None),
         )
     )
     found = dict(rows.all())
@@ -335,9 +345,21 @@ class RegisteredUpload(NamedTuple):
 class IngestionService:
     """Materials, from presign through to extracted claims."""
 
-    def __init__(self, db: AsyncSession, *, storage: ObjectStorage) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        *,
+        storage: ObjectStorage,
+        actor: ActorContext | None = None,
+    ) -> None:
         self._db = db
         self._storage = storage
+        self._actor = actor or ActorContext.system()
+        # Built here rather than injected, as in `SessionService`: provenance is
+        # a property of the service, so a handler cannot attribute half its
+        # writes to the user and half to the sweep. The sweep gets the default,
+        # which is exactly what it is.
+        self._audit = AuditService(db, self._actor, tag="ingestion")
 
     async def limits(self, *, user_id: uuid.UUID) -> MaterialLimits:
         """What this caller may upload, and what the next rung would allow.
@@ -483,6 +505,193 @@ class IngestionService:
 
         material.thumbnail_key = key
         await self._db.commit()
+
+    async def delete(self, material_id: uuid.UUID, *, user_id: uuid.UUID) -> None:
+        """Destroy a material at the user's request.
+
+        `material_claims` has always said claims are kept *"until the user
+        deletes the Material"*. This is that sentence, and until it existed the
+        retention rule described an action nobody could take.
+
+        Order matters and is the whole design. The mark commits first, because it
+        is what makes the material vanish from every read, every claim query and
+        every room — the parts of the promise this process can guarantee. The
+        objects go after, outside that transaction, because a bucket cannot join
+        it. A delete that fails therefore leaves a row the sweep will retry
+        rather than a material that is gone from the API and present in storage.
+
+        Refused while a room is still standing on it. The Auditor cross-checks
+        live speech against these claims, so removing them mid-interrogation
+        leaves somebody paying metered minutes for a panel that has quietly
+        stopped being able to catch anything.
+
+        The row is not removed here. An extraction already in flight has paid for
+        a model call and still owes an `extraction_costs` row, and that table has
+        no foreign key precisely so *"upload, extract, delete, repeat"* cannot
+        erase its own trail. The sweep removes the row once nothing holds it.
+        """
+        material = await self.get(material_id, user_id=user_id)
+
+        # Imported here rather than at module scope: `sessions` imports
+        # `confirm_ready` from this module, and the dependency is genuinely
+        # mutual — each module owns tables the other has one question about.
+        # A local import is the containment, and it costs a dict lookup once per
+        # deletion.
+        from app.modules.sessions.service import room_still_standing_on
+
+        live = await room_still_standing_on(self._db, material_id=material_id)
+        if live is not None:
+            log.info(
+                "material_delete_refused",
+                material_id=str(material_id),
+                user_id=str(user_id),
+                session_id=str(live),
+            )
+            raise MaterialInUse(
+                material_id=str(material_id),
+                user_id=str(user_id),
+                session_id=str(live),
+            )
+
+        material.deleted_at = func.now()
+        self._audit.stage(
+            AuditEventType.MATERIAL_DELETED,
+            user_id=user_id,
+            material_id=str(material_id),
+            state=material.state.value,
+        )
+        await self._db.commit()
+
+        await self._erase(material)
+
+    async def _erase(self, material: Material) -> bool:
+        """Remove both of a material's objects, or report that it did not.
+
+        Idempotent by construction: deleting an object that is not there is not
+        an error in S3, which is what lets the endpoint try and the sweep try
+        again without either needing to know what the other managed.
+
+        Both keys every time, including a source already purged after extraction
+        and a thumbnail written by a worker moments after the user asked for the
+        deck to go. That second one is the whole reason this is not a single
+        delete — it is the only object that can appear *after* a deletion.
+        """
+        keys = [material.storage_key]
+        if material.thumbnail_key:
+            keys.append(material.thumbnail_key)
+
+        for key in keys:
+            try:
+                await self._storage.delete(key)
+            except Exception:
+                # Broad and per material, exactly as `purge_sources` is: the
+                # traceback is logged and the row keeps its mark, so the sweep
+                # retries. Nothing is swallowed and nothing is lost — what is
+                # deliberately not done is failing the user's request, because
+                # the promise is already durable at this point and the retry is
+                # ours to run rather than theirs to trigger.
+                log.exception(
+                    "material_delete_failed",
+                    material_id=str(material.id),
+                    user_id=str(material.user_id),
+                )
+                return False
+
+        log.info(
+            "material_erased",
+            material_id=str(material.id),
+            user_id=str(material.user_id),
+        )
+        return True
+
+    async def purge_deleted(self) -> int:
+        """Remove the rows of materials the user destroyed, once nothing holds them.
+
+        The other half of `delete`, and the reason the mark exists at all. The
+        objects are already gone in the ordinary case; this re-deletes them
+        because it costs one idempotent call and it is the only thing that
+        catches a thumbnail rendered by a worker in the seconds after the request.
+
+        **Materials being extracted are skipped.** A worker holding one has paid
+        for a model call and still owes a cost row, and deleting the material out
+        from under it loses that row — unrecorded spend on a deck nobody can see,
+        which is the shape of abuse `extraction_costs` exists to make visible. It
+        finishes, and the next pass takes the row.
+
+        The row's disappearance is what removes the claims: `material_claims` and
+        `session_materials` both cascade, so the deck's figures and the record of
+        which rooms used it go in the same statement. `extraction_costs` has no
+        foreign key and stays.
+        """
+        deleted = await self._db.scalars(
+            select(Material)
+            .where(
+                Material.deleted_at.is_not(None),
+                Material.state != MaterialState.EXTRACTING,
+            )
+            .with_for_update(skip_locked=True)
+        )
+
+        purged = 0
+        for material in deleted:
+            if not await self._erase(material):
+                continue
+
+            await self._db.delete(material)
+            purged += 1
+            log.info(
+                "material_purged",
+                material_id=str(material.id),
+                user_id=str(material.user_id),
+            )
+
+        if purged:
+            await self._db.commit()
+        return purged
+
+    async def abandon_if_deleted(self, material_id: uuid.UUID) -> bool:
+        """Whether the user destroyed this deck while the sweep was reading it.
+
+        Asked between opening the file and spending anything on it, which is the
+        only place it can usefully go: *"I uploaded the wrong deck"* is not a rare
+        deletion, it is the most likely one, and it lands squarely inside the
+        window where a worker is holding the file open.
+
+        Without it the worker would render a thumbnail into a bucket the user has
+        just been told is empty — an object with no row pointing at it, which
+        nothing would ever find to clean up — and then pay a model to read a
+        document that no longer exists.
+
+        The claim is released rather than closed. There is no ending to record
+        for a deck that was destroyed mid-read: no cost was incurred, and the row
+        exists now only to be purged, which `purge_deleted` will do on this same
+        pass once the material has stopped being `extracting`.
+        """
+        row = (
+            await self._db.execute(
+                select(Material.deleted_at).where(Material.id == material_id)
+            )
+        ).first()
+
+        if row is None:
+            # Already purged by another pass. Nothing to release and nothing to
+            # write — treated as deleted, which is the one answer that cannot
+            # lead to paying for it.
+            return True
+        if row[0] is None:
+            return False
+
+        material = await self._claimed(material_id)
+        material.state = MaterialState.PENDING
+        material.claimed_at = None
+        await self._db.commit()
+
+        log.info(
+            "material_extraction_abandoned",
+            material_id=str(material_id),
+            user_id=str(material.user_id),
+        )
+        return True
 
     async def purge_sources(self) -> int:
         """Delete the uploaded document of every material that is finished with it.
@@ -646,6 +855,11 @@ class IngestionService:
                 .join(Account, Account.user_id == Material.user_id)
                 .where(
                     Material.state == MaterialState.PENDING,
+                    # Never pay to read a deck the user has destroyed. Its row
+                    # outlives the request by seconds, and claiming it in that
+                    # window would render a thumbnail into a bucket we have just
+                    # told them is empty.
+                    Material.deleted_at.is_(None),
                     # The backoff a requeue wrote. Filtered here rather than
                     # slept off in the worker, because the worker that would
                     # sleep is the one every other deck is waiting on — and
@@ -939,7 +1153,12 @@ class IngestionService:
         """
         material = await self._db.scalar(
             select(Material).where(
-                Material.id == material_id, Material.user_id == user_id
+                Material.id == material_id,
+                Material.user_id == user_id,
+                # Destroyed is not found, including to the caller who destroyed
+                # it. This is also what makes a second DELETE a 404 rather than
+                # a second attempt at deleting the same objects.
+                Material.deleted_at.is_(None),
             )
         )
         if material is None:

@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.core.errors import ProviderUnavailable
 from app.core.logging import get_logger
 from app.core.storage import ObjectStorage
-from app.modules.auth.dependencies import CurrentUser
+from app.modules.auth.dependencies import CallerContext, CurrentUser
 from app.modules.ingestion.models import Material
 from app.modules.ingestion.service import IngestionService
 
@@ -42,9 +42,18 @@ ObjectStorageDep = Annotated[ObjectStorage, Depends(get_object_storage)]
 
 
 async def get_ingestion_service(
-    db: Annotated[AsyncSession, Depends(get_db)], storage: ObjectStorageDep
+    caller: CallerContext,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    storage: ObjectStorageDep,
 ) -> IngestionService:
-    return IngestionService(db, storage=storage)
+    """Ingestion, attributed to the caller who asked for it.
+
+    Provenance is set at construction rather than passed per call, as everywhere
+    else: it is what makes *"the user deleted this material at 14:32"* a claim
+    the audit trail can support, rather than an event the sweep might equally
+    have caused.
+    """
+    return IngestionService(db, storage=storage, actor=caller)
 
 
 IngestionServiceDep = Annotated[IngestionService, Depends(get_ingestion_service)]

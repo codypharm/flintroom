@@ -106,3 +106,20 @@ async def read_material(
     source document is destroyed.
     """
     return ingestion.presented(material)
+
+
+@router.delete("/materials/{material_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_material(
+    material: OwnedMaterial,
+    user_id: CurrentUser,
+    ingestion: IngestionServiceDep,
+) -> None:
+    """Destroy a material and everything extracted from it.
+
+    204 and no body: there is nothing left to describe. A second call is a 404,
+    because a deleted material is not found from the moment of the request that
+    deleted it — the row survives a few seconds longer for an extraction that may
+    be mid-flight, which is bookkeeping rather than a window in which the user's
+    deck still exists.
+    """
+    await ingestion.delete(material.id, user_id=user_id)

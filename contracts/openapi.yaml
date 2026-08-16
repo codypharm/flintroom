@@ -424,6 +424,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - materials
+      summary: Delete Material
+      description: 'Destroy a material and everything extracted from it.
+
+
+        204 and no body: there is nothing left to describe. A second call is a 404,
+
+        because a deleted material is not found from the moment of the request that
+
+        deleted it — the row survives a few seconds longer for an extraction that
+        may
+
+        be mid-flight, which is bookkeeping rather than a window in which the user''s
+
+        deck still exists.'
+      operationId: materials_delete_material
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: material_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Material Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     BalanceRead:

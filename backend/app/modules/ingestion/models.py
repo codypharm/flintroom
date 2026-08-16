@@ -105,6 +105,15 @@ class Material(Base):
                 "source_deleted_at IS NULL AND state IN ('ready', 'failed')"
             ),
         ),
+        # Materials the user has destroyed and the sweep has not yet removed.
+        # Partial for the same reason as the index above, and even more one-sided:
+        # a healthy deployment empties this within one pass, so anything durable
+        # in it is an object the store is refusing to delete.
+        Index(
+            "ix_materials_deleted",
+            "deleted_at",
+            postgresql_where=text("deleted_at IS NOT NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -205,6 +214,24 @@ class Material(Base):
     #: there only so a pathological deck cannot be claimed forever.
     attempts: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0"
+    )
+
+    #: When the user asked for this material to be destroyed.
+    #:
+    #: A mark rather than an immediate `DELETE`, and the row it keeps alive is
+    #: measured in seconds. What it buys is a place for an extraction already in
+    #: flight to land: a worker that has paid for a model call still has to write
+    #: its `extraction_costs` row, and unrecorded spend on a deleted deck is
+    #: precisely the abuse that table exists to make visible. The sweep removes
+    #: the row for real once nothing holds it.
+    #:
+    #: It is not a grace period and nothing about it is undoable. The objects are
+    #: deleted on the request, and from that moment the material is invisible to
+    #: every read, every claim query and every room that tries to ground itself in
+    #: it — so the user's promise is kept at the request and the row is our own
+    #: bookkeeping.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
 

@@ -637,6 +637,64 @@ Still present on a `failed` material, deliberately. That is the state whose
 answer is *"upload it again"*, which needs the user to know which of four files
 to go and find — and `filename` alone is `deck-final-v3.pdf`, twice.
 
+### The user can destroy a material, and the claims go with it
+
+`DELETE /v1/materials/{id}` → 204. **Built 2026-08-16.** Until then
+`material_claims` said claims were kept *"until the user deletes the Material"* —
+a retention rule describing an action no endpoint offered, which is the worst
+kind: it reads correctly and is unenforceable.
+
+Both objects go, and so do the claims. By deletion time the claims *are* the
+deck — the source is already gone — so keeping the figures out of somebody's
+unannounced board deck after they asked for it to be destroyed would be the same
+disclosure one step removed. `material_claims` and `session_materials` cascade
+off the row; `extraction_costs` does not, because it has no foreign key precisely
+so *"upload, extract, delete, repeat"* cannot erase its own trail.
+
+**The row is marked, not dropped, and it survives the request by seconds.** The
+mark commits first because it is what makes the material vanish from every read,
+every claim query and every room — the parts of the promise this process can
+guarantee on its own. The objects are deleted after, outside that transaction,
+because a bucket cannot join one. A delete that fails therefore leaves a row the
+sweep retries rather than a material that is gone from the API and present in
+storage.
+
+Two questions the window exists to answer, both resolved 2026-08-16:
+
+**A deck deleted while it is being extracted.** Not a rare case — *"I uploaded
+the wrong deck"* is the most likely deletion there is, and it lands squarely
+inside the seconds a worker has the file open. Refusing until extraction finished
+would have meant telling a user to wait up to fifteen minutes to destroy their
+own document. Instead the worker asks, between opening the file and spending
+anything on it, whether the material survived; if not it releases the claim and
+the same sweep pass purges the row. Without that check it would render a
+thumbnail into a bucket the user has just been told is empty — an object with no
+row pointing at it, which nothing would ever find to clean up.
+
+**A worker that has already paid.** `purge_deleted` skips materials in
+`extracting` for the mirror-image reason: a model call that has been billed still
+owes an `extraction_costs` row, and dropping the material out from under it loses
+that row. Unrecorded spend on a deck nobody can see is exactly the abuse the
+table exists to make visible. It finishes; the next pass takes the row.
+
+**Refused while a room is still standing on it** — 422 `material_in_use`. The
+Auditor cross-checks live speech against these claims, so removing them
+mid-interrogation leaves somebody paying metered minutes for a panel that has
+quietly stopped being able to catch anything, with nothing on screen saying so.
+The refusal is bounded and the user holds the thing that ends it: a session is
+capped at twelve minutes. This is the one refusal in ingestion that protects a
+session rather than a file.
+
+Ingestion asks `sessions` that question through `room_still_standing_on`, the
+mirror of `confirm_ready` going the other way — each module reads its own tables
+and neither reaches across. The dependency is genuinely mutual, so the import is
+function-local; that is the containment, and it costs a dict lookup per deletion.
+
+The deletion writes an `audit_events` row — the first in this module, and the
+one place the argument is unanswerable: a promise to destroy a document is
+unfalsifiable without a record that the user asked and we acted, and that record
+has to outlive the thing it describes.
+
 ### Extraction cost is recorded, and page throughput is capped
 
 An `extraction_costs` table keyed by `material_id` and `user_id`, recording
@@ -863,8 +921,8 @@ decks forever at our cost with no metered minute ever consumed.
 
 ### Exceeding a limit does two different things, and the difference is a window
 
-Every refusal here is a typed 422 with an `audit_events` row. What happens to the
-material afterwards depends on whether waiting could ever help:
+Every refusal here is a typed 422. What happens to the material afterwards
+depends on whether waiting could ever help:
 
 | Limit | Material becomes | Because |
 | --- | --- | --- |
@@ -1071,18 +1129,17 @@ Follows the mandatory rules rather than restating them; the ones with teeth here
   what a material list is *for* (picking grounding for the next room, or managing
   what is stored) decides whether it is filtered to `ready` and whether it
   paginates.
-- **Nothing deletes a material on the user's behalf.** The retention story is
-  complete for extraction — source out, claims and thumbnail in — and absent for
-  deletion: there is no endpoint, so `material_claims`' *"until the user deletes
-  the Material"* retention rule describes something a user cannot yet do. The
-  cascade is in place and the thumbnail would have to be removed alongside it,
-  since it inherits the claims' rules exactly and is never weaker.
-- **A budget refusal writes no `audit_events` row.** The section above says every
-  refusal here is a typed 422 with one, and a budget hold is neither: it is a row
-  the claim query passed over, with no request behind it and no client to answer.
-  The material's own state is the durable record for now. If a dispute ever needs
-  *"why did this deck wait"* answered, the honest place is an audit row written
-  when the claim query first declines a material, not a log line.
+- **Only deletion is audited.** `MATERIAL_DELETED` is the module's one
+  `audit_events` row, and the refusals are not: an oversized file, an unreadable
+  type, a material that is not ready. Each is a typed 422 the caller sees, and
+  none of them changes anything worth proving later — but the line between "worth
+  an audit row" and "worth a log line" here is currently *"deletion, because a
+  privacy promise must be provable"* rather than a considered rule. A budget hold
+  is the case that will decide it: it is neither a refusal nor a request, just a
+  row the claim query passed over, and the honest answer to *"why did this deck
+  wait"* would be an audit row written the first time a material is declined.
+  This paragraph previously claimed every refusal wrote one, which was never
+  true of any of them.
 - **Per-seat accounting for Teams is unspecified.** The budget is written per
   seat, and nothing yet says whether an unused seat's pages pool across the
   organisation. It does not block anything until Teams ships.

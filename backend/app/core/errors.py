@@ -260,6 +260,25 @@ class MaterialNotReady(BusinessRuleViolation):
     message = "That material is still being read. Start the room in a moment."
 
 
+class MaterialInUse(BusinessRuleViolation):
+    """A deck a room is still standing on cannot be pulled out from under it.
+
+    The one refusal in ingestion that protects a *session* rather than a file.
+    The Auditor cross-checks live speech against this material's claims, so
+    deleting them mid-interrogation leaves the user paying metered minutes for a
+    panel that has quietly lost the ability to catch anything — a failure with no
+    symptom, which is the kind this codebase refuses to ship.
+
+    Bounded, and the message says how: a session is capped at twelve minutes and
+    the user is holding the device that ends it. That is what makes a refusal
+    honest here rather than an obstacle — deletion is delayed by an action the
+    person asking is already able to take.
+    """
+
+    code = "material_in_use"
+    message = "That material is in a room you are still in. End the session first."
+
+
 class ExtractionIncomplete(BusinessRuleViolation):
     """Something tried to settle a deck that was only partly read.
 

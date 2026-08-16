@@ -80,6 +80,31 @@ def _distinct(material_ids: Sequence[uuid.UUID]) -> list[uuid.UUID]:
     return list(seen)
 
 
+async def room_still_standing_on(
+    db: AsyncSession, *, material_id: uuid.UUID
+) -> uuid.UUID | None:
+    """The live session grounded in this material, if there is one.
+
+    The mirror of `confirm_ready` going the other way: ingestion has to know
+    whether a deck is under a running room before it destroys it, and the tables
+    that answer that are this module's. Each module reads its own, and neither
+    reaches across.
+
+    A question rather than a refusal, unlike `confirm_ready`. What deleting a
+    material may do is ingestion's rule to make, so this returns the fact and
+    leaves the policy where the endpoint is.
+    """
+    return await db.scalar(
+        select(Session.id)
+        .join(SessionMaterial, SessionMaterial.session_id == Session.id)
+        .where(
+            SessionMaterial.material_id == material_id,
+            Session.state.in_(LOCK_HOLDING_STATES),
+        )
+        .limit(1)
+    )
+
+
 class SessionService:
     """The only path through which session state changes."""
 

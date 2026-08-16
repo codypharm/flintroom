@@ -36,6 +36,11 @@ class AuditEventType(str, Enum):
     TOPUP_PURCHASED = "topup_purchased"
     WEBHOOK_REJECTED = "webhook_rejected"
 
+    # Retention. The row outlives the thing it describes, which is the whole
+    # point here: a promise to destroy a document is unfalsifiable without a
+    # record that the user asked and we acted.
+    MATERIAL_DELETED = "material_deleted"
+
     # Security.
     PERMISSION_DENIED = "permission_denied"
     ADMIN_OVERRIDE = "admin_override"

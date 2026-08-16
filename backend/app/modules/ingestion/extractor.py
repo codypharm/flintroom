@@ -84,7 +84,7 @@ class ExtractionService:
         straight back while there is a queue and idle politely when there is
         not, without a second query asking whether there is work.
 
-        Three steps, and the order of the outer two is load-bearing. Releasing
+        Four steps, and the order of the outer ones is load-bearing. Releasing
         stalled claims first makes a deck stranded by a dead worker a candidate
         for *this* pass rather than the next one. Purging last means the deck
         this pass just finished has its source deleted before the pass returns —
@@ -94,10 +94,15 @@ class ExtractionService:
         The purge runs whether or not a deck was read, which is what makes it
         the recovery path as well as the fast one: a delete that failed leaves
         the material undeleted, and an idle loop keeps trying it.
+
+        Destroyed materials are purged last, after the deck this pass read has
+        finished — so a user who deletes a deck while it is being extracted has
+        the row gone by the end of the same pass rather than the next one.
         """
         await self._ingestion.release_stalled(timeout=EXTRACTION_TIMEOUT)
         worked = await self._read_one()
         await self._ingestion.purge_sources()
+        await self._ingestion.purge_deleted()
         return worked
 
     async def _read_one(self) -> bool:
@@ -139,6 +144,14 @@ class ExtractionService:
             # The refusals themselves are already logged where they are raised,
             # with the counts a user needs to send a smaller file.
             await self._ingestion.fail_extraction(material.id)
+            return True
+
+        # Asked here because everything below this line either writes an object
+        # or spends money, and both are wrong for a deck the user destroyed while
+        # we had it open — which is the most likely moment for anyone to destroy
+        # one. A thumbnail rendered after the deletion would be an object with no
+        # row pointing at it, which nothing would ever find to clean up.
+        if await self._ingestion.abandon_if_deleted(material.id):
             return True
 
         # Before the model call, because it is the artefact that survives

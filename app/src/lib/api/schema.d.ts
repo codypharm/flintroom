@@ -304,7 +304,17 @@ export interface paths {
         get: operations["materials_read_material"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Material
+         * @description Destroy a material and everything extracted from it.
+         *
+         *     204 and no body: there is nothing left to describe. A second call is a 404,
+         *     because a deleted material is not found from the moment of the request that
+         *     deleted it — the row survives a few seconds longer for an extraction that may
+         *     be mid-flight, which is bookkeeping rather than a window in which the user's
+         *     deck still exists.
+         */
+        delete: operations["materials_delete_material"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1019,6 +1029,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["MaterialRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    materials_delete_material: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

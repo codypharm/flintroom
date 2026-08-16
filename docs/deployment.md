@@ -76,6 +76,13 @@ Two lines nearby that mean something specific:
   made to the App Store questionnaire is not currently being kept, and the
   standing measure of the backlog is the row count matching
   `ix_materials_source_undeleted`.
+- `material_delete_failed` — **the other privacy line, and the more serious of
+  the two.** A user asked for a material to be destroyed and at least one of its
+  objects is still in the bucket. The API has already told them it is gone, so
+  unlike the line above there is a person who believes something that is not yet
+  true. Recovered on the next sweep pass; repeating means it is not being
+  recovered, and the backlog is the row count matching `ix_materials_deleted`.
+  Alert on this one directly rather than only on the index size.
 
 ## Migrations run before the new version serves
 
