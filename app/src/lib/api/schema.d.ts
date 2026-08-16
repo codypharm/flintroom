@@ -550,23 +550,22 @@ export interface components {
             settled_at?: string | null;
             /** Material Ids */
             material_ids?: string[];
+            /** Archetypes */
+            archetypes?: string[];
         };
         /**
          * SessionStart
-         * @description What a room may be configured with, which today is only its grounding.
-         *
-         *     Panel composition, archetype selection and audience context all belong here
-         *     eventually and deliberately do not yet — `docs/ingestion.md` scopes those to
-         *     the panel work, and inventing the fields now would be guessing at a shape
-         *     the interrogation design has not settled.
+         * @description What a room may be configured with: its grounding, and who is in it.
          *
          *     Extra fields are refused rather than ignored. A client sending `materialIds`
-         *     or `archetypes` should be told, not silently given an ungrounded room —
-         *     which is the failure that looks exactly like the panel being bad at its job.
+         *     in camelCase should be told, not silently given an ungrounded room — which
+         *     is the failure that looks exactly like the panel being bad at its job.
          */
         SessionStart: {
             /** Material Ids */
             material_ids?: string[];
+            /** Archetypes */
+            archetypes?: string[];
         };
         /**
          * SessionStarted
@@ -600,6 +599,8 @@ export interface components {
             settled_at?: string | null;
             /** Material Ids */
             material_ids?: string[];
+            /** Archetypes */
+            archetypes?: string[];
             /** Stream Ticket */
             stream_ticket: string;
         };

@@ -132,18 +132,27 @@ class EndReason(str, Enum):
 #: nobody attaches a library by accident or on purpose.
 MAX_SESSION_MATERIALS = 10
 
+#: How many archetype names one request may carry.
+#:
+#: **An abuse guard, not the product limit.** The real cap is the caller's tier
+#: (`billing/tiers.py` → `MAX_PANEL_SIZE`), and it has to be, because only the
+#: service knows which plan the caller is on. Setting this to the largest tier's
+#: seats would look tidier and behave worse: a Pro user asking for six would be
+#: refused by Pydantic with a generic length error instead of by `PanelTooLarge`
+#: with the sentence that names their plan's number.
+#:
+#: So it sits well above every tier, exactly as `MAX_SESSION_MATERIALS` does —
+#: high enough that every refusal a real user meets is the one that explains
+#: itself, low enough that nobody posts a list of ten thousand names.
+MAX_REQUESTED_PANELISTS = 25
+
 
 class SessionStart(BaseModel):
-    """What a room may be configured with, which today is only its grounding.
-
-    Panel composition, archetype selection and audience context all belong here
-    eventually and deliberately do not yet — `docs/ingestion.md` scopes those to
-    the panel work, and inventing the fields now would be guessing at a shape
-    the interrogation design has not settled.
+    """What a room may be configured with: its grounding, and who is in it.
 
     Extra fields are refused rather than ignored. A client sending `materialIds`
-    or `archetypes` should be told, not silently given an ungrounded room —
-    which is the failure that looks exactly like the panel being bad at its job.
+    in camelCase should be told, not silently given an ungrounded room — which
+    is the failure that looks exactly like the panel being bad at its job.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -154,6 +163,17 @@ class SessionStart(BaseModel):
     #: a deck instead of being blocked.
     material_ids: list[uuid.UUID] = Field(
         default_factory=list, max_length=MAX_SESSION_MATERIALS
+    )
+
+    #: Archetype names, in the order they should be seated. Empty means the
+    #: shipped mixed default — a champion, a skeptic and a neutral — rather than
+    #: an empty room, on the same reasoning as material above.
+    #:
+    #: Order is carried through rather than sorted. `routing.choose` breaks a
+    #: scoring tie on the panel's own index, so the seat a user gives an
+    #: archetype is a real input to who speaks.
+    archetypes: list[str] = Field(
+        default_factory=list, max_length=MAX_REQUESTED_PANELISTS
     )
 
 
@@ -187,6 +207,16 @@ class SessionRead(BaseModel):
     #: "which deck is this room attacking" is not a question the user should
     #: have to answer from memory.
     material_ids: list[uuid.UUID] = Field(default_factory=list)
+
+    #: Who is in this room, in the order they were seated. Fixed when it started,
+    #: for the same reason and echoed back for the same reason.
+    #:
+    #: Names rather than rendered panelists. The client resolves them against the
+    #: archetype catalogue, which it needs anyway to offer the picker — and
+    #: inlining persona and attack strategy here would put the room's own attack
+    #: plan in a response the user can read, which is not a thing to hand
+    #: somebody rehearsing against it.
+    archetypes: list[str] = Field(default_factory=list)
 
 
 class SessionStarted(SessionRead):

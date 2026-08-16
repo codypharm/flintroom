@@ -8,6 +8,8 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     PrimaryKeyConstraint,
+    SmallInteger,
+    String,
     func,
     text,
 )
@@ -271,3 +273,60 @@ class SessionMaterial(Base):
     attached_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class SessionPanelist(Base):
+    """One seat in one room, in the order it was assembled.
+
+    **Names, not personas.** An archetype is configuration (`CLAUDE.md`), so what
+    is stored is the key into `agents/archetypes.py` and the seat it took. The
+    alternative — snapshotting persona and attack strategy per session — would
+    freeze a room against the day its wording is improved, and every row would
+    carry two kilobytes of text that is identical across every session ever run.
+
+    The cost of that choice is real and worth naming: editing an archetype's
+    persona changes how a *past* session reads if anything ever replays one. It
+    is the right trade while archetypes are ours and few, and it is the decision
+    to revisit when Pro users start authoring their own — at which point a
+    panelist may point at a row rather than a constant, and the question becomes
+    what happens when its author deletes it.
+
+    Like `SessionMaterial`, the set is fixed when the session starts. A panel
+    that could change mid-interrogation is a reference set moving under the
+    Auditor: the archetype who owns a domain at minute two is not the one who
+    owns it at minute six, and *"why did nobody challenge that"* stops having an
+    answer.
+    """
+
+    __tablename__ = "session_panelists"
+    __table_args__ = (
+        # The pair *is* the fact, exactly as in `SessionMaterial` — and a
+        # composite key makes seating the same archetype twice impossible rather
+        # than merely refused. The service refuses it first, with a message; this
+        # is what holds if a future caller forgets to.
+        PrimaryKeyConstraint("session_id", "name", name="pk_session_panelists"),
+        # One archetype per seat. Without it a bug writing two seat-0 rows
+        # produces a room whose order depends on which row the planner returns
+        # first — a panel that reassembles differently on different reads, which
+        # would be invisible until a routing tiebreak went the other way.
+        Index("uq_session_panelists_seat", "session_id", "seat", unique=True),
+    )
+
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    #: The archetype's `name`, which is its identity everywhere else: in logs, in
+    #: the transcript's speaker field, and in what the selection step answers.
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    #: Where this archetype sits, from zero. Persisted rather than derived from
+    #: insertion order, because a room is read back by more than one caller and
+    #: "whatever order the rows come out" is not an order.
+    #:
+    #: It is a real input, not presentation: `routing.choose` breaks a scoring
+    #: tie on the panel's own index, so the seat a user gave an archetype decides
+    #: who speaks when nothing else separates them.
+    seat: Mapped[int] = mapped_column(SmallInteger, nullable=False)

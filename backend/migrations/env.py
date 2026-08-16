@@ -24,12 +24,24 @@ if config.config_file_name is not None:
 from app.core.database import Base
 
 # Importing the models registers them on Base.metadata. Autogenerate only sees
-# what has been imported, so a module missing here silently produces an empty
-# migration rather than an error.
+# what has been imported, and a module missing here does not fail — it produces
+# a migration that *drops* whatever it could not see. `ingestion` and `voice`
+# were both absent for several releases, which is why every table in them was
+# created by a hand-written migration: autogenerate could not run at all once
+# `session_materials` grew a foreign key into a table it had never imported.
+#
+# The drift guard in tests/test_migrations.py did not catch it. That test builds
+# `Base.metadata` from the test suite's own imports, where conftest pulls in
+# every module — so the metadata it compares is complete even when this file's
+# is not. Nothing except running the CLI reveals the gap. Add the module here
+# when you add a module with a table in it.
 from app.modules.audit_log import models as audit_log_models  # noqa: F401
 from app.modules.auth import models as auth_models  # noqa: F401
 from app.modules.billing import models as billing_models  # noqa: F401
+from app.modules.ingestion import models as ingestion_models  # noqa: F401
 from app.modules.sessions import models as sessions_models  # noqa: F401
+from app.modules.voice import costs as voice_costs  # noqa: F401
+from app.modules.voice import models as voice_models  # noqa: F401
 
 target_metadata = Base.metadata
 

@@ -27,7 +27,12 @@ from app.agents.context import (
 )
 from app.agents.model import PanelModel
 from app.agents.routing import choose
-from app.core.errors import ArchetypeNotFound, FlintroomError, PanelTooLarge
+from app.core.errors import (
+    ArchetypeNotFound,
+    DuplicatePanelist,
+    FlintroomError,
+    PanelTooLarge,
+)
 from app.core.logging import get_logger
 from app.modules.billing.tiers import UPGRADE_LADDER, max_panel_size
 
@@ -42,9 +47,10 @@ def assemble(*, tier: str, chosen: Sequence[str]) -> tuple[Archetype, ...]:
     last — the user asked for a room of five, and "we could not find X" would be
     an answer to a question they did not ask.
 
-    A name nobody in the library answers to is refused rather than skipped.
-    Dropping it silently would seat a smaller room than the user assembled, and
-    they would find out by noticing somebody never spoke.
+    A name nobody in the library answers to is refused rather than skipped, and
+    a name given twice is refused rather than deduped. Both would otherwise seat
+    a smaller room than the user assembled, and they would find out by noticing
+    somebody never spoke.
     """
     if len(chosen) > max_panel_size(tier):
         raise PanelTooLarge(_too_large_message(tier, len(chosen)), tier=tier, asked=len(chosen))
@@ -54,6 +60,8 @@ def assemble(*, tier: str, chosen: Sequence[str]) -> tuple[Archetype, ...]:
         archetype = by_name(name)
         if archetype is None:
             raise ArchetypeNotFound(archetype=name)
+        if archetype in panel:
+            raise DuplicatePanelist(archetype=name)
         panel.append(archetype)
 
     return tuple(panel)

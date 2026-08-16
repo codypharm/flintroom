@@ -786,6 +786,11 @@ components:
             format: uuid
           type: array
           title: Material Ids
+        archetypes:
+          items:
+            type: string
+          type: array
+          title: Archetypes
       type: object
       required:
       - id
@@ -821,27 +826,24 @@ components:
           type: array
           maxItems: 10
           title: Material Ids
+        archetypes:
+          items:
+            type: string
+          type: array
+          maxItems: 25
+          title: Archetypes
       additionalProperties: false
       type: object
       title: SessionStart
-      description: 'What a room may be configured with, which today is only its grounding.
-
-
-        Panel composition, archetype selection and audience context all belong here
-
-        eventually and deliberately do not yet — `docs/ingestion.md` scopes those
-        to
-
-        the panel work, and inventing the fields now would be guessing at a shape
-
-        the interrogation design has not settled.
+      description: 'What a room may be configured with: its grounding, and who is
+        in it.
 
 
         Extra fields are refused rather than ignored. A client sending `materialIds`
 
-        or `archetypes` should be told, not silently given an ungrounded room —
+        in camelCase should be told, not silently given an ungrounded room — which
 
-        which is the failure that looks exactly like the panel being bad at its job.'
+        is the failure that looks exactly like the panel being bad at its job.'
     SessionStarted:
       properties:
         id:
@@ -874,6 +876,11 @@ components:
             format: uuid
           type: array
           title: Material Ids
+        archetypes:
+          items:
+            type: string
+          type: array
+          title: Archetypes
         stream_ticket:
           type: string
           title: Stream Ticket

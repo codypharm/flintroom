@@ -52,8 +52,11 @@ async def start_session(
     connection against the same database, so the case is nearly always "the
     database is gone", where the start would not have committed either.
     """
-    attaching = body.material_ids if body else []
-    session = await sessions.start(user_id=user_id, material_ids=attaching)
+    session = await sessions.start(
+        user_id=user_id,
+        material_ids=body.material_ids if body else [],
+        archetypes=body.archetypes if body else [],
+    )
     return SessionStarted(
         **(await _read(session, sessions)).model_dump(),
         stream_ticket=await tickets.mint(session_id=session.id, user_id=user_id),
@@ -88,17 +91,21 @@ async def end_session(
 
 
 async def _read(session, sessions: SessionServiceDep) -> SessionRead:
-    """A session with the grounding it was started against.
+    """A session with the grounding it was started against, and the room in it.
 
-    A second query rather than an eager relationship on `Session`. The sweeps
+    Two extra queries rather than eager relationships on `Session`. The sweeps
     that run every fifteen seconds select columns instead of rows, so they would
     not pay for it — but `_active_session` does load a row, on every single
-    start, to answer a question that has nothing to do with material. Paying
-    there for something only three responses read is the wrong place to spend it.
+    start, to answer a question that has nothing to do with either. Paying there
+    for something only three responses read is the wrong place to spend it.
 
     Assembly, not a rule: no branch, no condition, nothing about *what* may
-    ground a room has leaked out of `SessionService`.
+    ground a room or sit in it has leaked out of `SessionService`.
     """
+    panel = await sessions.panel(session_id=session.id)
     return SessionRead.model_validate(session).model_copy(
-        update={"material_ids": await sessions.materials(session_id=session.id)}
+        update={
+            "material_ids": await sessions.materials(session_id=session.id),
+            "archetypes": [archetype.name for archetype in panel],
+        }
     )

@@ -357,6 +357,22 @@ class ArchetypeNotFound(NotFound):
     message = "No such panelist."
 
 
+class DuplicatePanelist(BusinessRuleViolation):
+    """The same archetype seated twice in one room.
+
+    Refused rather than deduped, on the same reasoning as `ArchetypeNotFound`:
+    collapsing it silently seats a smaller room than the user assembled, and they
+    learn about it by noticing the panel is thinner than they chose.
+
+    422 rather than 409. Nothing is in conflict with anything — the request is
+    simply not a room, in the same way a request for four panelists on a
+    three-seat plan is not one.
+    """
+
+    code = "duplicate_panelist"
+    message = "That panelist is already in the room."
+
+
 class NoMinutesRemaining(BusinessRuleViolation):
     """Raised when *starting*, never mid-session.
 

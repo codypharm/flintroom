@@ -14,9 +14,12 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.archetypes import DEFAULT_PANEL, Archetype, by_name
+from app.agents.panel import assemble
 from app.core.actors import ActorContext
 from app.core.database import db_now
 from app.core.errors import (
+    AccountNotFound,
     FlintroomError,
     NoMinutesRemaining,
     ActiveSessionExists,
@@ -27,9 +30,15 @@ from app.core.errors import (
 from app.core.logging import get_logger
 from app.modules.audit_log.schemas import AuditEventType
 from app.modules.audit_log.service import AuditService
+from app.modules.billing.models import Account
 from app.modules.billing.service import LedgerService
 from app.modules.ingestion.service import confirm_ready
-from app.modules.sessions.models import Session, SessionMaterial, SessionPhaseSpan
+from app.modules.sessions.models import (
+    Session,
+    SessionMaterial,
+    SessionPanelist,
+    SessionPhaseSpan,
+)
 from app.modules.sessions.schemas import (
     GRACE_LIMIT,
     METERED_PHASES,
@@ -121,6 +130,7 @@ class SessionService:
         *,
         user_id: uuid.UUID,
         material_ids: Sequence[uuid.UUID] = (),
+        archetypes: Sequence[str] = (),
     ) -> Session:
         """Open a session in `provisioning`, grounded in whatever it was handed.
 
@@ -140,11 +150,19 @@ class SessionService:
         """
         attaching = _distinct(material_ids)
 
-        # Before the balance check and before the insert, so a room is never
-        # opened against a deck that cannot ground it. Ordering matters for what
-        # the user is told: being refused for an unready deck is actionable,
+        # Both before the balance check and before the insert, so a room is never
+        # opened that cannot be run. Ordering matters for what the user is told:
+        # being refused for an unready deck or an unseatable panel is actionable,
         # while being told you are out of minutes and *then* that your deck is
         # not ready is two round trips for one attempt.
+        #
+        # The panel goes first because it is the cheaper question — one column on
+        # the account against a join across materials — and because a room with
+        # nobody in it is a more basic failure than a room with nothing to attack.
+        panel = assemble(
+            tier=await self._tier_of(user_id),
+            chosen=list(archetypes) or [seat.name for seat in DEFAULT_PANEL],
+        )
         await confirm_ready(self._db, user_id=user_id, material_ids=attaching)
 
         if (existing := await self._active_session(user_id)) is not None:
@@ -188,6 +206,16 @@ class SessionService:
                 raise
             await self._deny_start(user_id, reason="lost_start_race")
 
+        for seat, archetype in enumerate(panel):
+            # Same commit as the session, for the same reason as the material
+            # below: a room whose seats landed in a later transaction could be
+            # connected to before anybody was in it.
+            self._db.add(
+                SessionPanelist(
+                    session_id=session.id, name=archetype.name, seat=seat
+                )
+            )
+
         for material_id in attaching:
             # Same commit as the session and its audit row. A room that exists
             # without its grounding is one the panel would interrogate blind,
@@ -206,6 +234,41 @@ class SessionService:
         )
         await self._db.commit()
         return session
+
+    async def panel(self, *, session_id: uuid.UUID) -> tuple[Archetype, ...]:
+        """Who is in this room, in the order they were seated.
+
+        Resolved through `by_name` rather than returned as names, because every
+        caller wants the archetype: the selection step reads personas, the
+        composer reads one, and the client shows titles. Handing out strings
+        would push the same lookup into three places.
+
+        A name the library no longer answers to is **dropped, not raised**, and
+        this is the one place in the panel code where that is right. Everywhere
+        else a missing archetype means the user asked for something that does not
+        exist, and refusing tells them so. Here it means a room was seated when
+        the library was different — a live session mid-interrogation, or a
+        settled one being read back for its debrief. Raising would take the room
+        away from somebody sitting in it over a change they did not make.
+        """
+        rows = await self._db.execute(
+            select(SessionPanelist.name)
+            .where(SessionPanelist.session_id == session_id)
+            .order_by(SessionPanelist.seat)
+        )
+        seated = [by_name(name) for name in rows.scalars()]
+
+        if any(archetype is None for archetype in seated):
+            # The only symptom otherwise is a room that is quietly smaller than
+            # it was assembled to be, which reads as a broken panel.
+            log.warning(
+                "panel_seat_unresolved",
+                session_id=str(session_id),
+                seated=len(seated),
+                resolved=sum(archetype is not None for archetype in seated),
+            )
+
+        return tuple(archetype for archetype in seated if archetype is not None)
 
     async def materials(self, *, session_id: uuid.UUID) -> list[uuid.UUID]:
         """What this room was grounded in, in the order it was attached.
@@ -623,6 +686,22 @@ class SessionService:
         cls.require_transition(session, to_state)
         session.state = to_state
         session.last_progress_at = func.now()
+
+    async def _tier_of(self, user_id: uuid.UUID) -> str:
+        """The caller's entitlement tier, which decides how many seats they get.
+
+        A second read on the start path, and the only new cost this slice adds.
+        Not folded into the balance read a few lines down: that one goes through
+        `LedgerService` and rolls the entitlement period as a side effect, and
+        borrowing its row to answer a different question would tie panel size to
+        billing machinery it has nothing to do with.
+        """
+        tier = await self._db.scalar(
+            select(Account.entitlement_tier).where(Account.user_id == user_id)
+        )
+        if tier is None:
+            raise AccountNotFound(user_id=str(user_id))
+        return tier
 
     async def _load(self, session_id: uuid.UUID) -> Session:
         result = await self._db.execute(
