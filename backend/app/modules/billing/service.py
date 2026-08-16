@@ -25,9 +25,23 @@ _BUCKET_BALANCE_COLUMN = {
 #: Top-up is last because the user paid for it and it never expires.
 SPEND_ORDER = (Bucket.ALLOWANCE, Bucket.FREE, Bucket.TOPUP)
 
-#: Placeholder cadence. The real boundary comes from the RevenueCat entitlement
-#: period, not the calendar — a user who subscribed on the 3rd renews on the 3rd.
-#: Replace this when the RevenueCat webhook lands; see docs/minutes-ledger-and-sessions.md.
+#: The fallback cadence, used only when nothing better is known.
+#:
+#: The real boundary comes from the store and is written by `apply_subscription`
+#: — a user who subscribed on the 3rd renews on the 3rd, and RevenueCat's
+#: `expiration_at_ms` says exactly when. This survives for the case where a
+#: boundary passes without a webhook having arrived: `ensure_current_period` has
+#: to advance the account to *some* current period, and the store's next event
+#: corrects it.
+#:
+#: That is the lazy-repair pattern working as designed rather than a placeholder
+#: waiting to be replaced — the webhook accelerates the reset, and a dropped one
+#: costs a slightly wrong boundary until the next event rather than a user with
+#: no minutes.
+#:
+#: It is still the only cadence a free-tier account could have, and free accounts
+#: have no renewing allowance at all — so in practice this advances a period_id
+#: for somebody who is granted nothing either way.
 PERIOD_LENGTH = timedelta(days=30)
 
 log = get_logger(__name__, tag="billing")
@@ -110,6 +124,44 @@ class LedgerService:
             user_id=str(user_id),
             seconds=FREE_TIER_LIFETIME_SECONDS,
         )
+
+    async def grant_topup(
+        self, *, user_id: uuid.UUID, seconds: int, idempotency_key: str
+    ) -> bool:
+        """Minutes somebody bought outright. True if this call is what granted them.
+
+        Into the top-up bucket, which is what makes §4.5's *"top-up minutes never
+        expire"* true in code: `ensure_current_period` writes off the allowance
+        remainder at a boundary and never touches this one. A pack granted into
+        the wrong bucket disappears at the end of the month, from a user who paid
+        cash for it, at a moment they did not act.
+
+        Same idempotency shape as `grant_signup_free_minutes` and for the same
+        reason: the check cannot see a sibling transaction's uncommitted row, so
+        the unique index is what actually arbitrates. Unlike a subscription there
+        is no period to key on — a duplicate delivery is indistinguishable from a
+        second purchase except by the event id, and RevenueCat retries five
+        times.
+        """
+        if await self._entry_exists(idempotency_key=idempotency_key):
+            log.info("topup_already_granted", user_id=str(user_id))
+            return False
+
+        try:
+            await self.grant(
+                user_id=user_id,
+                bucket=Bucket.TOPUP,
+                seconds=seconds,
+                reason=EntryReason.GRANT_TOPUP,
+                idempotency_key=idempotency_key,
+            )
+        except IntegrityError:
+            await self._db.rollback()
+            log.info("topup_already_granted", user_id=str(user_id))
+            return False
+
+        log.info("topup_granted", user_id=str(user_id), seconds=seconds)
+        return True
 
     async def _entry_exists(self, *, idempotency_key: str) -> bool:
         result = await self._db.execute(
@@ -299,6 +351,102 @@ class LedgerService:
             forgiven_seconds=overdraft,
         )
         return self._balance_of(account)
+
+    async def apply_subscription(
+        self,
+        *,
+        user_id: uuid.UUID,
+        tier: str,
+        period_ends_at: datetime | None,
+    ) -> tuple[str, Balance]:
+        """Put an account on a tier, and roll its period if the store moved it.
+
+        The webhook half of the reset decision: *"lazy on read, keyed by
+        `period_id`; RevenueCat webhook accelerates"*.
+
+        **The two paths do not interlock on the key, and cannot.** They compute
+        different boundaries — a flat thirty days there, the store's real expiry
+        here — so they reach different `period_id`s and neither refuses the
+        other's write. What keeps the balance right is the expire-then-grant
+        pair: whichever runs second writes off what the first granted before
+        granting again. The user ends with one allowance and a boundary matching
+        what they paid for.
+
+        Both entries are keyed on the period being *entered*, as
+        `ensure_current_period` does. That agreement is load-bearing rather than
+        tidy: keyed on the period being left, this method's write-off collides
+        with the lazy reset's the first time both run for one renewal — an
+        `IntegrityError` out of a webhook, which RevenueCat then retries five
+        times.
+
+        Two independent decisions, deliberately not one:
+
+        - **The tier moves whenever it differs.** A `PRODUCT_CHANGE` mid-period
+          carries the same expiry, so a handler keyed on the boundary alone
+          leaves an upgraded user on their old limits until renewal.
+        - **The period only ever moves forward.** Webhooks are not ordered, and
+          an August renewal delivered after September's would otherwise wind the
+          boundary back and grant a second allowance. Equality is what makes a
+          duplicate delivery a no-op, which matters because RevenueCat retries
+          five times.
+
+        Returns the previous tier alongside the balance, so the caller can audit
+        the change without reading the row again — and so *"pro → free"* is one
+        row rather than a fact reconstructed from two.
+        """
+        account = await self._load_account(user_id, for_update=True)
+        previous = account.entitlement_tier
+        account.entitlement_tier = tier
+
+        advancing = period_ends_at is not None and (
+            account.period_ends_at is None or period_ends_at > account.period_ends_at
+        )
+
+        if advancing:
+            # The counter moves *before* either entry is staged, so both are
+            # keyed on the period being entered. `ensure_current_period` does the
+            # same, and they must agree: keyed on the period being left, this
+            # method's write-off collides with the lazy reset's the moment both
+            # run for one renewal — which is ordinary, not exceptional, since a
+            # user who opens the app on the morning their period rolls is
+            # repaired before the store's callback arrives.
+            account.period_ends_at = period_ends_at
+            account.period_id += 1
+
+            # No roll-over (Product.md §4.4), and written off as its own entry so
+            # replaying the log still reproduces the cached balance. Only a
+            # positive remainder: a negative one is a grace overdraft, and
+            # forgiving it here would use the wrong reason code.
+            remainder = account.balance_allowance_seconds
+            if remainder > 0:
+                self._stage(
+                    account=account,
+                    bucket=Bucket.ALLOWANCE,
+                    delta_seconds=-remainder,
+                    reason=EntryReason.EXPIRE_ALLOWANCE,
+                    idempotency_key=f"expire_allowance:{user_id}:{account.period_id}",
+                )
+
+            allowance = MONTHLY_ALLOWANCE_SECONDS.get(tier)
+            if allowance is not None:
+                self._stage(
+                    account=account,
+                    bucket=Bucket.ALLOWANCE,
+                    delta_seconds=allowance,
+                    reason=EntryReason.GRANT_ALLOWANCE,
+                    idempotency_key=f"grant_allowance:{user_id}:{account.period_id}",
+                )
+
+        await self._db.commit()
+        log.info(
+            "subscription_applied",
+            user_id=str(user_id),
+            tier=tier,
+            previous_tier=previous,
+            period_id=account.period_id,
+            advanced=advancing,
+        )
+        return previous, self._balance_of(account)
 
     async def ensure_current_period(self, *, user_id: uuid.UUID) -> Balance:
         """Roll the account onto the current period if its boundary has passed.

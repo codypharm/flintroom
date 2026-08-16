@@ -16,7 +16,10 @@ already been proven genuine.
 from __future__ import annotations
 
 import json
+import uuid
+from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.actors import ActorContext
@@ -24,20 +27,44 @@ from app.core.errors import WebhookRejected, WebhookUnconfigured
 from app.core.logging import get_logger
 from app.modules.audit_log.schemas import AuditEventType
 from app.modules.audit_log.service import AuditService
+from app.modules.billing.models import Account
 from app.modules.billing.revenuecat import RevenueCatEvent, parsed, verify
+from app.modules.billing.service import LedgerService
+from app.modules.billing.tiers import (
+    FREE_TIER,
+    SUBSCRIPTION_TIERS,
+    TOPUP_SECONDS,
+)
 
 log = get_logger(__name__, tag="billing")
 
-#: Event types this handler acts on. Everything else RevenueCat sends —
-#: paywall impressions, experiment enrolments, alias changes — is acknowledged
-#: and ignored, because a non-200 buys five retries each over two and a half
-#: hours for something we were never going to do anything about.
+#: Types that move an account onto a plan. All three carry the product and the
+#: expiry, and are the same write with different provenance.
+SUBSCRIPTION_EVENTS = frozenset(
+    {"INITIAL_PURCHASE", "RENEWAL", "PRODUCT_CHANGE", "UNCANCELLATION"}
+)
+
+#: Types that end one. `CANCELLATION` is deliberately absent — see `_cancel`.
+REVOCATION_EVENTS = frozenset({"EXPIRATION"})
+
+#: The consumable packs in §4.5.
+TOPUP_EVENTS = frozenset({"NON_RENEWING_PURCHASE"})
+
+#: Why a `CANCELLATION` revokes rather than merely stopping renewal.
 #:
-#: Empty in this slice: the wall is built before anything is put behind it, and
-#: the entitlement and top-up handling is the next one. Deliberately a named
-#: constant already, so that adding a handler is adding a name here rather than
-#: an `if` somewhere in a dispatch.
-HANDLED_EVENT_TYPES: frozenset[str] = frozenset()
+#: RevenueCat reports a refund as a cancellation, and `cancel_reason` is the only
+#: thing separating *"I will not renew"* from *"give me my money back"*. Treating
+#: them alike either takes a paid month from somebody who cancelled, or leaves a
+#: refunded user on a paid tier.
+REFUND_CANCEL_REASONS = frozenset({"CUSTOMER_SUPPORT"})
+
+#: Everything this handler acts on. Anything else RevenueCat sends — paywall
+#: impressions, experiment enrolments, alias changes — is acknowledged and
+#: ignored, because a non-200 buys five retries each over two and a half hours
+#: for something we were never going to do anything about.
+HANDLED_EVENT_TYPES: frozenset[str] = (
+    SUBSCRIPTION_EVENTS | REVOCATION_EVENTS | TOPUP_EVENTS | {"CANCELLATION"}
+)
 
 
 class BillingService:
@@ -75,7 +102,7 @@ class BillingService:
             await self._reject(**refused.context)
             raise
 
-        await self._handle(event)
+        await self.handle(event)
 
     async def _reject(self, reason: str = "unknown", **context: object) -> None:
         """One durable row per refused callback.
@@ -88,8 +115,12 @@ class BillingService:
             AuditEventType.WEBHOOK_REJECTED, provider="revenuecat", reason=reason, **context
         )
 
-    async def _handle(self, event: RevenueCatEvent) -> None:
+    async def handle(self, event: RevenueCatEvent) -> None:
         """Act on an event that is genuinely from the store.
+
+        Public because the verification and the meaning are different jobs and
+        the tests for each should not have to perform the other: everything here
+        assumes the signature already passed.
 
         Unhandled types are logged rather than audited. An audit row is for
         something worth proving later, and *"a paywall was shown"* is neither a
@@ -100,7 +131,7 @@ class BillingService:
             log.info(
                 "webhook_event_ignored",
                 provider="revenuecat",
-                event_type=event.type,
+                store_event=event.type,
                 event_id=event.id,
                 # Carried on the ignored path specifically, because that is where
                 # every event lands until the handlers exist — and these three
@@ -114,8 +145,183 @@ class BillingService:
             )
             return
 
-        # No handled types yet — the wall ships before what stands behind it.
-        raise NotImplementedError(event.type)  # pragma: no cover
+        # Sandbox before anything else, because everything below it grants. A
+        # licence tester buys every product without being charged and the event
+        # is otherwise identical to a real one — `environment` is the only thing
+        # telling them apart, so a handler that checks it late is one refactor
+        # from minting minutes for free.
+        if event.environment and event.environment.upper() != "PRODUCTION":
+            await self._reject(
+                "sandbox_purchase",
+                store_event=event.type,
+                environment=event.environment,
+            )
+            raise WebhookRejected(reason="sandbox_purchase")
+
+        user_id = await self._account_of(event)
+
+        try:
+            if event.type in TOPUP_EVENTS:
+                await self._grant_topup(user_id, event)
+            elif event.type in REVOCATION_EVENTS:
+                await self._apply_tier(user_id, FREE_TIER, None, event)
+            elif event.type == "CANCELLATION":
+                await self._cancel(user_id, event)
+            else:
+                await self._apply_tier(
+                    user_id, self._tier_of(event), _expiry(event), event
+                )
+        except _UnknownProduct as unknown:
+            # The audit row carries the identifier that actually arrived, which
+            # is the entire correction when the names chosen in
+            # `docs/billing-setup.md` and the store's disagree. Refused rather
+            # than granted-nothing-quietly: the quiet version looks exactly like
+            # a working integration while selling minutes nobody receives.
+            await self._reject(
+                "unknown_product",
+                store_event=event.type,
+                event_id=event.id,
+                product_id=unknown.event.product_id,
+            )
+            raise WebhookRejected(reason="unknown_product") from unknown
+
+    async def _cancel(self, user_id: uuid.UUID, event: RevenueCatEvent) -> None:
+        """Auto-renew off is not access off, and the difference is a month.
+
+        A cancellation fires when somebody turns off renewal — they have paid
+        through the end of the period and are entitled to every minute of it.
+        Revoking here would take back time already bought, from a user who has
+        just signalled they are wavering, which is the worst available moment.
+
+        A refund is the exception and arrives under the same type. The period
+        boundary already on the account is what ends an ordinary cancellation:
+        `ensure_current_period` grants nothing to a tier with no monthly
+        allowance, so a lapsed subscriber simply stops being topped up.
+        """
+        if event.cancel_reason in REFUND_CANCEL_REASONS:
+            await self._apply_tier(user_id, FREE_TIER, None, event)
+            return
+
+        log.info(
+            "subscription_cancellation_noted",
+            user_id=str(user_id),
+            event_id=event.id,
+            cancel_reason=event.cancel_reason,
+        )
+
+    async def _apply_tier(
+        self,
+        user_id: uuid.UUID,
+        tier: str,
+        period_ends_at: datetime | None,
+        event: RevenueCatEvent,
+    ) -> None:
+        """Move the account, and leave a row that explains why it moved.
+
+        The audit row carries the entitlement and no balance. `ledger_entries`
+        is the money record and CLAUDE.md forbids mirroring a movement into
+        `audit_events` — but the ledger cannot say *which plan* those minutes
+        came from, and that is the question asked of a tier nobody recognises.
+        """
+        previous, _ = await LedgerService(self._db, self._actor).apply_subscription(
+            user_id=user_id, tier=tier, period_ends_at=period_ends_at
+        )
+
+        if previous != tier:
+            await self._audit.record(
+                AuditEventType.ENTITLEMENT_CHANGED,
+                user_id=user_id,
+                tier=tier,
+                previous_tier=previous,
+                provider="revenuecat",
+                store_event=event.type,
+                event_id=event.id,
+                product_id=event.product_id,
+            )
+
+    async def _grant_topup(self, user_id: uuid.UUID, event: RevenueCatEvent) -> None:
+        """A consumable pack, into the bucket that never expires.
+
+        Idempotent on the event id, because unlike a subscription there is no
+        period to key on — a duplicate delivery has nothing else distinguishing
+        it from a second purchase, and §4.5 explicitly expects the same pack to
+        be bought more than once.
+        """
+        seconds = TOPUP_SECONDS.get(event.product_id or "")
+        if seconds is None:
+            raise _UnknownProduct(event)
+
+        granted = await LedgerService(self._db, self._actor).grant_topup(
+            user_id=user_id, seconds=seconds, idempotency_key=f"revenuecat:{event.id}"
+        )
+        if not granted:
+            return
+
+        await self._audit.record(
+            AuditEventType.TOPUP_PURCHASED,
+            user_id=user_id,
+            provider="revenuecat",
+            product_id=event.product_id,
+            event_id=event.id,
+            seconds=seconds,
+        )
+
+    def _tier_of(self, event: RevenueCatEvent) -> str:
+        """The tier this product sells, or a refusal naming what arrived."""
+        tier = SUBSCRIPTION_TIERS.get(event.product_id or "")
+        if tier is None:
+            raise _UnknownProduct(event)
+        return tier
+
+    async def _account_of(self, event: RevenueCatEvent) -> uuid.UUID:
+        """Whose purchase this is, or a refusal rather than a guess.
+
+        `app_user_id` is our own `user_id`, set by the client. Two ways it is
+        not: a purchase made before sign-in carries RevenueCat's anonymous id,
+        and anything else is a client bug. Creating an account here would let
+        whoever can forge a signed event populate our user table, and a real
+        purchase we cannot attribute deserves somebody's attention rather than a
+        silent no-op.
+        """
+        try:
+            user_id = uuid.UUID(event.app_user_id)
+        except ValueError:
+            await self._reject(
+                "unattributable", store_event=event.type, event_id=event.id
+            )
+            raise WebhookRejected(reason="unattributable") from None
+
+        exists = await self._db.scalar(
+            select(Account.user_id).where(Account.user_id == user_id)
+        )
+        if exists is None:
+            await self._reject(
+                "unknown_account", store_event=event.type, event_id=event.id
+            )
+            raise WebhookRejected(reason="unknown_account")
+
+        return user_id
+
+
+class _UnknownProduct(Exception):
+    """A product identifier absent from `billing/tiers.py`.
+
+    Internal, and converted to a refusal with an audit row by `receive`. Its own
+    type rather than a `WebhookRejected` raised directly, so the audit row can
+    carry the identifier that arrived — which is the whole correction when the
+    chosen names and the store's disagree.
+    """
+
+    def __init__(self, event: RevenueCatEvent) -> None:
+        self.event = event
+        super().__init__(event.product_id or "")
+
+
+def _expiry(event: RevenueCatEvent) -> datetime | None:
+    """The store's period boundary, which replaces our 30-day placeholder."""
+    if event.expiration_at_ms is None:
+        return None
+    return datetime.fromtimestamp(event.expiration_at_ms / 1000, tz=UTC)
 
 
 def _json(body: bytes) -> object:

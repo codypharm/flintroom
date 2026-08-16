@@ -79,14 +79,23 @@ async def rejections(db) -> list[AuditEvent]:
     return list(rows)
 
 
-async def test_a_properly_signed_event_is_accepted(client, db):
-    """The tracer bullet, and the shape RevenueCat requires.
+async def test_a_properly_signed_event_is_accepted(client, db, account):
+    """The tracer bullet: over the wall and all the way to a tier.
+
+    Against a real account rather than the fixture's invented id, so this proves
+    the whole path rather than only the signature — what the handler then does
+    with it is `test_revenuecat_entitlements.py`.
 
     200 specifically: anything else is retried five times over roughly two and a
     half hours, so a handler that answers 500 to something it merely does not
     recognise turns one unknown event into five.
     """
-    body = payload()
+    body = payload(
+        {
+            "api_version": "1.0",
+            "event": {**PURCHASE["event"], "app_user_id": str(account.user_id)},
+        }
+    )
 
     accepted = await client.post(
         "/v1/webhooks/revenuecat", content=body, headers=signed(body)
@@ -94,6 +103,9 @@ async def test_a_properly_signed_event_is_accepted(client, db):
 
     assert accepted.status_code == 200, accepted.text
     assert await rejections(db) == []
+
+    await db.refresh(account)
+    assert account.entitlement_tier == "pro"
 
 
 async def test_a_forged_signature_is_refused_and_recorded(client, db):

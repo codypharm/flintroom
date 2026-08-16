@@ -135,3 +135,42 @@ def next_tier_above(tier: str) -> str | None:
         return None
     rung = UPGRADE_LADDER.index(tier) + 1
     return UPGRADE_LADDER[rung] if rung < len(UPGRADE_LADDER) else None
+
+
+# --- Store products -------------------------------------------------------
+#
+# What a store calls a plan, and what it means here. `docs/billing-setup.md` is
+# the dashboard work that creates these; this is the half that reads them back.
+#
+# **These identifiers are chosen, not observed.** No store account exists yet, so
+# they are the naming decision made in advance rather than strings read off a
+# real purchase. Two things make that safe to build against:
+#
+#   - An identifier absent from these tables is refused with an audit row naming
+#     the string that arrived, never granted-nothing-quietly. The first real
+#     purchase either works or says exactly what to correct.
+#   - Play may report a subscription as `<subscription_id>:<base_plan_id>` rather
+#     than the bare id. If it does, the correction is an entry here.
+#
+# Keyed on the product rather than the RevenueCat entitlement, because
+# entitlement is too coarse: Pro and Pro Annual share one, and they are different
+# tiers to us — same minutes, different revenue, different margin in §4.4.
+
+#: Store product → entitlement tier. Subscriptions only.
+SUBSCRIPTION_TIERS: dict[str, str] = {
+    "flintroom_starter_monthly": "starter",
+    "flintroom_pro_monthly": "pro",
+    "flintroom_pro_annual": "pro_annual",
+    "flintroom_teams_monthly": "teams",
+}
+
+#: Store product → seconds granted, for the consumable packs in §4.5.
+#:
+#: Seconds rather than minutes because the ledger is in seconds throughout, and
+#: a unit conversion at one call site is a unit conversion that eventually
+#: happens twice or not at all.
+TOPUP_SECONDS: dict[str, int] = {
+    "flintroom_topup_20": 20 * 60,
+    "flintroom_topup_90": 90 * 60,
+    "flintroom_topup_300": 300 * 60,
+}
