@@ -20,6 +20,7 @@ import pytest
 
 from app.agents.archetypes import DEFAULT_PANEL, by_name
 from app.agents.context import Grounding
+from app.agents.model import ModelReply
 from app.modules.voice.orchestrated import OrchestratedProvider
 from app.modules.voice.transcription import Transcription
 
@@ -66,13 +67,13 @@ class SilentModel:
         self.spoke_as: list[str] = []
         self.saw_claims: list[tuple[str, ...]] = []
 
-    async def select(self, *, candidates, context) -> str:
-        return self._speaker
+    async def select(self, *, candidates, context) -> ModelReply:
+        return ModelReply(text=self._speaker)
 
-    async def compose(self, *, archetype, context, finding=None) -> str:
+    async def compose(self, *, archetype, context, finding=None) -> ModelReply:
         self.spoke_as.append(archetype.name)
         self.saw_claims.append(context.grounding.claims)
-        return "Where is that from?"
+        return ModelReply(text="Where is that from?")
 
 
 async def test_the_room_is_the_one_the_provider_was_built_for():

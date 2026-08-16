@@ -75,7 +75,7 @@ async def test_composing_a_line_returns_what_the_model_wrote():
         archetype=by_name("cfo"), context=CONTEXT
     )
 
-    assert line == "Where does 61% come from?"
+    assert line.text == "Where does 61% come from?"
 
 
 async def test_the_composer_never_sees_the_rest_of_the_room():
@@ -247,7 +247,7 @@ async def test_a_custom_archetype_routes_with_nothing_registered_anywhere():
         candidates=(*DEFAULT_PANEL, mine), context=CONTEXT
     )
 
-    assert chosen == "vc_partner"
+    assert chosen.text == "vc_partner"
     assert "Attack the story" in seen[0].content.decode()
 
 
@@ -264,7 +264,7 @@ async def test_a_selection_answered_with_flourish_still_names_somebody():
         candidates=DEFAULT_PANEL, context=CONTEXT
     )
 
-    assert chosen == "cfo"
+    assert chosen.text == "cfo"
 
 
 async def test_the_router_sees_the_conversation_and_not_just_the_questions():
@@ -362,3 +362,25 @@ def test_the_composer_is_held_to_something_a_person_can_interrupt():
 
     assert "at most 25 words" in instruction
     assert "at most two sentences" in instruction
+
+
+async def test_a_composed_line_reports_what_it_cost():
+    """Tokens come back from the adapter, because only the adapter is told them.
+
+    This call runs on every turn of a metered room, twice — once to route and
+    once to write — so it is the largest per-minute cost in the product and
+    until now it was invisible. Open Risk #4 says every margin in §4.4 rests on
+    an unverified $0.12/min, and nothing in the system could have contradicted
+    that figure because nothing was counting.
+
+    Read off `usageMetadata` rather than estimated from the text. Counting
+    tokens outside the adapter means reimplementing Google's tokeniser and being
+    quietly wrong, in the direction nobody checks.
+    """
+    transport, _ = answering("Where does sixty-one percent come from?")
+
+    reply = await model_with(transport).compose(archetype=by_name("cfo"), context=CONTEXT)
+
+    assert reply.text == "Where does sixty-one percent come from?"
+    assert reply.usage.input_tokens == 10
+    assert reply.usage.output_tokens == 7

@@ -123,21 +123,43 @@ class SettlementService:
         reaper re-runs a settlement that died partway, and a second cost row for
         one session would quietly double that session in every per-minute
         average computed from this table.
+
+        Updates its own columns on conflict rather than doing nothing. The row
+        no longer belongs to settlement alone — `SpendRecorder` creates it on
+        the first turn — so a do-nothing upsert would discard the duration of
+        every session in which anybody actually spoke, and keep it only for
+        rooms where the panel never said a word. That failure is close to
+        invisible: the table fills, the rows look plausible, and the denominator
+        of every per-minute figure is zero for exactly the sessions worth
+        measuring.
+
+        Re-running is still safe. These three are computed from the session's
+        final state rather than accumulated, so writing them twice writes the
+        same values twice — unlike the consumption columns, which `SpendRecorder`
+        adds to and settlement must never touch.
         """
         seconds = await self._interrogation_seconds(session.id)
+        tier = await self._tier(session.user_id)
         await self._db.execute(
             insert(SessionCost)
             .values(
                 session_id=session.id,
                 user_id=session.user_id,
-                tier=await self._tier(session.user_id),
+                tier=tier,
                 interrogation_seconds=seconds,
                 # One runtime per room today. Phase 3 discovers whether a
                 # three-voice panel is one agent session or three, which is the
                 # number §4.3 says decides whether §4.4's margins hold.
                 agent_session_count=1,
             )
-            .on_conflict_do_nothing(index_elements=["session_id"])
+            .on_conflict_do_update(
+                index_elements=["session_id"],
+                set_={
+                    "tier": tier,
+                    "interrogation_seconds": seconds,
+                    "agent_session_count": 1,
+                },
+            )
         )
 
     async def _interrogation_seconds(self, session_id: uuid.UUID) -> int:

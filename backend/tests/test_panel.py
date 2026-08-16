@@ -15,35 +15,48 @@ from inspect import signature
 
 from app.agents.panel import Finding, Grounding, Said, interrogate
 from app.agents.archetypes import DEFAULT_PANEL, LIBRARY
-from app.agents.model import PanelModel
+from app.agents.model import ModelReply, PanelModel, TurnUsage
 from app.core.errors import ProviderUnavailable
 
 
 class FakePanelModel:
-    """A model that answers what it was told to, and remembers what it was asked."""
+    """A model that answers what it was told to, and remembers what it was asked.
+
+    Returns `ModelReply`, like the real adapter, and takes either that or a bare
+    string for convenience. Conforming matters more than it looks: while this
+    fake returned plain text, every test in this file passed against a shape
+    `GeminiPanelModel` had stopped producing, and nothing failed until the seam
+    was checked by hand.
+    """
 
     def __init__(
         self,
         *,
-        writes: str = "Where does that number come from?",
-        selects: str | None = None,
+        writes: ModelReply | str = "Where does that number come from?",
+        selects: ModelReply | str | None = None,
     ) -> None:
-        self._writes = writes
-        self._selects = selects
+        self._writes = _reply(writes)
+        self._selects = _reply(selects)
         self.asked_to_write_as: list[str] = []
         self.composed_with: list[tuple] = []
 
-    async def select(self, *, candidates, context) -> str:
+    async def select(self, *, candidates, context) -> ModelReply:
         # No answer configured means "the model had no opinion", which is the
         # case the fallback exists for rather than an exceptional one.
         if self._selects is None:
             raise ProviderUnavailable(reason="panel_model_error")
         return self._selects
 
-    async def compose(self, *, archetype, context, finding=None) -> str:
+    async def compose(self, *, archetype, context, finding=None) -> ModelReply:
         self.asked_to_write_as.append(archetype.name)
         self.composed_with.append((context, finding))
         return self._writes
+
+
+def _reply(answer: ModelReply | str | None) -> ModelReply | None:
+    if answer is None or isinstance(answer, ModelReply):
+        return answer
+    return ModelReply(text=answer)
 
 
 async def test_the_panel_answers_in_one_archetypes_voice():
@@ -308,3 +321,26 @@ async def test_every_turn_records_what_chose_the_speaker():
     assert by_model.chosen_by == "model"
     assert by_fallback.chosen_by == "fallback"
     assert by_finding.chosen_by == "finding"
+
+
+async def test_a_turn_reports_what_both_of_its_calls_cost():
+    """Routing and composition are two billable calls, and both belong on the bill.
+
+    Counting only the composition would understate every turn by whatever
+    routing spent — a systematic bias, always in the same direction, in the one
+    number §4.3 exists to reconcile against a real invoice. And a room that ran
+    entirely on the keyword fallback would look identical to one that paid a
+    model to route every turn.
+    """
+    model = FakePanelModel(
+        selects=ModelReply(text="cfo", usage=TurnUsage(input_tokens=200, output_tokens=2)),
+        writes=ModelReply(
+            text="Where does that come from?",
+            usage=TurnUsage(input_tokens=900, output_tokens=25),
+        ),
+    )
+
+    turn = await interrogate(said="We hold 61% gross margin.", panel=DEFAULT_PANEL, model=model)
+
+    assert turn.usage.input_tokens == 1_100
+    assert turn.usage.output_tokens == 27

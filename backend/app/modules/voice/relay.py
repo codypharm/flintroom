@@ -31,10 +31,12 @@ from app.modules.voice.events import (
     ChannelReady,
     Heartbeat,
     Interrupted,
+    Spent,
     UserSpoke,
     VoiceEvent,
 )
 from app.modules.voice.provider import ClientChannel, VoiceChannel, VoiceProvider
+from app.modules.voice.spend import SpendRecorder
 
 log = get_logger(__name__, tag="voice")
 
@@ -59,6 +61,10 @@ class VoiceRelay:
         # in a service that attributes them to somebody else.
         self._sessions = SessionService(db, self._actor)
         self._settlement = SettlementService(db, self._actor)
+        # Telemetry, not money — see `SpendRecorder`. It carries no actor,
+        # because a cost row records what a provider charged us rather than
+        # anything a user or an operator did.
+        self._spend = SpendRecorder(db)
 
     async def run(self, *, session_id: uuid.UUID) -> None:
         """Open a channel for this session and handle what comes back.
@@ -129,8 +135,38 @@ class VoiceRelay:
     async def _carry_provider_events(
         self, channel: VoiceChannel, session_id: uuid.UUID
     ) -> None:
+        """Handle each event, and never abandon one halfway through a write.
+
+        This task is routinely cancelled: the phone hanging up finishes the
+        *other* side of `_pump`, which then cancels this one — and the moment a
+        user is most likely to hang up is right after a panelist stopped
+        speaking, which is also when this loop is most likely to be mid-write.
+
+        Cancelling inside a database call leaves the session unusable, and the
+        first thing to touch it afterwards is `_end`. So the visible symptom is
+        not a lost telemetry row but **a room that fails to settle**, whose
+        minutes are then decided by the reaper rather than by the ending the
+        user actually gave it.
+
+        Shielding alone is not enough and is worse than nothing: it lets the
+        handler keep running *while* the cancellation propagates, so the write
+        and `_end` land on the same session at once. The inner task has to be
+        awaited to completion before the cancellation is re-raised.
+
+        This delays cancellation by one handler rather than refusing it. Every
+        handler here is a single short write; none can hold the room open.
+        """
         async for event in channel.events():
-            await self._handle(event, session_id=session_id)
+            handling = asyncio.create_task(self._handle(event, session_id=session_id))
+            try:
+                await asyncio.shield(handling)
+            except asyncio.CancelledError:
+                # Ours to finish, not to abandon. Failures are suppressed rather
+                # than raised: we are already on the way out, and the ending the
+                # room deserves is decided by `_end` rather than by whatever the
+                # last handler happened to hit.
+                await asyncio.gather(handling, return_exceptions=True)
+                raise
 
     async def _end(self, *, session_id: uuid.UUID, live: EndReason) -> None:
         """End a room that stopped, by whichever route its state allows.
@@ -186,6 +222,19 @@ class VoiceRelay:
             await self._sessions.activate(session_id=session_id)
         elif isinstance(event, UserSpoke):
             await self._sessions.record_speech(session_id=session_id)
+        elif isinstance(event, Spent):
+            # What the providers charged for this turn. Never a ledger entry and
+            # never a balance: the user is charged in minutes by the meter, and
+            # nothing here may influence that. This is the other side of the
+            # trade, and until it existed nothing in the system could contradict
+            # the $0.12/min every margin in §4.4 assumes.
+            await self._spend.record(
+                session_id=session_id,
+                stt_seconds=event.stt_seconds,
+                llm_input_tokens=event.llm_input_tokens,
+                llm_output_tokens=event.llm_output_tokens,
+                tts_characters=event.tts_characters,
+            )
         elif isinstance(event, Heartbeat):
             await self._sessions.record_progress(session_id=session_id)
         elif isinstance(event, AgentTranscript):

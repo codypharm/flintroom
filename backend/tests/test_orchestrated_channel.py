@@ -20,8 +20,10 @@ import pytest
 
 from app.agents.archetypes import DEFAULT_PANEL, Archetype
 from app.agents.context import Grounding
-from app.modules.voice.events import AgentTranscript
+from app.agents.model import ModelReply
+from app.modules.voice.events import AgentTranscript, Spent
 from app.modules.voice.orchestrated import OrchestratedChannel
+from app.modules.voice.transcribers.elevenlabs import SAMPLE_RATE
 from app.modules.voice.transcription import Transcription
 
 pytestmark = pytest.mark.asyncio
@@ -67,13 +69,13 @@ class ScriptedPanelModel:
         self.composed_for: list[str] = []
         self.said: list[str] = []
 
-    async def select(self, *, candidates: Sequence[Archetype], context) -> str:
-        return self._speaker
+    async def select(self, *, candidates: Sequence[Archetype], context) -> ModelReply:
+        return ModelReply(text=self._speaker)
 
-    async def compose(self, *, archetype: Archetype, context, finding=None) -> str:
+    async def compose(self, *, archetype: Archetype, context, finding=None) -> ModelReply:
         self.composed_for.append(archetype.name)
         self.said.append(context.said)
-        return self._line
+        return ModelReply(text=self._line)
 
 
 async def events_of(channel: OrchestratedChannel) -> list:
@@ -184,6 +186,9 @@ async def test_the_user_speaking_is_reported_before_the_panel_answers():
         "ChannelReady",
         "UserSpoke",
         "AgentTranscript",
+        # No speaker on this channel, so `Spent` still reports the model's
+        # tokens and zero characters — nothing was synthesised to charge for.
+        "Spent",
     ]
 
 
@@ -229,11 +234,11 @@ async def test_the_second_turn_can_see_the_first():
     seen: list[tuple[str, ...]] = []
 
     class Watching(ScriptedPanelModel):
-        async def compose(self, *, archetype, context, finding=None) -> str:
+        async def compose(self, *, archetype, context, finding=None) -> ModelReply:
             seen.append(
                 tuple(line.text for line in context.grounding.transcript)
             )
-            return "And the one before that?"
+            return ModelReply(text="And the one before that?")
 
     await two_turns(
         Watching(),
@@ -261,9 +266,9 @@ async def test_a_user_who_talks_through_the_answer_is_still_on_record():
     seen: list[tuple[str, ...]] = []
 
     class Watching(ScriptedPanelModel):
-        async def compose(self, *, archetype, context, finding=None) -> str:
+        async def compose(self, *, archetype, context, finding=None) -> ModelReply:
             seen.append(tuple(line.text for line in context.grounding.transcript))
-            return "Against what basis?"
+            return ModelReply(text="Against what basis?")
 
     channel = OrchestratedChannel(
         panel=DEFAULT_PANEL,
@@ -294,9 +299,9 @@ async def test_the_deck_stays_in_front_of_every_turn():
     seen: list[tuple[str, ...]] = []
 
     class Watching(ScriptedPanelModel):
-        async def compose(self, *, archetype, context, finding=None) -> str:
+        async def compose(self, *, archetype, context, finding=None) -> ModelReply:
             seen.append(context.grounding.claims)
-            return "Where is that from?"
+            return ModelReply(text="Where is that from?")
 
     await two_turns(
         Watching(),
@@ -344,6 +349,9 @@ async def test_the_line_is_spoken_in_that_archetypes_own_voice():
         "ChannelReady",
         "UserSpoke",
         "AgentTranscript",
+        # Before the audio, because both providers have already charged by the
+        # time the first frame exists — see `_turn`.
+        "Spent",
         "AgentAudio",
         "AgentAudio",
     ]
@@ -432,3 +440,74 @@ async def test_speaking_over_a_panelist_stops_them():
 
     assert any(type(event).__name__ == "Interrupted" for event in collected)
     assert not speaker.finished, "the cut-off panelist kept synthesising"
+
+
+async def test_a_turn_reports_what_it_spent():
+    """Three vendors bill for one turn, and the room says so.
+
+    Until the panel was ours, a room was one agent on one opaque per-minute
+    rate and recording its duration was very nearly enough. A turn now spends
+    money in three places — the transcriber by the second, the panel model by
+    the token, synthesis by the character — and Open Risk #4 says every margin
+    in §4.4 rests on an unverified $0.12/min that nothing could contradict.
+
+    The character count is the one worth watching. It tracks how much the panel
+    *talks*, not how long the room lasts, so two rooms of equal length can cost
+    materially different amounts — which makes the 25-word limit a cost lever as
+    well as a credibility one.
+    """
+    model = ScriptedPanelModel(line="Where is that from?")
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=FakeTranscription(
+            [Transcription(text="Our gross margin is seventy percent.", final=True)]
+        ),
+        model=model,
+        speaker=FakeSpeaker(),
+        grounding=Grounding(),
+    )
+
+    events = await events_of(channel)
+
+    (spent,) = [event for event in events if isinstance(event, Spent)]
+    assert spent.tts_characters == len("Where is that from?")
+
+
+async def test_the_audio_a_room_listened_to_is_charged_for_once():
+    """Scribe bills for every second it hears, not for the seconds we answer.
+
+    Counted from the bytes actually forwarded rather than from the room's wall
+    clock, because those differ in the direction that costs money: a phone that
+    reconnects, or a user who pauses the stream, is wall-clock time nobody was
+    transcribed for. Wall clock is what the *user* is charged; this is what the
+    vendor charges us, and conflating them is how a margin looks fine and is not.
+
+    Reported once. Two turns must not each claim the whole room's audio, which
+    would inflate the recorded cost by the number of questions asked — worst on
+    exactly the rooms that worked best.
+    """
+    speech = b"\x00" * (SAMPLE_RATE * 2)  # one second of PCM16 at 16 kHz
+    transcription = DrivenTranscription()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=transcription,
+        model=ScriptedPanelModel(),
+        grounding=Grounding(),
+    )
+
+    async def feed():
+        await channel.send_audio(speech * 3)
+        transcription.feed(Transcription(text="Margin is seventy percent.", final=True))
+        # A turn has to be allowed to run and report before the next audio
+        # arrives, or both finals land in one tick and the test is measuring
+        # scheduling rather than accounting.
+        await asyncio.sleep(0.05)
+        await channel.send_audio(speech * 2)
+        transcription.feed(Transcription(text="And it holds at scale.", final=True))
+        await asyncio.sleep(0.05)
+        transcription.hang_up()
+
+    events, _ = await asyncio.gather(events_of(channel), feed())
+
+    spent = [event for event in events if isinstance(event, Spent)]
+    assert [report.stt_seconds for report in spent] == [3, 2]

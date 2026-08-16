@@ -27,6 +27,7 @@ model then costs relevance rather than silence.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Protocol
 
 from app.agents.archetypes import Archetype
@@ -35,11 +36,14 @@ from app.agents.archetypes import Archetype
 class PanelModel(Protocol):
     """Whatever decides who speaks, and writes what they say."""
 
-    async def select(self, *, candidates: Sequence[Archetype], context) -> str:
+    async def select(
+        self, *, candidates: Sequence[Archetype], context
+    ) -> ModelReply:
         """Name the archetype that should take the floor.
 
-        Returns a `name`, not an `Archetype`, because a model returns text and
-        pretending otherwise would hide the parsing somewhere less obvious.
+        `reply.text` is a `name`, not an `Archetype`, because a model returns
+        text and pretending otherwise would hide the parsing somewhere less
+        obvious. `reply.usage` is what the call cost — see `TurnUsage`.
 
         Sees the whole roster on purpose — including any custom archetype, whose
         persona is just more text and needs nothing registered anywhere. This is
@@ -55,7 +59,7 @@ class PanelModel(Protocol):
 
     async def compose(
         self, *, archetype: Archetype, context, finding=None
-    ) -> str:
+    ) -> ModelReply:
         """Write this archetype's next line.
 
         **One archetype, never the panel.** The signature is the enforcement: a
@@ -70,8 +74,49 @@ class PanelModel(Protocol):
         contradiction and not told what the contradiction was produces a
         challenge that sounds authoritative and cites nothing.
 
-        Returns text. Speech is the voice provider's job, and keeping that out of
-        here is what lets the same adapter serve the debrief coach later, which
-        is turn-based and has no room in it at all.
+        Returns text and what it cost. Speech is the voice provider's job, and
+        keeping that out of here is what lets the same adapter serve the debrief
+        coach later, which is turn-based and has no room in it at all — and
+        which, being unmetered, is exactly the phase whose cost most needs
+        counting.
         """
         ...
+
+
+@dataclass(frozen=True, slots=True)
+class TurnUsage:
+    """What one model call cost, in the units the provider bills in.
+
+    Returned from the interface rather than measured around it, for the reason
+    `ExtractionUsage` already is: only the adapter knows what the provider
+    charged for. Nothing outside it can count tokens without reimplementing the
+    vendor's tokeniser and being wrong.
+
+    It matters more here than there. Extraction happens once per deck; **this
+    runs twice on every turn of a metered room**, so it lands directly inside
+    the §4.4 margins that Open Risk #4 says rest on an unverified $0.12/min. An
+    interface returning only text would leave the single largest per-minute cost
+    in the product invisible, and force re-plumbing later through every adapter
+    and every fake.
+
+    Defaults to zero so a fake that has no opinion about tokens does not have to
+    invent one — and a real adapter that forgets to report is then indistinguishable
+    from a free call, which is why `gemini.py` reads `usageMetadata` rather than
+    letting the default stand.
+    """
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class ModelReply:
+    """What a model said, and what saying it cost.
+
+    One type for both calls rather than two, because the pairing is the point:
+    text and its price arrive together or the price gets attributed to the wrong
+    turn. `select` puts an archetype name in `text`; `compose` puts the line.
+    """
+
+    text: str
+    usage: TurnUsage = TurnUsage()

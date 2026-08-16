@@ -113,3 +113,39 @@ class Interrupted:
 VoiceEvent = (
     ChannelReady | UserSpoke | Heartbeat | AgentAudio | AgentTranscript | Interrupted
 )
+
+
+@dataclass(frozen=True, slots=True)
+class Spent:
+    """What one turn cost, in the units the providers bill in.
+
+    An event rather than a return value because the channel has no database and
+    no session id — deliberately. Everything it knows is the conversation; every
+    write belongs to the relay. That separation is what lets the same channel be
+    driven by a test with no database at all.
+
+    Reported per turn rather than accumulated to the end of the room. A session
+    whose process dies is settled later by the reaper, which never held the
+    channel, so anything kept in memory would be lost exactly for the rooms
+    where cost and revenue diverge most — the ones we paid three vendors for and
+    then refunded.
+
+    Every field is what a provider actually charges for, which is why they are
+    four different units. `CLAUDE.md` makes cost instrumentation a required task
+    rather than a later addition, and Open Risk #4 says every margin in §4.4
+    rests on an unverified $0.12/min that nothing in the system could currently
+    contradict.
+    """
+
+    #: Audio the transcriber processed. ElevenLabs Scribe bills by the hour.
+    stt_seconds: int = 0
+
+    #: The panel model's prompt and reply, summed over routing and composition.
+    llm_input_tokens: int = 0
+    llm_output_tokens: int = 0
+
+    #: Characters handed to synthesis. **Not** a function of room length —
+    #: text-to-speech is billed per character, so a talkative panel costs more
+    #: than a terse one for the same minute. It is the one vendor whose bill the
+    #: 25-word limit directly controls.
+    tts_characters: int = 0

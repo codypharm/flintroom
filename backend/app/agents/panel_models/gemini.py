@@ -26,6 +26,7 @@ from typing import Any
 import httpx
 
 from app.agents.archetypes import Archetype
+from app.agents.model import ModelReply, TurnUsage
 from app.core.errors import ProviderUnavailable
 from app.core.logging import get_logger
 
@@ -111,7 +112,7 @@ class GeminiPanelModel:
 
     async def compose(
         self, *, archetype: Archetype, context, finding=None
-    ) -> str:
+    ) -> ModelReply:
         """Write this archetype's next line.
 
         The system instruction holds one persona and one attack strategy —
@@ -127,7 +128,7 @@ class GeminiPanelModel:
             max_tokens=MAX_LINE_TOKENS,
         )
 
-    async def select(self, *, candidates: Sequence[Archetype], context) -> str:
+    async def select(self, *, candidates: Sequence[Archetype], context) -> ModelReply:
         """Name whoever should take the floor.
 
         Cheap by construction: the roster and one sentence, answered in two
@@ -141,7 +142,9 @@ class GeminiPanelModel:
             prompt=_selection_prompt(candidates, context),
             max_tokens=MAX_SELECTION_TOKENS,
         )
-        return _bare_name(answered)
+        # Tidied here rather than in `_generate`, which serves both calls and
+        # must not strip punctuation out of a panelist's line.
+        return ModelReply(text=_bare_name(answered.text), usage=answered.usage)
 
     async def _generate(
         self,
@@ -150,7 +153,7 @@ class GeminiPanelModel:
         system: str,
         prompt: str,
         max_tokens: int,
-    ) -> str:
+    ) -> ModelReply:
         try:
             response = await self._http.post(
                 f"{BASE_URL}/{model}:generateContent",
@@ -185,7 +188,8 @@ class GeminiPanelModel:
             log.warning("panel_model_unreachable", provider=PROVIDER, model=model)
             raise ProviderUnavailable(reason="panel_model_unreachable") from exc
 
-        return _text_of(response.json())
+        payload = response.json()
+        return ModelReply(text=_text_of(payload), usage=_usage_of(payload))
 
 
 def _bare_name(answered: str) -> str:
@@ -202,6 +206,25 @@ def _bare_name(answered: str) -> str:
     was meant, and a wrong guess is worse than a fallback because it is confident.
     """
     return answered.strip().strip('*"\'`.,:;!?').split()[0].lower() if answered.strip() else ""
+
+
+def _usage_of(payload: dict[str, Any]) -> TurnUsage:
+    """What Google says the call cost.
+
+    Read off their report rather than counted here. Reimplementing a vendor's
+    tokeniser to second-guess its own invoice is work with no upside: it can
+    only ever agree or be wrong, and being wrong is undetectable until the
+    reconciliation in §4.3 disagrees with the bill for a reason nobody can find.
+
+    Absent fields fall back to zero rather than raising. A missing count is a
+    room that reports slightly cheap for one turn; a raise is a live metered
+    interrogation ended over bookkeeping.
+    """
+    usage = payload.get("usageMetadata") or {}
+    return TurnUsage(
+        input_tokens=int(usage.get("promptTokenCount") or 0),
+        output_tokens=int(usage.get("candidatesTokenCount") or 0),
+    )
 
 
 def _text_of(payload: dict[str, Any]) -> str:

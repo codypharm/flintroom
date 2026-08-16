@@ -30,6 +30,7 @@ from app.modules.voice.events import (
     AgentTranscript,
     ChannelReady,
     Interrupted,
+    Spent,
     UserSpoke,
     VoiceEvent,
 )
@@ -37,6 +38,12 @@ from app.modules.voice.speech import Speaker
 from app.modules.voice.transcription import Transcriber, TranscriptionStream
 
 log = get_logger(__name__, tag="voice")
+
+#: What the transcriber is billed against. The relay carries PCM16 at 16 kHz
+#: mono in both directions, so a second of audio is a fixed number of bytes and
+#: needs no clock to measure.
+SAMPLE_RATE = 16_000
+BYTES_PER_SAMPLE = 2
 
 
 class OrchestratedProvider:
@@ -132,6 +139,13 @@ class OrchestratedChannel:
         # it.
         self._claims = grounding.claims if grounding else ()
         self._transcript: list[Said] = list(grounding.transcript) if grounding else []
+        # Audio forwarded to the transcriber, and how much of it has already
+        # been reported. Two counters rather than one because a turn reports
+        # whole seconds and the bytes do not arrive in second-sized pieces —
+        # subtracting what was reported is what stops the remainder being lost
+        # on every turn, which would undercount a chatty room the most.
+        self._heard_bytes = 0
+        self._charged_seconds = 0
 
     async def send_audio(self, pcm: bytes) -> None:
         """Straight through to the transcriber.
@@ -139,8 +153,21 @@ class OrchestratedChannel:
         No buffering and no voice-activity decision here. Endpointing is a thing
         transcribers are good at and this module would be bad at, and doing it in
         two places is how the two disagree about when the user stopped.
+
+        Counted on the way past, because this is what the transcriber is paid
+        for. Wall-clock room time is what the *user* is charged; bytes actually
+        forwarded is what the vendor charges us, and the two differ exactly when
+        a phone reconnects or a stream stalls.
         """
+        self._heard_bytes += len(pcm)
         await self._transcription.send_audio(pcm)
+
+    def _seconds_heard(self) -> int:
+        """Whole seconds of audio not yet reported, and mark them reported."""
+        heard = self._heard_bytes // (SAMPLE_RATE * BYTES_PER_SAMPLE)
+        unreported = heard - self._charged_seconds
+        self._charged_seconds = heard
+        return unreported
 
     async def events(self) -> AsyncIterator[VoiceEvent]:
         """Everything the room has to say, while it keeps listening.
@@ -277,6 +304,21 @@ class OrchestratedChannel:
         # before displaying the line would caption the room seconds late — and
         # captions are in the v1 accessibility floor, not a garnish on the audio.
         await out.put(AgentTranscript(turn.line))
+
+        # Reported before synthesis rather than after it, and that ordering is
+        # the whole reason this is not a `finally`. A panelist cut off two words
+        # in was still composed in full and still handed to the synthesiser in
+        # full — both providers have already charged — so a turn that reports
+        # only what the user heard would undercount precisely the interrupted
+        # rooms, which is the barge-in the product is built around.
+        await out.put(
+            Spent(
+                stt_seconds=self._seconds_heard(),
+                llm_input_tokens=turn.usage.input_tokens,
+                llm_output_tokens=turn.usage.output_tokens,
+                tts_characters=len(turn.line) if self._speaker else 0,
+            )
+        )
 
         if self._speaker is None:
             return

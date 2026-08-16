@@ -25,7 +25,7 @@ from app.agents.context import (
     SelectedBy,
     TurnContext,
 )
-from app.agents.model import PanelModel
+from app.agents.model import PanelModel, TurnUsage
 from app.agents.routing import choose
 from app.core.errors import (
     ArchetypeNotFound,
@@ -111,15 +111,16 @@ async def interrogate(
 
     archetype = _owner(panel, finding.domain) if finding else None
     chosen_by: SelectedBy = "finding"
+    routing = TurnUsage()
 
     if archetype is None:
-        archetype, chosen_by = await _speaker(panel, context, model)
+        archetype, chosen_by, routing = await _speaker(panel, context, model)
 
     # The finding travels to the composer, not just to the routing. An archetype
     # handed the floor because of a contradiction and then not told what the
     # contradiction was produces a challenge that sounds authoritative and cites
     # nothing — Open Risk #2 arriving from the one path meant to cure it.
-    line = await model.compose(archetype=archetype, context=context, finding=finding)
+    written = await model.compose(archetype=archetype, context=context, finding=finding)
 
     # Never the line itself, and never a claim. Ingested material contents are
     # forbidden in logs (CLAUDE.md) and a panelist's line quotes them directly —
@@ -131,12 +132,23 @@ async def interrogate(
         claims=len(context.grounding.claims),
         turns_so_far=len(context.grounding.transcript),
     )
-    return PanelTurn(archetype=archetype, line=line, chosen_by=chosen_by)
+    return PanelTurn(
+        archetype=archetype,
+        line=written.text,
+        chosen_by=chosen_by,
+        # Routing plus composition. A turn that fell back to keywords still
+        # carries whatever the failed routing call cost, because the provider
+        # charged for it either way.
+        usage=TurnUsage(
+            input_tokens=routing.input_tokens + written.usage.input_tokens,
+            output_tokens=routing.output_tokens + written.usage.output_tokens,
+        ),
+    )
 
 
 async def _speaker(
     panel: Sequence[Archetype], context: TurnContext, model: PanelModel
-) -> tuple[Archetype, SelectedBy]:
+) -> tuple[Archetype, SelectedBy, TurnUsage]:
     """Who takes the floor when the Auditor has not decided it.
 
     A model, because keyword routing measured 53% relevance against real speech
@@ -162,16 +174,19 @@ async def _speaker(
             reason=refused.context.get("reason", "unknown"),
             panel=len(panel),
         )
-        return choose(panel, context), "fallback"
+        # No usage: the call raised, so nothing was returned to read it off. A
+        # provider that charged for a failed request undercounts here, which is
+        # the safe direction to be wrong in and worth knowing about.
+        return choose(panel, context), "fallback", TurnUsage()
 
     for archetype in panel:
-        if archetype.name == chosen:
-            return archetype, "model"
+        if archetype.name == chosen.text:
+            return archetype, "model", chosen.usage
 
     # Logged with what it actually said. A steady stream of these is a prompt
     # that has stopped working, and the name it returned is the only clue.
-    log.warning("panel_selection_unrecognised", chosen=chosen, panel=len(panel))
-    return choose(panel, context), "fallback"
+    log.warning("panel_selection_unrecognised", chosen=chosen.text, panel=len(panel))
+    return choose(panel, context), "fallback", chosen.usage
 
 
 def _owner(panel: Sequence[Archetype], domain: str) -> Archetype | None:

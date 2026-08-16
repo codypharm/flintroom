@@ -10,10 +10,11 @@ without following a call.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from app.agents.archetypes import Archetype
+from app.agents.model import TurnUsage
 
 
 #: Who said a line. An archetype's `name`, or `USER` for the person being
@@ -129,8 +130,17 @@ SelectedBy = Literal["finding", "model", "fallback"]
 
 @dataclass(frozen=True)
 class PanelTurn:
-    """What the room says back, who said it, and what chose them."""
+    """What the room says back, who said it, what chose them, and what it cost."""
 
     archetype: Archetype
     line: str
     chosen_by: SelectedBy
+
+    #: Both model calls of this turn, summed — routing and composition.
+    #:
+    #: Carried on the turn rather than counted by the caller because a turn is
+    #: the unit that either happened or did not. A caller adding up its own
+    #: calls would miss the routing spend on every turn that took the fallback,
+    #: and understate the room in the one number §4.3 reconciles against a real
+    #: invoice.
+    usage: TurnUsage = field(default_factory=TurnUsage)
