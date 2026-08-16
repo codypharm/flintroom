@@ -14,6 +14,7 @@ handful of lines.
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator
 
 import httpx
@@ -43,6 +44,45 @@ AUDIO_FORMAT = "pcm_16000"
 #: feeling slower with nothing in our own diff to explain it. Verified current
 #: rather than remembered: `eleven_turbo_v2_5`, the obvious guess, is deprecated.
 DEFAULT_SPEECH_MODEL = "eleven_flash_v2_5"
+
+#: Models that act on audio tags — `[sighs]`, `[sceptical]` — rather than
+#: reading them out.
+#:
+#: **Confirmed by ear against a live account, not from documentation**, and the
+#: documentation was ambiguous enough to matter: the prompting guide calls tags
+#: "an Eleven v3 feature" while the model page names v3 *Conversational* as the
+#: only model supporting them. Neither says what Flash does when it receives one,
+#: and the answer is the worst of the three possibilities — it speaks them. A
+#: tagged take measured 5.7s against 3.6s for identical words, and the difference
+#: is the model saying "sighs" and "sceptical" aloud.
+#:
+#: Anything not listed here has its tags stripped. Membership is opt-in for that
+#: reason: a model added to this table by mistake makes panelists announce their
+#: own stage directions, while one left out merely makes them flat.
+TAG_PERFORMING_MODELS: frozenset[str] = frozenset({"eleven_v3", "eleven_v3_conversational"})
+
+#: An audio tag, as the vendor writes it.
+_TAG = re.compile(r"\[[^\]]*\]")
+
+#: Runs of whitespace, including whatever a stripped tag left behind.
+_GAP = re.compile(r"\s+")
+
+
+def _spoken(text: str, *, model: str) -> str:
+    """The line as this model should receive it.
+
+    Stripped rather than refused. A line arriving with a tag is still a real
+    challenge the user is owed, and losing four words of stage direction is a far
+    smaller loss than losing the question — this is a live metered room.
+
+    Whitespace is collapsed afterwards because a synthesiser reads it: a naive
+    removal leaves a leading space and a doubled gap mid-sentence, which comes
+    out as hesitation the panelist did not intend.
+    """
+    if model in TAG_PERFORMING_MODELS:
+        return text
+    return _GAP.sub(" ", _TAG.sub("", text)).strip()
+
 
 #: Our casting vocabulary, resolved to this vendor's catalogue.
 #:
@@ -117,7 +157,10 @@ class ElevenLabsSpeaker:
                 url,
                 params={"output_format": AUDIO_FORMAT},
                 headers={"xi-api-key": self._api_key},
-                json={"text": text, "model_id": self._model},
+                json={
+                    "text": _spoken(text, model=self._model),
+                    "model_id": self._model,
+                },
             ) as response:
                 response.raise_for_status()
                 # Chunk by chunk, never `aread()`. Streaming is what makes an

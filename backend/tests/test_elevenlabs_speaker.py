@@ -12,6 +12,8 @@ a test suite that has to pass offline and on every commit.
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 
@@ -191,6 +193,59 @@ async def test_an_unreachable_service_is_a_502_and_not_a_crash():
 
     with pytest.raises(ProviderUnavailable):
         await collect(speaker, text="Anything.", voice=Voice.PRECISE)
+
+
+async def test_a_model_that_cannot_perform_a_tag_never_receives_one():
+    """Confirmed by ear against the live account: Flash v2.5 reads them aloud.
+
+    It does not perform them and it does not ignore them — a tagged take ran 5.7s
+    against 3.6s for the identical words, and the difference is the model saying
+    "sighs" and "sceptical" out loud. A panelist who announces their own stage
+    directions is not intimidating, and the composer has no instruction *not* to
+    emit brackets, so this is reachable by an ordinary model turn rather than by
+    misuse.
+
+    Stripped rather than refused. A line arriving with a tag is still a real
+    challenge the user is owed, and dropping four words of stage direction is a
+    far smaller loss than dropping the question.
+    """
+    speaker, seen = speaker_over(audio(b"\x01"))
+
+    await collect(
+        speaker,
+        text="[sighs] Seventy percent. [sceptical] Which one is it?",
+        voice=Voice.MEASURED,
+    )
+
+    spoken = json.loads(seen[0].read())["text"]
+    assert spoken == "Seventy percent. Which one is it?"
+
+
+async def test_a_model_that_performs_tags_keeps_them():
+    """The same guard must not gag a model that can act on them.
+
+    v3 shows the opposite signature — tagged runs *shorter* than plain, not
+    longer — so stripping there would throw away the whole reason to pay its
+    extra latency.
+    """
+    speaker, seen = speaker_over(audio(b"\x01"), model="eleven_v3")
+
+    await collect(speaker, text="[laughs] Alright. But prove it.", voice=Voice.WARM)
+
+    assert json.loads(seen[0].read())["text"] == "[laughs] Alright. But prove it."
+
+
+async def test_stripping_a_tag_does_not_leave_a_hole_in_the_sentence():
+    """Whitespace matters to a synthesiser: it is where the pauses come from.
+
+    A naive removal leaves doubled spaces and a leading gap, which reads to the
+    model as hesitation the panelist did not intend.
+    """
+    speaker, seen = speaker_over(audio(b"\x01"))
+
+    await collect(speaker, text="[sighs]  And   the [beat] margin?", voice=Voice.DRY)
+
+    assert json.loads(seen[0].read())["text"] == "And the margin?"
 
 
 async def test_a_deployment_with_no_key_has_no_voice_rather_than_no_room():
