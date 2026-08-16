@@ -25,6 +25,8 @@ from app.modules.auth.models import (  # noqa: F401  (registers the tables)
     RefreshToken,
 )
 from app.modules.billing.models import Account
+from app.modules.ingestion.models import Material  # noqa: F401  (registers the table)
+from app.modules.ingestion.service import IngestionService
 from app.modules.audit_log.admin import AdminService
 from app.modules.audit_log.service import AuditService
 from app.modules.billing.schemas import Bucket, EntryReason
@@ -106,6 +108,11 @@ def admin(db) -> AdminService:
 @pytest.fixture
 def sessions(db) -> SessionService:
     return SessionService(db)
+
+
+@pytest.fixture
+def ingestion(db) -> IngestionService:
+    return IngestionService(db)
 
 
 @pytest_asyncio.fixture

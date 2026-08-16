@@ -101,6 +101,18 @@ class SessionNotFound(NotFound):
     message = "No such session."
 
 
+class MaterialNotFound(NotFound):
+    """No such material, or not this caller's.
+
+    Deliberately one error for both. Telling a prober which material ids exist
+    is a slow enumeration of every deck on the platform, and the honest answer
+    to "may I have this" is the same either way.
+    """
+
+    code = "material_not_found"
+    message = "No such material."
+
+
 # --- Conflicts ------------------------------------------------------------
 
 
@@ -153,6 +165,18 @@ class SessionNotLive(BusinessRuleViolation):
 
     code = "session_not_live"
     message = "That session is no longer running."
+
+
+class InvalidMaterialState(BusinessRuleViolation):
+    """That material cannot move the way the caller asked.
+
+    Separate from `InvalidStateTransition`, which is about sessions: the two
+    machines have nothing in common, and one shared error would make every log
+    search for either return both.
+    """
+
+    code = "invalid_material_state"
+    message = "That material is not in a state that allows this."
 
 
 class NoMinutesRemaining(BusinessRuleViolation):

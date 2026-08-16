@@ -48,11 +48,27 @@ separate and still-undecided question (task #29).
 ### Extraction is asynchronous, and a session refuses material that is not ready
 
 ```
-pending ──► extracting ──► ready
-                     └──► failed
+awaiting_upload ──► pending ──► extracting ──► ready
+       │                                 └──► failed
+       └──► (reaped — a presign nobody used)
 ```
 
 `POST /v1/sessions` rejects a material that is not `ready` with a typed 422.
+
+**`awaiting_upload` was added 2026-08-16**, when building the model showed four
+states could not carry the upload handshake. A row has to exist before the bytes
+do — that is what the presign is signed against and what ownership is checked on
+— so `pending` would have meant both *"no bytes yet"* and *"bytes here, waiting
+its turn"*, and the extraction sweep claims `pending`. As specified, it would
+have claimed materials nobody ever uploaded.
+
+A state rather than a nullable `uploaded_at`, which is the shape
+`Session.grace_started_at` uses. That precedent turns on nothing behavioural
+changing during grace; here the thing that changes is whether the extractor may
+claim the row, which is the distinction the precedent was drawing. It also keeps
+two unrelated failures apart: a presign nobody used and an extraction that
+stalled want different reap windows, and as separate states that is two obvious
+queries rather than one predicate with a null check in it.
 
 The alternative — letting slides land during a live interrogation — was refused
 on grounding correctness rather than complexity. The Auditor's reference set would
