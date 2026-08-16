@@ -52,6 +52,10 @@ ASSERTION = {
 }
 
 
+#: The pages the fixtures above cite, as `extract` would report them.
+DECK = {1, 2, 3, 4}
+
+
 def answer(figures=(FIGURE,), assertions=()) -> dict:
     return {"figures": list(figures), "assertions": list(assertions)}
 
@@ -70,7 +74,7 @@ def page(number: int = 1) -> RenderedPage:
 
 def test_the_models_answer_becomes_typed_claims():
     """The tracer: a tool-use payload in, comparable claims out."""
-    claims, dropped = to_claims(answer())
+    claims, dropped = to_claims(answer(), page_numbers=DECK)
 
     assert dropped == 0
     assert len(claims) == 1
@@ -89,7 +93,7 @@ def test_an_assertion_comes_back_as_its_own_kind():
     are the sharpest things in most decks. Extracting only figures leaves the
     non-financial archetypes with nothing to attack.
     """
-    claims, dropped = to_claims(answer(figures=(), assertions=(ASSERTION,)))
+    claims, dropped = to_claims(answer(figures=(), assertions=(ASSERTION,)), page_numbers=DECK)
 
     assert dropped == 0
     assert claims[0].page == 4
@@ -104,7 +108,7 @@ def test_both_kinds_come_back_from_one_call():
     Two calls would double the input tokens — the images are the expensive part
     — to answer two questions about the same pixels.
     """
-    claims, _ = to_claims(answer(assertions=(ASSERTION,)))
+    claims, _ = to_claims(answer(assertions=(ASSERTION,)), page_numbers=DECK)
 
     assert {claim.claim.kind for claim in claims} == {
         ClaimKind.QUANTITATIVE,
@@ -119,7 +123,7 @@ def test_a_unit_the_model_invented_is_normalised_not_trusted():
     this is the only place a model's output enters the type system — and a
     future adapter that built claims some other way would skip the validator.
     """
-    claims, _ = to_claims(answer(figures=({**FIGURE, "unit": "percentage"},)))
+    claims, _ = to_claims(answer(figures=({**FIGURE, "unit": "percentage"},)), page_numbers=DECK)
 
     assert claims[0].claim.unit is Unit.PERCENT
 
@@ -144,7 +148,7 @@ def test_a_malformed_figure_is_dropped_rather_than_failing_the_page(broken):
     silent drop is how a deck quietly grounds nothing, which is why the count
     comes back with the claims.
     """
-    claims, dropped = to_claims(answer(figures=(FIGURE, broken)))
+    claims, dropped = to_claims(answer(figures=(FIGURE, broken)), page_numbers=DECK)
 
     assert len(claims) == 1
     assert dropped == 1
@@ -164,10 +168,44 @@ def test_a_malformed_assertion_is_dropped_too(broken):
     A missing quote matters more here than it looks: an assertion with nothing
     to cite is exactly the ungrounded challenge CLAUDE.md refuses to ship.
     """
-    claims, dropped = to_claims(answer(figures=(), assertions=(ASSERTION, broken)))
+    claims, dropped = to_claims(answer(figures=(), assertions=(ASSERTION, broken)), page_numbers=DECK)
 
     assert len(claims) == 1
     assert dropped == 1
+
+
+@pytest.mark.parametrize("cited", [4, 99])
+def test_a_claim_citing_a_page_that_does_not_exist_is_dropped(cited):
+    """The page is what the panel says out loud, so it has to be real.
+
+    The number is *reported by the model*, not attached structurally — it reads
+    "Page 2 text layer:" and writes back which page a figure was on. Nothing
+    else checks it, so a two-page deck can come back with a claim on page 99,
+    and the failure surfaces as a panelist demanding the user defend page 99 of
+    a two-page deck. One line, and the room's credibility is gone.
+
+    Dropped rather than clamped or kept pageless. A citation that has been
+    guessed at is worse than a missing claim, and CLAUDE.md is explicit: do not
+    ship interrogation logic that cannot cite its source.
+    """
+    claims, dropped = to_claims(
+        answer(figures=(FIGURE, {**FIGURE, "page": cited})), page_numbers={1, 2, 3}
+    )
+
+    assert dropped == 1
+    assert [claim.page for claim in claims] == [3]
+
+
+def test_the_last_page_of_a_deck_is_a_page_that_exists():
+    """The boundary the check above is drawn at, asserted from the other side.
+
+    An off-by-one here silently drops every claim on a deck's final slide, which
+    is usually the ask — the single most attackable page in a pitch.
+    """
+    claims, dropped = to_claims(answer(figures=({**FIGURE, "page": 3},)), page_numbers={1, 2, 3})
+
+    assert dropped == 0
+    assert claims[0].page == 3
 
 
 def test_a_payload_is_not_mutated_by_being_read():
@@ -179,7 +217,7 @@ def test_a_payload_is_not_mutated_by_being_read():
     """
     payload = answer(assertions=(ASSERTION,))
 
-    to_claims(payload)
+    to_claims(payload, page_numbers=DECK)
 
     assert payload["figures"][0]["page"] == 3
     assert payload["assertions"][0]["page"] == 4
@@ -191,7 +229,7 @@ def test_an_answer_with_no_claims_is_empty_rather_than_an_error():
     Most decks have several such pages. Treating "nothing here" as an error
     would fail materials for being ordinary.
     """
-    assert to_claims(answer(figures=())) == ((), 0)
+    assert to_claims(answer(figures=()), page_numbers=DECK) == ((), 0)
 
 
 def test_a_missing_array_is_not_a_dropped_claim():
@@ -201,7 +239,7 @@ def test_a_missing_array_is_not_a_dropped_claim():
     that simply found one kind and not the other — and the drop count is meant
     to be the signal that something went wrong.
     """
-    assert to_claims({"assertions": [ASSERTION]})[1] == 0
+    assert to_claims({"assertions": [ASSERTION]}, page_numbers=DECK)[1] == 0
 
 
 def test_a_reply_shaped_nothing_like_the_tool_is_no_claims_and_no_crash():
@@ -210,8 +248,8 @@ def test_a_reply_shaped_nothing_like_the_tool_is_no_claims_and_no_crash():
     An unhandled exception here runs inside the extraction sweep, where it marks
     nothing and leaves the material claimed until the requeue notices.
     """
-    assert to_claims({}) == ((), 0)
-    assert to_claims({"figures": "not a list", "assertions": None}) == ((), 0)
+    assert to_claims({}, page_numbers=DECK) == ((), 0)
+    assert to_claims({"figures": "not a list", "assertions": None}, page_numbers=DECK) == ((), 0)
 
 
 # --- Transport ------------------------------------------------------------

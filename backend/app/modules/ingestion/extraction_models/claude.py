@@ -19,7 +19,7 @@ impossible rather than discouraged (`docs/auditor-grounding.md`).
 from __future__ import annotations
 
 import base64
-from collections.abc import Sequence
+from collections.abc import Container, Sequence
 from typing import Any
 
 import httpx
@@ -191,7 +191,9 @@ class ClaudeExtractionModel:
             log.error("extraction_provider_failed", provider=PROVIDER)
             raise ProviderUnavailable(reason="extraction_unavailable") from exc
 
-        claims, dropped = to_claims(_tool_input(message))
+        claims, dropped = to_claims(
+            _tool_input(message), page_numbers={page.number for page in pages}
+        )
 
         if dropped:
             # A count, never the claims themselves. These are figures read off a
@@ -255,7 +257,9 @@ def _tool_input(message: Any) -> dict[str, Any]:
     return {}
 
 
-def to_claims(payload: dict[str, Any]) -> tuple[tuple[ExtractedClaim, ...], int]:
+def to_claims(
+    payload: dict[str, Any], *, page_numbers: Container[int]
+) -> tuple[tuple[ExtractedClaim, ...], int]:
     """The model's answer, as typed claims plus a count of what would not type.
 
     Pure, and separated from the transport for the reason the ElevenLabs adapter
@@ -266,6 +270,20 @@ def to_claims(payload: dict[str, Any]) -> tuple[tuple[ExtractedClaim, ...], int]
     entire extraction that has already been paid for, and the material would
     fail for a reason no re-upload fixes. The count is returned because a silent
     drop is how a deck quietly grounds nothing.
+
+    `page_numbers` is which pages were actually sent. The page on a claim is *reported
+    by the model* — it reads "Page 2 text layer:" and writes back where it found
+    a figure — so nothing else would stop a four-page deck yielding a claim on
+    page 99. That number is not bookkeeping: it is what a panelist says out
+    loud, and "defend what you claimed on page 99" against a four-page deck
+    costs the room its credibility in one line. Out of range is dropped rather
+    than clamped, because a guessed citation is worse than a missing claim —
+    CLAUDE.md: do not ship interrogation logic that cannot cite its source.
+
+    The pages themselves rather than a count, so this survives being handed a
+    slice of a deck. Once pages are chunked across calls (task #31), a chunk
+    holding pages 51-100 has a length of fifty and page numbers starting at
+    fifty-one — and a length check would drop every claim in it.
     """
     claims: list[ExtractedClaim] = []
     dropped = 0
@@ -284,17 +302,19 @@ def to_claims(payload: dict[str, Any]) -> tuple[tuple[ExtractedClaim, ...], int]
                 # subtly different from what arrived — which matters most when
                 # something goes wrong and that payload is what gets inspected.
                 fields = {k: v for k, v in entry.items() if k != "page"}
-                claims.append(
-                    ExtractedClaim(
-                        page=entry["page"], claim={**fields, "kind": kind}
-                    )
+                found = ExtractedClaim(
+                    page=entry["page"], claim={**fields, "kind": kind}
                 )
+                if found.page not in page_numbers:
+                    raise ValueError("claim cites a page the deck does not have")
+                claims.append(found)
             except Exception:  # noqa: BLE001 - see below
                 # Deliberately broad, and deliberately not re-raised. Everything
                 # here is somebody else's output: a bad field raises
                 # `ValidationError`, a non-mapping entry raises `AttributeError`,
-                # and a missing page raises `KeyError`. The correct response to
-                # all three is the same. Nothing is swallowed — the count is
+                # a missing page raises `KeyError`, and an impossible page
+                # raises the `ValueError` above. The correct response to all
+                # four is the same. Nothing is swallowed — the count is
                 # returned, and logged by the caller.
                 dropped += 1
 

@@ -271,6 +271,20 @@ the false-positive failure the grounding doc refuses.
 the interrupter by domain, and without it every assertion is unroutable and
 targeted interruption quietly covers only numbers.
 
+**The page a claim cites is checked against the pages that were sent.** The
+number is *reported by the model* — it reads `Page 2 text layer:` and writes back
+where it found a figure — so nothing else stops a four-page deck yielding a claim
+on page 99. That number is not bookkeeping: it is what a panelist says out loud
+and what the debrief asks the user to defend, and *"defend what you claimed on
+page 99"* against a four-page deck costs the room its credibility in one line.
+Out of range is dropped rather than clamped, because a guessed citation is worse
+than a missing claim.
+
+Checked against the page *numbers* sent rather than a count, so it survives being
+handed a slice of a deck — once pages are chunked across calls (task #31), a
+chunk holding pages 51–100 has a length of fifty and numbers starting at
+fifty-one, and a length check would drop every claim in it.
+
 **Why this could not wait.** The source document is deleted once extraction
 succeeds, and this document already accepts that *"improving the extraction
 pipeline cannot reprocess existing material."* Anything not extracted is gone
