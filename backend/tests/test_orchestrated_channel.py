@@ -13,6 +13,7 @@ in `relay.py` changes.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Sequence
 
 import pytest
@@ -43,6 +44,18 @@ class FakeTranscription:
     async def results(self) -> AsyncIterator[Transcription]:
         for result in self._results:
             yield result
+
+
+class FakeSpeaker:
+    """Synthesis without a vendor. Two frames, so chunking is visible."""
+
+    def __init__(self) -> None:
+        self.spoke: list[tuple[str, str | None]] = []
+
+    async def speak(self, *, text: str, voice_id: str | None) -> AsyncIterator[bytes]:
+        self.spoke.append((text, voice_id))
+        yield b"\x01\x02"
+        yield b"\x03\x04"
 
 
 class ScriptedPanelModel:
@@ -148,6 +161,37 @@ async def test_the_user_speaking_is_reported_before_the_panel_answers():
     ]
 
 
+async def two_turns(model, grounding: Grounding, said: Sequence[str]) -> None:
+    """Run a room across two utterances, letting each turn finish first.
+
+    Turn by turn rather than from a fixed script, because a script yields both
+    finals in the same tick — and the channel is right to treat that as the user
+    talking through the panel's answer and abandon the first turn. No transcriber
+    behaves that way; the pacing has to be in the test, not designed around.
+    """
+    transcription = DrivenTranscription()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=transcription,
+        model=model,
+        grounding=grounding,
+    )
+
+    spoken = asyncio.Queue()
+
+    async def collect():
+        async for event in channel.events():
+            if isinstance(event, AgentTranscript):
+                spoken.put_nowait(event)
+
+    reader = asyncio.create_task(collect())
+    for utterance in said:
+        transcription.feed(Transcription(text=utterance, final=True))
+        await asyncio.wait_for(spoken.get(), timeout=1)
+    transcription.hang_up()
+    await asyncio.wait_for(reader, timeout=1)
+
+
 async def test_the_second_turn_can_see_the_first():
     """A room, not a sequence of unrelated questions.
 
@@ -165,12 +209,42 @@ async def test_the_second_turn_can_see_the_first():
             )
             return "And the one before that?"
 
+    await two_turns(
+        Watching(),
+        Grounding(),
+        ["Margin is seventy percent.", "It improved last quarter."],
+    )
+
+    assert seen[0] == ("Margin is seventy percent.",)
+    assert seen[1] == (
+        "Margin is seventy percent.",
+        "And the one before that?",
+        "It improved last quarter.",
+    )
+
+
+async def test_a_user_who_talks_through_the_answer_is_still_on_record():
+    """Choosing not to reply must not erase what they said.
+
+    A second finished utterance while a turn is in flight abandons that turn —
+    the room answers the latest thing said, rather than queueing a challenge to a
+    sentence the user has already moved on from. But the abandoned turn is *our*
+    decision, and their words are not ours to drop: the next selection would
+    otherwise judge the conversation without an answer it was actually given.
+    """
+    seen: list[tuple[str, ...]] = []
+
+    class Watching(ScriptedPanelModel):
+        async def compose(self, *, archetype, context, finding=None) -> str:
+            seen.append(tuple(line.text for line in context.grounding.transcript))
+            return "Against what basis?"
+
     channel = OrchestratedChannel(
         panel=DEFAULT_PANEL,
         transcription=FakeTranscription(
             [
                 Transcription(text="Margin is seventy percent.", final=True),
-                Transcription(text="It improved last quarter.", final=True),
+                Transcription(text="Well — closer to sixty.", final=True),
             ]
         ),
         model=Watching(),
@@ -179,8 +253,8 @@ async def test_the_second_turn_can_see_the_first():
 
     await events_of(channel)
 
-    assert seen[0] == ()
-    assert seen[1] == ("Margin is seventy percent.", "And the one before that?")
+    # One turn ran, and it saw both sentences the user managed to get out.
+    assert seen == [("Margin is seventy percent.", "Well — closer to sixty.")]
 
 
 async def test_the_deck_stays_in_front_of_every_turn():
@@ -198,18 +272,136 @@ async def test_the_deck_stays_in_front_of_every_turn():
             seen.append(context.grounding.claims)
             return "Where is that from?"
 
-    channel = OrchestratedChannel(
-        panel=DEFAULT_PANEL,
-        transcription=FakeTranscription(
-            [
-                Transcription(text="Margin is seventy percent.", final=True),
-                Transcription(text="And growing.", final=True),
-            ]
-        ),
-        model=Watching(),
-        grounding=Grounding(claims=("Gross margin of 61% in Q3 2026 (slide 4)",)),
+    await two_turns(
+        Watching(),
+        Grounding(claims=("Gross margin of 61% in Q3 2026 (slide 4)",)),
+        ["Margin is seventy percent.", "And growing."],
     )
 
-    await events_of(channel)
-
     assert seen[0] == seen[1] == ("Gross margin of 61% in Q3 2026 (slide 4)",)
+
+
+async def test_the_line_is_spoken_in_that_archetypes_own_voice():
+    """Distinct voices are why this vendor was chosen at all (`CLAUDE.md`).
+
+    A panel that sounds like one person reading four scripts is not a panel, and
+    the user cannot tell who is challenging them without looking at a phone the
+    product's whole premise says is face-down on the desk.
+
+    The caption goes first. Audio arrives in chunks over the length of an
+    utterance, so a client that had to wait for the last frame to display the
+    line would caption the room several seconds late — and captions are a v1
+    accessibility requirement, not a garnish.
+    """
+    speaker = FakeSpeaker()
+    # Voices assigned here rather than read from the library, which still has
+    # none: the behaviour under test is that the *speaking* archetype's voice is
+    # the one used, and asserting that against a panel of `None`s would pass
+    # whichever archetype was handed over.
+    panel = tuple(
+        archetype.model_copy(update={"voice_id": f"voice_{archetype.name}"})
+        for archetype in DEFAULT_PANEL
+    )
+    channel = OrchestratedChannel(
+        panel=panel,
+        transcription=FakeTranscription(
+            [Transcription(text="Margin is seventy percent.", final=True)]
+        ),
+        model=ScriptedPanelModel(speaker="cfo", line="Against what basis?"),
+        speaker=speaker,
+        grounding=Grounding(),
+    )
+
+    events = await events_of(channel)
+
+    assert [type(event).__name__ for event in events] == [
+        "UserSpoke",
+        "AgentTranscript",
+        "AgentAudio",
+        "AgentAudio",
+    ]
+    assert speaker.spoke == [("Against what basis?", "voice_cfo")]
+
+
+class DrivenTranscription:
+    """A transcription stream the test feeds by hand, result by result.
+
+    Barge-in is a race by definition — the user speaks *while* a panelist is
+    speaking — and a fixed script cannot express one. This lets a test say
+    "now, mid-utterance" and have it mean that.
+    """
+
+    def __init__(self) -> None:
+        self._queue: asyncio.Queue[Transcription | None] = asyncio.Queue()
+
+    def feed(self, result: Transcription) -> None:
+        self._queue.put_nowait(result)
+
+    def hang_up(self) -> None:
+        self._queue.put_nowait(None)
+
+    async def send_audio(self, pcm: bytes) -> None:
+        pass
+
+    async def results(self) -> AsyncIterator[Transcription]:
+        while (result := await self._queue.get()) is not None:
+            yield result
+
+
+class GatedSpeaker:
+    """Speaks one frame, then blocks until the test lets it continue."""
+
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+        self.finished = False
+
+    async def speak(self, *, text: str, voice_id: str | None) -> AsyncIterator[bytes]:
+        yield b"\x01\x02"
+        self.started.set()
+        await self.release.wait()
+        yield b"\x03\x04"
+        self.finished = True
+
+
+async def test_speaking_over_a_panelist_stops_them():
+    """The feature the whole voice layer was chosen for (Product.md §5.1).
+
+    Two obligations, and the second is the one that is easy to miss. Stopping
+    synthesis is not enough on its own: audio runs ahead of playback, so frames
+    the panelist will never finish are already buffered on the phone, and letting
+    those play is the room failing to be interruptible. `Interrupted` is what
+    tells the relay to drop them.
+
+    A **partial** triggers this, not a final. Waiting for the user to finish
+    their sentence before conceding the floor is not barge-in — it is a panelist
+    talking over somebody for three seconds and then stopping politely.
+    """
+    speaker = GatedSpeaker()
+    transcription = DrivenTranscription()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=transcription,
+        model=ScriptedPanelModel(line="Against what basis?"),
+        speaker=speaker,
+        grounding=Grounding(),
+    )
+
+    collected = []
+
+    async def collect():
+        async for event in channel.events():
+            collected.append(event)
+
+    reader = asyncio.create_task(collect())
+    transcription.feed(Transcription(text="Margin is seventy.", final=True))
+    await asyncio.wait_for(speaker.started.wait(), timeout=1)
+
+    # The user cuts in, mid-sentence, before the panelist has finished.
+    transcription.feed(Transcription(text="No, wait —", final=False))
+    await asyncio.sleep(0)
+    transcription.hang_up()
+    await asyncio.wait_for(reader, timeout=1)
+
+    assert any(type(event).__name__ == "Interrupted" for event in collected)
+    assert not speaker.finished, "the cut-off panelist kept synthesising"

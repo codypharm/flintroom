@@ -16,6 +16,7 @@ channel keeps working unmodified.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Sequence
 
 from app.agents.archetypes import Archetype
@@ -23,7 +24,14 @@ from app.agents.context import Grounding, Said, USER
 from app.agents.model import PanelModel
 from app.agents.panel import interrogate
 from app.core.logging import get_logger
-from app.modules.voice.events import AgentTranscript, UserSpoke, VoiceEvent
+from app.modules.voice.events import (
+    AgentAudio,
+    AgentTranscript,
+    Interrupted,
+    UserSpoke,
+    VoiceEvent,
+)
+from app.modules.voice.speech import Speaker
 from app.modules.voice.transcription import TranscriptionStream
 
 log = get_logger(__name__, tag="voice")
@@ -45,11 +53,17 @@ class OrchestratedChannel:
         panel: Sequence[Archetype],
         transcription: TranscriptionStream,
         model: PanelModel,
+        speaker: Speaker | None = None,
         grounding: Grounding | None = None,
     ) -> None:
         self._panel = panel
         self._transcription = transcription
         self._model = model
+        # Optional so the room can be exercised — and read in a transcript —
+        # without a synthesis vendor attached. A silent panel is a legitimate
+        # development configuration; a panel that cannot be tested without one
+        # is not.
+        self._speaker = speaker
         # The claims stay fixed for the room; only the transcript grows. Both are
         # rebuilt into a fresh `Grounding` each turn because it is frozen, which
         # is what stops a turn in flight seeing a reference set that moved under
@@ -67,41 +81,134 @@ class OrchestratedChannel:
         await self._transcription.send_audio(pcm)
 
     async def events(self) -> AsyncIterator[VoiceEvent]:
-        """One panel turn per finished utterance.
+        """Everything the room has to say, while it keeps listening.
 
-        Partials are read and not answered. They exist so the selection hop can
-        run while the user is still speaking — the entire plan for holding the
-        ~1.5s threshold, since that hop measured ~0.8s — but composing on one
-        would have a panelist challenge the first four words of a sentence still
-        being spoken. That is not barge-in; it is not listening.
+        **Two concurrent halves, and the concurrency is the feature.** The first
+        version of this read a transcription result, answered it, and only then
+        read the next — which cannot be interrupted, because while a panelist is
+        speaking nothing is listening. The user talking over them was not ignored
+        so much as unheard until they had finished, and a panelist who concedes
+        the floor after completing their sentence is not being interrupted.
+
+        So a listener task reads transcription continuously and a turn runs
+        beside it, joined by a queue. Cancelling the turn is what stops a
+        panelist mid-word: `Speaker.speak` streams, so dropping the iteration
+        drops the utterance, and nothing needs a cancel call that could leave an
+        adapter half-spoken.
         """
-        async for result in self._transcription.results():
-            if not result.final:
-                continue
+        out: asyncio.Queue[VoiceEvent | None] = asyncio.Queue()
+        listener = asyncio.create_task(self._listen(out))
+        try:
+            while (event := await out.get()) is not None:
+                yield event
+        finally:
+            # The consumer may stop early — the relay cancels this side whenever
+            # the phone hangs up first. Without this the listener survives its
+            # own room, holding a transcription stream open on somebody's
+            # invoice with nobody reading it.
+            listener.cancel()
+            await asyncio.gather(listener, return_exceptions=True)
 
-            # Before the model call, not after. This is what the relay turns into
-            # `record_speech`, and it is the only thing that resets the idle
-            # clock — panel speech deliberately does not. Emitting it after
-            # composition would leave the clock running across the slowest part
-            # of the turn, so a user who thought for eighty seconds and then
-            # answered would be reaped *while the panel was replying to them*.
-            yield UserSpoke()
+    async def _listen(self, out: asyncio.Queue[VoiceEvent | None]) -> None:
+        """Read transcription forever; start, and stop, turns as it goes."""
+        speaking: asyncio.Task | None = None
+        try:
+            async for result in self._transcription.results():
+                if result.final:
+                    # Before the turn is even started. This is what the relay
+                    # turns into `record_speech`, and it is the only thing that
+                    # resets the idle clock — panel speech deliberately does not.
+                    # Emitting it after composition would leave that clock
+                    # running across the slowest part of the turn, so a user who
+                    # thought for eighty seconds and then answered would be
+                    # reaped while the panel was replying to them.
+                    await out.put(UserSpoke())
+                    # Recorded here rather than inside the turn, because the turn
+                    # can be cancelled and this must not be. A user who keeps
+                    # talking through the panel's answer has still said the thing
+                    # they said; losing it would erase their words from the room's
+                    # memory because *we* chose not to reply to them, and the next
+                    # selection would then judge an answer it never saw.
+                    self._transcript.append(Said(speaker=USER, text=result.text))
+                    speaking = await self._restart(speaking, result.text, out)
+                    continue
 
-            turn = await interrogate(
-                self._panel,
-                said=result.text,
-                model=self._model,
-                grounding=Grounding(
-                    claims=self._claims, transcript=tuple(self._transcript)
-                ),
-            )
+                # A partial, which is the user starting to talk. If somebody is
+                # mid-sentence they lose the floor now rather than at the end of
+                # their line — waiting for the *final* would mean waiting for the
+                # user to finish speaking before conceding, which is a panelist
+                # talking over them for three seconds and then stopping politely.
+                if speaking is not None and not speaking.done():
+                    speaking = await self._stop(speaking)
+                    # Synthesis runs ahead of playback, so frames the panelist
+                    # will never reach are already buffered on the phone.
+                    # Stopping only what we have not sent yet lets them talk over
+                    # the person who just cut in.
+                    await out.put(Interrupted())
 
-            # Both sides, in order. A transcript of only the panel's questions
-            # cannot tell the next selection whether anything was answered, and
-            # pressing an evaded question is the most useful thing a room does.
-            self._transcript.append(Said(speaker=USER, text=result.text))
-            self._transcript.append(
-                Said(speaker=turn.archetype.name, text=turn.line)
-            )
+            # The stream closed. A turn still in flight is the room's last word,
+            # and dropping it would lose a line the user was owed.
+            if speaking is not None:
+                await asyncio.gather(speaking, return_exceptions=True)
+        finally:
+            await out.put(None)
 
-            yield AgentTranscript(turn.line)
+    async def _restart(
+        self,
+        speaking: asyncio.Task | None,
+        said: str,
+        out: asyncio.Queue[VoiceEvent | None],
+    ) -> asyncio.Task:
+        """Begin a turn, abandoning one already running.
+
+        A final arriving while a panelist speaks means the user talked over them
+        and finished a sentence. The `Interrupted` for that was already sent on
+        the partial that opened it, so this only has to stop the work.
+        """
+        if speaking is not None and not speaking.done():
+            await self._stop(speaking)
+        return asyncio.create_task(self._turn(said, out))
+
+    @staticmethod
+    async def _stop(speaking: asyncio.Task) -> None:
+        speaking.cancel()
+        # Awaited rather than abandoned, for the reason the relay gives: a
+        # cancelled task nobody collects is reported at interpreter exit, long
+        # after the context that would have explained it is gone.
+        await asyncio.gather(speaking, return_exceptions=True)
+        return None
+
+    async def _turn(self, said: str, out: asyncio.Queue[VoiceEvent | None]) -> None:
+        """One archetype's answer, from selection through to the last frame."""
+        turn = await interrogate(
+            self._panel,
+            said=said,
+            model=self._model,
+            grounding=Grounding(
+                claims=self._claims, transcript=tuple(self._transcript)
+            ),
+        )
+
+        # Recorded before the line is spoken, so that a panelist cut off two
+        # words in is still on record as having asked. The next selection has to
+        # know the question was put — otherwise a user who talks over the CFO
+        # hears the same challenge again, which reads as a room that is not
+        # listening rather than one that was interrupted.
+        #
+        # The user's own line was recorded by the listener, not here, because
+        # this task can be cancelled and that must not depend on it.
+        self._transcript.append(Said(speaker=turn.archetype.name, text=turn.line))
+
+        # The caption first, then the audio it captions. Synthesis streams over
+        # the length of an utterance, so a client waiting for the last frame
+        # before displaying the line would caption the room seconds late — and
+        # captions are in the v1 accessibility floor, not a garnish on the audio.
+        await out.put(AgentTranscript(turn.line))
+
+        if self._speaker is None:
+            return
+
+        async for pcm in self._speaker.speak(
+            text=turn.line, voice_id=turn.archetype.voice_id
+        ):
+            await out.put(AgentAudio(pcm))
