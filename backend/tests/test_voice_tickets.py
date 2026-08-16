@@ -13,6 +13,8 @@ regardless.
 
 from __future__ import annotations
 
+import inspect
+
 from datetime import timedelta
 
 import pytest
@@ -111,3 +113,28 @@ async def test_a_ticket_does_not_open_a_room_it_was_not_minted_for(
 
     with pytest.raises(NotAuthenticated):
         await tickets.redeem(ticket=ticket, session_id=theirs.id)
+
+
+def test_the_database_dependency_resolves_on_a_socket_as_well_as_a_request():
+    """`get_db` has to serve the stream socket, and took a `Request`.
+
+    A WebSocket connection is not a `Request`, so FastAPI could not build the
+    argument and every attempt to open a room died in dependency resolution
+    with `get_db() missing 1 required positional argument` — a 500 on the
+    handshake, before any of our code ran.
+
+    Nothing caught it. The route's own tests call `stream_session` directly and
+    pass a session in, which is what makes them fast and which also skips the
+    only part that was broken. It surfaced on the first real phone.
+
+    Asserted against the annotation rather than by opening a socket, because
+    `HTTPConnection` is precisely the fix: it is the common base of `Request`
+    and `WebSocket`, and a future edit narrowing it back to `Request` would
+    break rooms while leaving every HTTP test green.
+    """
+    from starlette.requests import HTTPConnection
+
+    from app.core.database import get_db
+
+    (parameter,) = inspect.signature(get_db).parameters.values()
+    assert parameter.annotation is HTTPConnection

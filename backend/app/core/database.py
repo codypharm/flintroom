@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator
 from datetime import datetime
 
-from fastapi import Request
+from starlette.requests import HTTPConnection
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -30,18 +30,26 @@ def create_engine(url: str) -> AsyncEngine:
     return create_async_engine(url)
 
 
-async def get_db(request: Request) -> AsyncIterator[AsyncSession]:
+async def get_db(connection: HTTPConnection) -> AsyncIterator[AsyncSession]:
     """One session per request, closed when the response is done.
 
     Taken from application state rather than a module-level global so that the
     factory is built once at startup, by the lifespan that also owns disposing
     of it — and so a test can substitute a session without a running engine.
 
+    `HTTPConnection` rather than `Request`, because this also serves the stream
+    socket and a WebSocket is not a `Request`. FastAPI could not build the
+    argument, so every attempt to open a room died in dependency resolution with
+    `get_db() missing 1 required positional argument` — a 500 on the handshake,
+    before any of our code ran, on a route that had never been opened for real.
+    `HTTPConnection` is the common base of both and carries `.app`, which is all
+    this needs.
+
     No commit here. Services own their transaction boundaries because they are
     the only thing that knows what a complete unit of work is; a dependency that
     commits on the way out would commit half-finished ones too.
     """
-    factory = request.app.state.session_factory
+    factory = connection.app.state.session_factory
     async with factory() as session:
         yield session
 
