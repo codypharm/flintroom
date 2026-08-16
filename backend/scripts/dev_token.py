@@ -54,6 +54,9 @@ from app.modules.auth.tokens import AccessTokens
 from app.modules.billing.models import Account
 from app.modules.billing.service import LedgerService
 from app.modules.billing.tiers import FREE_TIER
+from app.modules.sessions.models import Session
+from app.modules.sessions.schemas import SessionState
+from app.modules.sessions.service import SessionService
 
 #: The provider this pretends to be. A real one, so the row is shaped exactly as
 #: sign-in would leave it and a later real sign-in with the same email links to
@@ -62,6 +65,29 @@ PROVIDER = "google"
 
 #: What the room screen reads. `EXPO_PUBLIC_` is what makes Expo inline it.
 ENV_VAR = "EXPO_PUBLIC_DEV_TOKEN"
+
+#: States in which a session still blocks the next one. `settled` and `failed`
+#: do not — a user in yesterday's debrief is free to start a fresh room.
+HOLDS_THE_LOCK = {
+    SessionState.PROVISIONING,
+    SessionState.ACTIVE,
+    SessionState.FINALIZING,
+}
+
+
+async def release(db, user_id: uuid.UUID) -> int:
+    """End any room still holding this account's lock.
+
+    One interrogation at a time is a real product rule and the runaway-cost
+    circuit breaker, so a room that failed to open still blocks the next one
+    until the reaper sweeps it. During a device session that is every retry
+    after the first, and the symptom — `active_session_exists` — reads like the
+    rule working rather than like debris.
+    """
+    rows = list(await db.scalars(select(Session).where(Session.state.in_(HOLDS_THE_LOCK))))
+    for row in rows:
+        await SessionService(db).fail(session_id=row.id)
+    return len(rows)
 
 
 async def issue(*, email: str, tier: str, hours: int) -> str:
@@ -99,6 +125,12 @@ async def issue(*, email: str, tier: str, hours: int) -> str:
             await LedgerService(db, actor=ActorContext.system()).grant_signup_free_minutes(
                 user_id=user_id
             )
+
+            # Always, not on request. Every run of this script is somebody about
+            # to open a room, and a stale lock is the one thing guaranteed to
+            # stop them.
+            if freed := await release(db, user_id):
+                print(f"released {freed} stale room(s)", file=sys.stderr)
 
         return AccessTokens(
             secret=settings.jwt_secret, ttl=timedelta(hours=hours)
