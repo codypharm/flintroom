@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.agents.voices import Voice
+
 
 class Archetype(BaseModel):
     """One panelist, as configuration.
@@ -64,10 +66,15 @@ class Archetype(BaseModel):
     #: declare which domain owns a figure; this is the other end of that lookup.
     domains: tuple[str, ...] = Field(default=())
 
-    #: Which ElevenLabs voice speaks these lines. The reason the voice provider
-    #: was chosen at all (`CLAUDE.md`), and the reason a panel cannot be one
-    #: agent with a swapped persona.
-    voice_id: str | None = None
+    #: How this panelist sounds, as a character from `agents/voices.py` — never
+    #: a vendor identifier. Distinct voices are the reason the voice provider was
+    #: chosen at all (`CLAUDE.md`) and the reason a panel cannot be one agent
+    #: with a swapped persona.
+    #:
+    #: Nullable for a custom archetype, where panel assembly assigns the first
+    #: voice unused by the seated room. Every *shipped* archetype must be cast,
+    #: which `test_panel_limits.py` enforces.
+    voice: Voice | None = None
 
 
 #: Every archetype the product ships with.
@@ -100,8 +107,7 @@ LIBRARY: tuple[Archetype, ...] = (
             "an impossible headcount. Never accept a figure without its basis."
         ),
         domains=("margin", "revenue", "cost", "valuation", "runway", "headcount"),
-        #: Daniel  — British, formal, steady broadcaster
-        voice_id="onwK4e9ZLuTAKqWW03F9",
+        voice=Voice.MEASURED,
     ),
     Archetype(
         name="technical_skeptic",
@@ -119,8 +125,7 @@ LIBRARY: tuple[Archetype, ...] = (
             "with more engineers could rebuild in a quarter."
         ),
         domains=("technology", "architecture", "security", "defensibility"),
-        #: Alice   — British, clear, precise educator
-        voice_id="Xb7hH8MSUJpSbSDYk0k2",
+        voice=Voice.PRECISE,
     ),
     Archetype(
         name="champion",
@@ -140,8 +145,7 @@ LIBRARY: tuple[Archetype, ...] = (
             "by agreeing."
         ),
         domains=("proof", "references"),
-        #: Sarah   — American, mature, reassuring, confident
-        voice_id="EXAVITQu4vr4xnSDxMaL",
+        voice=Voice.ASSURED,
     ),
     Archetype(
         name="growth_maximalist",
@@ -160,8 +164,7 @@ LIBRARY: tuple[Archetype, ...] = (
             "plan is not more ambitious than it is."
         ),
         domains=("market", "growth", "timing", "competition"),
-        #: Charlie — Australian, energetic, hyped
-        voice_id="IKne3meq5aSn9XLyUdCD",
+        voice=Voice.EAGER,
     ),
     Archetype(
         name="distracted_executive",
@@ -184,8 +187,7 @@ LIBRARY: tuple[Archetype, ...] = (
         # is never a numeric contradiction, so this archetype is never handed a
         # targeted interruption. It earns the floor by ordinary selection.
         domains=(),
-        #: Adam    — American, dominant, firm
-        voice_id="pNInz6obpgDQGcFmaJgB",
+        voice=Voice.BRISK,
     ),
     Archetype(
         name="internal_blocker",
@@ -205,8 +207,7 @@ LIBRARY: tuple[Archetype, ...] = (
             "ahead of what is already committed."
         ),
         domains=("resourcing", "dependencies", "ownership"),
-        #: Lily    — British, velvety, confident
-        voice_id="pFZP5JQG7iQjIQuC4Bku",
+        voice=Voice.SMOOTH,
     ),
     Archetype(
         name="customer_advocate",
@@ -226,8 +227,7 @@ LIBRARY: tuple[Archetype, ...] = (
             "the ones it makes worse off."
         ),
         domains=("customers", "adoption", "retention", "usability"),
-        #: Bella   — American, professional, bright, warm
-        voice_id="hpp4J3VqNfWAUOO0d1Us",
+        voice=Voice.WARM,
     ),
     Archetype(
         name="risk_officer",
@@ -247,8 +247,7 @@ LIBRARY: tuple[Archetype, ...] = (
             "discuss."
         ),
         domains=("compliance", "legal", "privacy", "data"),
-        #: Bill    — American, older, crisp, wise
-        voice_id="pqHfZKP75CvOlQylNhV4",
+        voice=Voice.DRY,
     ),
 )
 

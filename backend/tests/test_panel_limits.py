@@ -78,7 +78,7 @@ def test_every_shipped_archetype_has_been_cast():
     voice is the only signal of who is speaking, so that is the whole panel
     collapsing into one person with four opinions.
     """
-    mute = [archetype.name for archetype in LIBRARY if not archetype.voice_id]
+    mute = [archetype.name for archetype in LIBRARY if not archetype.voice]
 
     assert mute == [], f"archetypes shipping without a voice: {mute}"
 
@@ -90,7 +90,7 @@ def test_no_two_archetypes_share_a_voice():
     §3.3 treats as a feature of a real room — reads as a single person
     contradicting themselves.
     """
-    voices = [archetype.voice_id for archetype in LIBRARY]
+    voices = [archetype.voice for archetype in LIBRARY]
 
     assert len(set(voices)) == len(voices)
 

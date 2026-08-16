@@ -20,7 +20,7 @@ from typing import Protocol
 class Speaker(Protocol):
     """Turns a written line into audio. One instance per process."""
 
-    def speak(self, *, text: str, voice_id: str | None) -> AsyncIterator[bytes]:
+    def speak(self, *, text: str, voice: str | None) -> AsyncIterator[bytes]:
         """Speak one line, streaming PCM16 16 kHz mono as it is synthesised.
 
         **A stream rather than a buffer, and that is the barge-in requirement in
@@ -31,9 +31,13 @@ class Speaker(Protocol):
         frame reached the phone, which spends the entire ~1.5s budget on a
         panelist who may be cut off two words in.
 
-        `voice_id` is nullable because the library ships without voices yet. An
-        adapter falls back to a default rather than refusing: a room where every
-        panelist sounds the same is worse than a real room and better than a
-        silent one.
+        `voice` is a character from `agents/voices.py` — "measured", "brisk" —
+        never a vendor identifier. Each adapter resolves it against its own
+        catalogue, so swapping synthesis is a sibling module rather than a
+        migration over every custom archetype a user has written.
+
+        Nullable, and an adapter falls back rather than refusing. A custom
+        archetype may arrive uncast, and a room where two panelists sound alike
+        is worse than a real room but far better than a silent one.
         """
         ...

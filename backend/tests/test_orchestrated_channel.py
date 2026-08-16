@@ -52,8 +52,8 @@ class FakeSpeaker:
     def __init__(self) -> None:
         self.spoke: list[tuple[str, str | None]] = []
 
-    async def speak(self, *, text: str, voice_id: str | None) -> AsyncIterator[bytes]:
-        self.spoke.append((text, voice_id))
+    async def speak(self, *, text: str, voice: str | None) -> AsyncIterator[bytes]:
+        self.spoke.append((text, voice))
         yield b"\x01\x02"
         yield b"\x03\x04"
 
@@ -325,7 +325,7 @@ async def test_the_line_is_spoken_in_that_archetypes_own_voice():
     # the one used, and asserting that against a panel of `None`s would pass
     # whichever archetype was handed over.
     panel = tuple(
-        archetype.model_copy(update={"voice_id": f"voice_{archetype.name}"})
+        archetype.model_copy(update={"voice": f"voice_{archetype.name}"})
         for archetype in DEFAULT_PANEL
     )
     channel = OrchestratedChannel(
@@ -383,7 +383,7 @@ class GatedSpeaker:
         self.release = asyncio.Event()
         self.finished = False
 
-    async def speak(self, *, text: str, voice_id: str | None) -> AsyncIterator[bytes]:
+    async def speak(self, *, text: str, voice: str | None) -> AsyncIterator[bytes]:
         yield b"\x01\x02"
         self.started.set()
         await self.release.wait()

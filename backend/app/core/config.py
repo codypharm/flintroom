@@ -92,10 +92,10 @@ class Settings(BaseSettings):
 
     #: Which voice speaks for an archetype that has not been assigned one.
     #:
-    #: The library ships with `voice_id=None` on every archetype, so without this
-    #: an orchestrated room is silent. A configured fallback means synthesis can
-    #: be wired and heard before the eight voices have been chosen — and choosing
-    #: them is a casting decision with a taste component, not a deployment step.
+    #: Covers a panelist an adapter cannot cast: a custom archetype that arrived
+    #: without a voice, or a character named in `agents/voices.py` that this
+    #: vendor's table has not learned yet. Without it those panelists are silent
+    #: rather than merely generic, which is the worse of the two failures.
     #:
     #: Optional, on the same grounds as the keys above: a deployment without it
     #: still signs in users and runs rooms. What it loses is the panel's voice,

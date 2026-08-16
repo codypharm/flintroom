@@ -18,8 +18,10 @@ import pytest
 from app.core.config import Settings
 from app.core.errors import ProviderUnavailable
 from app.modules.voice.speakers import build_speaker
+from app.agents.voices import Voice
 from app.modules.voice.speakers.elevenlabs import (
     AUDIO_FORMAT,
+    ELEVENLABS_VOICES,
     DEFAULT_SPEECH_MODEL,
     ElevenLabsSpeaker,
 )
@@ -66,9 +68,9 @@ async def test_a_line_is_spoken_by_the_voice_it_was_given():
     """
     speaker, seen = speaker_over(audio(b"\x01\x02"))
 
-    await collect(speaker, text="Against what basis?", voice_id="voice_cfo")
+    await collect(speaker, text="Against what basis?", voice=Voice.MEASURED)
 
-    assert "/v1/text-to-speech/voice_cfo/stream" in str(seen[0].url)
+    assert f"/v1/text-to-speech/{ELEVENLABS_VOICES[Voice.MEASURED]}/stream" in str(seen[0].url)
     assert f"output_format={AUDIO_FORMAT}" in str(seen[0].url)
     assert seen[0].headers["xi-api-key"] == "secret"
 
@@ -83,7 +85,7 @@ async def test_the_bytes_arrive_whole_and_in_order():
     """
     speaker, _ = speaker_over(audio(b"\x01\x02", b"\x03\x04"))
 
-    chunks = await collect(speaker, text="Where is that from?", voice_id="v")
+    chunks = await collect(speaker, text="Where is that from?", voice=Voice.PRECISE)
 
     assert b"".join(chunks) == b"\x01\x02\x03\x04"
 
@@ -124,7 +126,7 @@ async def test_a_panelist_abandoned_mid_sentence_stops_being_synthesised():
     body = CountingStream(b"\x01\x02", b"\x03\x04", b"\x05\x06")
     speaker, _ = speaker_over(lambda request: httpx.Response(200, stream=body))
 
-    speaking = speaker.speak(text="Against what basis?", voice_id="v")
+    speaking = speaker.speak(text="Against what basis?", voice=Voice.PRECISE)
     await anext(speaking)
     await speaking.aclose()
 
@@ -140,7 +142,7 @@ async def test_an_archetype_with_no_voice_yet_still_speaks():
     """
     speaker, seen = speaker_over(audio(b"\x01"), default_voice_id="house_voice")
 
-    await collect(speaker, text="And the margin?", voice_id=None)
+    await collect(speaker, text="And the margin?", voice=None)
 
     assert "/v1/text-to-speech/house_voice/stream" in str(seen[0].url)
 
@@ -154,7 +156,7 @@ async def test_the_lowest_latency_model_is_the_default():
     """
     speaker, seen = speaker_over(audio(b"\x01"))
 
-    await collect(speaker, text="Say it plainly.", voice_id="v")
+    await collect(speaker, text="Say it plainly.", voice=Voice.PRECISE)
 
     assert seen[0].read().decode().count(DEFAULT_SPEECH_MODEL) == 1
 
@@ -168,7 +170,7 @@ async def test_a_refusal_becomes_a_502_that_does_not_name_the_vendor():
     speaker, _ = speaker_over(lambda request: httpx.Response(401, json={}))
 
     with pytest.raises(ProviderUnavailable) as refused:
-        await collect(speaker, text="Anything.", voice_id="v")
+        await collect(speaker, text="Anything.", voice=Voice.PRECISE)
 
     assert "eleven" not in refused.value.message.lower()
     assert "voice" not in refused.value.message.lower()
@@ -188,7 +190,7 @@ async def test_an_unreachable_service_is_a_502_and_not_a_crash():
     speaker, _ = speaker_over(refuse)
 
     with pytest.raises(ProviderUnavailable):
-        await collect(speaker, text="Anything.", voice_id="v")
+        await collect(speaker, text="Anything.", voice=Voice.PRECISE)
 
 
 async def test_a_deployment_with_no_key_has_no_voice_rather_than_no_room():

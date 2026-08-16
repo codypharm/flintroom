@@ -276,6 +276,6 @@ class OrchestratedChannel:
             return
 
         async for pcm in self._speaker.speak(
-            text=turn.line, voice_id=turn.archetype.voice_id
+            text=turn.line, voice=turn.archetype.voice
         ):
             await out.put(AgentAudio(pcm))

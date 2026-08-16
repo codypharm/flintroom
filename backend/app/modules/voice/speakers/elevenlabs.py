@@ -44,6 +44,26 @@ AUDIO_FORMAT = "pcm_16000"
 #: rather than remembered: `eleven_turbo_v2_5`, the obvious guess, is deprecated.
 DEFAULT_SPEECH_MODEL = "eleven_flash_v2_5"
 
+#: Our casting vocabulary, resolved to this vendor's catalogue.
+#:
+#: **The only place in the codebase that knows an ElevenLabs voice id**, which is
+#: the point: `agents/voices.py` names how somebody sounds, and swapping
+#: synthesis vendors means writing a sibling of this table rather than touching a
+#: single archetype — or, far more importantly, a single user's custom one.
+#:
+#: The names in comments are the vendor's own, kept because they are what an
+#: operator sees in the dashboard when a voice needs replacing.
+ELEVENLABS_VOICES: dict[str, str] = {
+    "measured": "onwK4e9ZLuTAKqWW03F9",  # Daniel  — British, formal, steady
+    "precise": "Xb7hH8MSUJpSbSDYk0k2",  # Alice   — British, clear, exact
+    "assured": "EXAVITQu4vr4xnSDxMaL",  # Sarah   — American, mature, confident
+    "eager": "IKne3meq5aSn9XLyUdCD",  # Charlie — Australian, energetic
+    "brisk": "pNInz6obpgDQGcFmaJgB",  # Adam    — American, dominant, firm
+    "smooth": "pFZP5JQG7iQjIQuC4Bku",  # Lily    — British, velvety
+    "warm": "hpp4J3VqNfWAUOO0d1Us",  # Bella   — American, bright, open
+    "dry": "pqHfZKP75CvOlQylNhV4",  # Bill    — American, older, crisp
+}
+
 
 class ElevenLabsSpeaker:
     """Speaks one line at a time. One instance per process.
@@ -69,18 +89,27 @@ class ElevenLabsSpeaker:
         self._default_voice_id = default_voice_id
         self._endpoint = endpoint
 
-    async def speak(
-        self, *, text: str, voice_id: str | None
-    ) -> AsyncIterator[bytes]:
-        """Stream one line as PCM, in the voice it was given.
+    async def speak(self, *, text: str, voice: str | None) -> AsyncIterator[bytes]:
+        """Stream one line as PCM, in the voice character it was given.
 
-        `voice_id` is nullable because the archetype library ships without voices
-        assigned. Falling back is deliberate: refusing would mean no archetype
-        could be heard until every one of them had a voice, and a panel that all
-        sounds alike is worse than a real room but far better than a silent one.
+        `voice` is one of ours — `agents/voices.py` — and is resolved to a vendor
+        id here and nowhere else.
+
+        Anything this adapter does not recognise falls back to the house voice
+        rather than refusing, and both routes to that are real: a character added
+        to the vocabulary before this table learned it, or a custom archetype
+        carrying a voice from a vendor we have since swapped away from. Neither
+        should end a live metered interrogation. A casting mistake costs a
+        panelist their timbre; refusing would cost the user their room.
         """
-        voice = voice_id or self._default_voice_id
-        url = f"{self._endpoint}/v1/text-to-speech/{voice}/stream"
+        vendor_voice = ELEVENLABS_VOICES.get(voice or "", self._default_voice_id)
+        if vendor_voice is None or voice not in ELEVENLABS_VOICES:
+            # Never the line itself — a panelist's words quote ingested material,
+            # which CLAUDE.md forbids in logs. The character name is ours and
+            # discloses nothing.
+            log.warning("voice_uncast", provider=PROVIDER, voice=voice or "unset")
+
+        url = f"{self._endpoint}/v1/text-to-speech/{vendor_voice}/stream"
 
         try:
             async with self._http.stream(
