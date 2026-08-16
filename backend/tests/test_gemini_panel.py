@@ -22,7 +22,7 @@ from app.agents.archetypes import DEFAULT_PANEL, Archetype, by_name
 from app.core.errors import ProviderUnavailable
 from app.agents.panel import Grounding, Said, TurnContext
 from app.agents.panel_models import build_panel_model
-from app.agents.panel_models.gemini import GeminiPanelModel
+from app.agents.panel_models.gemini import GeminiPanelModel, _persona_of
 from app.core.config import Settings
 
 CONTEXT = TurnContext(said="We hold 61% gross margin.", grounding=Grounding())
@@ -292,3 +292,68 @@ async def test_the_router_sees_the_conversation_and_not_just_the_questions():
     body = seen[0].content.decode()
     assert "Where does four hundred thousand come from?" in body
     assert "Mostly two enterprise contracts." in body
+
+
+def test_the_composer_is_told_how_this_archetype_speaks():
+    """Cadence has to reach the prompt or the field is decoration.
+
+    It is the only expressive channel left: the shipping speech model reads audio
+    tags aloud instead of performing them, so pause and emphasis cannot be bought
+    and the shape of the sentence is all that survives synthesis.
+    """
+    instruction = _persona_of(by_name("distracted_executive"))
+
+    assert "Fragments." in instruction
+
+
+def test_the_composer_is_told_never_to_write_a_stage_direction():
+    """A bracket the model emits is silently deleted before synthesis.
+
+    `TAG_PERFORMING_MODELS` strips them, because the alternative — measured
+    live — is a panelist saying "sighs" out loud. Stripping means the challenge
+    arrives missing whatever word it hinged on, so the cheaper fix is never
+    writing one.
+    """
+    instruction = _persona_of(by_name("cfo"))
+
+    assert "no bracketed" in instruction
+    assert "spoken aloud" in instruction
+
+
+def test_a_custom_archetype_with_no_cadence_still_gets_a_usable_prompt():
+    """A Pro user writes a persona, not a delivery note.
+
+    The section is omitted rather than rendered empty — "How you speak: None" is
+    an instruction, and not a good one.
+    """
+    instruction = _persona_of(
+        Archetype(
+            name="vc_partner",
+            title="The Partner",
+            blurb="Has seen four hundred decks this year.",
+            persona="A partner who has seen four hundred decks this year.",
+            attack_strategy="Attack the story. Why this, why you, why now.",
+        )
+    )
+
+    assert "How you speak" not in instruction
+    assert "Attack the story" in instruction
+
+
+def test_the_composer_is_held_to_something_a_person_can_interrupt():
+    """Cadence gave the panel character and took away its brevity.
+
+    Measured: with cadence and no ceiling, the Internal Blocker produced 85 words
+    — 27.9 seconds of speech. That is a monologue in a room whose whole premise
+    is that the user answers back. It costs three ways at once: they wait half a
+    minute for a turn, it consumes a third of the 90-second idle window that only
+    *user* speech resets, and synthesis bills per character.
+
+    So the bound is stated in words and sentences rather than left implied by
+    "say one thing", which the long-winded archetypes read — correctly — as
+    permission.
+    """
+    instruction = _persona_of(by_name("internal_blocker"))
+
+    assert "under thirty words" in instruction
+    assert "never more than two sentences" in instruction

@@ -60,6 +60,29 @@ class Archetype(BaseModel):
     #: and tuning one should not disturb the other.
     attack_strategy: str = Field(min_length=1, max_length=2000)
 
+    #: How the words land — sentence length, where the full stops fall, whether
+    #: they open with a beat.
+    #:
+    #: **The only expressive channel synthesis leaves us.** Measured against the
+    #: live account, the shipping speech model cannot perform audio tags: it reads
+    #: `[sighs]` aloud rather than sighing (see
+    #: `speakers/elevenlabs.TAG_PERFORMING_MODELS`). So no pause, emphasis or
+    #: breath is available to buy, and what survives is the shape of the sentence
+    #: the composer writes.
+    #:
+    #: A third field rather than more persona, on the same reasoning that split
+    #: persona from strategy. Who somebody is, what they attack, and how they
+    #: sound change for different reasons — and delivery is the one that will be
+    #: retuned every time the synthesis model moves, which should not mean
+    #: rewriting anybody's character.
+    #:
+    #: Nullable only for a custom archetype, which a user writes without one.
+    #: Every shipped archetype must have it — `test_panel_limits.py` enforces
+    #: that, because five of the original eight said nothing about delivery and
+    #: the Distracted Executive consequently sounded exactly like the Risk
+    #: Officer saying different words.
+    cadence: str | None = Field(default=None, max_length=600)
+
     #: The claim domains this archetype owns, feeding §3.3's targeted
     #: interruption — *"the CFO catches the margin contradiction, not the
     #: Technical Skeptic"*. `docs/auditor-grounding.md` has each derivation pack
@@ -107,6 +130,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "an impossible headcount. Never accept a figure without its basis."
         ),
         domains=("margin", "revenue", "cost", "valuation", "runway", "headcount"),
+        cadence=(
+            "Short, flat sentences. Often a bare fact, a full stop, then "
+            "the question. Never two clauses joined by 'and'. Does not "
+            "soften anything with a preamble."
+        ),
         voice=Voice.MEASURED,
     ),
     Archetype(
@@ -125,6 +153,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "with more engineers could rebuild in a quarter."
         ),
         domains=("technology", "architecture", "security", "defensibility"),
+        cadence=(
+            "Complete, carefully built sentences that arrive somewhere "
+            "specific. One qualifying clause, never two. Ends on the "
+            "concrete noun rather than trailing off."
+        ),
         voice=Voice.PRECISE,
     ),
     Archetype(
@@ -145,6 +178,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "by agreeing."
         ),
         domains=("proof", "references"),
+        cadence=(
+            "Quick and forward-moving. Often an acknowledgement first, then "
+            "the harder half in the same breath. Warm punctuation — but the "
+            "sentence always turns."
+        ),
         voice=Voice.ASSURED,
     ),
     Archetype(
@@ -164,6 +202,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "plan is not more ambitious than it is."
         ),
         domains=("market", "growth", "timing", "competition"),
+        cadence=(
+            "Runs sentences together. Starts before the previous thought is "
+            "finished. Little punctuation, high pace, and a question "
+            "arriving faster than it should."
+        ),
         voice=Voice.EAGER,
     ),
     Archetype(
@@ -187,6 +230,11 @@ LIBRARY: tuple[Archetype, ...] = (
         # is never a numeric contradiction, so this archetype is never handed a
         # targeted interruption. It earns the floor by ordinary selection.
         domains=(),
+        cadence=(
+            "Fragments. Rarely a whole sentence. Often one word, a full "
+            "stop, then the demand. Never more than two clauses, and never "
+            "a word spent on politeness."
+        ),
         voice=Voice.BRISK,
     ),
     Archetype(
@@ -207,6 +255,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "ahead of what is already committed."
         ),
         domains=("resourcing", "dependencies", "ownership"),
+        cadence=(
+            "One long, even sentence with a soft opening — 'I think', "
+            "'it may just be' — that arrives at an obstacle. Never blunt, "
+            "never hurried, and never actually agrees."
+        ),
         voice=Voice.SMOOTH,
     ),
     Archetype(
@@ -227,6 +280,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "the ones it makes worse off."
         ),
         domains=("customers", "adoption", "retention", "usability"),
+        cadence=(
+            "Plain, concrete sentences with a real person in them. Short "
+            "setup, then the question. Uses ordinary words and no "
+            "abstraction at all."
+        ),
         voice=Voice.WARM,
     ),
     Archetype(
@@ -247,6 +305,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "discuss."
         ),
         domains=("compliance", "legal", "privacy", "data"),
+        cadence=(
+            "Two level sentences at most, never raising the register. "
+            "States the exposure, stops, then asks who owns it. No "
+            "emphasis, no hedging, no hurry."
+        ),
         voice=Voice.DRY,
     ),
 )

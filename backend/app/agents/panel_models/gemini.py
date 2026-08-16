@@ -212,14 +212,38 @@ def _text_of(payload: dict[str, Any]) -> str:
 
 
 def _persona_of(archetype: Archetype) -> str:
-    """One archetype's system instruction, and nobody else's."""
+    """One archetype's system instruction, and nobody else's.
+
+    Three sections rather than two, and the third is doing more work than it
+    looks. `cadence` is the *only* expressive channel available: the shipping
+    speech model cannot perform audio tags — it reads `[sighs]` out loud — so
+    nothing about pause, breath or emphasis can be bought. What survives
+    synthesis is the shape of the sentence, which means the difference between
+    the Distracted Executive and the Risk Officer has to be written here or it
+    does not exist.
+
+    The line about brackets is a guard, not a style note. `TAG_PERFORMING_MODELS`
+    strips them before synthesis, so a bracket the model emits is silently
+    deleted — a challenge missing the word it hinged on. Cheaper to never write
+    one.
+    """
+    delivery = (
+        f"How you speak: {archetype.cadence}\n\n" if archetype.cadence else ""
+    )
     return (
         f"You are {archetype.title} on a panel interrogating a presenter.\n\n"
         f"Who you are: {archetype.persona}\n\n"
         f"What you go after: {archetype.attack_strategy}\n\n"
+        f"{delivery}"
         "Speak only as yourself. Say one thing — a single question or a single "
-        "challenge, in the voice described above. Never narrate, never explain "
-        "that you are an AI, and never speak for anybody else in the room."
+        "challenge, in the voice described above.\n\n"
+        "This is spoken aloud in a live room, to somebody waiting to answer you. "
+        "Keep it under thirty words and never more than two sentences, however "
+        "unhurried your manner: a longer turn is a monologue, and the person you "
+        "are interrogating cannot interrupt a speech to defend themselves. Write "
+        "it to be heard rather than read — no markdown, no lists, no bracketed "
+        "stage directions. Never narrate, never explain that you are an AI, and "
+        "never speak for anybody else in the room."
     )
 
 

@@ -83,6 +83,26 @@ def test_every_shipped_archetype_has_been_cast():
     assert mute == [], f"archetypes shipping without a voice: {mute}"
 
 
+def test_every_shipped_archetype_says_how_it_speaks():
+    """Cadence is the only expressive channel the synthesis model gives us.
+
+    Measured against the live account: Flash v2.5 cannot perform audio tags — it
+    reads them aloud — so nothing about sighs, pauses or emphasis is available.
+    What survives synthesis is *the shape of the sentence*: how long it runs,
+    where the full stops fall, whether it opens with a beat.
+
+    Three of the eight personas happened to mention delivery and five did not,
+    which meant the Distracted Executive sounded exactly like the Risk Officer
+    saying different words. This makes it deliberate for all of them, and a
+    separate field from `persona` for the reason `attack_strategy` is separate:
+    who somebody is, what they attack, and how their words land change for
+    different reasons, and tuning one should not disturb the others.
+    """
+    silent = [archetype.name for archetype in LIBRARY if not archetype.cadence]
+
+    assert silent == [], f"archetypes with no delivery described: {silent}"
+
+
 def test_no_two_archetypes_share_a_voice():
     """Two panelists with one voice is worse than one panelist.
 
