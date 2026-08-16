@@ -9,6 +9,24 @@ identifiers, which is what `billing/tiers.py` maps to tiers. Nothing generates
 them — they are strings you choose, typed into a store console, and mirrored by
 RevenueCat.
 
+**None of this is needed yet.** The backend billing path — webhook verification,
+entitlements, grants, the ledger — is built and tested against synthesised events
+with no store account of any kind. What an account buys is proof against a real
+event and the ability to ship, and neither is on the critical path until there is
+somebody to ship to. Pay when a trigger below is actually met, not in advance.
+
+| Cost | What it unlocks | Pay when |
+| --- | --- | --- |
+| **$0** | Everything in this repo: the webhook, the ledger, the panel work, the client against a dev build | — |
+| **RevenueCat, $0** | Free below a monthly-tracked-revenue threshold well past first revenue. Verify the current threshold rather than trusting this line | — |
+| **Play, $25 once** | A real purchase, a real webhook, an Android tester who is not you | You want to confirm the identifiers against a live event, or put the app in somebody else's hands |
+| **Apple, $99/year** | TestFlight, an iOS release, Sign in with Apple on a real build | iOS is being shipped. Not before |
+
+**The costs that are not optional are the per-use ones**, and they are the ones
+worth watching: the extraction model, and the voice provider at an assumed
+~$0.12/min that `Product.md` §4.3 says is unverified. Those are Open Risk #4, and
+a store fee is noise beside them.
+
 Do it in the order below. Two steps have multi-day latency and block everything
 after them, and both are administrative rather than technical.
 
