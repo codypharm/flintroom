@@ -69,8 +69,17 @@ class ScriptedPanelModel:
         self._line = line
         self.composed_for: list[str] = []
         self.said: list[str] = []
+        #: What each selection call was shown. The text matters as much as the
+        #: count: routing off a partial is the entire latency plan, and a
+        #: selection that saw the finished sentence is one that ran too late.
+        self.routed_on: list[str] = []
+        #: Set the moment a selection is entered, so a test can wait for routing
+        #: to have *started* rather than sleep and hope.
+        self.selecting = asyncio.Event()
 
     async def select(self, *, candidates: Sequence[Archetype], context) -> ModelReply:
+        self.routed_on.append(context.said)
+        self.selecting.set()
         return ModelReply(text=self._speaker)
 
     async def compose(self, *, archetype: Archetype, context, finding=None) -> ModelReply:
@@ -156,6 +165,174 @@ async def test_a_partial_result_does_not_put_words_in_the_room():
 
     assert model.composed_for == []
     assert not [event for event in events if isinstance(event, AgentTranscript)]
+
+
+async def test_selection_runs_while_the_user_is_still_speaking():
+    """The one hop that can leave the serial path, and the reason partials exist.
+
+    Measured warm against live Gemini: selection 0.77s, composition 0.82s, VAD
+    0.77s, first speech frame 0.38s — 2.74s, against the ~1.5s at which
+    `CLAUDE.md` says the room stops feeling real, and matching the 2.70s
+    measured end to end from a phone. Selection is the only term of the four
+    that does not need the finished sentence: it wants the gist and the room, not
+    the last word.
+
+    So it starts on the first partial, while the user is still talking, and by
+    the time they stop the answer is already in hand. `model.py` and
+    `docs/panel-orchestration.md` have specified this since the two-call design
+    was adopted — the diagram is in the doc — and `_listen` never did it, which
+    is why the whole 0.77s was still being paid after the user went quiet.
+
+    Waited for rather than slept past. A sleep long enough to be reliable is
+    also long enough to pass against a channel that routes on the final.
+    """
+    model = ScriptedPanelModel()
+    transcription = DrivenTranscription()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=transcription,
+        model=model,
+        grounding=Grounding(),
+    )
+
+    reader = asyncio.create_task(events_of(channel))
+    transcription.feed(Transcription(text="Our gross margin held at", final=False))
+    await asyncio.wait_for(model.selecting.wait(), timeout=1)
+    transcription.hang_up()
+    await asyncio.wait_for(reader, timeout=1)
+
+    assert model.routed_on == ["Our gross margin held at"]
+
+
+async def test_the_finished_utterance_uses_the_speaker_already_chosen_for_it():
+    """The payoff, and the thing that keeps the overlap free.
+
+    Routing early only helps if the finished sentence then *uses* it. A room
+    that re-routed on the final would have paid the 0.77s twice — once in the
+    background where it was invisible, once on the critical path where it is the
+    whole problem — and doubled the token cost of every turn to be slower than
+    before.
+
+    So: one selection for the utterance, made on the partial, and the archetype
+    it named is the one that composes.
+    """
+    model = ScriptedPanelModel(speaker="technical_skeptic")
+    transcription = DrivenTranscription()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=transcription,
+        model=model,
+        grounding=Grounding(),
+    )
+
+    reader = asyncio.create_task(events_of(channel))
+    transcription.feed(Transcription(text="We built the whole", final=False))
+    await asyncio.wait_for(model.selecting.wait(), timeout=1)
+    transcription.feed(
+        Transcription(text="We built the whole pipeline ourselves.", final=True)
+    )
+    await asyncio.sleep(0.05)
+    transcription.hang_up()
+    await asyncio.wait_for(reader, timeout=1)
+
+    assert model.routed_on == ["We built the whole"], "the room routed twice"
+    assert model.composed_for == ["technical_skeptic"]
+    # And composition still sees the finished sentence, not the fragment routing
+    # worked from. Routing wants the gist; a challenge quotes what was said.
+    assert model.said == ["We built the whole pipeline ourselves."]
+
+
+async def test_a_selection_the_user_outran_does_not_hold_up_the_answer():
+    """A short answer must not cost more than a long one.
+
+    The overlap hides selection inside the utterance, which works while the
+    utterance is longer than the call. It is not always: 0.77s of routing
+    against a user who says *"about sixty"* and stops leaves the final arriving
+    first. Waiting for it there would put the entire hop back on the critical
+    path in exactly the case with the least room for it — and, worse, silently,
+    since every measurement taken on a full sentence would look fine.
+
+    So the room does not wait. Keyword routing is already the fallback for a
+    selection that fails or names nobody (`routing.choose`, ~53% relevance), and
+    a selection that was merely late is the same situation: it costs relevance
+    rather than silence, which is the trade `panel.select_speaker` was written to
+    make.
+    """
+
+    class NeverAnswers(ScriptedPanelModel):
+        async def select(self, *, candidates, context) -> ModelReply:
+            self.routed_on.append(context.said)
+            self.selecting.set()
+            await asyncio.Event().wait()  # a routing call that never returns
+            raise AssertionError("unreachable")
+
+    model = NeverAnswers()
+    transcription = DrivenTranscription()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=transcription,
+        model=model,
+        grounding=Grounding(),
+    )
+
+    reader = asyncio.create_task(events_of(channel))
+    transcription.feed(Transcription(text="About", final=False))
+    await asyncio.wait_for(model.selecting.wait(), timeout=1)
+    transcription.feed(Transcription(text="About sixty.", final=True))
+    await asyncio.sleep(0.05)
+    transcription.hang_up()
+    events = await asyncio.wait_for(reader, timeout=1)
+
+    assert [event for event in events if isinstance(event, AgentTranscript)], (
+        "the room waited for a selection instead of answering"
+    )
+    assert model.composed_for == ["cfo"], "keyword routing did not take over"
+
+
+async def test_a_room_that_ends_mid_sentence_leaves_no_routing_call_running():
+    """The cost of starting work early is having to stop it.
+
+    Routing now begins on a partial, so there is a window — the length of an
+    utterance — in which a room can end with a model call outstanding. The
+    phone hanging up mid-sentence is the ordinary way that happens, not an
+    exotic one.
+
+    Left running it is a paid request nobody will read, holding a connection for
+    a room that no longer exists — the same leak `open()` closes the
+    transcription stream to prevent, and `_listen` is cancelled for. Python
+    would also report it at interpreter exit, long after anything that could
+    explain it is gone.
+    """
+    abandoned = asyncio.Event()
+
+    class Interruptible(ScriptedPanelModel):
+        async def select(self, *, candidates, context) -> ModelReply:
+            self.selecting.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                abandoned.set()
+                raise
+            raise AssertionError("unreachable")
+
+    model = Interruptible()
+    transcription = DrivenTranscription()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=transcription,
+        model=model,
+        grounding=Grounding(),
+    )
+
+    reader = asyncio.create_task(events_of(channel))
+    transcription.feed(Transcription(text="Our gross margin", final=False))
+    await asyncio.wait_for(model.selecting.wait(), timeout=1)
+
+    # The phone goes away before the sentence is finished.
+    transcription.hang_up()
+    await asyncio.wait_for(reader, timeout=1)
+
+    assert abandoned.is_set(), "the room closed with a model call still running"
 
 
 async def test_the_user_speaking_is_reported_before_the_panel_answers():

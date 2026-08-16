@@ -21,6 +21,7 @@ from app.agents.context import (
     Finding,
     Grounding,
     PanelTurn,
+    Routed,
     Said,
     SelectedBy,
     TurnContext,
@@ -94,6 +95,7 @@ async def interrogate(
     model: PanelModel,
     grounding: Grounding | None = None,
     finding: Finding | None = None,
+    routed: Routed | None = None,
 ) -> PanelTurn:
     """Answer one thing the user said, in one archetype's voice.
 
@@ -106,15 +108,34 @@ async def interrogate(
     the Auditor has caught something the speaker is already determined. Asking a
     model to re-derive that spends a hop on a lookup and adds a way to get it
     wrong, and getting it wrong reads as a panel that is not listening.
+
+    `routed` is a choice already made — by a room that ran `select_speaker`
+    against a partial transcript while the user was still talking, so the 0.77s
+    it costs is spent inside the utterance rather than after it. Passed in
+    rather than fetched, because only the caller owning the loop knows when a
+    partial arrived. Without one this routes here, as it always did, and every
+    caller that is not a live room still works unchanged.
+
+    A finding still outranks it: the Auditor catching a contradiction is a
+    better reason to hand somebody the floor than a guess made three seconds ago
+    on half a sentence.
     """
     context = TurnContext(said=said, grounding=grounding or Grounding())
 
     archetype = _owner(panel, finding.domain) if finding else None
     chosen_by: SelectedBy = "finding"
-    routing = TurnUsage()
+    # A pre-routed choice still carries what it cost even when a finding
+    # overrules it. The provider charged for that call the moment it was made,
+    # and dropping the tokens here would understate exactly the rooms where the
+    # Auditor is doing its job.
+    routing = routed.usage if routed else TurnUsage()
+
+    if archetype is None and routed is not None:
+        archetype, chosen_by = routed.archetype, routed.chosen_by
 
     if archetype is None:
-        archetype, chosen_by, routing = await _speaker(panel, context, model)
+        chosen = await select_speaker(panel, context=context, model=model)
+        archetype, chosen_by, routing = chosen.archetype, chosen.chosen_by, chosen.usage
 
     # The finding travels to the composer, not just to the routing. An archetype
     # handed the floor because of a contradiction and then not told what the
@@ -146,9 +167,9 @@ async def interrogate(
     )
 
 
-async def _speaker(
-    panel: Sequence[Archetype], context: TurnContext, model: PanelModel
-) -> tuple[Archetype, SelectedBy, TurnUsage]:
+async def select_speaker(
+    panel: Sequence[Archetype], *, context: TurnContext, model: PanelModel
+) -> Routed:
     """Who takes the floor when the Auditor has not decided it.
 
     A model, because keyword routing measured 53% relevance against real speech
@@ -156,8 +177,13 @@ async def _speaker(
     in no vocabulary table, so it could never be chosen for relevance. Pro sells
     those; routing that cannot see them is not routing.
 
-    The call costs ~0.8s and is meant to run against a partial transcript while
-    the user is still speaking, so it lands before the turn needs it.
+    Measured warm at 0.77s. **Public because that cost is only affordable if
+    somebody else decides when to pay it** — a live room calls this against a
+    partial transcript while the user is still speaking, so the hop overlaps the
+    tail of the utterance instead of standing between it and the answer.
+    `context.said` is therefore often an unfinished sentence, which is what this
+    call was always meant to work from: it needs the gist and the room, not the
+    last word.
 
     **Every failure falls through to keywords rather than up to the caller.** A
     slow model, a 502, a name nobody answers to — all of them end with somebody
@@ -177,16 +203,16 @@ async def _speaker(
         # No usage: the call raised, so nothing was returned to read it off. A
         # provider that charged for a failed request undercounts here, which is
         # the safe direction to be wrong in and worth knowing about.
-        return choose(panel, context), "fallback", TurnUsage()
+        return Routed(choose(panel, context), "fallback")
 
     for archetype in panel:
         if archetype.name == chosen.text:
-            return archetype, "model", chosen.usage
+            return Routed(archetype, "model", chosen.usage)
 
     # Logged with what it actually said. A steady stream of these is a prompt
     # that has stopped working, and the name it returned is the only clue.
     log.warning("panel_selection_unrecognised", chosen=chosen.text, panel=len(panel))
-    return choose(panel, context), "fallback", chosen.usage
+    return Routed(choose(panel, context), "fallback", chosen.usage)
 
 
 def _owner(panel: Sequence[Archetype], domain: str) -> Archetype | None:

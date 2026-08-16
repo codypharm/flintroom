@@ -21,9 +21,10 @@ from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 
 from app.agents.archetypes import Archetype
-from app.agents.context import Grounding, Said, USER
+from app.agents.context import Grounding, Routed, Said, TurnContext, USER
 from app.agents.model import PanelModel
-from app.agents.panel import interrogate
+from app.agents.panel import interrogate, select_speaker
+from app.agents.routing import choose
 from app.core.logging import get_logger
 from app.modules.voice.events import (
     AgentAudio,
@@ -164,6 +165,12 @@ class OrchestratedChannel:
         # on every turn, which would undercount a chatty room the most.
         self._heard_bytes = 0
         self._charged_seconds = 0
+        # Selection for the utterance currently being spoken, started on its
+        # first partial and collected when it finishes. One per utterance, never
+        # one per partial: a partial arrives every ~150ms, so routing on each
+        # would be twenty model calls for a sentence and turn the cheapest hop
+        # in the turn into the most expensive thing in the room.
+        self._routing: asyncio.Task[Routed] | None = None
 
     async def send_audio(self, pcm: bytes) -> None:
         """Straight through to the transcriber.
@@ -272,14 +279,24 @@ class OrchestratedChannel:
                     # memory because *we* chose not to reply to them, and the next
                     # selection would then judge an answer it never saw.
                     self._transcript.append(Said(speaker=USER, text=result.text))
-                    speaking = await self._restart(speaking, result.text, out)
+                    speaking = await self._restart(
+                        speaking, result.text, out, await self._take_routing(result.text)
+                    )
                     continue
 
-                # A partial, which is the user starting to talk. If somebody is
-                # mid-sentence they lose the floor now rather than at the end of
-                # their line — waiting for the *final* would mean waiting for the
-                # user to finish speaking before conceding, which is a panelist
-                # talking over them for three seconds and then stopping politely.
+                # The user is mid-sentence, and this is where the latency budget
+                # is actually won. Selection measures 0.77s warm and wants the
+                # gist rather than the last word, so it starts here and runs
+                # underneath the rest of the utterance — by the time they stop,
+                # the floor has already been assigned and only composition and
+                # speech stand between silence and an answer.
+                self._route(result.text)
+
+                # If somebody is speaking they lose the floor now rather than at
+                # the end of the user's line — waiting for the *final* would mean
+                # waiting for the user to finish before conceding, which is a
+                # panelist talking over them for three seconds and then stopping
+                # politely.
                 if speaking is not None and not speaking.done():
                     speaking = await self._stop(speaking)
                     # Synthesis runs ahead of playback, so frames the panelist
@@ -293,13 +310,128 @@ class OrchestratedChannel:
             if speaking is not None:
                 await asyncio.gather(speaking, return_exceptions=True)
         finally:
+            # A selection started on a partial the user never finished. There is
+            # no turn left to hand it to, so it is a paid request nobody will
+            # read holding a connection open for a room that has ended — the
+            # same leak `open()` closes the transcription stream to prevent.
+            if self._routing is not None:
+                self._routing.cancel()
+                await asyncio.gather(self._routing, return_exceptions=True)
+                self._routing = None
             await out.put(None)
+
+    def _route(self, said: str) -> None:
+        """Start choosing a speaker for the utterance in progress, once.
+
+        Fire-and-collect: the task is picked up by `_take_routing` when the
+        utterance finishes. Started from the first partial only, so the room
+        pays for exactly one selection per turn — the same number it paid
+        serially, moved earlier rather than added to.
+
+        **The first partial, not a fuller one.** It carries two or three words,
+        which looks far too thin to route on and measured as not mattering:
+        against live Gemini with a fixed roster and a growing transcript, three
+        words and twelve words produced the same distribution of speakers, and
+        the finished sentence barely moved it either. What concentrates turns on
+        one archetype is a bias in the selection prompt that is present at every
+        prefix length, and predates this — `docs/panel-orchestration.md` has the
+        table. Waiting for more words would buy nothing measurable and spend the
+        headroom that makes the overlap work.
+
+        A known bound, left rather than engineered around: an utterance whose
+        final never arrives — discarded by VAD, or dropped as a repeat by
+        `ElevenLabsTranscriptionStream` — leaves its decision here for the next
+        utterance to use. That costs one turn a choice made from slightly stale
+        words, self-corrects on the following final, and is bounded by the same
+        fallback a late selection already takes.
+
+        The transcript is snapshotted now rather than read later, for the reason
+        `_answer` rebuilds `Grounding` each turn: it is frozen, and a routing
+        call reading a list that grew underneath it would be selecting against a
+        room that no longer exists.
+        """
+        if self._routing is not None:
+            return
+
+        context = TurnContext(
+            said=said,
+            grounding=Grounding(claims=self._claims, transcript=tuple(self._transcript)),
+        )
+        # A count, never the text. `CLAUDE.md` forbids transcripts in logs, and
+        # this is the one number that says whether routing had anything to work
+        # with — a selection made on three words is a selection made on nothing,
+        # and it fails by quietly sending every turn to the same archetype
+        # rather than by erroring.
+        log.info("panel_routing_started", words=len(said.split()))
+        self._routing = asyncio.create_task(
+            select_speaker(self._panel, context=context, model=self._model)
+        )
+
+    async def _take_routing(self, said: str) -> Routed | None:
+        """Collect the selection started during this utterance, and clear it.
+
+        **Only if it has already finished.** Waiting would put the whole 0.77s
+        back between the user stopping and the room answering, which is the
+        thing this exists to remove — and it would do it worst on short answers,
+        where an utterance is over before the call returns and there is least
+        patience to spare. Every measurement taken on a full sentence would
+        still look fine, so the regression would be invisible.
+
+        `None` sends `interrogate` to `routing.choose`, which is what a failed
+        or unrecognised selection already falls through to: a late one costs
+        relevance rather than silence, and in a live metered room a pause with
+        nobody in it is the failure a user notices first.
+
+        The cancelled call is not free — the provider may well have charged for
+        it — but a cancelled request returns nothing to read a token count off,
+        so it goes unrecorded. That undercounts, which is the safe direction to
+        be wrong in and is recorded here so §4.3 knows to expect it.
+
+        Cleared whatever happens, so the next partial starts a fresh one. Left
+        in place, one routing decision would be reused for the rest of the room
+        and the same archetype would answer everything.
+        """
+        routing, self._routing = self._routing, None
+        if routing is None:
+            # No partial ever arrived, so nothing was started to be late. Left
+            # for `interrogate` to route the old way — a transcriber that emits
+            # only finals loses the overlap, which is a latency cost, and must
+            # not also silently lose model routing, which would be a quality one
+            # nothing in a transcript could distinguish from bad luck.
+            return None
+        if not routing.done():
+            routing.cancel()
+            # Collected rather than abandoned, for the reason `_stop` gives: a
+            # cancelled task nobody awaits is reported at interpreter exit, long
+            # after the context that would explain it is gone.
+            await asyncio.gather(routing, return_exceptions=True)
+            log.info("panel_routing_outrun")
+            # Keywords, decided here rather than by returning `None`. `None`
+            # would send `interrogate` to `model.select` — starting a second
+            # copy of the call just abandoned, this time squarely on the
+            # critical path, so an utterance too short to hide one selection
+            # would pay for two in series. `routing.choose` costs nothing and
+            # answers immediately.
+            return Routed(
+                choose(
+                    self._panel,
+                    TurnContext(
+                        said=said,
+                        grounding=Grounding(
+                            claims=self._claims, transcript=tuple(self._transcript)
+                        ),
+                    ),
+                ),
+                "fallback",
+            )
+        return routing.result()
 
     async def _restart(
         self,
         speaking: asyncio.Task | None,
         said: str,
         out: asyncio.Queue[VoiceEvent | None],
+        routed: Routed | None,
     ) -> asyncio.Task:
         """Begin a turn, abandoning one already running.
 
@@ -309,7 +441,7 @@ class OrchestratedChannel:
         """
         if speaking is not None and not speaking.done():
             await self._stop(speaking)
-        return asyncio.create_task(self._turn(said, out))
+        return asyncio.create_task(self._turn(said, out, routed))
 
     @staticmethod
     async def _stop(speaking: asyncio.Task) -> None:
@@ -321,7 +453,10 @@ class OrchestratedChannel:
         return None
 
     async def _turn(
-        self, said: str, out: asyncio.Queue[VoiceEvent | BaseException | None]
+        self,
+        said: str,
+        out: asyncio.Queue[VoiceEvent | BaseException | None],
+        routed: Routed | None = None,
     ) -> None:
         """One archetype's answer, from selection through to the last frame.
 
@@ -337,7 +472,7 @@ class OrchestratedChannel:
         and refund the user the first time they talked over a panelist.
         """
         try:
-            await self._answer(said, out)
+            await self._answer(said, out, routed)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -348,7 +483,10 @@ class OrchestratedChannel:
             await out.put(exc)
 
     async def _answer(
-        self, said: str, out: asyncio.Queue[VoiceEvent | BaseException | None]
+        self,
+        said: str,
+        out: asyncio.Queue[VoiceEvent | BaseException | None],
+        routed: Routed | None = None,
     ) -> None:
         turn = await interrogate(
             self._panel,
@@ -357,6 +495,10 @@ class OrchestratedChannel:
             grounding=Grounding(
                 claims=self._claims, transcript=tuple(self._transcript)
             ),
+            # Already decided, during the sentence that just finished. Without
+            # one — an utterance that produced no partial, or a routing call the
+            # final overtook — `interrogate` chooses here as it always has.
+            routed=routed,
         )
 
         # Recorded before the line is spoken, so that a panelist cut off two

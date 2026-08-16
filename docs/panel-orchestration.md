@@ -628,3 +628,90 @@ in their dashboard.
   tested, but no phone has yet held one of these rooms.
 - **The budget still does not close** — ~2.1s against 1.5s. Unchanged by this
   work, and now the only thing between the panel and being real.
+
+---
+
+## Closing the budget, 2026-08-17
+
+The first end-to-end measurement from a real phone put the room at **2.70s** —
+speech stopped, panel answered — against the ~1.5s at which `CLAUDE.md` says the
+illusion breaks. The terms, each measured warm rather than estimated:
+
+| | measured |
+| --- | --- |
+| VAD silence threshold (0.7s) | 0.77s |
+| `model.select` | 0.77s |
+| `model.compose` | 0.82s |
+| First speech frame (`eleven_flash_v2_5`) | 0.38s |
+| | **2.74s** |
+
+Which accounts for the 2.70s exactly. Nothing was unexplained, and the whole gap
+was one hop that did not need to be there.
+
+### The overlap this document specified was never built
+
+The diagram above — routing against a partial transcript while the user is still
+speaking, composition as the only serial hop — has been the design since the
+two-call shape was adopted. `OrchestratedChannel._listen` never did it. Partials
+were read for barge-in alone, and every turn paid the full selection hop after
+the user went quiet.
+
+`panel.select_speaker` is now public and the room starts it on the first partial
+of each utterance, collecting it when the final arrives. Re-measured on the same
+instrument, five turns:
+
+| | Before | After |
+| --- | --- | --- |
+| Speech stopped → caption | 2.70s | **1.77s** |
+| Speech stopped → first audio frame | ~3.08s | **~2.15s** |
+
+**One selection per turn, not one per partial.** A partial arrives roughly every
+150ms, so routing on each would be twenty calls for a sentence and would turn the
+cheapest hop in the room into the most expensive thing in it. The cost is
+unchanged; only its position moved.
+
+**The room never waits for it.** An utterance shorter than the call — *"about
+sixty"* — leaves the final arriving first, and waiting there would put the whole
+hop back on the critical path in exactly the case with least patience for it, and
+do it invisibly, since every measurement taken on a full sentence would still
+look fine. A late selection is cancelled and `routing.choose` answers instantly:
+the same trade `select_speaker` already makes for one that fails or names nobody
+— relevance rather than silence.
+
+### Routing on three words is not the problem it looks like
+
+The first partial carries two or three words. That looked indefensible, and the
+first live run appeared to confirm it: five turns, all to the CFO.
+
+Measured with everything else held equal — same roster, same accumulating
+transcript, same model, only the prefix varying:
+
+| routing sees | who spoke, across eight utterances |
+| --- | --- |
+| 3 words | cfo ×6, technical_skeptic ×2 |
+| 6 words | cfo ×6, technical_skeptic ×2 |
+| 9 words | cfo ×5, technical_skeptic ×3 |
+| 12 words | cfo ×5, technical_skeptic ×3 |
+| the finished sentence | cfo ×4, technical_skeptic ×3, champion ×1 |
+
+Prefix length barely moves it. **The concentration is a bias in the selection
+prompt, present at every length including the whole sentence**, and it predates
+this change — `_SELECTION_INSTRUCTION` asks for "whoever has been quiet" and the
+model largely ignores it, so the model path has no counterpart to
+`routing.QUIET_WEIGHT`. It has its own task. A word-count threshold before
+routing would have bought nothing measurable and spent the headroom the overlap
+depends on.
+
+### Still open
+
+- **~2.15s to first audio against 1.5s.** Closer, not closed. What remains is
+  VAD (0.77s), composition (0.82s) and synthesis (0.38s), and none of the three
+  is free to remove.
+- **The VAD threshold is a human judgement, not a measurement.** 0.7 → 0.4 is
+  worth ~0.12s and nothing bounds it from below except how rude the room feels
+  when somebody pauses mid-answer. Synthetic speech has no mid-sentence pauses,
+  so only a real person in a real room can set it.
+- **Streaming composition is the one structural lever left**, and it is an
+  architecture decision rather than a tuning one: synthesise the first sentence
+  while the model is still writing the second. Worth roughly 0.4s, and it makes
+  the turn interruptible in the middle of its own generation.

@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from inspect import signature
 
-from app.agents.panel import Finding, Grounding, Said, interrogate
-from app.agents.archetypes import DEFAULT_PANEL, LIBRARY
+from app.agents.panel import Finding, Grounding, Routed, Said, interrogate
+from app.agents.archetypes import DEFAULT_PANEL, LIBRARY, by_name
 from app.agents.model import ModelReply, PanelModel, TurnUsage
 from app.core.errors import ProviderUnavailable
 
@@ -321,6 +321,67 @@ async def test_every_turn_records_what_chose_the_speaker():
     assert by_model.chosen_by == "model"
     assert by_fallback.chosen_by == "fallback"
     assert by_finding.chosen_by == "finding"
+
+
+async def test_a_speaker_chosen_before_the_turn_is_not_chosen_again():
+    """Routing runs during the utterance, so the turn must not redo it.
+
+    A live room calls `select_speaker` on a partial transcript while the user is
+    still talking — measured 0.77s of a 2.74s budget, moved off the critical
+    path. That only helps if the turn then honours the answer: routing a second
+    time would pay the same hop again, this time between the user stopping and
+    the room replying, and cost double the tokens to be slower than before.
+
+    The cost of the early call travels with it. It was made and charged for, and
+    a turn reporting only its composition would understate every room that
+    routed successfully — a bias always in the same direction, in the one number
+    §4.3 reconciles against an invoice.
+    """
+    model = FakePanelModel(
+        # Any selection reaching the model here is the bug this guards.
+        selects=ModelReply(text="champion", usage=TurnUsage(input_tokens=999)),
+        writes=ModelReply(text="Against what basis?", usage=TurnUsage(output_tokens=5)),
+    )
+
+    turn = await interrogate(
+        DEFAULT_PANEL,
+        said="Our gross margin is seventy percent.",
+        model=model,
+        routed=Routed(
+            by_name("cfo"), "model", TurnUsage(input_tokens=200, output_tokens=2)
+        ),
+    )
+
+    assert turn.archetype.name == "cfo"
+    assert turn.chosen_by == "model"
+    assert turn.usage.input_tokens == 200, "the turn routed a second time"
+    assert turn.usage.output_tokens == 7
+
+
+async def test_a_finding_still_outranks_a_speaker_already_chosen():
+    """The Auditor catching a contradiction beats a guess made mid-sentence.
+
+    Routing on a partial decides from an unfinished sentence, seconds before the
+    user stopped. A finding is a specific claim contradicting specific material,
+    and §3.3 assigns it by domain — the CFO catches the margin contradiction, not
+    the Technical Skeptic. Letting the earlier, weaker signal win would silently
+    disable targeted interruption on exactly the turns it matters most.
+
+    The abandoned routing is still billed, because it still happened.
+    """
+    turn = await interrogate(
+        DEFAULT_PANEL,
+        said="Our margin is about seventy percent.",
+        model=FakePanelModel(),
+        finding=Finding(domain="margin", summary="Slide 4 says 61%."),
+        routed=Routed(
+            by_name("champion"), "model", TurnUsage(input_tokens=200, output_tokens=2)
+        ),
+    )
+
+    assert turn.chosen_by == "finding"
+    assert turn.archetype.name != "champion"
+    assert turn.usage.input_tokens == 200
 
 
 async def test_a_turn_reports_what_both_of_its_calls_cost():

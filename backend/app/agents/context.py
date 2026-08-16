@@ -129,6 +129,28 @@ SelectedBy = Literal["finding", "model", "fallback"]
 
 
 @dataclass(frozen=True)
+class Routed:
+    """Who has the floor, how that was decided, and what deciding cost.
+
+    Split out of `interrogate` so the decision can be made somewhere other than
+    at the start of the turn. Selection measures 0.77s warm and wants the gist
+    of an answer rather than its last word, so the room runs it against a
+    partial transcript while the user is still speaking and hands the result in
+    when they stop — the shape `docs/panel-orchestration.md` has specified since
+    the two-call design was adopted.
+
+    `usage` travels with the choice for the same reason it travels on a turn: the
+    provider charged for this call whether or not the answer was used, and a
+    caller adding up only what it can see would understate the room in the one
+    number §4.3 reconciles against a real invoice.
+    """
+
+    archetype: Archetype
+    chosen_by: SelectedBy
+    usage: TurnUsage = field(default_factory=TurnUsage)
+
+
+@dataclass(frozen=True)
 class PanelTurn:
     """What the room says back, who said it, what chose them, and what it cost."""
 
