@@ -1,13 +1,14 @@
 # Panel Orchestration
 
-**Status:** decided 2026-08-16 via `grill-me`; built through 2026-08-16, except
-speech recognition. Phase 3 (Weeks 5–6) per `Product.md` §7.
+**Status:** decided 2026-08-16 via `grill-me`; built through 2026-08-16. Phase 3
+(Weeks 5–6) per `Product.md` §7.
 
-The panel, routing, orchestration, barge-in, synthesis and casting all exist and
-are measured against live providers. **A transcriber is the one remaining vendor
-and the one remaining seam** — see *Open*. Everything below the Decisions section
-records what building it changed, and several decisions were revised by
-measurement rather than held.
+The panel, routing, orchestration, barge-in, synthesis, casting and transcription
+all exist. **Every seam now has an adapter behind it and no vendor is undecided.**
+What remains is not a missing piece but a wiring one: nothing routes a live
+session through `OrchestratedProvider` yet, and the relay still dials ElevenLabs
+Agents. Everything below the Decisions section records what building it changed,
+and several decisions were revised by measurement rather than held.
 
 Resolves how a panel of archetypes actually holds a conversation. `Product.md`
 §3.3 specifies it in five bullets — turn-taking, inter-panelist disagreement,
@@ -156,14 +157,9 @@ for the voice loop.
 
 ## Open
 
-- **Speech recognition is undecided**, and is now the *only* undecided vendor in
-  the chain. ElevenLabs Scribe keeps it to one vendor and one key; Deepgram is the
-  low-latency standard. Decide it by measurement rather than preference — and
-  weigh one requirement above latency: **it must emit interim results.** The whole
-  plan for holding 1.5s is running the ~0.8s selection hop against a partial
-  transcript while the user is still speaking. A transcriber that speaks only at
-  the end of an utterance makes that overlap impossible, and the room is over
-  budget by construction however fast the vendor itself is.
+- ~~**Speech recognition is undecided**~~ — **settled: ElevenLabs Scribe v2
+  Realtime.** See *Hearing the room*, below. No vendor in the chain is undecided
+  now.
 - **Barge-in is ours now, and built** — see *Owning the loop*, below. What is
   still outstanding is endpointing, which belongs to whichever transcriber is
   chosen rather than to us.
@@ -439,3 +435,94 @@ timbre, and making them cast it is a decision tax on the feature's main path. Th
 uniqueness constraint is **per-room, not per-library**: two custom archetypes may
 share a voice safely if never seated together, so the check belongs in
 `assemble()` beside the tier cap.
+
+---
+
+## Hearing the room, 2026-08-16
+
+The last undecided vendor, settled: **ElevenLabs Scribe v2 Realtime**, in
+`app/modules/voice/transcribers/elevenlabs.py`.
+
+### Why, on numbers rather than on already holding the key
+
+| | partial latency | price | audio in | billed on |
+| --- | --- | --- | --- | --- |
+| **Scribe v2 Realtime** | ~150ms | **$0.39/hr** | `pcm_16000` native | audio |
+| Deepgram Nova-3 | ~300ms | $0.46/hr | linear16 16k | audio |
+| AssemblyAI Universal-Streaming | — | — | PCM16 | **socket-open time** |
+
+AssemblyAI was ruled out on billing shape, not on quality. It charges for how
+long the connection stays open rather than for audio sent, and a hostile Q&A is
+mostly silence — somebody working out how to defend a number is not speaking,
+and we hold the socket through all of it. We would have paid for thinking time,
+on the one product whose entire premise is making people think.
+
+Scribe being both cheaper *and* faster than the low-latency standard is the part
+worth not glossing over: the vendor we already had also won on the merits, so the
+convenient answer and the correct one happened to agree. `pcm_16000` native
+matters more than the price gap — it is byte-for-byte what the phone records and
+what the panel answers in, so nothing on either leg transcodes.
+
+**The cost of the choice, recorded before it is discovered during an outage:**
+the room now rents its ears and its mouth from one company. A single ElevenLabs
+incident takes transcription and speech together, and there is no partial
+degradation to fall back to. The `Transcriber` and `Speaker` seams are what keep
+that recoverable — Deepgram is a sibling file and a branch in
+`build_transcriber`, not a rewrite — but they are insurance, not mitigation.
+
+### `commit_strategy=vad` is the load-bearing parameter
+
+Their default is `manual`, under which *we* decide where an utterance ends. That
+would mean writing voice-activity detection in Python, over a network hop, for a
+hands-free room where the user is not touching the phone and has no way to tell
+us they have finished. VAD hands that back to the engine already listening to
+the audio.
+
+### The budget has a term in it that the 1.38s measurement did not include
+
+`vad_silence_threshold_secs` is how long the user must be quiet before the
+engine calls their turn over. **It sits directly inside perceived latency.** The
+1.38s figure measured above starts at the final transcript; a person in the room
+experiences the gap from the moment they stop talking, which is this threshold
+*plus* that.
+
+Their SDK defaults to **1.5s**, which would put the room near **2.9s** — roughly
+twice the ~1.5s at which `CLAUDE.md` says the illusion breaks. The adapter ships
+**0.7s** instead.
+
+That 0.7 is a starting point, not a measurement, and it is a genuine trade rather
+than a number to minimise: too low and the panel talks over somebody drawing
+breath mid-answer, which is worse than a pause — a room that interrupts you
+cannot be argued with. **Re-measuring the budget end to end, with this term in
+it, is now part of the §4.3 spike** and needs the API key permission below.
+
+### Two things that could not be settled from documentation
+
+- **`final_transcript` vs `committed_transcript`.** Both are documented; which
+  one VAD emits is not stated anywhere. The adapter accepts **both**, because
+  recognising only the wrong one produces a room that hears every word and never
+  answers — a failure that looks like a broken model rather than a missed message
+  type. If both arrive for one utterance the panel would interrogate the same
+  sentence twice: two model calls, two syntheses, two metered turns. So
+  `ElevenLabsTranscriptionStream.results` drops a final that repeats the one
+  before it. Only the immediately preceding one, so a user who says "no" twice in
+  separate segments is heard both times.
+- **Which errors are fatal.** Fifteen error message types, and they are not the
+  same kind of bad. `insufficient_audio_activity` is the dangerous one: silence
+  is ordinary here, and a transcriber reporting quiet must never be able to end a
+  metered session over it — that is the idle timeout's job, on a clock the
+  session owns. `FATAL_ERRORS` is therefore an explicit allow-list of the seven
+  that genuinely end a room, and everything else is survived.
+
+Both are guesses made safe rather than guesses avoided, and both are cheap to
+correct once a live key can confirm them.
+
+### Open
+
+- **The API key is missing the `speech_to_text` permission** — batch and realtime
+  both return 401 `missing_permissions`. It is a dashboard checkbox, not a plan
+  limit. Until it is ticked, nothing above can be confirmed against live audio.
+- **Nothing routes a session through `OrchestratedProvider` yet.** The chain is
+  complete as parts — transcriber, panel model, speaker, orchestrator — and the
+  relay still dials ElevenLabs Agents. Wiring it is a rollout decision (flag,
+  replace, or run both) rather than a missing piece.

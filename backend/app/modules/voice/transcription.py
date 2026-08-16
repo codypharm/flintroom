@@ -21,7 +21,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +43,13 @@ class Transcription:
     final: bool
 
 
+#: Checkable at runtime because nothing else in this project would catch an
+#: adapter drifting off the seam. There is no base class to inherit and no type
+#: checker in the suite, so a renamed method here stays green everywhere and
+#: fails only when the adapter reaches a live room. `isinstance` proves the
+#: methods exist and nothing about their signatures — which is exactly the class
+#: of mistake that would otherwise go unnoticed until it was expensive.
+@runtime_checkable
 class TranscriptionStream(Protocol):
     """One live transcription, for the length of one room."""
 
@@ -66,6 +73,7 @@ class TranscriptionStream(Protocol):
         ...
 
 
+@runtime_checkable
 class Transcriber(Protocol):
     """Opens transcription streams. One instance per process."""
 
