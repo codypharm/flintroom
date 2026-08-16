@@ -90,6 +90,18 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str | None = None
     elevenlabs_agent_id: str | None = None
 
+    #: Which voice speaks for an archetype that has not been assigned one.
+    #:
+    #: The library ships with `voice_id=None` on every archetype, so without this
+    #: an orchestrated room is silent. A configured fallback means synthesis can
+    #: be wired and heard before the eight voices have been chosen — and choosing
+    #: them is a casting decision with a taste component, not a deployment step.
+    #:
+    #: Optional, on the same grounds as the keys above: a deployment without it
+    #: still signs in users and runs rooms. What it loses is the panel's voice,
+    #: which fails audibly rather than silently.
+    elevenlabs_default_voice_id: str | None = None
+
     #: What RevenueCat signs its callbacks with, from the webhook integration's
     #: HMAC settings.
     #:
