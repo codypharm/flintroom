@@ -100,6 +100,8 @@ LIBRARY: tuple[Archetype, ...] = (
             "an impossible headcount. Never accept a figure without its basis."
         ),
         domains=("margin", "revenue", "cost", "valuation", "runway", "headcount"),
+        #: Daniel  — British, formal, steady broadcaster
+        voice_id="onwK4e9ZLuTAKqWW03F9",
     ),
     Archetype(
         name="technical_skeptic",
@@ -117,6 +119,8 @@ LIBRARY: tuple[Archetype, ...] = (
             "with more engineers could rebuild in a quarter."
         ),
         domains=("technology", "architecture", "security", "defensibility"),
+        #: Alice   — British, clear, precise educator
+        voice_id="Xb7hH8MSUJpSbSDYk0k2",
     ),
     Archetype(
         name="champion",
@@ -136,6 +140,8 @@ LIBRARY: tuple[Archetype, ...] = (
             "by agreeing."
         ),
         domains=("proof", "references"),
+        #: Sarah   — American, mature, reassuring, confident
+        voice_id="EXAVITQu4vr4xnSDxMaL",
     ),
     Archetype(
         name="growth_maximalist",
@@ -154,6 +160,8 @@ LIBRARY: tuple[Archetype, ...] = (
             "plan is not more ambitious than it is."
         ),
         domains=("market", "growth", "timing", "competition"),
+        #: Charlie — Australian, energetic, hyped
+        voice_id="IKne3meq5aSn9XLyUdCD",
     ),
     Archetype(
         name="distracted_executive",
@@ -176,6 +184,8 @@ LIBRARY: tuple[Archetype, ...] = (
         # is never a numeric contradiction, so this archetype is never handed a
         # targeted interruption. It earns the floor by ordinary selection.
         domains=(),
+        #: Adam    — American, dominant, firm
+        voice_id="pNInz6obpgDQGcFmaJgB",
     ),
     Archetype(
         name="internal_blocker",
@@ -195,6 +205,8 @@ LIBRARY: tuple[Archetype, ...] = (
             "ahead of what is already committed."
         ),
         domains=("resourcing", "dependencies", "ownership"),
+        #: Lily    — British, velvety, confident
+        voice_id="pFZP5JQG7iQjIQuC4Bku",
     ),
     Archetype(
         name="customer_advocate",
@@ -214,6 +226,8 @@ LIBRARY: tuple[Archetype, ...] = (
             "the ones it makes worse off."
         ),
         domains=("customers", "adoption", "retention", "usability"),
+        #: Bella   — American, professional, bright, warm
+        voice_id="hpp4J3VqNfWAUOO0d1Us",
     ),
     Archetype(
         name="risk_officer",
@@ -233,6 +247,8 @@ LIBRARY: tuple[Archetype, ...] = (
             "discuss."
         ),
         domains=("compliance", "legal", "privacy", "data"),
+        #: Bill    — American, older, crisp, wise
+        voice_id="pqHfZKP75CvOlQylNhV4",
     ),
 )
 

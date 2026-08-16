@@ -66,6 +66,35 @@ def test_the_free_room_seats_the_panel_we_ship():
     assert max_panel_size(FREE_TIER) >= len(DEFAULT_PANEL)
 
 
+def test_every_shipped_archetype_has_been_cast():
+    """A panelist without a voice falls back to the house one and sounds like
+    everybody else.
+
+    That is the correct behaviour for a *custom* archetype — a Pro user writes a
+    persona, not a voice — but for one we ship it is a casting job somebody
+    forgot. The failure is quiet and only audible on a device: the room still
+    runs, still routes, still challenges, and two of the panelists happen to be
+    indistinguishable. On a hands-free surface where the phone is face-down,
+    voice is the only signal of who is speaking, so that is the whole panel
+    collapsing into one person with four opinions.
+    """
+    mute = [archetype.name for archetype in LIBRARY if not archetype.voice_id]
+
+    assert mute == [], f"archetypes shipping without a voice: {mute}"
+
+
+def test_no_two_archetypes_share_a_voice():
+    """Two panelists with one voice is worse than one panelist.
+
+    The user cannot tell them apart, so a disagreement between them — which
+    §3.3 treats as a feature of a real room — reads as a single person
+    contradicting themselves.
+    """
+    voices = [archetype.voice_id for archetype in LIBRARY]
+
+    assert len(set(voices)) == len(voices)
+
+
 def test_the_ladder_never_goes_backwards():
     """Paying more may buy the same room; it must never buy a smaller one.
 
