@@ -276,3 +276,35 @@ async def test_a_model_that_is_late_or_broken_never_silences_the_room():
 
     assert turn.archetype.name == "cfo"
     assert turn.line == "Slide four says sixty-one."
+
+
+async def test_every_turn_records_what_chose_the_speaker():
+    """Otherwise "is routing working" is unanswerable from production.
+
+    Three things can pick a speaker and they are not equally good: the Auditor's
+    domain lookup, the model, and the keyword fallback. A deployment where the
+    model has been quietly failing for a week looks identical to a healthy one —
+    the room still speaks, the transcripts still read plausibly, and the only
+    difference is that every choice is coming from a table that measured 53%.
+
+    So the turn carries which path decided it. `chosen_by=model` over total turns
+    is the health metric, and it is one field rather than three log lines that
+    have to be correlated.
+    """
+    by_model = await interrogate(
+        DEFAULT_PANEL, said="Margins are strong.",
+        model=FakePanelModel(selects="champion"),
+    )
+    by_fallback = await interrogate(
+        DEFAULT_PANEL, said="Our gross margin is seventy percent.",
+        model=FakePanelModel(),
+    )
+    by_finding = await interrogate(
+        DEFAULT_PANEL, said="Our margin is about 70%.",
+        finding=Finding(domain="margin", summary="Slide 4 says 61%."),
+        model=FakePanelModel(),
+    )
+
+    assert by_model.chosen_by == "model"
+    assert by_fallback.chosen_by == "fallback"
+    assert by_finding.chosen_by == "finding"

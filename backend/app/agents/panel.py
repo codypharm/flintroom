@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 from app.agents.archetypes import Archetype, by_name
 from app.agents.model import PanelModel
@@ -149,18 +150,32 @@ class Finding:
     summary: str
 
 
+#: What decided who speaks. Three paths, and they are not equally good.
+#:
+#: - `finding` — the Auditor caught a contradiction and the domain that owns the
+#:   figure owns the interruption. The best kind of turn there is.
+#: - `model` — the ordinary case. Reads the room, sees custom archetypes.
+#: - `fallback` — keyword routing, because selection was late, failed, or named
+#:   nobody. Measured at 53% relevance, so a turn chosen this way is a turn the
+#:   room got roughly half right.
+#:
+#: Carried on the turn rather than left to be inferred from which log lines
+#: appeared, because the failure this exists to expose is silent: a deployment
+#: where the model has been erroring for a week looks exactly like a healthy one.
+#: The room still speaks, transcripts still read plausibly, and the only symptom
+#: is that every choice is coming from the table.
+#:
+#: `chosen_by=model` over total turns is the health metric.
+SelectedBy = Literal["finding", "model", "fallback"]
+
+
 @dataclass(frozen=True)
 class PanelTurn:
-    """What the room says back, and who said it."""
+    """What the room says back, who said it, and what chose them."""
 
     archetype: Archetype
     line: str
-
-    #: True when the Auditor's finding chose the speaker rather than the model.
-    #: Worth carrying because these are the turns the grounding story is judged
-    #: on, and *"which challenges were grounded"* should be answerable from the
-    #: transcript rather than by re-running anything.
-    targeted: bool = False
+    chosen_by: SelectedBy
 
 
 async def interrogate(
@@ -186,10 +201,10 @@ async def interrogate(
     context = TurnContext(said=said, grounding=grounding or Grounding())
 
     archetype = _owner(panel, finding.domain) if finding else None
-    targeted = archetype is not None
+    chosen_by: SelectedBy = "finding"
 
     if archetype is None:
-        archetype = await _speaker(panel, context, model)
+        archetype, chosen_by = await _speaker(panel, context, model)
 
     # The finding travels to the composer, not just to the routing. An archetype
     # handed the floor because of a contradiction and then not told what the
@@ -203,16 +218,16 @@ async def interrogate(
     log.info(
         "panel_turn",
         archetype=archetype.name,
-        targeted=targeted,
+        chosen_by=chosen_by,
         claims=len(context.grounding.claims),
         already_asked=len(context.grounding.asked),
     )
-    return PanelTurn(archetype=archetype, line=line, targeted=targeted)
+    return PanelTurn(archetype=archetype, line=line, chosen_by=chosen_by)
 
 
 async def _speaker(
     panel: Sequence[Archetype], context: TurnContext, model: PanelModel
-) -> Archetype:
+) -> tuple[Archetype, SelectedBy]:
     """Who takes the floor when the Auditor has not decided it.
 
     A model, because keyword routing measured 53% relevance against real speech
@@ -230,16 +245,24 @@ async def _speaker(
     """
     try:
         chosen = await model.select(candidates=panel, context=context)
-    except FlintroomError:
-        log.warning("panel_selection_failed", panel=len(panel))
-        return choose(panel, context)
+    except FlintroomError as refused:
+        # `reason` distinguishes a provider that is down from one that is slow,
+        # which are different problems with different fixes.
+        log.warning(
+            "panel_selection_failed",
+            reason=refused.context.get("reason", "unknown"),
+            panel=len(panel),
+        )
+        return choose(panel, context), "fallback"
 
     for archetype in panel:
         if archetype.name == chosen:
-            return archetype
+            return archetype, "model"
 
-    log.warning("panel_selection_unrecognised", chosen=chosen)
-    return choose(panel, context)
+    # Logged with what it actually said. A steady stream of these is a prompt
+    # that has stopped working, and the name it returned is the only clue.
+    log.warning("panel_selection_unrecognised", chosen=chosen, panel=len(panel))
+    return choose(panel, context), "fallback"
 
 
 def _owner(panel: Sequence[Archetype], domain: str) -> Archetype | None:

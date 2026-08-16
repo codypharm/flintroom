@@ -61,7 +61,7 @@ def choose(panel: Sequence[Archetype], context) -> Archetype:
     chosen = ranked[0]
 
     log.info(
-        "panel_routed",
+        "panel_routed_by_keyword",
         archetype=chosen.name,
         matched=_domain_hits(chosen, context.said),
         quiet_for=_quiet_for(chosen, context),

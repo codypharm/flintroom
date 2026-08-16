@@ -201,6 +201,38 @@ Two more things this subprocess implies:
   hangs it again. `pptx_conversion_timed_out` repeating means decks are being
   refused for a reason nobody is looking at.
 
+## The panel can degrade without failing
+
+**Alert on the ratio of `panel_turn chosen_by=fallback` to all `panel_turn`.**
+
+Three things can choose who speaks, and they are not equally good:
+
+| `chosen_by` | What it means |
+| --- | --- |
+| `finding` | The Auditor caught a contradiction and the domain that owns the figure took the floor. The best kind of turn there is. |
+| `model` | The ordinary case. Reads the room, and can see a custom archetype a Pro user wrote this morning. |
+| `fallback` | Keyword routing, because selection was late, failed, or named nobody. Measured at 53% relevance against realistic speech. |
+
+**Nothing fails when this degrades**, which is the whole reason it needs an
+alert. If the panel model starts erroring — a bad key, a rate limit, a provider
+having an afternoon — the room carries on speaking. Transcripts still read
+plausibly. Sessions still bill. The only difference is that every choice now
+comes from a table that gets it roughly half right, and the panel is quietly
+worse at the one thing it is sold for.
+
+A baseline of a few percent is expected and healthy: it is what the fallback is
+for. A sustained figure above ~20% means the model is not answering, and the two
+lines that say why are:
+
+- `panel_selection_failed` with a `reason` — the provider refused or was
+  unreachable. `panel_model_refused` and `panel_model_unreachable` in the same
+  window carry the status code.
+- `panel_selection_unrecognised` with `chosen` — the model answered with a name
+  nobody in the room has. A steady stream is a prompt that has stopped working,
+  and the name it returned is the only clue as to how.
+
+Neither is an error to the user, and neither will appear in an error rate.
+
 ## The store's callbacks are the only unauthenticated write path
 
 `POST /v1/webhooks/revenuecat` takes no token. The shared secret *is* the
