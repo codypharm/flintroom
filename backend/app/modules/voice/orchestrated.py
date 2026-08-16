@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager
 
 from app.agents.archetypes import Archetype
 from app.agents.context import Grounding, Said, USER
@@ -27,14 +28,69 @@ from app.core.logging import get_logger
 from app.modules.voice.events import (
     AgentAudio,
     AgentTranscript,
+    ChannelReady,
     Interrupted,
     UserSpoke,
     VoiceEvent,
 )
 from app.modules.voice.speech import Speaker
-from app.modules.voice.transcription import TranscriptionStream
+from app.modules.voice.transcription import Transcriber, TranscriptionStream
 
 log = get_logger(__name__, tag="voice")
+
+
+class OrchestratedProvider:
+    """Opens rooms we run ourselves. **One instance per room, not per process.**
+
+    That is the one way this differs from `ElevenLabsProvider`, and it follows
+    from an asymmetry rather than from taste. ElevenLabs needs no arguments to
+    `open()` because which agent, what persona and what voice all live on their
+    dashboard; they already know. Ours has to be told which archetypes are seated
+    and which deck to attack, and both are per-session facts in our database.
+
+    Resolved at construction rather than by widening `VoiceProvider.open()`. The
+    shared seam stays untouched, `ElevenLabsProvider` never grows a parameter it
+    could not use, and the relay keeps knowing nothing about decks. It is also
+    the call `CLAUDE.md` already makes for audit actors — context bound when the
+    service is built, never passed per call — for the same reason: a caller that
+    could name the room per call could name a different one halfway through.
+
+    The vendors it composes are still undecided. `transcriber` is the last
+    unchosen link in the chain, and `speaker` is optional because a silent panel
+    is a legitimate development configuration while an untestable one is not.
+    """
+
+    def __init__(
+        self,
+        *,
+        panel: Sequence[Archetype],
+        transcriber: Transcriber,
+        model: PanelModel,
+        speaker: Speaker | None = None,
+        grounding: Grounding | None = None,
+    ) -> None:
+        self._panel = panel
+        self._transcriber = transcriber
+        self._model = model
+        self._speaker = speaker
+        self._grounding = grounding
+
+    @asynccontextmanager
+    async def open(self) -> AsyncIterator[OrchestratedChannel]:
+        """Dial the transcriber and build a room around it.
+
+        The stream closes on every path out, including the failing ones — which
+        are the only ones that ever leak. An open transcription stream is a room
+        still running on somebody's invoice with nobody in it.
+        """
+        async with self._transcriber.open() as transcription:
+            yield OrchestratedChannel(
+                panel=self._panel,
+                transcription=transcription,
+                model=self._model,
+                speaker=self._speaker,
+                grounding=self._grounding,
+            )
 
 
 class OrchestratedChannel:
@@ -96,6 +152,17 @@ class OrchestratedChannel:
         drops the utterance, and nothing needs a cancel call that could leave an
         adapter half-spoken.
         """
+        # First, and before anything is transcribed. This is what the relay turns
+        # into `activate()`, which opens the billable interrogation span — a
+        # channel that never sent one would leave a room the user can hear and
+        # talk to, that the ledger believes never started, holding their
+        # one-session lock until the reaper swept it.
+        #
+        # It reports that the channel exists, not that anybody has used it. A
+        # user silent for the first thirty seconds is in a room that opened, and
+        # the idle timeout is what decides otherwise.
+        yield ChannelReady()
+
         out: asyncio.Queue[VoiceEvent | None] = asyncio.Queue()
         listener = asyncio.create_task(self._listen(out))
         try:

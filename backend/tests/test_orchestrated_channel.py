@@ -80,6 +80,31 @@ async def events_of(channel: OrchestratedChannel) -> list:
     return [event async for event in channel.events()]
 
 
+async def test_the_room_reports_itself_open_before_anyone_speaks():
+    """Without this the session never leaves `provisioning` and is reaped.
+
+    `ChannelReady` is what the relay turns into `activate()`, and activation is
+    what opens the billable interrogation span. A channel that never sends one
+    would leave a room the user can hear and talk to, that the ledger believes
+    never started, still holding their one-session lock until the sweep.
+
+    First, and before any transcription. It reports that the channel exists, not
+    that anybody has used it — a user who says nothing for the first thirty
+    seconds is in a room that opened, and the idle timeout is what decides
+    otherwise.
+    """
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=FakeTranscription([]),
+        model=ScriptedPanelModel(),
+        grounding=Grounding(),
+    )
+
+    events = await events_of(channel)
+
+    assert [type(event).__name__ for event in events] == ["ChannelReady"]
+
+
 async def test_a_finished_utterance_becomes_a_panel_line():
     """The tracer bullet: audio in, a grounded challenge out.
 
@@ -156,6 +181,7 @@ async def test_the_user_speaking_is_reported_before_the_panel_answers():
     events = await events_of(channel)
 
     assert [type(event).__name__ for event in events] == [
+        "ChannelReady",
         "UserSpoke",
         "AgentTranscript",
     ]
@@ -315,6 +341,7 @@ async def test_the_line_is_spoken_in_that_archetypes_own_voice():
     events = await events_of(channel)
 
     assert [type(event).__name__ for event in events] == [
+        "ChannelReady",
         "UserSpoke",
         "AgentTranscript",
         "AgentAudio",
