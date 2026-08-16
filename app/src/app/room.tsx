@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { AudioContext, AudioManager, AudioRecorder } from 'react-native-audio-api';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -44,6 +45,9 @@ const WIRE_SAMPLE_RATE = 16_000;
 
 /** Frames per callback. 1600 at 16 kHz is 100ms — the spike's value. */
 const BUFFER_LENGTH = 1600;
+
+/** Scoped, so releasing ours cannot cancel somebody else's hold. */
+const KEEP_AWAKE = 'flintroom-room';
 
 type Phase = 'idle' | 'opening' | 'live' | 'over';
 
@@ -91,6 +95,7 @@ export default function RoomScreen() {
    * the room is gone.
    */
   const release = useCallback(async () => {
+    await deactivateKeepAwake(KEEP_AWAKE);
     recorder.current?.stop();
     recorder.current = null;
     await context.current?.close();
@@ -121,6 +126,18 @@ export default function RoomScreen() {
         iosOptions: ['defaultToSpeaker', 'allowBluetoothHFP'],
       });
       await enterHandsFree();
+
+      // A room is hands-free by design — `CLAUDE.md` puts the phone face-down
+      // on a desk and forbids UI that assumes anyone is holding it. Nobody
+      // touches the screen for the length of an interrogation, so Android's
+      // display timeout fires, the app goes to the background and the socket
+      // dies. The server reads that as the user hanging up and settles the
+      // room, which is why every session ended in `client_disconnect` at
+      // roughly the same number of seconds, whatever was said in it.
+      //
+      // Held only while a room is open. Keeping the display on for the whole
+      // app would be a battery cost paid by every screen that does not need it.
+      await activateKeepAwakeAsync(KEEP_AWAKE);
 
       const capture = new AudioRecorder();
       recorder.current = capture;
