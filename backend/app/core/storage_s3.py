@@ -97,6 +97,21 @@ class S3ObjectStorage:
             ExpiresIn=self._expiry_seconds,
         )
 
+    async def put(self, key: str, data: bytes, *, content_type: str) -> None:
+        """Write one object, off the event loop.
+
+        No presign and no signature dance: this call is already authenticated by
+        the client's own credentials, and the size is whatever we just rendered
+        rather than something a caller declared and might be lying about.
+        """
+        await asyncio.to_thread(
+            self._client.put_object,
+            Bucket=self._bucket,
+            Key=key,
+            Body=data,
+            ContentType=content_type,
+        )
+
     async def get(self, key: str) -> bytes | None:
         """Read one object into memory, off the event loop.
 

@@ -42,6 +42,7 @@ from app.modules.billing.tiers import (
 )
 from app.modules.ingestion.extraction_model import ExtractedClaim, ExtractionResult
 from app.modules.ingestion.models import ExtractionCost, Material, MaterialClaim
+from app.modules.ingestion.parsing import THUMBNAIL_MEDIA_TYPE
 from app.modules.ingestion.schemas import (
     ACCEPTED_CONTENT_TYPES,
     AssertionClaim,
@@ -66,6 +67,20 @@ def storage_key_for(user_id: uuid.UUID, material_id: uuid.UUID) -> str:
     once before it serves one account's deck to another.
     """
     return f"material/{user_id}/{material_id}"
+
+
+def thumbnail_key_for(user_id: uuid.UUID, material_id: uuid.UUID) -> str:
+    """Where a material's surviving first page lives.
+
+    Its own prefix rather than a suffix under the source's key, because the two
+    have opposite lifetimes: one is deleted minutes after it arrives and the
+    other is what remains. A prefix is also the unit a bucket lifecycle rule
+    operates on, which is how a tiered retention window would most naturally be
+    expressed later.
+
+    The owner is in the path here too, for the same reason as above.
+    """
+    return f"thumbnail/{user_id}/{material_id}"
 
 
 def megabytes(byte_size: int, *, round_up: bool = False) -> str:
@@ -387,6 +402,94 @@ class IngestionService:
             "material_uploaded", material_id=str(material_id), user_id=str(user_id)
         )
         return material
+
+    async def store_thumbnail(self, material: Material, thumbnail: bytes) -> None:
+        """Keep the one page that outlives the document.
+
+        Written as soon as the deck parses, rather than on success, so a
+        material that fails extraction still has something to show in a list.
+        It costs about twenty kilobytes and it is the difference between a
+        failed upload the user recognises and a grey rectangle.
+
+        Object first, row second. The other order would record a key pointing at
+        nothing the moment a write failed — a broken image on every screen that
+        shows this material, which is worse than a missing one because nothing
+        would ever retry it. An orphan in the other direction is invisible and
+        overwritten by the next attempt, since the key is derived rather than
+        generated.
+        """
+        key = thumbnail_key_for(material.user_id, material.id)
+        await self._storage.put(key, thumbnail, content_type=THUMBNAIL_MEDIA_TYPE)
+
+        material.thumbnail_key = key
+        await self._db.commit()
+
+    async def purge_sources(self) -> int:
+        """Delete the uploaded document of every material that is finished with it.
+
+        The retention promise, and the reason it is a sweep rather than a line
+        at the end of settlement: removing an object cannot join the transaction
+        that settles the material — one is Postgres and the other an HTTP call
+        to a bucket. So the row commits first and this runs after, which means a
+        delete that fails is retried on the next pass instead of quietly leaving
+        somebody's financials in a bucket forever.
+
+        Only terminal materials. A requeued deck is going back to `pending` and
+        still needs its bytes; deleting them would turn a rate limit into a deck
+        that can never be read again — the exact data loss the whole classifier
+        exists to prevent, arriving by a different route.
+
+        `failed` counts as finished. It is terminal, the user is told to
+        re-upload, and nothing will ever open that object again — so keeping it
+        is retaining a confidential document for no purpose at all.
+
+        Deleting an object that is already gone is not an error in S3, which is
+        what makes the retry safe: a pass that deleted the object and then
+        failed to commit simply deletes it again.
+        """
+        finished = await self._db.scalars(
+            select(Material)
+            .where(
+                Material.state.in_((MaterialState.READY, MaterialState.FAILED)),
+                Material.source_deleted_at.is_(None),
+            )
+            .with_for_update(skip_locked=True)
+        )
+
+        purged = 0
+        for material in finished:
+            try:
+                await self._storage.delete(material.storage_key)
+            except Exception:
+                # Per material, and deliberately broad — the same call
+                # `SweepRunner._guarded` makes, for the same reason. One object
+                # the store will not part with must not stop every other
+                # deletion in the batch, because the thing being protected here
+                # is a promise about documents in general.
+                #
+                # Nothing is swallowed: the traceback is logged, the row keeps a
+                # null `source_deleted_at` so the next pass tries again, and the
+                # partial index this query runs on grows — which is the standing
+                # signal that deletes are failing.
+                log.exception(
+                    "material_source_delete_failed",
+                    material_id=str(material.id),
+                    user_id=str(material.user_id),
+                )
+                continue
+
+            material.source_deleted_at = func.now()
+            purged += 1
+            log.info(
+                "material_source_deleted",
+                material_id=str(material.id),
+                user_id=str(material.user_id),
+                state=material.state.value,
+            )
+
+        if purged:
+            await self._db.commit()
+        return purged
 
     async def release_stalled(self, *, timeout: timedelta) -> int:
         """Give back every deck held longer than a read can plausibly take.

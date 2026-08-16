@@ -83,12 +83,25 @@ class ExtractionService:
         The return value is not a status — it is what lets the runner come
         straight back while there is a queue and idle politely when there is
         not, without a second query asking whether there is work.
-        """
-        # Before the claim, not after. A deck stranded by a dead worker is a
-        # candidate for *this* pass, and releasing it afterwards would make
-        # every recovery wait a full interval for no reason.
-        await self._ingestion.release_stalled(timeout=EXTRACTION_TIMEOUT)
 
+        Three steps, and the order of the outer two is load-bearing. Releasing
+        stalled claims first makes a deck stranded by a dead worker a candidate
+        for *this* pass rather than the next one. Purging last means the deck
+        this pass just finished has its source deleted before the pass returns —
+        a promise kept immediately rather than one that depends on another pass
+        ever happening.
+
+        The purge runs whether or not a deck was read, which is what makes it
+        the recovery path as well as the fast one: a delete that failed leaves
+        the material undeleted, and an idle loop keeps trying it.
+        """
+        await self._ingestion.release_stalled(timeout=EXTRACTION_TIMEOUT)
+        worked = await self._read_one()
+        await self._ingestion.purge_sources()
+        return worked
+
+    async def _read_one(self) -> bool:
+        """Claim a waiting deck and take it to one of its endings."""
         claimed = await self._ingestion.claim_for_extraction(
             daily_page_ceiling=self._daily_page_ceiling
         )
@@ -127,6 +140,10 @@ class ExtractionService:
             # with the counts a user needs to send a smaller file.
             await self._ingestion.fail_extraction(material.id)
             return True
+
+        # Before the model call, because it is the artefact that survives
+        # whatever the model says next — including a deck that never reads.
+        await self._ingestion.store_thumbnail(material, parsed.thumbnail)
 
         result = await self._model.extract(parsed.pages)
         await self._end(material.id, result)

@@ -557,6 +557,39 @@ Cost: improving the extraction pipeline cannot reprocess existing material, and
 support cannot see a source document when asked why the Auditor missed something.
 Both were accepted knowingly.
 
+**Built 2026-08-16**, and until then the pipeline rendered a thumbnail on every
+deck and discarded it while never deleting a source at all — so the one sentence
+the privacy answer rests on was false in both directions.
+
+Three things the implementation had to settle, each of which is a way the
+promise could have been quietly broken:
+
+| Ending | Source | Why |
+| --- | --- | --- |
+| `ready` | Deleted | The claims are the deck now |
+| `failed` | Deleted | Terminal. The user re-uploads, so nothing will ever open that object again — keeping it retains a confidential document for no purpose |
+| `pending` (requeued) | **Kept** | Still going to be read. Deleting here turns a rate limit into permanent data loss, which is the one mistake in this area with no recovery |
+
+**The delete cannot be in the transaction that settles the material** — one is
+Postgres and the other an HTTP call to a bucket. So the row commits first and
+`purge_sources` runs after, with `source_deleted_at` doubling as the record and
+the retry marker. A delete that fails leaves it null and the next pass tries
+again; without that, one 503 leaves a confidential document in the bucket
+permanently with nothing pointing at it and nothing to notice.
+
+It runs at the *end* of every pass, whether or not a deck was read. At the start
+it would be a promise that depends on another pass ever happening; only on
+success it would never retry an idle failure. Failures are caught per material
+rather than per batch, because one object the store will not part with must not
+switch the guarantee off for everybody else — and the partial index the query
+runs on is the standing signal, since a successful delete drops the row out of it.
+
+**The thumbnail is written before the model call**, not on success. It costs
+about twenty kilobytes and it is the difference between a failed upload the user
+recognises and a grey rectangle. Object first, row second: the other order would
+record a key pointing at nothing the moment a write failed, which is a broken
+image on every screen showing that material and one nothing would ever retry.
+
 ### Extraction cost is recorded, and page throughput is capped
 
 An `extraction_costs` table keyed by `material_id` and `user_id`, recording
@@ -981,6 +1014,17 @@ Follows the mandatory rules rather than restating them; the ones with teeth here
   with the setup screen rather than with the sweep — but it should not ship
   without an answer, because a deck that appears stuck forever is a support
   ticket either way.
+- **The thumbnail is stored and unreachable.** Extraction writes it and nothing
+  serves it: `MaterialRead` carries no thumbnail URL, so the one artefact
+  deliberately kept when the source is destroyed cannot currently be shown to
+  the person it belongs to. A presigned GET on the read endpoint is the obvious
+  answer and it is API surface, so it lands with the contract rather than here.
+- **Nothing deletes a material on the user's behalf.** The retention story is
+  complete for extraction — source out, claims and thumbnail in — and absent for
+  deletion: there is no endpoint, so `material_claims`' *"until the user deletes
+  the Material"* retention rule describes something a user cannot yet do. The
+  cascade is in place and the thumbnail would have to be removed alongside it,
+  since it inherits the claims' rules exactly and is never weaker.
 - **A budget refusal writes no `audit_events` row.** The section above says every
   refusal here is a typed 422 with one, and a budget hold is neither: it is a row
   the claim query passed over, with no request behind it and no client to answer.

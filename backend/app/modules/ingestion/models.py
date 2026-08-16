@@ -93,6 +93,18 @@ class Material(Base):
             "created_at",
             postgresql_where=text("state IN ('pending', 'extracting')"),
         ),
+        # Decks whose bytes are still in the bucket after the material stopped
+        # needing them. Partial, and it is the predicate doing all the work: a
+        # successful delete sets `source_deleted_at` and drops the row straight
+        # out of the index, so this stays near-empty in a healthy deployment and
+        # its size is itself the signal that deletes are failing.
+        Index(
+            "ix_materials_source_undeleted",
+            "created_at",
+            postgresql_where=text(
+                "source_deleted_at IS NULL AND state IN ('ready', 'failed')"
+            ),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -127,8 +139,33 @@ class Material(Base):
     #: caller-supplied key is a caller who can write over somebody else's.
     storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
 
+    #: Where the downscaled first page lives, once one has been rendered.
+    #:
+    #: The only artefact that outlives the source document, and **not the
+    #: low-sensitivity thing it sounds like**: a title slide routinely carries
+    #: the company name, the round size and the word "Confidential". It inherits
+    #: the claims' retention and deletion rules exactly and is never weaker.
+    #:
+    #: A separate key rather than a suffix on `storage_key`, so retention can be
+    #: expressed as a bucket lifecycle rule over a prefix if it ever needs to be.
+    thumbnail_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    #: When the uploaded document was removed from object storage.
+    #:
+    #: Both the record and the retry marker, which is why it is a timestamp
+    #: rather than a boolean. The delete cannot join the transaction that settles
+    #: the material — one is Postgres and the other is an HTTP call to a bucket —
+    #: so the row is committed first and the object removed after. A delete that
+    #: fails leaves this null, and a later pass tries again.
+    #:
+    #: Null on a material that is still readable, and on one whose extraction is
+    #: waiting to be retried: a requeued deck still needs its bytes.
+    source_deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     #: When a sweep took this row, or null if nothing holds it. The crash-safety

@@ -69,6 +69,13 @@ Two lines nearby that mean something specific:
 - `material_extraction_released` — a deck was taken back from a process that
   stopped holding it. One after a deploy is the design working. A steady stream
   is a worker dying mid-read, and each one costs a re-extraction.
+- `material_source_delete_failed` — **the one on this list that is a privacy
+  matter rather than an operational one.** It means an uploaded deck is still in
+  the bucket after the material stopped needing it. A single line is recovered
+  automatically on the next pass; a repeating one means the retention promise
+  made to the App Store questionnaire is not currently being kept, and the
+  standing measure of the backlog is the row count matching
+  `ix_materials_source_undeleted`.
 
 ## Migrations run before the new version serves
 

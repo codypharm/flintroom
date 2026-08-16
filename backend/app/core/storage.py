@@ -62,6 +62,21 @@ class ObjectStorage(Protocol):
         """
         ...
 
+    async def put(self, key: str, data: bytes, *, content_type: str) -> None:
+        """Write one object from inside the process.
+
+        The counterpart to `presign_put`, and used for the one artefact the
+        server produces rather than receives: the thumbnail rendered during
+        extraction. A presigned URL is the wrong shape for that — there is no
+        client in the loop to hand it to, and signing a credential for ourselves
+        would be a round trip to prove something we already know.
+
+        Nothing a *user* uploads may come through here. That path is signed,
+        direct to storage and never proxied, and moving it into the process
+        would put a hundred megabytes of somebody's deck through a worker.
+        """
+        ...
+
     async def get(self, key: str) -> bytes | None:
         """One object's bytes, for the extractor, or nothing if it is gone.
 
