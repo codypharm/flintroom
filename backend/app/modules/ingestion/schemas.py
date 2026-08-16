@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class MaterialState(str, Enum):
@@ -65,6 +65,151 @@ ACCEPTED_CONTENT_TYPES: frozenset[str] = frozenset(
         "image/heif",
     }
 )
+
+
+class Unit(str, Enum):
+    """The closed set a figure's unit is reduced to before anything compares it.
+
+    Closed on purpose. `docs/auditor-grounding.md` names comparability as the
+    source of most false positives, and a free-text unit makes `61 "%"` and
+    `61 "percent"` two different figures — so a margin restated in different
+    words reads as a contradiction that is not there.
+
+    Currencies stay distinct rather than collapsing into one "currency" member.
+    €4M and $4M are genuinely different claims, and flattening them would invent
+    an agreement between them.
+    """
+
+    PERCENT = "percent"
+    USD = "usd"
+    EUR = "eur"
+    GBP = "gbp"
+    MULTIPLE = "multiple"
+    COUNT = "count"
+    UNKNOWN = "unknown"
+
+
+#: What a model might write, and what it means. Lowercased and stripped before
+#: lookup, so only genuinely distinct spellings need an entry.
+_UNIT_SPELLINGS: dict[str, Unit] = {
+    "%": Unit.PERCENT,
+    "pct": Unit.PERCENT,
+    "percent": Unit.PERCENT,
+    "percentage": Unit.PERCENT,
+    "$": Unit.USD,
+    "usd": Unit.USD,
+    "dollar": Unit.USD,
+    "dollars": Unit.USD,
+    "€": Unit.EUR,
+    "eur": Unit.EUR,
+    "euro": Unit.EUR,
+    "euros": Unit.EUR,
+    "£": Unit.GBP,
+    "gbp": Unit.GBP,
+    "pound": Unit.GBP,
+    "pounds": Unit.GBP,
+    "x": Unit.MULTIPLE,
+    "×": Unit.MULTIPLE,
+    "times": Unit.MULTIPLE,
+    "multiple": Unit.MULTIPLE,
+    "count": Unit.COUNT,
+    "units": Unit.COUNT,
+    "people": Unit.COUNT,
+    "users": Unit.COUNT,
+    "customers": Unit.COUNT,
+}
+
+
+def normalize_unit(written: str) -> Unit:
+    """Whatever the model wrote, as a member of the closed set.
+
+    Unrecognised spellings become `UNKNOWN` rather than being guessed at. Deny by
+    default, applied to arithmetic: guessing produces exactly the comparison that
+    should never have happened, and silently. `UNKNOWN` costs a missed catch
+    instead of a false accusation, which is the direction
+    `docs/auditor-grounding.md` says to err in — *"a false accusation is worse
+    than a missed catch"*.
+    """
+    cleaned = written.strip().lower()
+    if cleaned in _UNIT_SPELLINGS:
+        return _UNIT_SPELLINGS[cleaned]
+
+    # "8x" and "3.5×" are how a multiple is usually written, value included.
+    if cleaned.rstrip("x×") != cleaned and _is_number(cleaned.rstrip("x×")):
+        return Unit.MULTIPLE
+
+    return Unit.UNKNOWN
+
+
+def _is_number(text: str) -> bool:
+    try:
+        float(text)
+    except ValueError:
+        return False
+    return True
+
+
+class Claim(BaseModel):
+    """One figure, captured with enough context to compare it to another.
+
+    The shape is shared with the claims the Auditor pulls out of live speech
+    (`docs/auditor-grounding.md`), because comparing a slide's figure against a
+    spoken one is the Auditor's entire function and they must be comparable. The
+    *locator* differs — a slide number here, an offset into the session there —
+    and lives on the row rather than in this type.
+
+    `quote` is the source text. It is stored and never logged: CLAUDE.md forbids
+    ingested material contents in logs, and unlike a secret it is not detectable
+    by key name, so it must not be passed to a log call at all.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: What is being measured — "gross margin", "ARR", "headcount".
+    metric: str = Field(min_length=1, max_length=120)
+
+    #: A number, never prose. "1.2M" is the shape a model reaches for and it is
+    #: refused here rather than parsed: a parser is code guessing at magnitude,
+    #: and a magnitude guessed wrong is a claim off by a factor of a million,
+    #: asserted confidently in a panelist's voice.
+    value: float
+
+    unit: Unit
+
+    #: What the figure covers — "Q3 2026", "FY2025". Optional, because headcount
+    #: today has no period and refusing it would drop a real claim.
+    period: str | None = Field(default=None, max_length=60)
+
+    quote: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("unit", mode="before")
+    @classmethod
+    def _normalize(cls, value: object) -> object:
+        """Normalise on the way in, so the type carries the guarantee.
+
+        A free-standing normaliser is one somebody constructs a `Claim` without
+        calling, and that failure is invisible until two figures which should
+        have matched do not.
+        """
+        return normalize_unit(value) if isinstance(value, str) else value
+
+    def comparable_to(self, other: Claim) -> bool:
+        """Whether these two figures may be checked against each other at all.
+
+        Asked as a question rather than inferred from equality of units, because
+        `UNKNOWN` is not a unit two figures can share — normalising everything
+        unrecognised to one token would otherwise make "furlongs" and "widgets"
+        agree.
+
+        Period must match for the reason the grounding doc gives by name: last
+        quarter's revenue against last year's is not a contradiction, and without
+        the period on both it looks exactly like one.
+        """
+        return (
+            self.unit is not Unit.UNKNOWN
+            and self.unit is other.unit
+            and self.period == other.period
+        )
 
 
 class MaterialDeclaration(BaseModel):

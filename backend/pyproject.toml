@@ -63,6 +63,22 @@ dependencies = [
     # one format we accept and then fail to open. Registers a Pillow plugin and
     # is otherwise never imported.
     "pillow-heif>=0.21",
+    # Talking to the extraction model. The vendor decision is already made —
+    # `docs/ingestion.md` names Claude as the first adapter, chosen because it
+    # takes each page as text and image together, and chart values are not in a
+    # text layer.
+    #
+    # The SDK rather than raw httpx, which would work and is roughly fifty
+    # lines. It wins on the two things those fifty lines would not include:
+    # retry-with-backoff against a provider that returns 429s under load, and
+    # the Batch API — `docs/ingestion.md` notes batch pricing roughly halves
+    # cost, and extraction is latency-insensitive, so that discount is free
+    # here and worth not having to hand-roll.
+    #
+    # MIT, 6.4 MB, and it brings almost nothing new: httpx, pydantic, anyio,
+    # sniffio and typing-extensions are already installed. Confined to
+    # `extraction_models/claude.py`, so a second vendor is a sibling module.
+    "anthropic>=0.69",
 ]
 
 [dependency-groups]

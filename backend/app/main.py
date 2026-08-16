@@ -18,6 +18,7 @@ from app.core.storage_s3 import build_object_storage
 from app.modules.auth.providers import build_verifiers
 from app.modules.auth.router import router as auth_router
 from app.modules.billing.router import router as billing_router
+from app.modules.ingestion.extraction_models import build_extraction_model
 from app.modules.ingestion.router import router as materials_router
 from app.modules.sessions.router import router as sessions_router
 from app.modules.sessions.runner import SweepRunner
@@ -64,6 +65,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.object_storage = build_object_storage(settings)
     if app.state.object_storage is None:
         log.warning("object_storage_unconfigured")
+
+    # Built at boot rather than on first use so an unconfigured deployment says
+    # so once, at startup, instead of once per deck that silently fails to
+    # ground. The extraction sweep is what will consume it.
+    app.state.extraction_model = build_extraction_model(settings)
+    if app.state.extraction_model is None:
+        log.warning("extraction_model_unconfigured")
 
     engine = create_engine(settings.database_url)
     session_factory = create_session_factory(engine)

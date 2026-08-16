@@ -212,6 +212,27 @@ in that block is metadata nobody uploaded, and a photograph of a whiteboard
 records where it was taken. The page image outlives the source document, so this
 is not a detail that can be added later.
 
+### Which model is a setting, because it is the cost lever
+
+**Decided 2026-08-16.** `EXTRACTION_PROVIDER` is a `Literal` — a typo refuses to
+boot rather than silently meaning "none", which would be a deployment that
+starts, signs people in, accepts uploads and grounds nothing. `EXTRACTION_MODEL`
+is a plain string defaulting to `claude-sonnet-5`.
+
+The default is a starting point, **not a decision**. Model choice is the largest
+single lever on extraction cost, every figure in this document rests on an
+unverified ~$0.01 per page, and the honest way to pick is against measured
+`extraction_costs` rows rather than against a guess. Keeping it in configuration
+is what stops that choice being made by whoever is editing the adapter.
+
+The unit normaliser is the same principle one level down. A model writes `%`,
+`percent` and `pct` for the same thing, and left as written those are three
+incomparable figures — so a margin restated in different words reads as a
+contradiction that is not there. `Unit` is a closed set and `normalize_unit` maps
+onto it; anything unrecognised becomes `UNKNOWN`, which nothing compares to.
+That costs a missed catch rather than a false accusation, which is the direction
+`docs/auditor-grounding.md` says to err in.
+
 ### The model extracts, code computes — inherited, not restated
 
 `docs/auditor-grounding.md` fixes this and ingestion does not get to differ: the
@@ -480,13 +501,19 @@ backend/app/modules/ingestion/
   extractor.py          the sweep pass — claim, extract, settle, requeue stale
   parsing.py            PDF/PPTX/image → rendered pages + text + exact
                         chart values where the format carries them (no model)
-  model.py              ExtractionModel protocol
-  models/
+  extraction_model.py   ExtractionModel protocol
+  extraction_models/
     __init__.py         build_extraction_model(settings)
     claude.py           first adapter
   models.py             Material, MaterialClaim, ExtractionCost ORM
-  schemas.py            Claim, MaterialRead, MaterialState
+  schemas.py            Claim, Unit, MaterialRead, MaterialState
 ```
+
+**Renamed 2026-08-16 from `model.py` + `models/`, which Python cannot express.**
+A package cannot contain both `models/` and `models.py`, and `models.py` already
+holds the ORM. Named for the voice module's `provider.py` / `providers/` pairing
+instead — same shape, no collision, and the parallel is the point: these are the
+two vendor seams in the product and they should look alike.
 
 `parsing.py` and the derived-figure arithmetic are the deep modules here — both
 are pure functions over bytes and typed claims, testable with no model, no

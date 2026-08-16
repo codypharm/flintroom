@@ -123,6 +123,29 @@ class Settings(BaseSettings):
     #: rejects at upload time.
     s3_addressing_style: Literal["virtual", "path", "auto"] = "virtual"
 
+    #: Which vendor reads a deck. A `Literal` rather than a free string, so a
+    #: typo is a process that refuses to boot — the alternative failure is a
+    #: deployment that starts, signs people in, accepts uploads, and grounds
+    #: nothing, because `EXTRACTION_PROVIDER=cluade` silently meant "none".
+    #:
+    #: Decided independently of the panel LLM (task #13). The two jobs have
+    #: opposite requirements: extraction is batch, latency-insensitive and
+    #: structured-output; the panel is conversational and dies above ~1.5s.
+    extraction_provider: Literal["claude"] = "claude"
+
+    #: Optional, on the same grounds as the voice keys and the bucket. Absent
+    #: means material cannot be read; it does not mean the process should refuse
+    #: to start, because the deckless path is first-class rather than degraded
+    #: (`docs/auditor-grounding.md`).
+    anthropic_api_key: str | None = None
+
+    #: Which model, within that vendor. A setting rather than a constant because
+    #: it is the largest single lever on extraction cost, and every figure in
+    #: `docs/ingestion.md` rests on an unverified ~$0.01 per page. Changing it is
+    #: a cost decision that belongs to a human holding measured numbers from
+    #: `extraction_costs` — not to whoever is editing the adapter.
+    extraction_model: str = "claude-sonnet-5"
+
     def __init__(self, **values: object) -> None:
         """Fail as `ConfigurationError`, carrying nothing underneath it.
 
