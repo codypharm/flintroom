@@ -64,7 +64,7 @@ async def stream_session(
         # session exists, matching the not-found-not-forbidden rule the HTTP
         # routes follow — a socket that answered differently for a real id
         # would be an enumeration oracle the REST layer deliberately is not.
-        await websocket.close(code=CLOSE_UNAUTHORIZED)
+        await _close(websocket, CLOSE_UNAUTHORIZED)
         return
 
     await websocket.accept()
@@ -87,7 +87,7 @@ async def stream_session(
     except ProviderUnavailable:
         # Nothing has been metered — the room never opened. Closed here rather
         # than through the relay, which has no session to settle yet.
-        await websocket.close(code=CLOSE_PROVIDER_UNAVAILABLE)
+        await _close(websocket, CLOSE_PROVIDER_UNAVAILABLE)
         return
 
     relay = VoiceRelay(
@@ -102,7 +102,7 @@ async def stream_session(
     except ProviderUnavailable:
         # The relay has already ended the room and refunded whatever was owed.
         # The client is told only that the room is over, never by whom.
-        await websocket.close(code=CLOSE_PROVIDER_UNAVAILABLE)
+        await _close(websocket, CLOSE_PROVIDER_UNAVAILABLE)
         return
     except WebSocketDisconnect:
         # The user closed the app. The relay settles this as a client
@@ -111,7 +111,28 @@ async def stream_session(
         return
     except FlintroomError as exc:
         log.warning("stream_refused", session_id=str(session_id), code=exc.code)
-        await websocket.close(code=CLOSE_PROVIDER_UNAVAILABLE)
+        await _close(websocket, CLOSE_PROVIDER_UNAVAILABLE)
         return
 
-    await websocket.close()
+    await _close(websocket)
+
+
+async def _close(websocket: WebSocket, code: int = 1000) -> None:
+    """Close, unless the phone has already gone.
+
+    Hanging up is the ordinary way a room ends, and by the time the relay has
+    settled it the socket is frequently already dead — so closing it raises,
+    and an unhandled raise turns every normal ending into an ASGI traceback.
+    Nothing is wrong when that happens: the session is settled, the minutes are
+    right, the cost row is written. Only the log is.
+
+    Worth suppressing rather than tolerating. A traceback printed on every
+    ordinary ending is one nobody reads, and the next real one arrives buried in
+    a hundred of these.
+    """
+    try:
+        await websocket.close(code=code)
+    except (WebSocketDisconnect, RuntimeError):
+        # RuntimeError is Starlette's answer to closing a socket it has already
+        # completed; both mean the same thing here and neither is ours to act on.
+        log.debug("stream_already_closed")

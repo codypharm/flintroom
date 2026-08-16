@@ -17,6 +17,7 @@ import asyncio
 from contextlib import asynccontextmanager
 
 import pytest
+from fastapi import WebSocketDisconnect
 from sqlalchemy import select
 
 from app.agents.model import ModelReply
@@ -292,3 +293,42 @@ async def test_a_dead_panel_model_refunds_instead_of_billing_for_silence(db, fun
     assert websocket.closed_with == CLOSE_PROVIDER_UNAVAILABLE
     await db.refresh(session)
     assert session.end_reason is EndReason.PROVIDER_FAILURE
+
+
+async def test_a_phone_already_gone_is_not_an_error_to_close_on(db, funded_account):
+    """Hanging up is how rooms end, and it must not surface as a crash.
+
+    The last thing this route does is close the socket. When the phone has
+    already dropped — which is what *caused* the room to end in the ordinary
+    case — that close raises `WebSocketDisconnect`, and with nothing catching it
+    the room finishes in an unhandled ASGI traceback. Everything that matters is
+    already correct by then: the session settled as `client_disconnect`, the
+    minutes are right, the cost row is written. Only the log is wrong.
+
+    Worth fixing rather than tolerating. A traceback printed on every normal
+    ending is a traceback nobody reads, and the next real one arrives in the
+    middle of a hundred of these.
+    """
+
+    class Vanished(FakeWebSocket):
+        async def close(self, code: int = 1000) -> None:
+            await super().close(code)
+            raise WebSocketDisconnect(code=1006)
+
+    session, ticket = await _admitted(db, funded_account, archetypes=["cfo"])
+
+    await stream_session(
+        Vanished(),
+        session.id,
+        ticket,
+        VoiceTicketService(db),
+        RoomParts(
+            transcriber=FakeTranscriber(),
+            model=FakePanelModel(selects="cfo"),
+            speaker=None,
+        ),
+        db,
+    )
+
+    await db.refresh(session)
+    assert session.state is SessionState.SETTLED
