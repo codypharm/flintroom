@@ -102,6 +102,15 @@ class BillingService:
                 provider="revenuecat",
                 event_type=event.type,
                 event_id=event.id,
+                # Carried on the ignored path specifically, because that is where
+                # every event lands until the handlers exist — and these three
+                # are what the handlers will need to be written against. A store
+                # identifier is whatever was typed into App Store Connect, and
+                # Play may return a base-plan suffix we did not choose, so the
+                # only reliable source is an event that actually arrived.
+                product_id=event.product_id,
+                entitlement_ids=event.entitlement_ids,
+                environment=event.environment,
             )
             return
 
