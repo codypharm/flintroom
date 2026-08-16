@@ -316,7 +316,7 @@ def test_the_composer_is_told_never_to_write_a_stage_direction():
     """
     instruction = _persona_of(by_name("cfo"))
 
-    assert "no bracketed" in instruction
+    assert "no bracketed stage directions" in instruction
     assert "spoken aloud" in instruction
 
 
@@ -349,11 +349,16 @@ def test_the_composer_is_held_to_something_a_person_can_interrupt():
     minute for a turn, it consumes a third of the 90-second idle window that only
     *user* speech resets, and synthesis bills per character.
 
-    So the bound is stated in words and sentences rather than left implied by
-    "say one thing", which the long-winded archetypes read — correctly — as
-    permission.
+    Stated in words and sentences rather than left implied by "say one thing",
+    which the long-winded archetypes read — correctly — as permission.
+
+    A first attempt at the bound did not hold: a polite "keep it under thirty
+    words" produced 46 from the Customer Advocate and 39 from the Blocker against
+    a real utterance. What worked was naming it a hard limit, saying what the
+    number costs the listener in seconds, and enumerating the ways a model pads —
+    adding context, citing the slide, asking a second thing.
     """
     instruction = _persona_of(by_name("internal_blocker"))
 
-    assert "under thirty words" in instruction
-    assert "never more than two sentences" in instruction
+    assert "at most 25 words" in instruction
+    assert "at most two sentences" in instruction
