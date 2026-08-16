@@ -54,7 +54,11 @@ EXTRACTION_TIMEOUT = timedelta(minutes=15)
 #: uniform across tiers for that reason. `Settings.daily_page_ceiling` is where
 #: a deployment overrides it, which is the point: this is a number to turn down
 #: at 3am rather than one to ship a release for.
-DEFAULT_DAILY_PAGE_CEILING = 200
+#:
+#: It may never fall below the largest `MAX_PAGES_PER_MATERIAL`, or a plan
+#: refuses to extract a file it sold — see `Settings.daily_page_ceiling` for
+#: the case that caught it, and `test_material_limits.py` for the guard.
+DEFAULT_DAILY_PAGE_CEILING = 600
 
 
 class ExtractionService:

@@ -177,9 +177,23 @@ class Settings(BaseSettings):
     #: loop, a bug or a script spends a month's budget in an afternoon.
     #:
     #: Here rather than in the tier table because it is not a pricing figure and
-    #: must not read as one. It is a number to turn down at 3am without shipping
-    #: a release, and real use — 40–80 pages a month — is nowhere near it.
-    daily_page_ceiling: int = Field(default=200, ge=1)
+    #: must not read as one. It is a number to turn down at 3am by setting an
+    #: environment variable and restarting, rather than by shipping a release.
+    #:
+    #: **The floor is the largest per-file cap, and it is structural.** Below
+    #: that, a plan refuses to extract a file it sold: pro sells 300 pages per
+    #: file, so a 200-page ceiling blocked the second upload of a deck somebody
+    #: had just re-exported to fix a typo — the most ordinary thing a user of
+    #: this product does, read as a runaway. `test_material_limits.py` holds the
+    #: invariant so the two numbers cannot drift back into contradiction.
+    #:
+    #: 600 clears pro's cap twice over. It is calibrated against *peak*
+    #: legitimate use rather than typical use (~40–80 pages a month), because a
+    #: circuit breaker set just above the average trips on the users it was
+    #: never meant to catch. The monthly budget is what actually caps spend;
+    #: this only has to stop a loop from eating the whole month before anyone
+    #: notices, and at pro it still takes two days to get there.
+    daily_page_ceiling: int = Field(default=600, ge=1)
 
     def __init__(self, **values: object) -> None:
         """Fail as `ConfigurationError`, carrying nothing underneath it.

@@ -622,7 +622,7 @@ starter         100 pages         25 MB      600 pages/month
 pro             300 pages        100 MB     1200 pages/month
 teams           100 pages         25 MB      600 pages/seat/month
 
-DAILY_PAGE_CEILING = 200          (Settings, uniform, rolling 24h)
+DAILY_PAGE_CEILING = 600          (Settings, uniform, rolling 24h)
 ```
 
 The first two live in `billing/tiers.py` beside `MAX_UPLOAD_BYTES`, because they
@@ -630,6 +630,24 @@ are per tier and therefore pricing. The daily ceiling lives in `Settings`
 because it is not: it is a circuit breaker in the same category as §4.7's
 per-account daily spend ceiling, and putting it in the tier table would make it
 read as an entitlement somebody bought.
+
+**The daily ceiling may never fall below the largest per-file cap, and it
+originally did.** Corrected 2026-08-16 from 200 to 600, once the sweep made the
+limit real enough to check: pro sells 300 pages per file, so at 200 a user who
+re-exported their deck to fix a typo had the second upload held for
+twenty-four hours. An ordinary act, read as a runaway.
+
+The mistake was calibrating a circuit breaker against *typical* use — the
+40–80 pages a month this document estimates elsewhere — when the whole reason
+pro carries a 300-page cap is that some users are not typical. A breaker belongs
+far above peak legitimate use and far below the point where money is being lost.
+`test_material_limits.py` holds the invariant, because the two figures live in
+different files by design and nothing else would notice them drifting apart.
+
+**It only ever fires at pro**, and that is not a defect. Free's hundred lifetime
+pages sit below it outright and starter's whole month is six hundred, so on
+those tiers the monthly budget reaches a runaway first — a cheaper limit doing
+the job sooner, which is the order these four controls should fire in.
 
 ### Why the per-file cap is the published one
 

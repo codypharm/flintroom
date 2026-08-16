@@ -13,10 +13,13 @@ missing a cap — not the values, which move when §4.3 measures a page.
 
 import pytest
 
+from app.core.config import Settings
+from app.modules.ingestion.extractor import DEFAULT_DAILY_PAGE_CEILING
 from app.modules.billing.tiers import (
     MAX_PAGES_PER_MATERIAL,
     MAX_UPLOAD_BYTES,
     MONTHLY_ALLOWANCE_SECONDS,
+    MONTHLY_PAGE_BUDGET,
     UPGRADE_LADDER,
     FREE_TIER,
     next_tier_above,
@@ -114,3 +117,43 @@ def test_a_tier_off_the_ladder_has_no_next_rung():
     """
     assert next_tier_above("pro_annual") is None
     assert next_tier_above("teams") is None
+
+
+def test_the_daily_ceiling_clears_the_largest_file_a_plan_sells():
+    """A ceiling below a per-file cap refuses a file the tier card offered.
+
+    This was live: pro sold 300 pages per file against a 200-page daily
+    ceiling, so a user who re-exported their deck to fix a typo had the second
+    upload held for twenty-four hours — an ordinary act read as a runaway. The
+    two numbers live in different files for good reasons (one is pricing, one is
+    a safety dial), which is exactly why nothing else would notice them drifting
+    apart again.
+
+    Twice over rather than merely clear. Once is not enough: uploading the same
+    deck twice in an evening is the normal case, not the edge one.
+    """
+    largest = max(MAX_PAGES_PER_MATERIAL.values())
+
+    assert DEFAULT_DAILY_PAGE_CEILING >= 2 * largest
+    # The setting and the module default are two copies of one number, and a
+    # deployment that sets neither must get the safe one.
+    assert Settings.model_fields["daily_page_ceiling"].default == (
+        DEFAULT_DAILY_PAGE_CEILING
+    )
+
+
+def test_the_daily_ceiling_still_bites_somewhere():
+    """The other side: a ceiling this high has to remain a circuit breaker.
+
+    Against the *loosest* budget, not every budget. On the tighter tiers the
+    monthly figure binds first and the daily ceiling never fires — free's
+    hundred lifetime pages are below it outright, and starter's whole month is
+    six hundred. That is not the ceiling failing; it is a cheaper limit reaching
+    the same runaway sooner, which is the order these controls should fire in.
+
+    Where it has to work is the tier whose monthly budget is loose enough to
+    lose in an afternoon. If one day could exhaust even that, the daily limit
+    would be decoration and the monthly budget would be the only thing between
+    a loop and the whole allowance.
+    """
+    assert DEFAULT_DAILY_PAGE_CEILING < max(MONTHLY_PAGE_BUDGET.values())
