@@ -118,11 +118,8 @@ export default function RoomScreen() {
       });
       await enterHandsFree();
 
-      // Started before the socket. A room is metered from the moment the
-      // channel comes up, so anything slow belongs on this side of it — a
-      // microphone negotiated after the room opened is billed silence.
-      const started = new AudioRecorder();
-      recorder.current = started;
+      const capture = new AudioRecorder();
+      recorder.current = capture;
       const playback = new AudioContext();
       context.current = playback;
 
@@ -150,7 +147,7 @@ export default function RoomScreen() {
         url: socketUrl,
         ticket: session.stream_ticket,
         context: playback,
-        recorder: started,
+        recorder: capture,
         onTranscript: (text) =>
           setCaptions((so_far) => [
             ...so_far,
@@ -162,6 +159,15 @@ export default function RoomScreen() {
           void release();
         },
       });
+
+      // Started here, after `joinRoom` and not before it. `joinRoom` builds the
+      // uplink, which is what registers `onAudioReady` — and the echo spike
+      // established on a real device that the callback goes on before capture
+      // begins. Starting first left the recorder running with nowhere to
+      // deliver, which is exactly what the first room on a phone did: fifty-six
+      // seconds open, zero seconds of audio at the far end, and no error
+      // anywhere because nothing was wrong, only silent.
+      await capture.start();
 
       setPhase('live');
     } catch (thrown) {

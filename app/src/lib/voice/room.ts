@@ -16,7 +16,14 @@ export interface RoomOptions {
   ticket: string;
   /** Already running, and already routed to the loudspeaker on Android. */
   context: PlaybackContext;
-  /** Already started, and already granted the microphone permission. */
+  /**
+   * Permission already granted, and **not yet started**.
+   *
+   * `joinRoom` registers `onAudioReady` as it builds the uplink, and capture
+   * has to begin after that — a recorder started first delivers into a callback
+   * nobody has registered, which fails as silence rather than as an error. The
+   * caller starts it once this resolves.
+   */
   recorder: UplinkRecorder;
   /** A finished panel utterance, to caption. */
   onTranscript?: (text: string) => void;
