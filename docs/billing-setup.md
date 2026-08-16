@@ -1,4 +1,4 @@
-# Setting up billing: App Store Connect, Play, RevenueCat
+# Setting up billing: Play, RevenueCat, and Apple later
 
 **Status:** setup guide, not a decision record. The decisions are `Product.md` §4.4–4.5
 and `docs/minutes-ledger-and-sessions.md`; this is the sequence of dashboard work
@@ -6,11 +6,20 @@ that turns them into products a phone can buy.
 
 **The deliverable** is a list of store product identifiers and entitlement
 identifiers, which is what `billing/tiers.py` maps to tiers. Nothing generates
-them — they are strings you choose, typed into Apple and Google, and mirrored by
+them — they are strings you choose, typed into a store console, and mirrored by
 RevenueCat.
 
 Do it in the order below. Two steps have multi-day latency and block everything
 after them, and both are administrative rather than technical.
+
+**Google goes first, decided 2026-08-16.** Play registration is $25 once against
+Apple's $99 a year, and the backend is store-agnostic — the webhook, the ledger
+and the tier mapping do not know or care which store an event came from. So the
+whole billing path can be proven on Android and Apple added later at no rework.
+
+This does **not** reopen the iOS-led platform decision in `CLAUDE.md` §9. That is
+about design language and interaction, and it is unaffected by which store gets
+wired first.
 
 ---
 
@@ -18,55 +27,138 @@ after them, and both are administrative rather than technical.
 
 Neither of these is work. Both are waiting, and everything else waits on them.
 
-**Apple — the Paid Applications Agreement.** App Store Connect → Business (older
-UI: Agreements, Tax, and Banking). You need the agreement accepted, a bank
-account attached, and tax forms completed. **In-app purchases do not function
-until this is active**, including in sandbox, and the failure is confusing: the
-product simply is not returned to the app, as though the identifier were wrong.
-Bank verification can take days.
+### Google — register the right *kind* of account
 
-**Google — a release on a track.** Play Console will not show the Monetise
-section until the app exists and at least one build has been uploaded to a track
-(internal testing is enough, and it does not have to be reviewed or public). If
-the Expo app is not yet building an AAB, this is the thing to start early.
+Play Console registration is a one-off $25. The choice made at signup is the one
+that matters later:
 
-While those settle, everything in §1 and §4 can be done.
+**A personal account carries a testing requirement that an organisation account
+does not.** Personal developer accounts registered since late 2023 must run a
+closed test with at least 12 testers opted in continuously for 14 days before
+production access can even be applied for. That is a two-week floor on shipping,
+and it starts only once there is something to test.
+
+If Flintroom is going to be a company, register as an organisation. It needs a
+D-U-N-S number, which is free but takes days to issue, and that is the trade: a
+few days now against a fortnight later, plus not having to migrate an account
+whose name is on the store listing.
+
+### Google — a release on a track
+
+Play Console will not show the Monetise section until the app exists and at least
+one build has been uploaded to a track. Internal testing is enough; it needs no
+review and no public listing. If the Expo app is not yet producing an AAB, this
+is the thing to start early — it gates every product in §2.
+
+### Apple — deferred, and what that costs
+
+The Apple Developer Program is $99/year and nothing below needs it yet. Two
+things wait on it, and neither blocks the billing work:
+
+- **Sign in with Apple on a real build.** The backend already verifies both
+  providers and the client already implements both, so Google sign-in carries the
+  whole flow in the meantime. Apple's own review rules will require Sign in with
+  Apple before an iOS release, not before now.
+- **iOS device and TestFlight builds.** The simulator needs no account, and a
+  free Apple ID will run a build on a physical device on a seven-day provisioning
+  profile. Neither produces a purchase.
+
+When it is taken, the long pole there is the **Paid Applications Agreement** —
+App Store Connect → Business. Agreement accepted, bank account attached, tax
+forms completed. **In-app purchases do not function until it is active**,
+including in sandbox, and the failure is confusing: the product is simply not
+returned to the app, exactly as though the identifier were wrong.
 
 ---
 
 ## 1. Decide the identifiers once
 
-Apple product identifiers **cannot be renamed, reused, or recreated after
-deletion** — ever, across the lifetime of the account. Choose the scheme you want
-to live with before typing any of them.
+**Neither store lets an identifier be reused after it is deleted**, and Apple's
+cannot be renamed at all. Pick the scheme once, and pick it now rather than when
+Apple is added — the same strings should exist on both stores, because a mapping
+keyed on one set of names and patched for the other is where a tier goes wrong.
+
+Play's own rules: lowercase letters, digits, underscores and periods; must start
+with a letter or digit.
 
 The seven products `Product.md` §4.4–4.5 specifies:
 
-| Plan | Kind | Suggested identifier |
-| --- | --- | --- |
-| Starter, $29/mo | Auto-renewable subscription | `flintroom_starter_monthly` |
-| Pro, $59/mo | Auto-renewable subscription | `flintroom_pro_monthly` |
-| Pro Annual, $599/yr | Auto-renewable subscription | `flintroom_pro_annual` |
-| Teams, $25/seat/mo | Auto-renewable subscription | `flintroom_teams_monthly` |
-| Quick top-up, $9 / 20 min | **Consumable** | `flintroom_topup_20` |
-| Demo-day pack, $35 / 90 min | **Consumable** | `flintroom_topup_90` |
-| Cohort block, $99 / 300 min | **Consumable** | `flintroom_topup_300` |
+| Plan | Kind | Identifier | Play base plan |
+| --- | --- | --- | --- |
+| Starter, $29/mo | Subscription | `flintroom_starter_monthly` | `monthly` |
+| Pro, $59/mo | Subscription | `flintroom_pro_monthly` | `monthly` |
+| Pro Annual, $599/yr | Subscription | `flintroom_pro_annual` | `annual` |
+| Teams, $25/seat/mo | Subscription | `flintroom_teams_monthly` | `monthly` |
+| Quick top-up, $9 / 20 min | **Consumable** | `flintroom_topup_20` | — |
+| Demo-day pack, $35 / 90 min | **Consumable** | `flintroom_topup_90` | — |
+| Cohort block, $99 / 300 min | **Consumable** | `flintroom_topup_300` | — |
 
 **Consumable, not non-consumable, for the three packs.** §4.5 says top-up minutes
 never expire and the same pack is bought repeatedly. A non-consumable can be
 bought once per account and is restorable forever, which is the opposite of both.
 
 **Teams is a placeholder here.** Per-seat billing with a ten-seat minimum is not
-an ordinary App Store subscription, and §4.4's Teams tier probably sells through
+an ordinary store subscription on either platform, and §4.4's Teams tier probably sells through
 a different channel entirely. Create the other six and leave Teams until there is
 a buyer; `docs/ingestion.md` and the ledger already treat it as a tier, so nothing
 breaks by deferring the product.
 
 ---
 
-## 2. App Store Connect
+## 2. Google Play Console — the one to do first
 
-### 2.1 Subscription group
+Do this after §0's release is uploaded, or the Monetise menus will not appear.
+
+### 2.1 Subscriptions
+
+Monetise with Play → Products → **Subscriptions**. Play's model has two levels
+and the distinction matters to us:
+
+- A **subscription** carries the product ID — `flintroom_pro_monthly`.
+- A **base plan** under it carries the billing period, price and renewal type.
+  One auto-renewing base plan per subscription is all this product needs.
+
+Base plan IDs are lowercase, hyphens and digits only — `monthly`, `annual`. Give
+them the same name across subscriptions so the pattern is boring.
+
+**Activate the base plan.** A subscription with an inactive base plan is invisible
+to the app and to RevenueCat, and looks exactly like a wrong identifier.
+
+Play has **no subscription-group concept**. Apple's grouping is what makes Starter
+and Pro mutually exclusive; on Play, upgrade and downgrade are the client's job,
+declared at purchase time through the SDK's replacement mode. Nothing about that
+reaches the backend — the ledger sees a `PRODUCT_CHANGE` event and the tier on it
+— but it is a real difference in the paywall work.
+
+### 2.2 The three top-ups
+
+Products → **In-app products** → managed products, one per pack. Play calls them
+managed products rather than consumables; what makes one consumable is that it is
+*consumed* after purchase, which the RevenueCat SDK does. Without consumption the
+same pack cannot be bought twice, so this is worth verifying against the second
+purchase rather than the first.
+
+### 2.3 Licence testers
+
+Play Console → Settings → **Licence testing**. Add the tester email addresses;
+they can buy every product without being charged, and the purchases are real
+enough to fire webhooks.
+
+Test purchases arrive with `environment: SANDBOX` — see the open question at the
+foot of this document about whether those may grant real minutes.
+
+### 2.4 The identifier Play reports may not be the one you typed
+
+With base plans, a purchase can be reported as `subscription_id:base_plan_id`
+rather than the bare subscription id. Since Play is the first store wired, this
+is the ordinary case here rather than an edge case — do not guess at it, read it
+off a real event per §5.
+
+---
+
+## 3. App Store Connect — deferred until the account exists
+
+### 3.1 Subscription group
 
 App Store Connect → your app → **Subscriptions** → create **one** group, e.g.
 `Flintroom Plans`.
@@ -78,7 +170,7 @@ charged twice, which is a support ticket and a refund rather than an upgrade.
 
 The group's display name is user-visible in the subscription management screen.
 
-### 2.2 Each subscription
+### 3.2 Each subscription
 
 Per subscription, Apple wants:
 
@@ -95,11 +187,11 @@ Per subscription, Apple wants:
 Set the **subscription ranking** within the group: higher rank means an upgrade.
 Pro above Starter, and Pro Annual is a sideways move from Pro rather than a rung.
 
-### 2.3 The three consumables
+### 3.3 The three consumables
 
 In-App Purchases → **Consumable**. Same fields, no group, no duration.
 
-### 2.4 Sandbox testers
+### 3.4 Sandbox testers
 
 Users and Access → **Sandbox** → Test Accounts. Use an email address that is not
 an Apple ID already. On the device, sign in under Settings → App Store → Sandbox
@@ -108,7 +200,7 @@ Account, **not** the main Apple ID.
 A sandbox subscription renews on an accelerated clock — a month is minutes — which
 is exactly what is needed to see `RENEWAL` and `EXPIRATION` events without waiting.
 
-### 2.5 Before you have any of this
+### 3.5 Before you have any of this
 
 Xcode's **StoreKit configuration file** fakes products locally with no App Store
 Connect involvement at all. Useful for building the paywall UI early, and it
@@ -116,40 +208,23 @@ produces no webhooks — so it proves nothing about the backend.
 
 ---
 
-## 3. Google Play Console
-
-Do this after §0's release is uploaded, or the menus will not appear.
-
-- **Subscriptions** → create one per plan. Play's model is a *subscription* with
-  one or more **base plans**; create a single auto-renewing base plan per
-  subscription unless there is a reason not to.
-- **In-app products** → the three top-ups, as *consumable* managed products.
-- **Licence testers** — Play Console → Settings → Licence testing. Testers can
-  buy without being charged.
-
-**The identifier Play reports may not be the one you typed.** With base plans, a
-purchase can be reported as `subscription_id:base_plan_id`. Do not guess at it —
-see §5.
-
----
-
 ## 4. RevenueCat
 
 ### 4.1 Project and apps
 
-Create a project, then add an app per platform.
+Create a project, then add an app per platform. Android alone is enough to prove
+the whole path; the iOS app is added later without changing anything below it.
 
-- **iOS** needs the bundle identifier and an **In-App Purchase Key** (App Store
-  Connect → Users and Access → Integrations → In-App Purchase). The older
-  app-specific shared secret still works; the key is what Apple points new
-  integrations at.
 - **Android** needs the package name and a **Google Cloud service account** with
-  access to the Play Developer API, invited into Play Console with financial-data
-  permission. This is the fiddliest step on either platform and RevenueCat's own
-  guide is the one to follow.
-
-Also configure **Apple App Store Server Notifications** to point at RevenueCat, so
-refunds and billing failures reach it without a poll.
+  access to the Play Developer API, invited into Play Console and granted
+  financial-data permission. This is the fiddliest step on either platform —
+  three consoles, and propagation that can take up to 36 hours before RevenueCat
+  stops reporting a credentials error. Follow RevenueCat's own guide rather than
+  reconstructing it.
+- **iOS**, when it exists, needs the bundle identifier and an **In-App Purchase
+  Key** (App Store Connect → Users and Access → Integrations). Also point **App
+  Store Server Notifications** at RevenueCat, so refunds and billing failures
+  arrive without a poll.
 
 ### 4.2 Entitlements
 
