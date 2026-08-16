@@ -62,7 +62,7 @@ async def test_a_deck_still_extracting_cannot_ground_a_room(
         )
 
     assert "still being read" in refusal.value.message
-    assert await no_session_for(sessions, funded_account)
+    assert await can_still_open_a_room(sessions, funded_account)
 
 
 async def test_a_deck_that_failed_is_told_to_be_uploaded_again(
@@ -101,7 +101,7 @@ async def test_a_room_cannot_be_grounded_in_somebody_elses_deck(
             user_id=funded_account.user_id, material_ids=[theirs.id]
         )
 
-    assert await no_session_for(sessions, funded_account)
+    assert await can_still_open_a_room(sessions, funded_account)
 
 
 async def test_a_material_that_does_not_exist_is_the_same_answer(
@@ -165,10 +165,14 @@ async def test_the_same_deck_named_twice_attaches_once(
     assert await sessions.materials(session_id=session.id) == [material.id]
 
 
-async def no_session_for(sessions, account) -> bool:
-    """Whether the account is free to open a room, which is what a refusal owes."""
-    session = await sessions.start(user_id=account.user_id)
-    return session is not None
+async def can_still_open_a_room(sessions, account) -> bool:
+    """Proof that a refused attempt left no lock behind.
+
+    It opens one, which is the only way to ask: the one-live-session lock is
+    held by a row, so the question "is the user still free" and the act of
+    using that freedom are the same operation.
+    """
+    return await sessions.start(user_id=account.user_id) is not None
 
 
 # --- Over the wire ---------------------------------------------------------
