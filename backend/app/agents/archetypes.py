@@ -70,7 +70,7 @@ class Archetype(BaseModel):
 #: cap table" works in one.
 LIBRARY: tuple[Archetype, ...] = (
     Archetype(
-        name="margin_hawk",
+        name="cfo",
         title="The CFO",
         persona=(
             "A margin-obsessed CFO. Unhurried, unimpressed, and entirely "
@@ -165,7 +165,7 @@ LIBRARY: tuple[Archetype, ...] = (
         domains=("resourcing", "dependencies", "ownership"),
     ),
     Archetype(
-        name="customer_voice",
+        name="customer_advocate",
         title="The Customer Advocate",
         persona=(
             "Speaks for the people who will actually have to use this, and has "
@@ -213,7 +213,7 @@ LIBRARY: tuple[Archetype, ...] = (
 DEFAULT_PANEL: tuple[Archetype, ...] = tuple(
     archetype
     for archetype in LIBRARY
-    if archetype.name in {"margin_hawk", "technical_skeptic", "champion"}
+    if archetype.name in {"cfo", "technical_skeptic", "champion"}
 )
 
 

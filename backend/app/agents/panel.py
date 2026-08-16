@@ -12,10 +12,57 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from app.agents.archetypes import Archetype
+from app.agents.archetypes import Archetype, by_name
+from app.core.errors import ArchetypeNotFound, PanelTooLarge
 from app.core.logging import get_logger
+from app.modules.billing.tiers import UPGRADE_LADDER, max_panel_size
 
 log = get_logger(__name__, tag="panel")
+
+
+def assemble(*, tier: str, chosen: Sequence[str]) -> tuple[Archetype, ...]:
+    """The room this caller asked for, if their plan seats it.
+
+    The cap is checked before anything is resolved, so an over-large request is
+    refused on the number rather than on whichever name happened to be looked up
+    last — the user asked for a room of five, and "we could not find X" would be
+    an answer to a question they did not ask.
+
+    A name nobody in the library answers to is refused rather than skipped.
+    Dropping it silently would seat a smaller room than the user assembled, and
+    they would find out by noticing somebody never spoke.
+    """
+    if len(chosen) > max_panel_size(tier):
+        raise PanelTooLarge(_too_large_message(tier, len(chosen)), tier=tier, asked=len(chosen))
+
+    panel = []
+    for name in chosen:
+        archetype = by_name(name)
+        if archetype is None:
+            raise ArchetypeNotFound(archetype=name)
+        panel.append(archetype)
+
+    return tuple(panel)
+
+
+def _too_large_message(tier: str, asked: int) -> str:
+    """State the cap, then name the plan that would take it.
+
+    The tone `MaterialTooLarge` fixed: the user's number, our number, and the
+    cheapest tier that would accept it. No apology and no verb of persuasion —
+    the upgrade is an available fact and the client renders the button.
+    """
+    seats = max_panel_size(tier)
+    upgrade = next(
+        (
+            name
+            for name in UPGRADE_LADDER
+            if max_panel_size(name) >= asked
+        ),
+        None,
+    )
+    said = f"Your plan seats {seats} panelists."
+    return f"{said} {upgrade.title()} seats {max_panel_size(upgrade)}." if upgrade else said
 
 
 @dataclass(frozen=True)

@@ -328,6 +328,35 @@ class MaterialUnreadable(BusinessRuleViolation):
     message = "We could not read that file. It may be damaged or password-protected."
 
 
+class PanelTooLarge(BusinessRuleViolation):
+    """More archetypes than this plan seats.
+
+    Names the plan that would take it, as `MaterialTooLarge` does. A limit
+    somebody hits is the one honest moment to say what lifts it, and a bare
+    refusal is a dead end at the exact point the user is deciding what this is
+    worth to them.
+
+    422 rather than 403: this is not a permission the account lacks, it is a
+    request the plan does not fit. The user changes the request or the plan, and
+    either way there is something to do.
+    """
+
+    code = "panel_too_large"
+    message = "That is more panelists than your plan seats."
+
+
+class ArchetypeNotFound(NotFound):
+    """A panelist nobody in the library answers to.
+
+    Refused rather than skipped. Dropping it would seat a smaller room than the
+    user assembled, and they would discover it by noticing somebody never spoke —
+    which reads as a broken panel rather than a rejected request.
+    """
+
+    code = "archetype_not_found"
+    message = "No such panelist."
+
+
 class NoMinutesRemaining(BusinessRuleViolation):
     """Raised when *starting*, never mid-session.
 

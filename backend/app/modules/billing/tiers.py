@@ -174,3 +174,57 @@ TOPUP_SECONDS: dict[str, int] = {
     "flintroom_topup_90": 90 * 60,
     "flintroom_topup_300": 300 * 60,
 }
+
+
+# --- The room -------------------------------------------------------------
+
+#: How many archetypes one session may seat.
+#:
+#: **Not a cost control**, which makes it unlike every other cap in this module.
+#: Only one archetype speaks per turn (`docs/panel-orchestration.md`), so the
+#: selection step reads a roster and the composer reads a single persona — a
+#: five-person panel bills within a rounding error of a three-person one. Nothing
+#: here protects a margin.
+#:
+#: What it protects is the session. A ten-minute interrogation split six ways
+#: gives everybody two questions and nobody a line of attack that develops, so
+#: past a point a bigger room is a worse one. The tier ladder sells *assembling* a
+#: room rather than crowding it.
+#:
+#: Three is the floor because §3.1's mixed panel — a champion, a skeptic and a
+#: neutral — fits in three. §4.4 promises the free tier one complete experience
+#: rather than a truncated taste, and a room without an ally is not that.
+#:
+#: Teams sits with Starter, as it does for every other capability here: §4.4
+#: prices it at Starter level per seat and explicitly refuses to undercut the
+#: standalone plan.
+MAX_PANEL_SIZE: dict[str, int] = {
+    "free": 3,
+    "starter": 4,
+    "pro": 5,
+    "pro_annual": 5,
+    "teams": 4,
+}
+
+#: Which tiers may author their own archetypes.
+#:
+#: §4.4 lists custom archetypes as a Pro capability, alongside priority voice
+#: queue and prep-sheet export — *"Pro's value is in capability, not a bulk
+#: rate."* Unlike panel size this is a genuine differentiator, because it is the
+#: one panel feature that is not simply a number.
+#:
+#: Teams is **excluded**, following the same Starter-level rule as the table
+#: above. It is the least obvious call in this module: a cohort programme wanting
+#: one archetype written around its own curriculum is a plausible ask, and the
+#: answer may well become yes once Teams has a buyer to ask.
+CUSTOM_ARCHETYPE_TIERS: frozenset[str] = frozenset({"pro", "pro_annual"})
+
+
+def max_panel_size(tier: str) -> int:
+    """Seats in the room for this tier, defaulting to the free floor."""
+    return MAX_PANEL_SIZE.get(tier, MAX_PANEL_SIZE[FREE_TIER])
+
+
+def may_author_archetypes(tier: str) -> bool:
+    """Whether this tier may write its own archetype."""
+    return tier in CUSTOM_ARCHETYPE_TIERS

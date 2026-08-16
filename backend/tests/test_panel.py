@@ -39,13 +39,13 @@ async def test_the_panel_answers_in_one_archetypes_voice():
     One archetype, not a chorus. The whole reason turn-taking is a decision at
     all is that a room where everybody responds to everything is not a room.
     """
-    model = FakePanelModel(selects="margin_hawk", writes="Your margin assumes no churn.")
+    model = FakePanelModel(selects="cfo", writes="Your margin assumes no churn.")
 
     turn = await interrogate(
         DEFAULT_PANEL, said="We hold 61% gross margin at scale.", model=model
     )
 
-    assert turn.archetype.name == "margin_hawk"
+    assert turn.archetype.name == "cfo"
     assert turn.line == "Your margin assumes no churn."
 
 
@@ -99,7 +99,7 @@ async def test_a_finding_is_taken_by_the_archetype_whose_domain_owns_it():
         model=model,
     )
 
-    assert turn.archetype.name == "margin_hawk"
+    assert turn.archetype.name == "cfo"
 
 
 async def test_the_interrupting_archetype_is_told_what_was_caught():
@@ -156,3 +156,17 @@ def test_the_default_room_is_mixed_rather_than_uniformly_hostile():
     """
     assert len(DEFAULT_PANEL) == 3
     assert "champion" in {archetype.name for archetype in DEFAULT_PANEL}
+
+
+def test_every_archetype_answers_to_the_name_it_is_called_by():
+    """`name` is what a model returns and what a log line carries; `title` is what
+    the user hears. When they disagree, every transcript and every log needs a
+    translation step that exists only in somebody's head.
+
+    This started as `margin_hawk` titled "The CFO" and `customer_voice` titled
+    "The Customer Advocate" — harmless until the first support question about why
+    a room contains a `margin_hawk` nobody was shown.
+    """
+    for archetype in LIBRARY:
+        expected = archetype.title.removeprefix("The ").lower().replace(" ", "_")
+        assert archetype.name == expected, f"{archetype.name} is titled {archetype.title!r}"
