@@ -85,6 +85,14 @@ class ExtractionResult:
     #: but a silent drop is how a deck quietly grounds nothing.
     dropped: int = 0
 
+    #: Claims whose page the text layer disagreed with, and moved.
+    #:
+    #: Not an error count — a correction is the mechanism working. It is carried
+    #: because the rate is the only measure of how far the model's own page
+    #: attribution can be trusted, and that number is what should decide whether
+    #: a page stays the locator at all.
+    corrected: int = 0
+
 
 class ExtractionModel(Protocol):
     """Reads pages, returns figures. One instance per process."""

@@ -271,19 +271,47 @@ the false-positive failure the grounding doc refuses.
 the interrupter by domain, and without it every assertion is unroutable and
 targeted interruption quietly covers only numbers.
 
-**The page a claim cites is checked against the pages that were sent.** The
-number is *reported by the model* — it reads `Page 2 text layer:` and writes back
-where it found a figure — so nothing else stops a four-page deck yielding a claim
-on page 99. That number is not bookkeeping: it is what a panelist says out loud
-and what the debrief asks the user to defend, and *"defend what you claimed on
-page 99"* against a four-page deck costs the room its credibility in one line.
-Out of range is dropped rather than clamped, because a guessed citation is worse
-than a missing claim.
+### The page is looked up where it can be, and admitted to be soft where it cannot
 
-Checked against the page *numbers* sent rather than a count, so it survives being
-handed a slice of a deck — once pages are chunked across calls (task #31), a
-chunk holding pages 51–100 has a length of fifty and numbers starting at
-fifty-one, and a length check would drop every claim in it.
+The page is *reported by the model* — it reads `Page 2 text layer:` and writes
+back where it found something. That number is not bookkeeping: it is what a
+panelist says out loud and what the debrief asks the user to defend. Two
+different checks, and they catch different things:
+
+| Check | Catches | Does not catch |
+| --- | --- | --- |
+| Page exists | Page 99 of a four-page deck | Page 4 labelled page 3 |
+| Quote found in a page's text layer | Page 4 labelled page 3 | A figure read off a chart |
+
+The second is the real one. **Which page a piece of text is on is a fact about
+the deck, not an opinion of the model's**, so where the text layer settles it,
+the claim is moved to the page its quote is actually on. Same *"model extracts,
+code computes"* split as the arithmetic, applied to the locator.
+
+Two cases deliberately keep the model's answer. A quote on **no** page is a
+figure read off a chart — it lives in the pixels and appears in no text layer,
+which is the whole reason a vision model is here. A quote on **several** pages is
+a running header, and ambiguous evidence must not override the model, which at
+least looked at the images; picking the first match would be inventing a citation
+with the confidence of a lookup.
+
+Attribution runs *before* the existence check, so a claim the quote places on a
+real page survives however it was originally labelled. Out of range after that is
+dropped rather than clamped, because a guessed citation is worse than a missing
+claim.
+
+The existence check uses the page *numbers* sent rather than a count, so it
+survives being handed a slice of a deck — once pages are chunked across calls
+(task #31), a chunk holding pages 51–100 has a length of fifty and numbers
+starting at fifty-one, and a length check would drop every claim in it.
+
+**`ExtractionResult.corrected` counts the moves, and it is not an error count.**
+It is the only measure of how far the model's own attribution can be trusted, and
+that rate is what should decide whether a page stays the locator at all. If it
+turns out to be high on real decks, the honest response is a coarser locator — a
+section rather than a page — rather than a precise number that is quietly wrong.
+Nothing in the product needs to *display* a page, so the locator's job is
+citation, and `quote` already carries the exact words.
 
 **Why this could not wait.** The source document is deleted once extraction
 succeeds, and this document already accepts that *"improving the extraction

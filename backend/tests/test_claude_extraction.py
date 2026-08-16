@@ -52,8 +52,18 @@ ASSERTION = {
 }
 
 
-#: The pages the fixtures above cite, as `extract` would report them.
-DECK = {1, 2, 3, 4}
+#: A deck of the given pages, numbered from one. Pass empty strings where a
+#: test is not about the text layer.
+def deck(*texts: str):
+    return [
+        RenderedPage(
+            number=index + 1,
+            text=text,
+            image=b"\x89PNG not really",
+            image_media_type="image/png",
+        )
+        for index, text in enumerate(texts)
+    ]
 
 
 def answer(figures=(FIGURE,), assertions=()) -> dict:
@@ -74,7 +84,7 @@ def page(number: int = 1) -> RenderedPage:
 
 def test_the_models_answer_becomes_typed_claims():
     """The tracer: a tool-use payload in, comparable claims out."""
-    claims, dropped = to_claims(answer(), page_numbers=DECK)
+    claims, dropped, _ = to_claims(answer(), pages=deck(*[''] * 4))
 
     assert dropped == 0
     assert len(claims) == 1
@@ -93,7 +103,7 @@ def test_an_assertion_comes_back_as_its_own_kind():
     are the sharpest things in most decks. Extracting only figures leaves the
     non-financial archetypes with nothing to attack.
     """
-    claims, dropped = to_claims(answer(figures=(), assertions=(ASSERTION,)), page_numbers=DECK)
+    claims, dropped, _ = to_claims(answer(figures=(), assertions=(ASSERTION,)), pages=deck(*[''] * 4))
 
     assert dropped == 0
     assert claims[0].page == 4
@@ -108,7 +118,7 @@ def test_both_kinds_come_back_from_one_call():
     Two calls would double the input tokens — the images are the expensive part
     — to answer two questions about the same pixels.
     """
-    claims, _ = to_claims(answer(assertions=(ASSERTION,)), page_numbers=DECK)
+    claims, _, _ = to_claims(answer(assertions=(ASSERTION,)), pages=deck(*[''] * 4))
 
     assert {claim.claim.kind for claim in claims} == {
         ClaimKind.QUANTITATIVE,
@@ -123,7 +133,7 @@ def test_a_unit_the_model_invented_is_normalised_not_trusted():
     this is the only place a model's output enters the type system — and a
     future adapter that built claims some other way would skip the validator.
     """
-    claims, _ = to_claims(answer(figures=({**FIGURE, "unit": "percentage"},)), page_numbers=DECK)
+    claims, _, _ = to_claims(answer(figures=({**FIGURE, "unit": "percentage"},)), pages=deck(*[''] * 4))
 
     assert claims[0].claim.unit is Unit.PERCENT
 
@@ -148,7 +158,7 @@ def test_a_malformed_figure_is_dropped_rather_than_failing_the_page(broken):
     silent drop is how a deck quietly grounds nothing, which is why the count
     comes back with the claims.
     """
-    claims, dropped = to_claims(answer(figures=(FIGURE, broken)), page_numbers=DECK)
+    claims, dropped, _ = to_claims(answer(figures=(FIGURE, broken)), pages=deck(*[''] * 4))
 
     assert len(claims) == 1
     assert dropped == 1
@@ -168,7 +178,7 @@ def test_a_malformed_assertion_is_dropped_too(broken):
     A missing quote matters more here than it looks: an assertion with nothing
     to cite is exactly the ungrounded challenge CLAUDE.md refuses to ship.
     """
-    claims, dropped = to_claims(answer(figures=(), assertions=(ASSERTION, broken)), page_numbers=DECK)
+    claims, dropped, _ = to_claims(answer(figures=(), assertions=(ASSERTION, broken)), pages=deck(*[''] * 4))
 
     assert len(claims) == 1
     assert dropped == 1
@@ -188,8 +198,8 @@ def test_a_claim_citing_a_page_that_does_not_exist_is_dropped(cited):
     guessed at is worse than a missing claim, and CLAUDE.md is explicit: do not
     ship interrogation logic that cannot cite its source.
     """
-    claims, dropped = to_claims(
-        answer(figures=(FIGURE, {**FIGURE, "page": cited})), page_numbers={1, 2, 3}
+    claims, dropped, _ = to_claims(
+        answer(figures=(FIGURE, {**FIGURE, "page": cited})), pages=deck(*[''] * 3)
     )
 
     assert dropped == 1
@@ -202,10 +212,114 @@ def test_the_last_page_of_a_deck_is_a_page_that_exists():
     An off-by-one here silently drops every claim on a deck's final slide, which
     is usually the ask — the single most attackable page in a pitch.
     """
-    claims, dropped = to_claims(answer(figures=({**FIGURE, "page": 3},)), page_numbers={1, 2, 3})
+    claims, dropped, _ = to_claims(answer(figures=({**FIGURE, "page": 3},)), pages=deck(*[''] * 3))
 
     assert dropped == 0
     assert claims[0].page == 3
+
+
+# --- Attribution ----------------------------------------------------------
+#
+# The page a claim carries is *reported by the model*: it reads "Page 2 text
+# layer:" and writes back where it found something. The range check above only
+# refuses a page that does not exist — page 99 of a four-page deck. It says
+# nothing about page 4 labelled page 3, which is the mistake far more likely to
+# happen and the one nobody would notice.
+#
+# The quote is what makes that checkable without a model. If the source text is
+# in a page's text layer, code can find which page that actually is.
+
+
+def test_a_misattributed_claim_is_moved_to_the_page_its_quote_is_on():
+    """Attribution corrected by search, not by trusting the answer.
+
+    Where the source text is in a text layer, which page it is on is a fact
+    about the deck rather than an opinion of the model's — so it is looked up.
+    Exactly the *"model extracts, code computes"* split, applied to the locator
+    instead of to arithmetic.
+    """
+    pages = deck(
+        "Title slide",
+        "Gross margin held at 61% in Q3.",
+        "Thank you",
+    )
+
+    claims, dropped, corrected = to_claims(
+        answer(figures=({**FIGURE, "page": 3},)), pages=pages
+    )
+
+    assert dropped == 0
+    assert corrected == 1
+    assert claims[0].page == 2
+
+
+def test_a_claim_already_on_the_right_page_is_left_alone():
+    """The common case, and it must not be counted as a correction.
+
+    `corrected` is the signal for how far the model's attribution can be
+    trusted, so inflating it would hide the answer to that question.
+    """
+    pages = deck("Title", "Gross margin held at 61% in Q3.")
+
+    claims, _, corrected = to_claims(
+        answer(figures=({**FIGURE, "page": 2},)), pages=pages
+    )
+
+    assert corrected == 0
+    assert claims[0].page == 2
+
+
+def test_a_chart_value_keeps_the_page_the_model_reported():
+    """The limit of this technique, asserted rather than left implicit.
+
+    A figure read off a chart is in the pixels and appears in no text layer, so
+    there is nothing to search for. Those claims stay best-effort — which is
+    precisely the half `pypdf` alone would have missed, and the reason a vision
+    model is here at all.
+    """
+    pages = deck("Title slide", "Revenue", "Thank you")
+
+    claims, dropped, corrected = to_claims(
+        answer(figures=({**FIGURE, "page": 2},)), pages=pages
+    )
+
+    assert (dropped, corrected) == (0, 0)
+    assert claims[0].page == 2
+
+
+def test_a_quote_that_appears_on_several_pages_is_not_moved():
+    """A running header or a repeated summary line is on every slide.
+
+    Ambiguous evidence must not override the model, which at least looked at the
+    images. Correcting to the first match would be inventing a citation with the
+    confidence of a lookup.
+    """
+    repeated = "Gross margin held at 61% in Q3."
+    pages = deck(repeated, repeated, repeated)
+
+    claims, _, corrected = to_claims(
+        answer(figures=({**FIGURE, "page": 3},)), pages=pages
+    )
+
+    assert corrected == 0
+    assert claims[0].page == 3
+
+
+def test_attribution_survives_the_whitespace_a_pdf_puts_in():
+    """Extracted text breaks lines wherever the layout did.
+
+    A quote the model tidied into one line would otherwise match nothing, and
+    the check would silently do nothing on real decks while passing every test
+    written with clean strings.
+    """
+    pages = deck("Title", "Gross margin held\nat 61%   in Q3.")
+
+    claims, _, corrected = to_claims(
+        answer(figures=({**FIGURE, "page": 1},)), pages=pages
+    )
+
+    assert corrected == 1
+    assert claims[0].page == 2
 
 
 def test_a_payload_is_not_mutated_by_being_read():
@@ -217,7 +331,7 @@ def test_a_payload_is_not_mutated_by_being_read():
     """
     payload = answer(assertions=(ASSERTION,))
 
-    to_claims(payload, page_numbers=DECK)
+    to_claims(payload, pages=deck(*[''] * 4))
 
     assert payload["figures"][0]["page"] == 3
     assert payload["assertions"][0]["page"] == 4
@@ -229,7 +343,7 @@ def test_an_answer_with_no_claims_is_empty_rather_than_an_error():
     Most decks have several such pages. Treating "nothing here" as an error
     would fail materials for being ordinary.
     """
-    assert to_claims(answer(figures=()), page_numbers=DECK) == ((), 0)
+    assert to_claims(answer(figures=()), pages=deck(*[''] * 4)) == ((), 0, 0)
 
 
 def test_a_missing_array_is_not_a_dropped_claim():
@@ -239,7 +353,7 @@ def test_a_missing_array_is_not_a_dropped_claim():
     that simply found one kind and not the other — and the drop count is meant
     to be the signal that something went wrong.
     """
-    assert to_claims({"assertions": [ASSERTION]}, page_numbers=DECK)[1] == 0
+    assert to_claims({"assertions": [ASSERTION]}, pages=deck(*[''] * 4))[1] == 0
 
 
 def test_a_reply_shaped_nothing_like_the_tool_is_no_claims_and_no_crash():
@@ -248,8 +362,8 @@ def test_a_reply_shaped_nothing_like_the_tool_is_no_claims_and_no_crash():
     An unhandled exception here runs inside the extraction sweep, where it marks
     nothing and leaves the material claimed until the requeue notices.
     """
-    assert to_claims({}, page_numbers=DECK) == ((), 0)
-    assert to_claims({"figures": "not a list", "assertions": None}, page_numbers=DECK) == ((), 0)
+    assert to_claims({}, pages=deck(*[''] * 4)) == ((), 0, 0)
+    assert to_claims({"figures": "not a list", "assertions": None}, pages=deck(*[''] * 4)) == ((), 0, 0)
 
 
 # --- Transport ------------------------------------------------------------

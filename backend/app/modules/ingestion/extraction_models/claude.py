@@ -19,7 +19,7 @@ impossible rather than discouraged (`docs/auditor-grounding.md`).
 from __future__ import annotations
 
 import base64
-from collections.abc import Container, Sequence
+from collections.abc import Sequence
 from typing import Any
 
 import httpx
@@ -191,9 +191,7 @@ class ClaudeExtractionModel:
             log.error("extraction_provider_failed", provider=PROVIDER)
             raise ProviderUnavailable(reason="extraction_unavailable") from exc
 
-        claims, dropped = to_claims(
-            _tool_input(message), page_numbers={page.number for page in pages}
-        )
+        claims, dropped, corrected = to_claims(_tool_input(message), pages=pages)
 
         if dropped:
             # A count, never the claims themselves. These are figures read off a
@@ -201,9 +199,19 @@ class ClaudeExtractionModel:
             # contents in logs — undetectable by key name, so never passed.
             log.warning("extraction_claims_dropped", provider=PROVIDER, dropped=dropped)
 
+        if corrected:
+            # Not a warning: a correction is this working. It is logged because
+            # the rate is the only measure of how far the model's own page
+            # attribution can be trusted — and that number decides whether the
+            # locator stays a page at all.
+            log.info(
+                "extraction_pages_corrected", provider=PROVIDER, corrected=corrected
+            )
+
         return ExtractionResult(
             claims=claims,
             dropped=dropped,
+            corrected=corrected,
             usage=ExtractionUsage(
                 provider=PROVIDER,
                 model=self._model,
@@ -257,9 +265,51 @@ def _tool_input(message: Any) -> dict[str, Any]:
     return {}
 
 
+def _normalized(text: str) -> str:
+    """Collapse everything a layout engine did to the whitespace.
+
+    Extracted text breaks lines wherever the column did, and a model tidies a
+    quote into one line before writing it down. Without this the search below
+    matches nothing on a real deck while passing every test written with clean
+    strings — the worst kind of silent no-op.
+    """
+    return " ".join(text.split()).casefold()
+
+
+def _attributed(
+    claim: ExtractedClaim, pages: Sequence[RenderedPage]
+) -> ExtractedClaim:
+    """Move a claim to the page its quote is actually on, if that is knowable.
+
+    Which page a piece of text is on is a fact about the deck, not an opinion of
+    the model's — so where the text layer settles it, it is looked up rather
+    than believed. The same *"model extracts, code computes"* split
+    `docs/auditor-grounding.md` applies to arithmetic, applied to the locator.
+
+    Two cases deliberately leave the model's answer alone:
+
+    - **The quote is on no page.** A figure read off a chart lives in the pixels
+      and appears in no text layer, which is the entire reason a vision model is
+      here. Those stay best-effort.
+    - **The quote is on several pages.** A running header or a repeated summary
+      line is on every slide. Ambiguous evidence must not override the model,
+      which at least looked at the images; picking the first match would be
+      inventing a citation with the confidence of a lookup.
+    """
+    quote = _normalized(claim.claim.quote)
+    if not quote:
+        return claim
+
+    found = [page.number for page in pages if quote in _normalized(page.text)]
+    if len(found) != 1 or found[0] == claim.page:
+        return claim
+
+    return claim.model_copy(update={"page": found[0]})
+
+
 def to_claims(
-    payload: dict[str, Any], *, page_numbers: Container[int]
-) -> tuple[tuple[ExtractedClaim, ...], int]:
+    payload: dict[str, Any], *, pages: Sequence[RenderedPage]
+) -> tuple[tuple[ExtractedClaim, ...], int, int]:
     """The model's answer, as typed claims plus a count of what would not type.
 
     Pure, and separated from the transport for the reason the ElevenLabs adapter
@@ -287,6 +337,8 @@ def to_claims(
     """
     claims: list[ExtractedClaim] = []
     dropped = 0
+    corrected = 0
+    page_numbers = {page.number for page in pages}
 
     for field, kind in (("figures", ClaimKind.QUANTITATIVE), ("assertions", ClaimKind.ASSERTION)):
         entries = payload.get(field)
@@ -305,9 +357,15 @@ def to_claims(
                 found = ExtractedClaim(
                     page=entry["page"], claim={**fields, "kind": kind}
                 )
-                if found.page not in page_numbers:
+                # Attribution first, then the range check — a claim the quote
+                # places on a real page is a good claim, however it was
+                # originally labelled, and checking first would throw it away.
+                placed = _attributed(found, pages)
+                corrected += placed.page != found.page
+
+                if placed.page not in page_numbers:
                     raise ValueError("claim cites a page the deck does not have")
-                claims.append(found)
+                claims.append(placed)
             except Exception:  # noqa: BLE001 - see below
                 # Deliberately broad, and deliberately not re-raised. Everything
                 # here is somebody else's output: a bad field raises
@@ -318,4 +376,4 @@ def to_claims(
                 # returned, and logged by the caller.
                 dropped += 1
 
-    return tuple(claims), dropped
+    return tuple(claims), dropped, corrected
