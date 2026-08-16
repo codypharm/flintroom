@@ -26,6 +26,7 @@ from app.modules.auth.models import (  # noqa: F401  (registers the tables)
     RefreshToken,
 )
 from app.modules.billing.models import Account
+from app.modules.billing.dependencies import get_webhook_secret
 from app.modules.ingestion.dependencies import get_object_storage
 from app.modules.ingestion.models import (  # noqa: F401  (registers the tables)
     ExtractionCost,
@@ -275,11 +276,16 @@ async def auth(db, google, apple) -> AuthService:
 
 
 
-@pytest_asyncio.fixture
-async def client(db, google, apple, storage):
-    """The app, wired to the test session and to providers that need no network.
+#: What the test app verifies store callbacks against. A separate secret from
+#: `SECRET` on purpose: they authenticate different things, and a test that
+#: passed because the two happened to be equal would prove nothing.
+WEBHOOK_SECRET = "rc-signing-secret-with-no-production-counterpart"
 
-    The lifespan is deliberately not run: it starts the sweep loop and opens a
+
+def _configured_app(db, google, apple, storage, *, webhook_secret: str | None):
+    """The app with every external edge substituted, and nothing else changed.
+
+    The lifespan is deliberately not run: it starts the sweep loops and opens a
     second connection pool, neither of which any HTTP test here is about.
     """
     app = create_app()
@@ -292,8 +298,35 @@ async def client(db, google, apple, storage):
     # The real store, not a fake. Substituted rather than read off app state
     # because that is populated by the lifespan, which is deliberately not run.
     app.dependency_overrides[get_object_storage] = lambda: storage
+    app.dependency_overrides[get_webhook_secret] = lambda: webhook_secret
+    return app
 
+
+@pytest_asyncio.fixture
+async def client(db, google, apple, storage):
+    """The app as a deployment that is configured properly."""
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(
+            app=_configured_app(db, google, apple, storage, webhook_secret=WEBHOOK_SECRET)
+        ),
+        base_url="http://test",
+    ) as client:
+        yield client
+
+
+@pytest_asyncio.fixture
+async def client_without_webhook_secret(db, google, apple, storage):
+    """The app as a deployment that came up missing one variable.
+
+    Worth a whole fixture because the failure is the interesting one: this
+    endpoint is the only place where "not configured" and "accepts anything"
+    are one refactor apart, and the difference is minutes granted to whoever
+    finds the URL.
+    """
+    async with AsyncClient(
+        transport=ASGITransport(
+            app=_configured_app(db, google, apple, storage, webhook_secret=None)
+        ),
+        base_url="http://test",
     ) as client:
         yield client

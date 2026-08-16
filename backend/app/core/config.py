@@ -90,6 +90,20 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str | None = None
     elevenlabs_agent_id: str | None = None
 
+    #: What RevenueCat signs its callbacks with, from the webhook integration's
+    #: HMAC settings.
+    #:
+    #: Optional on the same grounds as the keys above — a deployment without it
+    #: still signs in users, runs rooms and spends minutes — but the failure is
+    #: the opposite shape and worth knowing: the callback endpoint refuses
+    #: *everything* rather than accepting it. Purchases stop being credited,
+    #: loudly, and RevenueCat's five retries then deliver whatever arrived in the
+    #: gap once the secret is set.
+    #:
+    #: The alternative was an endpoint that grants minutes to anyone who finds
+    #: it while looking perfectly healthy, which is not a trade.
+    revenuecat_webhook_secret: str | None = None
+
     #: Where material lives. Optional on the same grounds as the voice keys —
     #: a deployment without a bucket still signs in users, tracks balances and
     #: runs the voice loop, and `docs/auditor-grounding.md` makes the deckless

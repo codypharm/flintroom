@@ -342,6 +342,44 @@ class NoMinutesRemaining(BusinessRuleViolation):
 # --- External providers ---------------------------------------------------
 
 
+class WebhookRejected(FlintroomError):
+    """A callback that did not prove it came from who it says.
+
+    400 rather than 401, and the difference matters to the sender: a webhook has
+    no credential to re-present and no user to re-authenticate. The request is
+    malformed as far as this endpoint is concerned, and RevenueCat retries a
+    non-200 five times over roughly two and a half hours — which for a forged
+    request is four extra chances that must also fail.
+
+    The reason lives in `context`, never in the response. It goes to the audit
+    row and the log, because *"bad signature"* against *"stale timestamp"* is the
+    difference between somebody guessing a secret and a clock drifting — and
+    telling the sender which one it was is telling an attacker how close they are.
+    """
+
+    status_code = 400
+    code = "webhook_rejected"
+    message = "That callback could not be verified."
+
+
+class WebhookUnconfigured(FlintroomError):
+    """This deployment cannot verify callbacks, so it refuses them all.
+
+    503 rather than 500: nothing is broken, a secret is missing, and the
+    condition clears when it is set. RevenueCat's retries then deliver the events
+    that arrived in the gap, which is exactly the behaviour wanted from a
+    deployment that came up half-configured.
+
+    Deny by default, and the alternative decides it: an unverifiable endpoint
+    that accepted everything would grant minutes to anyone who found it, while
+    looking perfectly healthy — 200 to every caller and nothing in any log.
+    """
+
+    status_code = 503
+    code = "webhook_unconfigured"
+    message = "Callbacks are not available."
+
+
 class ProviderUnavailable(FlintroomError):
     """An upstream service failed. Never let its exception type escape.
 

@@ -201,6 +201,33 @@ Two more things this subprocess implies:
   hangs it again. `pptx_conversion_timed_out` repeating means decks are being
   refused for a reason nobody is looking at.
 
+## The store's callbacks are the only unauthenticated write path
+
+`POST /v1/webhooks/revenuecat` takes no token. The shared secret *is* the
+authentication, which makes it the most valuable thing to forge in the API: it is
+the endpoint that grants minutes.
+
+Enable **HMAC signing** on the RevenueCat webhook integration and put the signing
+secret in `REVENUECAT_WEBHOOK_SECRET`. The plain Authorization-header option
+RevenueCat also offers is not supported here and should not be used — a static
+header is replayable forever, and the HMAC covers a timestamp.
+
+- **Unset, the endpoint refuses everything** with a 503 and records every
+  refusal. Purchases stop being credited, loudly. The alternative — accepting
+  what cannot be verified — is an open grant endpoint that looks healthy.
+- **The route is absent from `contracts/openapi.yaml`** on purpose. That contract
+  is what the app generates its types from, and RevenueCat is not our client.
+- **A non-200 is retried five times** over roughly two and a half hours, and the
+  connection is dropped after 60 seconds. Anything slow or flaky here turns one
+  purchase into five deliveries.
+
+**Alert on `webhook_rejected` in `audit_events`.** One is noise — a clock drifting,
+a retry crossing a secret rotation. A burst is somebody working through guesses at
+the secret, and it is the only warning there will be. The `reason` in the row
+separates the two: `bad_signature` is a person, `stale_signature` is usually a
+clock, and `unconfigured` means this deployment is dropping real purchases on the
+floor right now.
+
 ## Start from `backend/`
 
 `Settings` reads `.env` relative to the working directory, and the scripts
