@@ -56,6 +56,20 @@ class FakeQueueSource {
   readonly enqueued: FakeBuffer[] = [];
   started = 0;
   startedWith: Array<[number | undefined, number | undefined]> = [];
+  dequeued: string[] = [];
+  onBufferEnded:
+    | ((event: { bufferId: string; isLastBufferInQueue: boolean }) => void)
+    | null
+    | undefined = null;
+
+  dequeueBuffer(bufferId: string): void {
+    this.dequeued.push(bufferId);
+  }
+
+  /** What the native node does when a buffer finishes playing. */
+  finish(bufferId: string): void {
+    this.onBufferEnded?.({ bufferId, isLastBufferInQueue: false });
+  }
   cleared = 0;
   connectedTo: unknown = null;
 
@@ -255,5 +269,29 @@ describe('loudness', () => {
     expect(written[0]).toBeCloseTo(1, 5); // clamped, not wrapped
     expect(written[1]).toBeCloseTo(1, 2); // half scale doubled to full
     expect(written[2]).toBeCloseTo(-1, 2);
+  });
+});
+
+describe('holding buffers', () => {
+  it('releases each frame once it has been played', () => {
+    /**
+     * A panel line is around ninety frames, so three exchanges would otherwise
+     * leave the source holding two hundred and seventy buffers it has already
+     * finished with — the only quantity in this client that grows without
+     * bound. Rooms stopped after about three replies, with the phone dropping
+     * the socket, which is what that looks like from the server.
+     *
+     * Released on the node's own signal rather than on a timer, because only it
+     * knows when playback of a frame is actually over.
+     */
+    const context = new FakeContext(16_000);
+    const playback = createPlayback({ context });
+    const source = context.sources[0];
+
+    playback.enqueue(new Int16Array([1, 2, 3, 4]).buffer);
+    // The fake hands back "1" for the first buffer, as the node hands back an id.
+    source.finish('1');
+
+    expect(source.dequeued).toEqual(['1']);
   });
 });

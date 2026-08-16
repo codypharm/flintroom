@@ -32,9 +32,15 @@ export interface AudioBufferLike {
 export interface QueueSource {
   connect(destination: unknown): void;
   enqueueBuffer(buffer: AudioBufferLike): string;
+  /** Release a buffer that has finished playing. See `createPlayback`. */
+  dequeueBuffer(bufferId: string): void;
   clearBuffers(): void;
   start(when?: number, offset?: number): void;
   stop(when?: number): void;
+  onBufferEnded:
+    | ((event: { bufferId: string; isLastBufferInQueue: boolean }) => void)
+    | null
+    | undefined;
 }
 
 export interface Playback {
@@ -62,6 +68,14 @@ export function createPlayback({ context }: { context: PlaybackContext }): Playb
   // time. Nothing in the test suite catches it: the fake here has no such
   // guard, so this surfaced only on a device, as a room that opened and
   // immediately died. More evidence for task #25.
+  // Released as they finish, and this is not housekeeping. A panel line is
+  // roughly ninety frames, so three exchanges leave two hundred and seventy
+  // buffers held by a node that has already played them — the only quantity in
+  // this client that counts up and never comes down. Rooms died after about
+  // three replies with the phone closing the socket, which is what that looks
+  // like from the far end.
+  source.onBufferEnded = ({ bufferId }) => source.dequeueBuffer(bufferId);
+
   source.start(0, 0);
 
   let playing = true;
