@@ -12,12 +12,11 @@ and every latency claim about the orchestrated loop so far is an assumption.
 
     speech ends → endpointing → transcription → SELECT → COMPOSE → speech → played
 
-and what runs here is `SELECT` and `COMPOSE`. Transcription and synthesis are
-unbuilt and unchosen. So the number this prints is a *floor*: whatever it says,
-the real chain is that plus two vendors that have not been picked. If the floor
-alone is already near 1.5s, the two-call design is in trouble and the
-one-call-plays-the-room alternative has to be reconsidered — which is precisely
-what this exists to find out before more is built on top.
+and what runs here is routing plus `COMPOSE`. Routing is code now — that is what
+this spike's first run bought, by showing a model round trip cost ~0.8s of the
+budget for what is mostly a lookup. Transcription and synthesis are still unbuilt
+and unchosen, so the number this prints remains a *floor*: whatever it says, the
+real chain is that plus two vendors that have not been picked.
 
 It drives the **shipping** adapter — `GeminiPanelModel`, the real prompts, the
 real archetypes — rather than a second implementation written to agree with it. A
@@ -73,7 +72,6 @@ async def run(turns: int, grounded: bool) -> None:
         _report_configuration(settings, grounded)
 
         asked: list[Asked] = []
-        selects: list[float] = []
         composes: list[float] = []
 
         for index in range(min(turns, len(SCRIPT))):
@@ -90,30 +88,26 @@ async def run(turns: int, grounded: bool) -> None:
             )
             elapsed = time.perf_counter() - started
 
-            # Timed as one figure as well as two, because the two-call design is
-            # what is on trial. If selection is a rounding error the split is
-            # free; if it is a third of the budget, one call that plays the whole
-            # room becomes the cheaper answer and the voice-separation argument
-            # has to be paid for somewhere else.
+            # One figure now, because there is one model call. Routing happens
+            # in `agents/routing.py` and costs nothing measurable.
             print(f"{turn.archetype.title}: {turn.line}")
             print(f"      {elapsed:.2f}s{'  ⚠ over threshold' if elapsed > THRESHOLD_SECONDS else ''}")
 
             composes.append(elapsed)
             asked.append(Asked(archetype=turn.archetype.name, question=turn.line))
 
-        _report_timings(composes, selects)
+        _report_timings(composes)
 
 
 def _report_configuration(settings: Settings, grounded: bool) -> None:
     print(
         f"provider={settings.panel_provider} "
-        f"select={settings.panel_selection_model} "
         f"compose={settings.panel_composition_model} "
-        f"grounded={grounded}"
+        f"routing=code grounded={grounded}"
     )
 
 
-def _report_timings(totals: list[float], selects: list[float]) -> None:
+def _report_timings(totals: list[float]) -> None:
     if not totals:
         return
 
@@ -124,13 +118,13 @@ def _report_timings(totals: list[float], selects: list[float]) -> None:
         f"threshold {THRESHOLD_SECONDS}s"
     )
     print(
-        "This is select+compose only. Transcription and speech are unbuilt, so "
-        "the live chain is this plus two hops that have not been chosen."
+        "This is one model call. Transcription and speech are unbuilt, so the "
+        "live chain is this plus two hops that have not been chosen."
     )
     if worst > THRESHOLD_SECONDS:
         print(
-            "⚠ Over threshold before the two missing hops exist. The two-call "
-            "design needs revisiting — see docs/panel-orchestration.md."
+            "⚠ Over threshold before the two missing hops exist. "
+            "See docs/panel-orchestration.md."
         )
 
 

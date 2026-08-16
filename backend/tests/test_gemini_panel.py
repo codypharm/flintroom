@@ -163,24 +163,6 @@ async def test_the_deck_reaches_the_prompt_that_writes_the_challenge():
     assert "Gross margin of 61% in Q3 2026" in request.content.decode()
 
 
-async def test_a_model_that_answers_with_flourish_still_names_somebody():
-    """Selection returns a name, and a model returns prose.
-
-    `**cfo**`, `"cfo"`, `cfo.` and a trailing newline are all the same answer and
-    none of them match an archetype. Left unhandled they fall through to
-    `_named`'s fallback, so the room keeps running and quietly stops routing —
-    the panel would look like it was choosing at random, which is indistinguishable
-    from a panel that is not listening.
-    """
-    transport, _ = answering('  "**cfo**."\n')
-
-    chosen = await model_with(transport).select(
-        candidates=DEFAULT_PANEL, context=CONTEXT
-    )
-
-    assert chosen == "cfo"
-
-
 async def test_an_archetype_is_told_only_what_it_has_asked_itself():
     """A flat "do not repeat" list steers a panelist off its own subject.
 
@@ -211,31 +193,6 @@ async def test_an_archetype_is_told_only_what_it_has_asked_itself():
     assert "Who is your reference customer?" not in body
 
 
-async def test_the_selector_sees_everything_the_room_has_asked():
-    """The opposite view, for the opposite job.
-
-    Selection is the one place the room exists as a room: who has been quiet and
-    what ground is already covered is exactly what decides who should speak next.
-    Filtering it per archetype here would blind the router to the thing it is for.
-    """
-    transport, seen = answering("cfo")
-    context = TurnContext(
-        said="Margins are strong.",
-        grounding=Grounding(
-            asked=(
-                Asked(archetype="cfo", question="What is your CAC payback?"),
-                Asked(archetype="champion", question="Who is your reference customer?"),
-            )
-        ),
-    )
-
-    await model_with(transport).select(candidates=DEFAULT_PANEL, context=context)
-
-    body = (seen[0]).content.decode()
-    assert "What is your CAC payback?" in body
-    assert "Who is your reference customer?" in body
-
-
 def test_the_configured_models_reach_the_adapter():
     """A setting nothing reads is a knob that does not turn.
 
@@ -248,13 +205,11 @@ def test_the_configured_models_reach_the_adapter():
         Settings(
             **BASE_ENVIRONMENT,
             GEMINI_API_KEY="a-key-with-no-production-counterpart",
-            PANEL_SELECTION_MODEL="gemini-3.1-flash-lite",
             PANEL_COMPOSITION_MODEL="gemini-3.6-flash",
         ),
         httpx.AsyncClient(),
     )
 
-    assert model._selection_model == "gemini-3.1-flash-lite"
     assert model._composition_model == "gemini-3.6-flash"
 
 

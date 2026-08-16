@@ -169,11 +169,6 @@ class Settings(BaseSettings):
     #: that ordering costs nothing.
     panel_provider: Literal["gemini"] = "gemini"
 
-    #: Which model picks the speaker. Routing is a classification over a short
-    #: context, so the cheapest one — and it is the hop that buys the least on a
-    #: chain with ~1.5s in total.
-    panel_selection_model: str = "gemini-3.5-flash-lite"
-
     #: Which model writes the line. **Measured, the cheap one wins** — 0.82s
     #: against 2.11s, and a sharper line, because a panelist says one short thing
     #: and a reasoning model produces a considered paragraph. The assumption going

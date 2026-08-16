@@ -5,21 +5,17 @@ Structural (`Protocol`) rather than inherited, like `voice.provider` and
 had to import us, so a vendor SDK wrapper never acquires a dependency on our
 module graph.
 
-**One interface, two calls, one adapter per vendor.** Not two services — the two
-steps are different jobs but they belong to the same conversation and the same
-bill, and splitting them across components would mean two places to configure a
-vendor and two places to notice it is failing.
+**One call per turn, one adapter per vendor.** There were two until the spike
+timed them: a model round trip to pick the speaker cost ~0.8s of a 1.5s budget
+for what is mostly a lookup, so selection moved into `routing.py` and this
+interface lost a method.
 
-Whether the two calls reach the *same model* is a setting inside an adapter and
-not a structural question. `docs/panel-orchestration.md` starts with a cheap
-model for selection and a stronger one for composition, on the grounds that
-routing is a classification and interrogation is the product — but that is a
-number to measure, not a shape to commit to.
+What is left is the hop that cannot be done in code. Choosing who speaks is a
+lookup over declared domains; writing what they say in their own voice is not.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from typing import Protocol
 
 from app.agents.archetypes import Archetype
@@ -27,24 +23,6 @@ from app.agents.archetypes import Archetype
 
 class PanelModel(Protocol):
     """Whatever decides who speaks, and writes what they say."""
-
-    async def select(
-        self, *, candidates: Sequence[Archetype], context
-    ) -> str:
-        """Name the archetype that should take the floor.
-
-        Returns a `name`, not an `Archetype`, because a model returns text and
-        pretending otherwise would put the parsing somewhere less obvious. The
-        caller resolves it and falls back if the model invented somebody — this
-        runs inside a live metered room, where raising ends the session rather
-        than degrading it.
-
-        Sees the whole roster on purpose. Selection is the one place the room
-        exists as a room: who has been quiet, whose domain was just touched,
-        whose thesis the last answer contradicted. Inter-panelist disagreement is
-        a property of this call, because the composer only ever sees one person.
-        """
-        ...
 
     async def compose(
         self, *, archetype: Archetype, context, finding=None

@@ -38,7 +38,6 @@ def build_panel_model(settings: Settings, http: httpx.AsyncClient) -> PanelModel
         return GeminiPanelModel(
             api_key=settings.gemini_api_key,
             http=http,
-            selection_model=settings.panel_selection_model,
             composition_model=settings.panel_composition_model,
         )
 

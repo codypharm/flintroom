@@ -210,7 +210,36 @@ the room says nothing. The answer was to choose a model that does not reason.
 first streamed chunk and the last arrive together (1.09s / 1.09s). There is no
 time-to-first-audio advantage to hide the second call behind.
 
-### So the open question is the shape, not the tuning
+### Resolved by moving selection into code, 2026-08-16
+
+Option 1 taken. `agents/routing.py` picks the speaker from two signals already in
+the data — how many of an archetype's declared domains the answer used, and how
+long since they last spoke — and the model call for selection is gone.
+
+Re-measured, same script:
+
+| | Before | After |
+| --- | --- | --- |
+| Mean per turn | 1.90s | **1.48s** |
+| Warm turns | — | **0.85s – 1.23s** |
+| First turn | — | 2.36s (TLS and DNS on a cold client, paid once per process) |
+
+The rotation works. Turn two went to the Technical Skeptic because the CFO had
+just spoken; turn three came back to the CFO on the margin contradiction. No
+model was asked.
+
+**What was given up** is comprehension. A model would route an answer that is
+entirely about margin without ever using the word; this will not. The weights are
+guesses encoding an ordering rather than a measurement — relevance beats
+rotation, but three turns of silence outweigh one glancing keyword. They are the
+thing to tune when a transcript reads wrong.
+
+**Still open on latency:** transcription and speech are unbuilt, so ~0.85s warm
+is a floor and not the answer. And one line came back as a rambling paragraph
+despite the prompt asking for one thing, which is a prompt problem rather than a
+latency one.
+
+### The original argument, kept because it is why the shape changed
 
 Grounding works — the room caught a contradiction with no Auditor involved, from
 the deck alone. What does not work is two serial model calls inside 1.5s.

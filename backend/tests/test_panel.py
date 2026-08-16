@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from inspect import signature
 
-from app.agents.panel import Finding, Grounding, interrogate
+from app.agents.panel import Asked, Finding, Grounding, interrogate
 from app.agents.archetypes import DEFAULT_PANEL, LIBRARY
 from app.agents.model import PanelModel
 
@@ -21,14 +21,10 @@ from app.agents.model import PanelModel
 class FakePanelModel:
     """A model that answers what it was told to, and remembers what it was asked."""
 
-    def __init__(self, *, selects: str, writes: str = "Where does that number come from?") -> None:
-        self._selects = selects
+    def __init__(self, *, writes: str = "Where does that number come from?") -> None:
         self._writes = writes
         self.asked_to_write_as: list[str] = []
         self.composed_with: list[tuple] = []
-
-    async def select(self, *, candidates, context) -> str:
-        return self._selects
 
     async def compose(self, *, archetype, context, finding=None) -> str:
         self.asked_to_write_as.append(archetype.name)
@@ -42,7 +38,7 @@ async def test_the_panel_answers_in_one_archetypes_voice():
     One archetype, not a chorus. The whole reason turn-taking is a decision at
     all is that a room where everybody responds to everything is not a room.
     """
-    model = FakePanelModel(selects="cfo", writes="Your margin assumes no churn.")
+    model = FakePanelModel(writes="Your margin assumes no churn.")
 
     turn = await interrogate(
         DEFAULT_PANEL, said="We hold 61% gross margin at scale.", model=model
@@ -63,7 +59,7 @@ async def test_a_model_that_names_nobody_in_the_room_does_not_kill_the_session()
     Falling back to a real archetype keeps the room running. Which one barely
     matters next to the fact that somebody speaks.
     """
-    model = FakePanelModel(selects="the_ghost_of_warren_buffett")
+    model = FakePanelModel()
 
     turn = await interrogate(
         DEFAULT_PANEL, said="We hold 61% gross margin at scale.", model=model
@@ -73,27 +69,20 @@ async def test_a_model_that_names_nobody_in_the_room_does_not_kill_the_session()
     assert model.asked_to_write_as == [turn.archetype.name]
 
 
-class RefusesToSelect(FakePanelModel):
-    """A model that fails if the selection step is reached at all."""
-
-    async def select(self, *, candidates, context) -> str:
-        raise AssertionError("asked a model to route a finding that routes itself")
-
-
 async def test_a_finding_is_taken_by_the_archetype_whose_domain_owns_it():
     """§3.3: the CFO catches the margin contradiction, not the Technical Skeptic.
 
-    No model is consulted, and that is the design rather than an optimisation.
+    The finding decides the speaker outright, ahead of ordinary routing.
     `docs/auditor-grounding.md` has each derivation pack declare which archetype
     domain owns a figure, so by the time a finding exists the interrupter is
-    already determined — asking a model to re-derive it spends a hop on a lookup
-    and introduces a way to get it wrong.
+    already determined — and it must not be re-derived from the words of the
+    answer, which may not mention the contested metric at all.
 
     Getting this wrong is not cosmetic. A panel where the engineer challenges the
     margin reads as a panel that is not listening, which is Open Risk #2 arriving
     by a different route.
     """
-    model = RefusesToSelect(selects="unused", writes="Margin was 61% on slide four.")
+    model = FakePanelModel(writes="Margin was 61% on slide four.")
 
     turn = await interrogate(
         DEFAULT_PANEL,
@@ -114,7 +103,7 @@ async def test_the_interrupting_archetype_is_told_what_was_caught():
     and cites nothing — which is Open Risk #2 exactly, arriving from the one path
     that was supposed to be the cure for it.
     """
-    model = FakePanelModel(selects="unused", writes="Slide four says 61%.")
+    model = FakePanelModel(writes="Slide four says 61%.")
     finding = Finding(domain="margin", summary="Slide 4 says 61%; spoken 70%.")
 
     await interrogate(
@@ -184,10 +173,10 @@ async def test_an_archetype_is_given_the_deck_it_is_meant_to_attack():
     nothing better than a hard-sounding question about a subject it has never
     seen — which is the competitor product this one exists to refuse.
     """
-    model = FakePanelModel(selects="cfo")
+    model = FakePanelModel()
     grounding = Grounding(
         claims=("Gross margin of 61% in Q3 2026",),
-        asked=("What is your CAC payback?",),
+        asked=(Asked(archetype="cfo", question="What is your CAC payback?"),),
     )
 
     await interrogate(
@@ -207,7 +196,7 @@ async def test_a_room_with_no_deck_still_runs():
     whether there is a deck before it can read one — the shape is the same and
     only the contents differ.
     """
-    model = FakePanelModel(selects="cfo")
+    model = FakePanelModel()
 
     turn = await interrogate(DEFAULT_PANEL, said="We are pre-revenue.", model=model)
 
@@ -229,7 +218,7 @@ def test_the_fake_the_tests_run_against_is_the_shape_a_vendor_must_fit():
     lost its `finding` argument would still pass — which is exactly the drift
     worth catching, since every call here is keyword-only.
     """
-    for method in ("select", "compose"):
+    for method in ("compose",):
         expected = signature(getattr(PanelModel, method)).parameters.keys()
         actual = signature(getattr(FakePanelModel, method)).parameters.keys()
         assert set(expected) == set(actual), method

@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from app.agents.archetypes import Archetype, by_name
 from app.agents.model import PanelModel
+from app.agents.routing import choose
 from app.core.errors import ArchetypeNotFound, PanelTooLarge
 from app.core.logging import get_logger
 from app.modules.billing.tiers import UPGRADE_LADDER, max_panel_size
@@ -188,8 +189,11 @@ async def interrogate(
     targeted = archetype is not None
 
     if archetype is None:
-        chosen = await model.select(candidates=panel, context=context)
-        archetype = _named(panel, chosen)
+        # In code, not in a model. Measured, a round trip here cost ~0.8s of a
+        # 1.5s budget for what is mostly a lookup — see the measurements in
+        # `docs/panel-orchestration.md`. The whole budget now goes to the hop
+        # that writes the line.
+        archetype = choose(panel, context)
 
     # The finding travels to the composer, not just to the routing. An archetype
     # handed the floor because of a contradiction and then not told what the
@@ -223,25 +227,3 @@ def _owner(panel: Sequence[Archetype], domain: str) -> Archetype | None:
         if domain in archetype.domains:
             return archetype
     return None
-
-
-def _named(panel: Sequence[Archetype], name: str) -> Archetype:
-    """The archetype the model chose, or somebody real if it invented one.
-
-    The selection step returns a string and a model can return any string. This
-    runs inside a live, metered room, so raising here does not degrade the
-    experience — it ends it, mid-answer, while the user is paying by the minute
-    and the panel goes silent for no reason they can see.
-
-    So a name nobody answers to falls back rather than raises. The fallback is
-    the first candidate, which is arbitrary and deliberately so: which archetype
-    speaks matters far less than that somebody does. It is logged at warning
-    because a *steady stream* of these is a prompt that has stopped working, and
-    that is worth knowing before the transcripts start reading oddly.
-    """
-    for archetype in panel:
-        if archetype.name == name:
-            return archetype
-
-    log.warning("panel_selection_unrecognised", chosen=name, fell_back_to=panel[0].name)
-    return panel[0]

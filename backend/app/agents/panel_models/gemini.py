@@ -20,7 +20,6 @@ transport that a test can substitute without a live endpoint or a funded account
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from typing import Any
 
 import httpx
@@ -44,9 +43,6 @@ BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 #: If a live call ever returns 401 with a key that is known good, this constant
 #: is the first place to look.
 API_KEY_HEADER = "x-goog-api-key"
-
-#: Routing is a classification over a short context, so the cheapest model.
-DEFAULT_SELECTION_MODEL = "gemini-3.5-flash-lite"
 
 #: The line itself is the product — and **measured, the cheap model wins twice**.
 #:
@@ -81,11 +77,6 @@ DEFAULT_COMPOSITION_MODEL = "gemini-3.5-flash-lite"
 #: thinking, but the next one somebody points this at might.
 MAX_LINE_TOKENS = 512
 
-#: Selection returns a name. Anything longer is the model explaining itself,
-#: and sixteen was measured sufficient — `gemini-3.5-flash-lite` answers `cfo` in
-#: two tokens with room to spare.
-MAX_SELECTION_TOKENS = 16
-
 #: Nothing here asks a model to stop reasoning, and the attempt is worth
 #: recording so it is not made twice.
 #:
@@ -107,12 +98,10 @@ class GeminiPanelModel:
         *,
         api_key: str,
         http: httpx.AsyncClient,
-        selection_model: str = DEFAULT_SELECTION_MODEL,
         composition_model: str = DEFAULT_COMPOSITION_MODEL,
     ) -> None:
         self._api_key = api_key
         self._http = http
-        self._selection_model = selection_model
         self._composition_model = composition_model
 
     async def compose(
@@ -132,16 +121,6 @@ class GeminiPanelModel:
             prompt=_composition_prompt(context, finding, archetype),
             max_tokens=MAX_LINE_TOKENS,
         )
-
-    async def select(self, *, candidates: Sequence[Archetype], context) -> str:
-        """Name whoever should take the floor."""
-        answered = await self._generate(
-            model=self._selection_model,
-            system=_SELECTION_INSTRUCTION,
-            prompt=_selection_prompt(candidates, context),
-            max_tokens=MAX_SELECTION_TOKENS,
-        )
-        return _bare_name(answered)
 
     async def _generate(
         self,
@@ -221,29 +200,6 @@ def _persona_of(archetype: Archetype) -> str:
         "challenge, in the voice described above. Never narrate, never explain "
         "that you are an AI, and never speak for anybody else in the room."
     )
-
-
-_SELECTION_INSTRUCTION = (
-    "You are directing a panel. Given what the presenter just said and who is in "
-    "the room, name the single panelist who should speak next. Prefer whoever's "
-    "expertise the answer just touched, whoever has been quiet, or whoever would "
-    "disagree with what was said last. Reply with the name and nothing else."
-)
-
-
-def _selection_prompt(candidates: Sequence[Archetype], context) -> str:
-    roster = "\n".join(
-        f"- {archetype.name}: {archetype.title}. {archetype.attack_strategy}"
-        for archetype in candidates
-    )
-    # The whole room, attributed. Who has been quiet and what ground is covered
-    # is precisely what this call is for — filtering it per archetype would blind
-    # the router to the thing it exists to decide.
-    asked = "\n".join(
-        f"- {entry.archetype}: {entry.question}" for entry in context.grounding.asked
-    )
-    already = f"\n\nAlready asked:\n{asked}" if asked else ""
-    return f"In the room:\n{roster}{already}\n\nThey just said:\n{context.said}"
 
 
 def _composition_prompt(context, finding, archetype: Archetype) -> str:
