@@ -1,6 +1,6 @@
 """The seam text-to-speech plugs into.
 
-The other half of owning the loop. `ElevenLabsProvider` speaks as a side effect
+The other half of owning the loop. ElevenLabs Agents spoke as a side effect
 of running the conversation; once we run the conversation, synthesis becomes a
 thing we ask for by name — one line, one voice, one utterance at a time.
 

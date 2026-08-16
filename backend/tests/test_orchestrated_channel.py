@@ -1,6 +1,6 @@
 """The room, run by us rather than by a vendor.
 
-`ElevenLabsProvider` hands a whole conversation to one remote agent. That cannot
+ElevenLabs Agents hands a whole conversation to one remote agent. That cannot
 be a Flintroom panel: the turn-taking, the grounded challenge, the targeted
 interruption and the archetype separation all live in `app/agents/`, and none of
 them exist inside somebody else's conversational agent.

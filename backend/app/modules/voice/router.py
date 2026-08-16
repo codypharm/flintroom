@@ -24,8 +24,9 @@ from app.core.errors import FlintroomError, NotAuthenticated, ProviderUnavailabl
 from app.core.logging import get_logger
 from app.core.request_context import current_request_id
 from app.modules.voice.client import WebSocketClientChannel
-from app.modules.voice.dependencies import VoiceProviderDep, VoiceTicketServiceDep
+from app.modules.voice.dependencies import RoomPartsDep, VoiceTicketServiceDep
 from app.modules.voice.relay import VoiceRelay
+from app.modules.voice.room import build_room
 
 log = get_logger(__name__, tag="voice")
 
@@ -45,7 +46,7 @@ async def stream_session(
     session_id: uuid.UUID,
     ticket: str,
     tickets: VoiceTicketServiceDep,
-    provider: VoiceProviderDep,
+    parts: RoomPartsDep,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
     """Carry one interrogation between the phone and the voice provider.
@@ -69,9 +70,29 @@ async def stream_session(
     await websocket.accept()
     log.info("stream_opened", user_id=str(user_id), session_id=str(session_id))
 
+    try:
+        # After the ticket, because the room needs to know whose it is: seats
+        # and claims are per session, and the claims query is filtered by owner.
+        # There is no header to read on a socket handshake, so redemption is
+        # the only thing that establishes identity — which is why this cannot
+        # be a dependency the way the process-wide parts are.
+        room = await build_room(
+            db,
+            session_id=session_id,
+            user_id=user_id,
+            transcriber=parts.transcriber,
+            model=parts.model,
+            speaker=parts.speaker,
+        )
+    except ProviderUnavailable:
+        # Nothing has been metered — the room never opened. Closed here rather
+        # than through the relay, which has no session to settle yet.
+        await websocket.close(code=CLOSE_PROVIDER_UNAVAILABLE)
+        return
+
     relay = VoiceRelay(
         db,
-        provider=provider,
+        provider=room,
         client=WebSocketClientChannel(websocket),
         actor=ActorContext.user(user_id, request_id=current_request_id()),
     )

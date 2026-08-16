@@ -4,11 +4,15 @@
 (Weeks 5–6) per `Product.md` §7.
 
 The panel, routing, orchestration, barge-in, synthesis, casting and transcription
-all exist. **Every seam now has an adapter behind it and no vendor is undecided.**
-What remains is not a missing piece but a wiring one: nothing routes a live
-session through `OrchestratedProvider` yet, and the relay still dials ElevenLabs
-Agents. Everything below the Decisions section records what building it changed,
-and several decisions were revised by measurement rather than held.
+all exist, and **a live socket now opens a room we run ourselves** — ElevenLabs
+Agents is deleted. Every seam has an adapter, no vendor is undecided, and the
+whole chain is tested from the socket down.
+
+What is left is not code. The room has never run against a real device, and the
+latency budget does not close: ~2.1s against the 1.5s threshold at which
+`CLAUDE.md` says the illusion breaks. Everything below the Decisions section
+records what building it changed, and several decisions were revised by
+measurement rather than held.
 
 Resolves how a panel of archetypes actually holds a conversation. `Product.md`
 §3.3 specifies it in five bullets — turn-taking, inter-panelist disagreement,
@@ -22,9 +26,10 @@ what those turned into once the questions were asked.
 
 ## Problem
 
-Today one ElevenLabs agent owns the whole conversation: their speech recognition,
-their model, their turn-taking, one voice, one persona. The relay forwards the
-user's audio and plays back whatever comes out (`voice/relay.py`).
+*As of the start of Phase 3:* one ElevenLabs agent owned the whole conversation —
+their speech recognition, their model, their turn-taking, one voice, one persona.
+The relay forwarded the user's audio and played back whatever came out
+(`voice/relay.py`). That adapter is now deleted; see the final section.
 
 A panel of four archetypes that interrupt each other cannot come out of that. One
 agent is one voice. So Phase 3 is not a feature added to the voice loop — it is a
@@ -44,8 +49,8 @@ speech in, our graph decides who speaks and why, speech out in that archetype's
 voice.
 
 `voice/provider.py` is already a structural `Protocol` — *"an adapter is a class
-that happens to fit rather than one that had to import us"* — so this is a
-sibling of `providers/elevenlabs.py` rather than a rewrite. The relay, the ticket
+that happens to fit rather than one that had to import us"* — so this was a
+sibling of the vendor adapter rather than a rewrite. The relay, the ticket
 flow, the metering seams and the client protocol are all unchanged.
 
 Two alternatives were considered and rejected:
@@ -554,7 +559,72 @@ correct once a live key can confirm them.
   Open Risk #3 with a number against it rather than a worry.
 - **The threshold has no lower bound from data.** 0.7s is chosen, not measured,
   and only a person mid-sentence can say whether it is too low.
-- **Nothing routes a session through `OrchestratedProvider` yet.** The chain is
-  complete as parts — transcriber, panel model, speaker, orchestrator — and the
-  relay still dials ElevenLabs Agents. Wiring it is a rollout decision (flag,
-  replace, or run both) rather than a missing piece.
+- ~~**Nothing routes a session through `OrchestratedProvider`**~~ — **wired, and
+  ElevenLabs Agents is deleted.** See *The room a socket actually opens*, below.
+
+---
+
+## The room a socket actually opens, 2026-08-16
+
+Everything above was reachable only from tests. A live socket dialled ElevenLabs
+Agents: their speech recognition, their model, their turn-taking, **one voice**,
+and a persona configured in their dashboard rather than in `agents/archetypes.py`.
+None of the seating, casting, cadence or grounding work could be heard by anyone
+holding a phone.
+
+`app/modules/voice/room.py` closes that. `build_room` assembles a session's
+`OrchestratedProvider` from two halves:
+
+| half | what | where from |
+| --- | --- | --- |
+| per process | transcriber, panel model, speaker | built once in the lifespan |
+| per session | seated panel, grounding claims | the database, at socket time |
+
+The per-session half is why the room cannot be a FastAPI dependency the way the
+old provider was: **identity arrives with the ticket.** A WebSocket handshake has
+no header to read, so redemption is the only thing that establishes who the
+caller is — and the claims query is filtered by owner.
+
+### Agents is deleted rather than kept behind a flag
+
+The first instinct was a deployment flag with Agents as the fallback. That was
+wrong, and the reason is worth writing down: **a single generic interrogator is
+not a degraded Flintroom.** It is the delivery-scoring, listen-and-tell-me-how-I-
+did product that `Product.md` §1 exists to refuse. Falling back to it would not
+be shipping something lesser; it would be shipping the competitor.
+
+Every part of Agents already had a replacement built and measured — Scribe hears,
+Gemini writes, our own synthesis speaks in eight cast voices. What it contributed
+by the end was nothing we wanted.
+
+**What stays:** ElevenLabs itself, for both ears and mouth; and the
+`VoiceProvider` Protocol, which is the seam `CLAUDE.md` keeps for Gemini Live.
+`OrchestratedProvider` satisfies that same seam, which is why `relay.py`,
+metering, idle detection and the client protocol are untouched by any of this.
+
+**What went:** `voice/providers/` entirely, `ELEVENLABS_AGENT_ID`, and the agent
+in their dashboard.
+
+### Two things the wiring exposed
+
+- **The route had no tests at all.** Tickets, relay, orchestration, panel and
+  transcription were each covered; the line joining them was not — which is
+  exactly where wiring fails, because a route that builds the wrong object still
+  typechecks and still starts. `test_stream_route.py` now drives the socket end
+  to end: the archetype a session was seated with is the one that composes, and
+  its line comes back as a caption. Proven by mutation on the grounding path.
+- **`Grounding.claims` was rendered by nothing.** It is documented as
+  pre-rendered citable lines and was built by hand in tests only. A panel wired
+  up in that state would have produced precisely the ungrounded generic questions
+  Open Risk #2 names as the fastest way to lose a user. `ingestion/citations.py`
+  renders the stored quote verbatim — never rebuilt from `metric`/`value`/`unit`,
+  which would give "gross margin of 61.0%" instead of the sentence on the slide —
+  and marks a figure read off a chart as such, so no panelist asserts that a deck
+  *says* words that appear in no text layer.
+
+### Open
+
+- **Never run against a real device.** Every part is measured and the whole is
+  tested, but no phone has yet held one of these rooms.
+- **The budget still does not close** — ~2.1s against 1.5s. Unchanged by this
+  work, and now the only thing between the panel and being real.

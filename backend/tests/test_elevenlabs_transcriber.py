@@ -296,7 +296,7 @@ def _settings(**overrides) -> Settings:
 
 
 def test_a_deployment_without_credentials_gets_no_transcriber_rather_than_a_broken_one():
-    """The same shape as `build_voice_provider`, for the same reason.
+    """The same shape as `build_speaker`, for the same reason.
 
     Returning `None` lets the app boot without ElevenLabs credentials, which is
     what every test in this suite and every local run depends on. The

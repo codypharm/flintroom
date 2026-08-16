@@ -1,15 +1,17 @@
 """Wiring for the voice module."""
 
+from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import Depends, Request, WebSocket
+from fastapi import Depends, WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.model import PanelModel
 from app.core.database import get_db
-from app.core.errors import ProviderUnavailable
 from app.core.logging import get_logger
-from app.modules.voice.provider import VoiceProvider
+from app.modules.voice.speech import Speaker
 from app.modules.voice.tickets import VoiceTicketService
+from app.modules.voice.transcription import Transcriber
 
 log = get_logger(__name__, tag="voice")
 
@@ -23,24 +25,39 @@ async def get_ticket_service(
 VoiceTicketServiceDep = Annotated[VoiceTicketService, Depends(get_ticket_service)]
 
 
-def get_voice_provider(websocket: WebSocket) -> VoiceProvider:
-    """The process-wide provider, built once in the application lifespan.
+@dataclass(frozen=True, slots=True)
+class RoomParts:
+    """The process-wide half of a room, read off application state.
 
-    Read off application state rather than constructed here, for the same
-    reason the auth verifiers are: one instance per process. A provider built
-    per connection would rebuild dialling state on every room, and this is the
-    object that will hold pooling and per-archetype voice configuration.
+    A room is built from two halves. These three are per process and built once
+    in the lifespan, for the reason the auth verifiers are: each holds
+    connection state, and rebuilding them per socket would pay that cost on
+    every interrogation. The other half — who is seated, what may be attacked —
+    is per session and comes from the database in `build_room`.
 
-    An unconfigured deployment fails here rather than at boot — see
-    `Settings.elevenlabs_api_key`. Loudly and typed: the relay ends the room,
-    the client is told the room is over, and nobody learns which vendor is
-    missing.
+    Carried as one object rather than three dependencies because they are always
+    wanted together and always come from the same place. Three would be three
+    chances to read one off the wrong state.
+
+    Absent parts are carried rather than refused here. Whether a missing one
+    ends the room is `build_room`'s call, and it answers differently for each: a
+    room with no transcriber or no model cannot work, while a room with no
+    speaker is merely silent.
     """
-    provider = getattr(websocket.app.state, "voice_provider", None)
-    if provider is None:
-        log.error("voice_provider_unconfigured")
-        raise ProviderUnavailable(reason="provider_unconfigured")
-    return provider
+
+    transcriber: Transcriber | None
+    model: PanelModel | None
+    speaker: Speaker | None
 
 
-VoiceProviderDep = Annotated[VoiceProvider, Depends(get_voice_provider)]
+def get_room_parts(websocket: WebSocket) -> RoomParts:
+    """Whatever this deployment was configured with."""
+    state = websocket.app.state
+    return RoomParts(
+        transcriber=getattr(state, "transcriber", None),
+        model=getattr(state, "panel_model", None),
+        speaker=getattr(state, "speaker", None),
+    )
+
+
+RoomPartsDep = Annotated[RoomParts, Depends(get_room_parts)]

@@ -1,12 +1,12 @@
 """Opening a room we run ourselves.
 
-The sibling of `ElevenLabsProvider`, and the asymmetry between them is the whole
+The sibling of the vendor agent adapter, and the asymmetry between them is the whole
 design. ElevenLabs needs no arguments to `open()` — which agent, what persona,
 what voice all live on their dashboard. Ours needs to know which archetypes are
 seated and which deck to attack, and both are facts in our own database.
 
 Resolved by construction rather than by widening `VoiceProvider.open()`, so the
-shared seam is untouched and `ElevenLabsProvider` never grows a parameter it
+shared seam is untouched and the vendor adapter never grew a parameter it
 cannot use. It is the same call `CLAUDE.md` makes for audit actors: context bound
 when the service is built, never passed per call, so nothing downstream can
 attribute half a room to a different one.

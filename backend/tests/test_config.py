@@ -41,7 +41,7 @@ def environment(monkeypatch):
     it would make the suite pass or fail according to what a developer happens
     to have configured locally.
     """
-    for key in (*COMPLETE, "ELEVENLABS_API_KEY", "ELEVENLABS_AGENT_ID"):
+    for key in (*COMPLETE, "ELEVENLABS_API_KEY"):
         monkeypatch.delenv(key, raising=False)
 
     def apply(**overrides: str | None) -> None:

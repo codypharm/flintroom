@@ -76,19 +76,24 @@ class Settings(BaseSettings):
     google_client_id: str = Field(min_length=1)
     apple_client_id: str = Field(min_length=1)
 
-    #: The voice provider. Optional, unlike the secrets above, and the
-    #: difference is deliberate: a missing signing key is an insecure default
-    #: that must never boot, whereas a missing voice key is an unconfigured
-    #: integration. Auth, balances and session bookkeeping all work without it,
-    #: so refusing to start would take four working routers down with the one
-    #: that is not ready.
+    #: The voice vendor, for both halves of a room: Scribe hears it and their
+    #: text-to-speech answers in eight cast voices. One key, two adapters —
+    #: `voice/transcribers/` and `voice/speakers/`.
     #:
-    #: It fails closed instead, loudly and typed, at the moment a room tries to
-    #: open — see `voice.dependencies.get_voice_provider`. The trade is that a
-    #: deployment missing the key learns at the first session rather than at
-    #: boot; if that becomes the more expensive end, make these required.
+    #: Optional, unlike the secrets above, and the difference is deliberate: a
+    #: missing signing key is an insecure default that must never boot, whereas
+    #: a missing voice key is an unconfigured integration. Auth, balances,
+    #: ingestion and session bookkeeping all work without it, so refusing to
+    #: start would take four working routers down with the one that is not
+    #: ready.
+    #:
+    #: It fails closed instead, loudly and typed, at the moment a room is built
+    #: — see `voice/room.py`. Missing the transcriber ends the room before a
+    #: second is metered; missing only the synthesiser leaves it silent but
+    #: captioned, which is a legitimate deployment. The trade is that a
+    #: deployment without the key learns at the first session rather than at
+    #: boot; if that becomes the more expensive end, make it required.
     elevenlabs_api_key: str | None = None
-    elevenlabs_agent_id: str | None = None
 
     #: Which voice speaks for an archetype that has not been assigned one.
     #:

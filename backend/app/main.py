@@ -24,7 +24,9 @@ from app.modules.panels.router import router as panels_router
 from app.modules.ingestion.runner import ExtractionRunner
 from app.modules.sessions.router import router as sessions_router
 from app.modules.sessions.runner import SessionFactory, SweepRunner
-from app.modules.voice.providers import build_voice_provider
+from app.agents.panel_models import build_panel_model
+from app.modules.voice.speakers import build_speaker
+from app.modules.voice.transcribers import build_transcriber
 from app.modules.voice.router import router as voice_router
 
 log = get_logger(__name__, tag="http")
@@ -61,12 +63,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     http = httpx.AsyncClient(timeout=5.0)
     app.state.verifiers = build_verifiers(settings, http)
 
-    # One provider for the process, like the verifiers above. Left unset when
-    # the deployment has no voice credentials: auth, balances and session
-    # bookkeeping all work without them, and only the stream socket refuses.
-    app.state.voice_provider = build_voice_provider(settings)
-    if app.state.voice_provider is None:
-        log.warning("voice_provider_unconfigured")
+    # The three process-wide parts of a room, like the verifiers above. Each
+    # holds connection state, so building them per socket would pay that on
+    # every interrogation. The other half of a room — who is seated, what may be
+    # attacked — is per session and comes from the database in `build_room`.
+    #
+    # Left unset when the deployment lacks the credentials: auth, balances,
+    # ingestion and session bookkeeping all work without any of them, and
+    # refusing to boot would take those down over a feature they do not use.
+    app.state.transcriber = build_transcriber(settings)
+    if app.state.transcriber is None:
+        log.warning("transcriber_unconfigured")
+
+    app.state.panel_model = build_panel_model(settings, http)
+    if app.state.panel_model is None:
+        log.warning("panel_model_unconfigured")
+
+    # The only one of the three a room survives without. A silent panel still
+    # transcribes, routes, composes and captions — and captions are a v1
+    # requirement in their own right, not a fallback for missing audio.
+    app.state.speaker = build_speaker(settings, http)
+    if app.state.speaker is None:
+        log.warning("speaker_unconfigured")
 
     # Same trade as the provider above: a deployment with no bucket takes only
     # ingestion down, and refusing to boot over it would stop auth, balances and

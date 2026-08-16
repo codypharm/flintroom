@@ -163,7 +163,7 @@ def build_object_storage(settings: Settings) -> ObjectStorage | None:
     """The configured store, or nothing if this deployment has no bucket.
 
     Lives beside the implementation rather than in a package `__init__` the way
-    `build_voice_provider` does, because there is only one implementation to
+    `build_transcriber` does, because there is only one implementation to
     choose between and no prospect of a second: S3, R2, B2 and MinIO are all
     this class with a different endpoint. If a store that is genuinely not
     S3-shaped ever lands, this function moves and nothing else does.

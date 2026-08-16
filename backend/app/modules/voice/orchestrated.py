@@ -1,6 +1,6 @@
 """A room we run ourselves.
 
-`ElevenLabsProvider` hands a whole conversation to one remote agent, and that
+ElevenLabs Agents hands a whole conversation to one remote agent, and that
 cannot be a Flintroom panel. Turn-taking, the grounded challenge, targeted
 interruption and — most of all — the rule that a composer sees exactly one
 persona all live in `app/agents/`, and none of them exist inside somebody else's
@@ -42,22 +42,24 @@ log = get_logger(__name__, tag="voice")
 class OrchestratedProvider:
     """Opens rooms we run ourselves. **One instance per room, not per process.**
 
-    That is the one way this differs from `ElevenLabsProvider`, and it follows
-    from an asymmetry rather than from taste. ElevenLabs needs no arguments to
-    `open()` because which agent, what persona and what voice all live on their
-    dashboard; they already know. Ours has to be told which archetypes are seated
-    and which deck to attack, and both are per-session facts in our database.
+    That is the one way this differs from the vendor agent it replaced, and it
+    follows from an asymmetry rather than from taste. Theirs needed no arguments
+    to `open()` because which agent, what persona and what voice all lived on
+    their dashboard; they already knew. Ours has to be told which archetypes
+    are seated and which deck to attack, and both are per-session facts in our
+    database.
 
     Resolved at construction rather than by widening `VoiceProvider.open()`. The
-    shared seam stays untouched, `ElevenLabsProvider` never grows a parameter it
-    could not use, and the relay keeps knowing nothing about decks. It is also
-    the call `CLAUDE.md` already makes for audit actors — context bound when the
-    service is built, never passed per call — for the same reason: a caller that
-    could name the room per call could name a different one halfway through.
+    shared seam stays untouched and the relay keeps knowing nothing about decks.
+    It is also the call `CLAUDE.md` already makes for audit actors — context
+    bound when the service is built, never passed per call — for the same
+    reason: a caller that could name the room per call could name a different
+    one halfway through.
 
-    The vendors it composes are still undecided. `transcriber` is the last
-    unchosen link in the chain, and `speaker` is optional because a silent panel
-    is a legitimate development configuration while an untestable one is not.
+    `app/modules/voice/room.py` is what builds one from a session id. `speaker`
+    stays optional because a silent panel is a legitimate deployment — it still
+    transcribes, routes, composes and captions — while a panel that cannot be
+    exercised without a synthesis vendor is not.
     """
 
     def __init__(
@@ -69,7 +71,11 @@ class OrchestratedProvider:
         speaker: Speaker | None = None,
         grounding: Grounding | None = None,
     ) -> None:
-        self._panel = panel
+        #: Who is seated, in seat order. Public because a room's roster is a
+        #: fact about the room rather than an implementation detail of it — the
+        #: factory that assembles one is judged on exactly this, and captions
+        #: will eventually need to name whoever is speaking.
+        self.panel = panel
         self._transcriber = transcriber
         self._model = model
         self._speaker = speaker
@@ -85,7 +91,7 @@ class OrchestratedProvider:
         """
         async with self._transcriber.open() as transcription:
             yield OrchestratedChannel(
-                panel=self._panel,
+                panel=self.panel,
                 transcription=transcription,
                 model=self._model,
                 speaker=self._speaker,
