@@ -55,6 +55,7 @@ class FakeBuffer {
 class FakeQueueSource {
   readonly enqueued: FakeBuffer[] = [];
   started = 0;
+  startedWith: Array<[number | undefined, number | undefined]> = [];
   cleared = 0;
   connectedTo: unknown = null;
 
@@ -71,8 +72,9 @@ class FakeQueueSource {
     this.cleared += 1;
   }
 
-  start(): void {
+  start(when?: number, offset?: number): void {
     this.started += 1;
+    this.startedWith.push([when, offset]);
   }
 
   stopped = 0;
@@ -202,5 +204,24 @@ describe('when the room ends', () => {
 
     expect(source().stopped).toBe(1);
     expect(source().enqueued).toHaveLength(0);
+  });
+});
+
+describe('starting the queue', () => {
+  it('passes both arguments, because the library cannot be called without them', () => {
+    /**
+     * `react-native-audio-api` declares `start(when = 0, offset = -1)` and then
+     * throws on any offset below zero — its own default fails its own guard, so
+     * a bare `start()` raises `offset must be a finite non-negative number: -1`
+     * on every call.
+     *
+     * The fake in this file has no such guard, which is exactly why this needs
+     * an explicit assertion: without one the bug is invisible here and shows up
+     * only on a device, as a room that opens and dies before a word is spoken.
+     */
+    const context = new FakeContext(16_000);
+    createPlayback({ context });
+
+    expect(context.sources[0].startedWith).toEqual([[0, 0]]);
   });
 });

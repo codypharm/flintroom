@@ -33,7 +33,7 @@ export interface QueueSource {
   connect(destination: unknown): void;
   enqueueBuffer(buffer: AudioBufferLike): string;
   clearBuffers(): void;
-  start(when?: number): void;
+  start(when?: number, offset?: number): void;
   stop(when?: number): void;
 }
 
@@ -54,7 +54,15 @@ export function createPlayback({ context }: { context: PlaybackContext }): Playb
   // and leaves the node running, so there is no state where audio is waiting
   // on playback to be told to begin — which would cost the opening of the
   // first question, the one moment the room has to land.
-  source.start();
+  //
+  // Both arguments are passed because `react-native-audio-api` cannot be called
+  // without them. Its `start(when = 0, offset = -1)` then rejects any offset
+  // below zero — so its own default fails its own validation, and a bare
+  // `start()` throws `offset must be a finite non-negative number: -1` every
+  // time. Nothing in the test suite catches it: the fake here has no such
+  // guard, so this surfaced only on a device, as a room that opened and
+  // immediately died. More evidence for task #25.
+  source.start(0, 0);
 
   let playing = true;
 
