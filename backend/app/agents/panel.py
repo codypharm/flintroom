@@ -67,6 +67,19 @@ def _too_large_message(tier: str, asked: int) -> str:
 
 
 @dataclass(frozen=True)
+class Asked:
+    """A question the room has already put, and who put it.
+
+    The attribution is what lets the two steps see different views of the same
+    history — panel-wide for selection, this archetype only for composition.
+    Without it both get a flat list and one of them is wrong.
+    """
+
+    archetype: str
+    question: str
+
+
+@dataclass(frozen=True)
 class Grounding:
     """What the room is allowed to attack.
 
@@ -86,12 +99,26 @@ class Grounding:
     #: What the attached material asserts, one citable line each.
     claims: tuple[str, ...] = ()
 
-    #: What the panel has already put to this user in this session.
+    #: What the room has already put to this user, attributed.
     #:
     #: Not an optimisation. Without it every archetype re-asks the strongest
     #: question in its strategy, and a room that asks the same thing four times
     #: is not intimidating — it is broken, and obviously so within two minutes.
-    asked: tuple[str, ...] = ()
+    #:
+    #: Attributed rather than flat, because the two steps need opposite views and
+    #: a flat list makes one of them worse. Selection wants the whole room: who
+    #: has been quiet and what ground is covered is what decides who speaks next.
+    #: Composition wants this archetype alone — a CFO ten turns in would otherwise
+    #: carry six "do not repeat" items, all about margin, and be steered off the
+    #: subject it exists to press. A panelist who stops asking about margin is
+    #: worse than one who repeats himself.
+    asked: tuple[Asked, ...] = ()
+
+    def asked_by(self, archetype: str) -> tuple[str, ...]:
+        """Only what this archetype has already put to them."""
+        return tuple(
+            entry.question for entry in self.asked if entry.archetype == archetype
+        )
 
 
 @dataclass(frozen=True)

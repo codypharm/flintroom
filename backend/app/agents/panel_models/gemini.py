@@ -91,7 +91,7 @@ class GeminiPanelModel:
         return await self._generate(
             model=self._composition_model,
             system=_persona_of(archetype),
-            prompt=_composition_prompt(context, finding),
+            prompt=_composition_prompt(context, finding, archetype),
             max_tokens=MAX_LINE_TOKENS,
         )
 
@@ -193,12 +193,17 @@ def _selection_prompt(candidates: Sequence[Archetype], context) -> str:
         f"- {archetype.name}: {archetype.title}. {archetype.attack_strategy}"
         for archetype in candidates
     )
-    asked = "\n".join(f"- {question}" for question in context.grounding.asked)
+    # The whole room, attributed. Who has been quiet and what ground is covered
+    # is precisely what this call is for — filtering it per archetype would blind
+    # the router to the thing it exists to decide.
+    asked = "\n".join(
+        f"- {entry.archetype}: {entry.question}" for entry in context.grounding.asked
+    )
     already = f"\n\nAlready asked:\n{asked}" if asked else ""
     return f"In the room:\n{roster}{already}\n\nThey just said:\n{context.said}"
 
 
-def _composition_prompt(context, finding) -> str:
+def _composition_prompt(context, finding, archetype: Archetype) -> str:
     """What this archetype is allowed to work from.
 
     Claims first, because they are the thing a challenge must trace back to —
@@ -211,9 +216,10 @@ def _composition_prompt(context, finding) -> str:
         cited = "\n".join(f"- {claim}" for claim in context.grounding.claims)
         parts.append(f"Their material says:\n{cited}")
 
-    if context.grounding.asked:
-        asked = "\n".join(f"- {question}" for question in context.grounding.asked)
-        parts.append(f"Already put to them — do not repeat these:\n{asked}")
+    mine = context.grounding.asked_by(archetype.name)
+    if mine:
+        asked = "\n".join(f"- {question}" for question in mine)
+        parts.append(f"You have already asked — do not repeat these:\n{asked}")
 
     if finding is not None:
         parts.append(

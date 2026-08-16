@@ -20,7 +20,7 @@ import pytest
 
 from app.agents.archetypes import DEFAULT_PANEL, by_name
 from app.core.errors import ProviderUnavailable
-from app.agents.panel import Grounding, TurnContext
+from app.agents.panel import Asked, Grounding, TurnContext
 from app.agents.panel_models.gemini import GeminiPanelModel
 
 CONTEXT = TurnContext(said="We hold 61% gross margin.", grounding=Grounding())
@@ -165,3 +165,58 @@ async def test_a_model_that_answers_with_flourish_still_names_somebody():
     )
 
     assert chosen == "cfo"
+
+
+async def test_an_archetype_is_told_only_what_it_has_asked_itself():
+    """A flat "do not repeat" list steers a panelist off its own subject.
+
+    By turn ten the CFO's prompt would carry six things not to repeat, all about
+    margin — because margin is what the CFO asks about. That does not merely
+    prevent repetition, it pushes the model away from the whole domain, and a CFO
+    who stops asking about margin is worse than one who repeats himself.
+
+    It is also the honest distinction. A panelist repeating himself is broken; two
+    panelists circling the same number is a real room, and often the most
+    uncomfortable part of one.
+    """
+    transport, seen = answering("And the payback period?")
+    context = TurnContext(
+        said="Margins are strong.",
+        grounding=Grounding(
+            asked=(
+                Asked(archetype="cfo", question="What is your CAC payback?"),
+                Asked(archetype="champion", question="Who is your reference customer?"),
+            )
+        ),
+    )
+
+    await model_with(transport).compose(archetype=by_name("cfo"), context=context)
+
+    body = (seen[0]).content.decode()
+    assert "What is your CAC payback?" in body
+    assert "Who is your reference customer?" not in body
+
+
+async def test_the_selector_sees_everything_the_room_has_asked():
+    """The opposite view, for the opposite job.
+
+    Selection is the one place the room exists as a room: who has been quiet and
+    what ground is already covered is exactly what decides who should speak next.
+    Filtering it per archetype here would blind the router to the thing it is for.
+    """
+    transport, seen = answering("cfo")
+    context = TurnContext(
+        said="Margins are strong.",
+        grounding=Grounding(
+            asked=(
+                Asked(archetype="cfo", question="What is your CAC payback?"),
+                Asked(archetype="champion", question="Who is your reference customer?"),
+            )
+        ),
+    )
+
+    await model_with(transport).select(candidates=DEFAULT_PANEL, context=context)
+
+    body = (seen[0]).content.decode()
+    assert "What is your CAC payback?" in body
+    assert "Who is your reference customer?" in body
