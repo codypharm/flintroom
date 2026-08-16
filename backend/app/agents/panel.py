@@ -66,6 +66,48 @@ def _too_large_message(tier: str, asked: int) -> str:
 
 
 @dataclass(frozen=True)
+class Grounding:
+    """What the room is allowed to attack.
+
+    The whole of the wedge. `CLAUDE.md` refuses to ship interrogation logic that
+    cannot cite its source, and Open Risk #2 is that ungrounded generic questions
+    kill retention faster than any UI flaw — so a composer that receives only the
+    last sentence can produce nothing better than a hard-sounding question about
+    a subject it has never seen. That is the competitor product this one exists
+    to refuse.
+
+    Claims arrive **pre-rendered as citable lines** rather than as ingestion's
+    typed `ExtractedClaim`. It keeps the panel free of the ingestion module and
+    keeps the seam one-directional: whoever owns a claim owns how it reads, and
+    the panel only ever needs something it can quote back.
+    """
+
+    #: What the attached material asserts, one citable line each.
+    claims: tuple[str, ...] = ()
+
+    #: What the panel has already put to this user in this session.
+    #:
+    #: Not an optimisation. Without it every archetype re-asks the strongest
+    #: question in its strategy, and a room that asks the same thing four times
+    #: is not intimidating — it is broken, and obviously so within two minutes.
+    asked: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class TurnContext:
+    """Everything the model is allowed to see about this moment.
+
+    One object rather than a widening parameter list, because both steps need
+    the same view and the two must never disagree about what happened — a
+    selector that knows about the deck and a composer that does not would pick
+    the right archetype to say the wrong thing.
+    """
+
+    said: str
+    grounding: Grounding
+
+
+@dataclass(frozen=True)
 class Finding:
     """Something the Auditor caught, and the domain it belongs to.
 
@@ -97,6 +139,7 @@ async def interrogate(
     *,
     said: str,
     model,
+    grounding: Grounding | None = None,
     finding: Finding | None = None,
 ) -> PanelTurn:
     """Answer one thing the user said, in one archetype's voice.
@@ -111,19 +154,31 @@ async def interrogate(
     model to re-derive that spends a hop on a lookup and adds a way to get it
     wrong, and getting it wrong reads as a panel that is not listening.
     """
+    context = TurnContext(said=said, grounding=grounding or Grounding())
+
     archetype = _owner(panel, finding.domain) if finding else None
     targeted = archetype is not None
 
     if archetype is None:
-        archetype = _named(panel, await model.select(candidates=panel, context=said))
+        chosen = await model.select(candidates=panel, context=context)
+        archetype = _named(panel, chosen)
 
     # The finding travels to the composer, not just to the routing. An archetype
     # handed the floor because of a contradiction and then not told what the
     # contradiction was produces a challenge that sounds authoritative and cites
     # nothing — Open Risk #2 arriving from the one path meant to cure it.
-    line = await model.compose(archetype=archetype, context=said, finding=finding)
+    line = await model.compose(archetype=archetype, context=context, finding=finding)
 
-    log.info("panel_turn", archetype=archetype.name, targeted=targeted)
+    # Never the line itself, and never a claim. Ingested material contents are
+    # forbidden in logs (CLAUDE.md) and a panelist's line quotes them directly —
+    # counts say everything an operator needs and disclose nothing.
+    log.info(
+        "panel_turn",
+        archetype=archetype.name,
+        targeted=targeted,
+        claims=len(context.grounding.claims),
+        already_asked=len(context.grounding.asked),
+    )
     return PanelTurn(archetype=archetype, line=line, targeted=targeted)
 
 

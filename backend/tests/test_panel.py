@@ -11,7 +11,7 @@ exactly where this one sits — what is under test is the loop around it.
 
 from __future__ import annotations
 
-from app.agents.panel import Finding, interrogate
+from app.agents.panel import Finding, Grounding, interrogate
 from app.agents.archetypes import DEFAULT_PANEL, LIBRARY
 
 
@@ -170,3 +170,44 @@ def test_every_archetype_answers_to_the_name_it_is_called_by():
     for archetype in LIBRARY:
         expected = archetype.title.removeprefix("The ").lower().replace(" ", "_")
         assert archetype.name == expected, f"{archetype.name} is titled {archetype.title!r}"
+
+
+async def test_an_archetype_is_given_the_deck_it_is_meant_to_attack():
+    """The wedge, in one assertion.
+
+    `CLAUDE.md` refuses to ship interrogation logic that cannot cite its source,
+    and Open Risk #2 is that ungrounded generic questions kill retention faster
+    than any UI flaw. A composer handed only the last sentence can produce
+    nothing better than a hard-sounding question about a subject it has never
+    seen — which is the competitor product this one exists to refuse.
+    """
+    model = FakePanelModel(selects="cfo")
+    grounding = Grounding(
+        claims=("Gross margin of 61% in Q3 2026",),
+        asked=("What is your CAC payback?",),
+    )
+
+    await interrogate(
+        DEFAULT_PANEL, said="Margins are strong.", grounding=grounding, model=model
+    )
+
+    (context, _), = model.composed_with
+    assert context.grounding is grounding
+
+
+async def test_a_room_with_no_deck_still_runs():
+    """The deckless path is first-class, not degraded (`docs/auditor-grounding.md`).
+
+    A user who does not want to wait for extraction starts without material, and
+    §3.2 makes that a supported choice rather than a fallback. The composer gets
+    an empty grounding rather than `None`, so nothing downstream has to ask
+    whether there is a deck before it can read one — the shape is the same and
+    only the contents differ.
+    """
+    model = FakePanelModel(selects="cfo")
+
+    turn = await interrogate(DEFAULT_PANEL, said="We are pre-revenue.", model=model)
+
+    (context, _), = model.composed_with
+    assert context.grounding.claims == ()
+    assert turn.line
