@@ -433,8 +433,37 @@ table. A renewing page budget on a tier with no renewing minutes turns the free
 tier into an unlimited extraction faucet: sign up, never start a session, extract
 decks forever at our cost with no metered minute ever consumed.
 
-Exceeding a limit is a typed 422 with an `audit_events` row; the material stays
-`pending` rather than failing, so it extracts when the window rolls over.
+### Exceeding a limit does two different things, and the difference is a window
+
+Every refusal here is a typed 422 with an `audit_events` row. What happens to the
+material afterwards depends on whether waiting could ever help:
+
+| Limit | Material becomes | Because |
+| --- | --- | --- |
+| Max upload bytes | *nothing — refused at the presign* | Checked before a row exists, so there is nothing to leave behind |
+| Max pages per material | `failed` | **Terminal.** No window rolls over into a file being shorter |
+| Monthly page budget | `pending` | A window. It extracts when the period resets |
+| Daily page ceiling | `pending` | Same, on a shorter clock |
+
+**Corrected 2026-08-16**, while building `parsing.py`. This section previously
+said a material *"stays `pending` rather than failing, so it extracts when the
+window rolls over"* without qualification — true of the two budgets, and wrong
+for the per-file page cap, where it would leave a four-hundred-page deck on the
+free tier being claimed by the sweep forever, failing identically every time and
+charging for the attempt.
+
+So they are separate errors rather than one. `MaterialTooManyPages` carries the
+count and the limit, because the user has to send a smaller file and *"too long"*
+without a number does not say how much smaller. The budget refusal says nothing
+about file size, because the file is fine and the timing is not.
+
+Two rules that follow, both of which fail quietly if forgotten:
+
+- **A budget refusal must not consume a claim attempt repeatedly.** A material
+  left `pending` under an exhausted budget is picked up by every sweep pass until
+  the window rolls, so the check belongs in the claim query rather than after it.
+- **Neither refusal charges for the pages it did not extract.** `extraction_costs`
+  records work performed; a material refused before a model call has no row.
 
 ---
 
@@ -557,13 +586,12 @@ Follows the mandatory rules rather than restating them; the ones with teeth here
   are pure Python and needed no system package, so PPTX is the only input still
   waiting on a 400 MB binary decision, and it waits alone rather than holding the
   module back.
-- **The per-file page cap fails a material terminally; the monthly budget does
-  not.** This document says *"the material stays `pending` rather than failing, so
-  it extracts when the window rolls over"* — true of the budget and the daily
-  ceiling, which are windows, and wrong for the per-file page cap, where no window
-  rolls over into a file being shorter. `MaterialTooManyPages` and the budget
-  refusal are therefore separate errors. The sweep that acts on them is slice 6
-  and this is the reading it should implement.
+- **The sweep has not implemented the limit table yet.** *Exceeding a limit does
+  two different things* above was corrected on 2026-08-16 and only half of it is
+  built: `MaterialTooManyPages` exists and is terminal, and the monthly and daily
+  budgets have no refusal at all — nothing yet counts pages against a period. Both
+  land with the extraction sweep, and until they do the only page limit with teeth
+  is the per-file one.
 - **Per-seat accounting for Teams is unspecified.** The budget is written per
   seat, and nothing yet says whether an unused seat's pages pool across the
   organisation. It does not block anything until Teams ships.
