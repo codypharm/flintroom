@@ -125,6 +125,34 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/sessions:
+    get:
+      tags:
+      - sessions
+      summary: List Sessions
+      description: 'This account''s rooms, newest first.
+
+
+        Scoped by the caller''s own id, never by a query parameter. A list endpoint
+
+        that took a user id would be an authorisation check waiting to be forgotten.
+
+
+        Carries no transcript and no audio — `CLAUDE.md` keeps both out of list
+
+        responses — only whether each room can still be heard, and until when.'
+      operationId: sessions_list_sessions
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/SessionRead'
+                type: array
+                title: Response Sessions List Sessions
+      security:
+      - HTTPBearer: []
     post:
       tags:
       - sessions

@@ -109,7 +109,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Sessions
+         * @description This account's rooms, newest first.
+         *
+         *     Scoped by the caller's own id, never by a query parameter. A list endpoint
+         *     that took a user id would be an authorisation check waiting to be forgotten.
+         *
+         *     Carries no transcript and no audio — `CLAUDE.md` keeps both out of list
+         *     responses — only whether each room can still be heard, and until when.
+         */
+        get: operations["sessions_list_sessions"];
         put?: never;
         /**
          * Start Session
@@ -1021,6 +1031,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sessions_list_sessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionRead"][];
                 };
             };
         };

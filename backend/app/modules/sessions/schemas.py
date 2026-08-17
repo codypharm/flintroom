@@ -31,6 +31,15 @@ GRACE_LIMIT = timedelta(seconds=120)
 #: provider time against an empty room until the balance ran out.
 SESSION_LIMIT = timedelta(minutes=12)
 
+#: How many rooms a list returns.
+#:
+#: Not pagination, and deliberately not pretending to be. §4.4 caps Pro at three
+#: hours a month, so a heavy account's first year is a few dozen rooms — a
+#: bounded list is honest about that where an unbounded one works right up until
+#: it does not. Real paging is owed when the library surface exists and has
+#: somewhere to put it.
+RECENT_LIMIT = 50
+
 #: How long the user may say nothing before the room is treated as abandoned.
 #: Only *user* speech resets it — a panel talking to an empty room is the
 #: expensive failure this exists to catch, not evidence that anyone is there.

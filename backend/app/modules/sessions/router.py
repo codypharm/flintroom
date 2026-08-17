@@ -73,6 +73,21 @@ async def start_session(
     )
 
 
+@router.get("/sessions", response_model=list[SessionRead])
+async def list_sessions(
+    user_id: CurrentUser, sessions: SessionServiceDep
+) -> list[SessionRead]:
+    """This account's rooms, newest first.
+
+    Scoped by the caller's own id, never by a query parameter. A list endpoint
+    that took a user id would be an authorisation check waiting to be forgotten.
+
+    Carries no transcript and no audio — `CLAUDE.md` keeps both out of list
+    responses — only whether each room can still be heard, and until when.
+    """
+    return await sessions.recent(user_id=user_id)
+
+
 @router.get("/sessions/{session_id}", response_model=SessionRead)
 async def read_session(
     session: OwnedSession, sessions: SessionServiceDep

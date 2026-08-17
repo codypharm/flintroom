@@ -44,6 +44,8 @@ from app.modules.billing.models import Account
 from app.modules.billing.tiers import FREE_TIER, RECORDING_RETENTION_DAYS
 from app.modules.sessions.models import SessionRecording
 from app.modules.sessions.schemas import (
+    SessionRead,
+    RECENT_LIMIT,
     RecordingRead,
     RecordingState,
     GRACE_LIMIT,
@@ -382,6 +384,37 @@ class SessionService:
             end_reason=end_reason.value,
         )
         return session
+
+    async def recent(self, *, user_id: uuid.UUID) -> list[SessionRead]:
+        """This account's rooms, newest first.
+
+        **Scoped by a filter rather than by a check.** The single-session routes
+        are guarded by `OwnedSession`, which has an id to compare — a list has
+        none, so ownership has to be in the `WHERE` clause. Forgetting it there
+        is not a 403 somebody sees, it is one account reading another's.
+
+        Bounded rather than paged. `Product.md` §4.4 caps a Pro account at three
+        hours a month, so a heavy user in their first year has a few dozen
+        rooms, not thousands — and a limit is honest about that where an
+        unbounded query would work until it did not. Paging is owed when the
+        library surface exists and can express it.
+
+        Returns `SessionRead`, so a room in a list and a room on its own are the
+        same shape. Carries no transcript and no audio, per `CLAUDE.md`.
+        """
+        rows = await self._db.execute(
+            select(Session)
+            .where(Session.user_id == user_id)
+            .order_by(Session.started_at.desc())
+            .limit(RECENT_LIMIT)
+        )
+
+        return [
+            SessionRead.model_validate(session).model_copy(
+                update={"recording": await self.recording(session_id=session.id)}
+            )
+            for session in rows.scalars()
+        ]
 
     async def recording(self, *, session_id: uuid.UUID) -> RecordingRead:
         """Whether this room can still be heard, and until when.
