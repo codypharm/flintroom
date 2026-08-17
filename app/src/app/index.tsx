@@ -38,6 +38,15 @@ export default function HomeScreen() {
         <Link href="/echo-spike" style={[styles.link, { color: colors.primary }]}>
           Echo spike
         </Link>
+        {/*
+          Also temporary, and it leaves for the same reason. `enterRoom` owns
+          when this sheet actually appears — once per account, ahead of the
+          microphone prompt — and that needs a signed-in user it does not have
+          yet. Until then this is the only way to see it on a device.
+        */}
+        <Link href="/disclosure" style={[styles.link, { color: colors.primary }]}>
+          Recording disclosure
+        </Link>
       </View>
     </SafeAreaView>
   );

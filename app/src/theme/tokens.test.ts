@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { FONTS } from './fonts';
 import { color, radius, space, type } from './tokens';
 
 /**
@@ -56,13 +57,30 @@ it('carries the container padding the layout model specifies', () => {
   expect(space.screen).toBe(20);
 });
 
-it('uses Hanken Grotesk for every role', () => {
+it('names only fonts the app actually loads', () => {
   /**
-   * One face, per §9. A second family creeping in through a single screen is
-   * how a type system stops being one.
+   * The failure this exists for is silent. A `fontFamily` the app never
+   * registered does not throw — React Native falls back to the system sans, on
+   * every screen, and the design system quietly stops being the design system.
+   *
+   * That is not hypothetical: the first version of these tokens named a family
+   * called "HankenGrotesk" and nothing in the project loaded any font at all.
+   * Everything rendered, and none of it was the brand.
    */
   for (const role of Object.values(type)) {
-    expect(role.fontFamily).toBe('HankenGrotesk');
+    expect(Object.keys(FONTS)).toContain(role.fontFamily);
+  }
+});
+
+it('carries the weight in the family name rather than beside it', () => {
+  /**
+   * Android does not synthesise weights for a custom family: it resolves the
+   * registered name and ignores `fontWeight`. A token with both would render
+   * correctly on iOS and at regular weight on Android — a bug split down the
+   * platform nobody develops on.
+   */
+  for (const role of Object.values(type)) {
+    expect(role).not.toHaveProperty('fontWeight');
   }
 });
 

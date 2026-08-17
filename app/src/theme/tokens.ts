@@ -65,18 +65,23 @@ export const radius = {
 /**
  * Hanken Grotesk throughout, per §9.
  *
- * The family name is the loaded font's PostScript-ish name rather than the
- * display name in DESIGN.md — React Native resolves the face by what was
- * registered, and "Hanken Grotesk" with a space silently falls back to the
- * system sans on Android, which is a whole design system quietly not
- * rendering.
+ * **The weight is in the family name, and there is no `fontWeight`.** Android
+ * does not synthesise weights for a custom family — it resolves the registered
+ * name and ignores everything else — so a `fontWeight: '700'` beside a single
+ * family would render headings at regular weight there and correctly on iOS,
+ * which is the worst division of a bug there is.
+ *
+ * Every name here must be a key of `FONTS` in `fonts.ts`. Naming one that is
+ * not loaded does not fail; it falls back to the system sans and the design
+ * system quietly stops being the design system. `tokens.test.ts` is what makes
+ * that a failure instead.
  */
 export const type = {
-  headlineLg: { fontFamily: 'HankenGrotesk', fontSize: 32, fontWeight: '700', lineHeight: 40, letterSpacing: -0.64 },
-  headlineMd: { fontFamily: 'HankenGrotesk', fontSize: 24, fontWeight: '600', lineHeight: 32, letterSpacing: -0.24 },
-  headlineSm: { fontFamily: 'HankenGrotesk', fontSize: 20, fontWeight: '600', lineHeight: 28 },
-  bodyLg: { fontFamily: 'HankenGrotesk', fontSize: 18, fontWeight: '400', lineHeight: 28 },
-  bodyMd: { fontFamily: 'HankenGrotesk', fontSize: 16, fontWeight: '400', lineHeight: 24 },
-  bodySm: { fontFamily: 'HankenGrotesk', fontSize: 14, fontWeight: '400', lineHeight: 20 },
-  labelLg: { fontFamily: 'HankenGrotesk', fontSize: 14, fontWeight: '600', lineHeight: 20 },
+  headlineLg: { fontFamily: 'HankenGrotesk_700Bold', fontSize: 32, lineHeight: 40, letterSpacing: -0.64 },
+  headlineMd: { fontFamily: 'HankenGrotesk_600SemiBold', fontSize: 24, lineHeight: 32, letterSpacing: -0.24 },
+  headlineSm: { fontFamily: 'HankenGrotesk_600SemiBold', fontSize: 20, lineHeight: 28 },
+  bodyLg: { fontFamily: 'HankenGrotesk_400Regular', fontSize: 18, lineHeight: 28 },
+  bodyMd: { fontFamily: 'HankenGrotesk_400Regular', fontSize: 16, lineHeight: 24 },
+  bodySm: { fontFamily: 'HankenGrotesk_400Regular', fontSize: 14, lineHeight: 20 },
+  labelLg: { fontFamily: 'HankenGrotesk_600SemiBold', fontSize: 14, lineHeight: 20 },
 } as const;
