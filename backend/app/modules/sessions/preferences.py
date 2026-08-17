@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
+from app.modules.billing.models import Account
+from app.modules.billing.tiers import FREE_TIER, RECORDING_RETENTION_DAYS
 from app.modules.sessions.models import UserPreference
 
 log = get_logger(__name__, tag="sessions")
@@ -37,6 +40,25 @@ class PreferenceService:
         """
         preference = await self._db.get(UserPreference, user_id)
         return True if preference is None else preference.records_rooms
+
+    async def retention_days(self, *, user_id: uuid.UUID) -> int:
+        """How long this account's rooms stay playable.
+
+        Published here rather than on `/v1/me` because it belongs to the same
+        question the toggle answers — whether we record you, and for how long we
+        keep it — and a client that could read one without the other could
+        disclose "your rooms are saved" with nothing truthful after it.
+
+        Read from the tier *now*, matching the sweep and the playback expiry
+        exactly. Three places apply this rule and all three read it live, so an
+        upgrade or downgrade needs nothing rewritten anywhere.
+        """
+        tier = await self._db.scalar(
+            select(Account.entitlement_tier).where(Account.user_id == user_id)
+        )
+        return RECORDING_RETENTION_DAYS.get(
+            tier or FREE_TIER, RECORDING_RETENTION_DAYS[FREE_TIER]
+        )
 
     async def set_records_rooms(self, *, user_id: uuid.UUID, enabled: bool) -> None:
         """Turn recording on or off for future rooms.

@@ -253,7 +253,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RecordingPreference'
+              $ref: '#/components/schemas/RecordingPreferenceUpdate'
         required: true
       responses:
         '200':
@@ -1019,9 +1019,13 @@ components:
         records_rooms:
           type: boolean
           title: Records Rooms
+        retention_days:
+          type: integer
+          title: Retention Days
       type: object
       required:
       - records_rooms
+      - retention_days
       title: RecordingPreference
       description: 'Whether this account''s rooms are recorded.
 
@@ -1033,6 +1037,16 @@ components:
         way out, and without it the disclosure would be describing something that
 
         does not exist.'
+    RecordingPreferenceUpdate:
+      properties:
+        records_rooms:
+          type: boolean
+          title: Records Rooms
+      type: object
+      required:
+      - records_rooms
+      title: RecordingPreferenceUpdate
+      description: Turning saving on or off. The only thing a client may set.
     RecordingRead:
       properties:
         state:

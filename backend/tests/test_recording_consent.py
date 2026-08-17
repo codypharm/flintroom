@@ -165,3 +165,25 @@ async def test_deleting_a_room_twice_is_not_an_error(
         )
     )
     assert deletions.scalar_one() == 1
+
+
+async def test_the_preference_says_how_long_rooms_are_kept(db, funded_account):
+    """The disclosure has to state a window, and nothing else can tell it one.
+
+    `docs/session-retention.md` requires the first-session sheet to say how long
+    rooms are kept, and the windows are per tier. No endpoint exposed a tier —
+    `GET /v1/me` answers only whether the credential is good — so a client could
+    disclose "we keep your rooms" and nothing truthful after it.
+
+    It rides the recording preference rather than getting an endpoint of its
+    own, because the two are one question asked in two halves: whether we record
+    you, and for how long we keep it.
+    """
+    preferences = PreferenceService(db)
+
+    assert await preferences.retention_days(user_id=funded_account.user_id) == 30
+
+    funded_account.entitlement_tier = "pro"
+    await db.commit()
+
+    assert await preferences.retention_days(user_id=funded_account.user_id) == 365

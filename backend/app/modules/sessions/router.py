@@ -20,6 +20,7 @@ from app.modules.sessions.dependencies import (
 )
 from app.modules.sessions.schemas import (
     RecordingPreference,
+    RecordingPreferenceUpdate,
     RecordingPlayback,
     RecordingState,
     EndReason,
@@ -86,13 +87,14 @@ async def read_recording_preference(
 ) -> RecordingPreference:
     """Whether rooms are being saved for this account."""
     return RecordingPreference(
-        records_rooms=await preferences.records_rooms(user_id=user_id)
+        records_rooms=await preferences.records_rooms(user_id=user_id),
+        retention_days=await preferences.retention_days(user_id=user_id),
     )
 
 
 @router.put("/preferences/recording", response_model=RecordingPreference)
 async def set_recording_preference(
-    body: RecordingPreference,
+    body: RecordingPreferenceUpdate,
     user_id: CurrentUser,
     preferences: PreferenceServiceDep,
 ) -> RecordingPreference:
@@ -110,7 +112,10 @@ async def set_recording_preference(
     await preferences.set_records_rooms(
         user_id=user_id, enabled=body.records_rooms
     )
-    return body
+    return RecordingPreference(
+        records_rooms=body.records_rooms,
+        retention_days=await preferences.retention_days(user_id=user_id),
+    )
 
 
 @router.delete(

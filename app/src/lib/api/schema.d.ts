@@ -680,6 +680,16 @@ export interface components {
         RecordingPreference: {
             /** Records Rooms */
             records_rooms: boolean;
+            /** Retention Days */
+            retention_days: number;
+        };
+        /**
+         * RecordingPreferenceUpdate
+         * @description Turning saving on or off. The only thing a client may set.
+         */
+        RecordingPreferenceUpdate: {
+            /** Records Rooms */
+            records_rooms: boolean;
         };
         /**
          * RecordingRead
@@ -1108,7 +1118,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RecordingPreference"];
+                "application/json": components["schemas"]["RecordingPreferenceUpdate"];
             };
         };
         responses: {

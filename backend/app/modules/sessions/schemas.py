@@ -227,6 +227,22 @@ class RecordingPreference(BaseModel):
 
     records_rooms: bool
 
+    #: How long a saved room stays playable, in days. Response only — a client
+    #: does not get to choose its own retention window, and a request schema
+    #: carrying the field would imply it could.
+    #:
+    #: Published because the first-session disclosure has to state it. A
+    #: disclosure that says rooms are saved and goes quiet on for how long is
+    #: the half of the sentence that matters least to us and most to the person
+    #: reading it.
+    retention_days: int
+
+
+class RecordingPreferenceUpdate(BaseModel):
+    """Turning saving on or off. The only thing a client may set."""
+
+    records_rooms: bool
+
 
 class RecordingPlayback(BaseModel):
     """A short-lived link to one room's audio.
