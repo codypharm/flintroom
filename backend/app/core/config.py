@@ -236,6 +236,43 @@ class Settings(BaseSettings):
     #: `extraction_costs` — not to whoever is editing the adapter.
     extraction_model: str = "claude-sonnet-5"
 
+    #: Which vendor reads a finished room for the debrief.
+    #:
+    #: **Two values, and this is the first setting in the codebase that has
+    #: any.** The other providers are single-valued `Literal`s because only one
+    #: adapter exists for each; here both are written, which is what makes the
+    #: model-agnostic claim in `CLAUDE.md` something other than an aspiration.
+    #:
+    #: Gemini is the default on availability rather than on merit. The Claude
+    #: reader was built first — the SDK and tool-use pattern were already here
+    #: for extraction — and the Anthropic account cannot currently be funded.
+    #: Neither has been measured against a real room yet, so nothing here is a
+    #: quality judgement; see `scripts/weakness.py`.
+    debrief_provider: Literal["gemini", "claude"] = "gemini"
+
+    #: Which model does that reading, **and here the reasoning model wins** —
+    #: the opposite of the measured result recorded above for panel composition,
+    #: for reasons that are about the job rather than the vendor.
+    #:
+    #: A panelist says one short hostile thing under a ~1.5s ceiling, and a
+    #: reasoning model answered that with a considered paragraph, slower. The
+    #: debrief runs **once, offline, after the room closed**, against no clock at
+    #: all, and what it is being asked for is the thing thinking is for: seeing a
+    #: fluent, specific, confidently *wrong* answer, which no rule in code can.
+    #:
+    #: Cost sits differently too. Panel composition runs on every turn of a
+    #: *metered* session and lands inside the §4.4 margins Open Risk #4 flags.
+    #: This is one call per session on an unmetered phase — a few thousand input
+    #: tokens against a room that cost roughly $0.48 to hold.
+    #:
+    #: Still a setting rather than a constant, because it is the only lever on
+    #: debrief quality *and* on debrief cost, and §4.3 wants both measured before
+    #: either is defended.
+    #: `gemini-3.7-flash` is the model `scripts/panel_spike.py` measured at 2.11s
+    #: with 383 thinking tokens — disqualifying for a panelist and exactly right
+    #: here. Set alongside `debrief_provider`; the two move together.
+    debrief_model: str = "gemini-3.7-flash"
+
     #: How many model calls one deck may have in flight at once.
     #:
     #: A setting rather than a constant because the right value depends on a

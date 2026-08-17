@@ -148,6 +148,44 @@ the first design had that this one must not lose.
 - A per-debrief model call now exists where none did. It lands in
   `session_costs.debrief_seconds`' neighbourhood and §4.3 wants it counted.
 
+**Measured 2026-08-17, and the argument holds.** `scripts/weakness.py` plants
+five traps in one room and runs `gemini-3.7-flash` over it once, for 584 input
+and ~300 output tokens:
+
+| Planted | Result |
+| --- | --- |
+| A fluent, specific, **wrong** answer | Caught — *"at $180 a month, recovering a $1,200 acquisition cost takes nearly seven months rather than four"* |
+| A question never answered | Caught |
+| A genuinely good answer | Left alone — no false positive |
+| A question a colleague cut across | Filed `dismissed`, not as a dodge |
+| A question the room ran out on | Filed `not_reached`, not as a dodge |
+
+The first row is the decision landing. Nothing structural could reach that
+answer: it carries a figure, addresses the question asked, is never pressed, and
+contradicts nothing said elsewhere in the room.
+
+Two things the run corrected rather than confirmed, both recorded in the script:
+the Gemini schema listed six bare category names with no meanings, so a
+question a colleague interrupted came back labelled `unanswered` while its own
+reason said *"you were interrupted by another panelist"* — a right reading with
+a wrong label; and `CONTRADICTED` was defined too narrowly to cover arithmetic
+that does not work inside a single answer, which is where the model put the
+planted error and where it belongs.
+
+**Ordering moves between runs.** Two runs, identical membership, the worst
+answer ranked first and then second. Treat a single run's order as a reading of
+the room rather than a fixed fact — the caution `scripts/rotation.py` already
+records about its own ±2 band.
+
+**Both vendors are implemented.** `WeaknessReader` is the only seam in the
+codebase with two adapters, which is what turns the model-agnostic claim in
+`CLAUDE.md` into something demonstrated rather than described. Claude was
+written first, because the SDK and tool-use pattern were already present for
+extraction; Gemini became the default the same day, when the Anthropic account
+could not be funded. The interface cost nothing to honour and the swap took one
+file. Neither has been compared against the other on quality — only Gemini has
+been run.
+
 > **The original decision, kept.** *Code sets the floor; the model only orders
 > what is left.* Four properties of an answer were held to be checkable without
 > judgement — nobody answered it, a panelist pressed it again, the Auditor caught

@@ -36,7 +36,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from app.agents.context import USER, Said
 from app.agents.model import TurnUsage
@@ -204,7 +204,16 @@ class Weakness(Enum):
     #: The room ended on it. The clock, not the presenter.
     NOT_REACHED = "not_reached"
 
-    #: A figure moved. The Auditor's catch, or the same thing spotted on reading.
+    #: A figure conflicts with another figure the presenter gave — in an earlier
+    #: answer, or inside the same one.
+    #:
+    #: Widened after measurement. It first read "a figure moved", meaning the
+    #: Auditor's catch, and a reader handed *"twelve hundred to acquire, a
+    #: hundred and eighty a month, so payback is four months"* filed it here
+    #: anyway. That was the right call and the definition was too narrow:
+    #: arithmetic that does not work is two of the presenter's own figures
+    #: disagreeing, which is the Auditor's shape reached by reading rather than
+    #: by comparison.
     CONTRADICTED = "contradicted"
 
     #: Asserted with nothing behind it — no figure, no source, no mechanism.
@@ -407,3 +416,120 @@ async def weak_answers(
     return Ranked(
         answers=verified(reading.judged, transcript), usage=reading.usage
     )
+
+
+def to_judgements(reported: Any) -> tuple[Judgement, ...]:
+    """Typed judgements, in the order the model put them in.
+
+    **The order is the ranking** and is preserved exactly. It was decided with
+    the whole room in view by the only thing in the pipeline that read it, and
+    nothing here is better placed to second-guess it.
+
+    Malformed entries are dropped rather than raised on, matching
+    `to_claims`: one bad item out of five should cost that item, not the debrief.
+    A room that produced four usable findings and one unparseable one is still a
+    debrief worth opening.
+    """
+    if not isinstance(reported, dict) or not isinstance(reported.get("weak"), list):
+        return ()
+
+    judged: list[Judgement] = []
+
+    for entry in reported["weak"]:
+        judgement = _judgement(entry)
+        if judgement is None:
+            log.warning("weak_answer_malformed")
+            continue
+        judged.append(judgement)
+
+    return tuple(judged)
+
+
+def _judgement(entry: Any) -> Judgement | None:
+    """One entry, or `None` if it is not one.
+
+    Every field is checked for the type it has to be. A `quote` that arrived as
+    a list, or an `ordinal` as a string, would otherwise reach
+    `weakness.verified` and fail there — later, further from the cause, and
+    logged as an unverified quote rather than as a malformed reply.
+    """
+    if not isinstance(entry, dict):
+        return None
+
+    ordinal, quote = entry.get("ordinal"), entry.get("quote")
+    weakness, why = entry.get("weakness"), entry.get("why")
+
+    # `bool` is an `int` in Python, and `True` as an ordinal would index line
+    # one. Cheap to exclude, silent and baffling if it ever happened.
+    if not isinstance(ordinal, int) or isinstance(ordinal, bool):
+        return None
+    if not isinstance(quote, str) or not isinstance(why, str):
+        return None
+    if not quote.strip() or not why.strip():
+        return None
+
+    try:
+        named = Weakness(weakness)
+    except ValueError:
+        # A category outside the fixed vocabulary. Dropped rather than coerced
+        # to a default: the prep sheet groups on this and #55 will count it, so
+        # an invented category quietly filed under "unsupported" is worse than
+        # one finding fewer.
+        return None
+
+    return Judgement(ordinal=ordinal, quote=quote, weakness=named, why=why)
+
+
+def render(room: Sequence[Annotated]) -> str:
+    """The transcript, one numbered line each, notes indented beneath.
+
+    Numbered because the reply names ordinals, and a model asked for a line
+    number it was never shown is being asked to count. Notes below their line
+    rather than inline, so they read as a fact *about* it rather than as part of
+    what was said — a note spliced into a panelist's sentence would come back
+    quoted as if somebody had spoken it, and pass the quote check.
+    """
+    lines: list[str] = []
+
+    for line in room:
+        who = "PRESENTER" if line.said.speaker == USER else line.said.speaker
+        lines.append(f"[{line.ordinal}] {who}: {line.said.text}")
+        lines.extend(f"      ({note})" for note in line.notes)
+
+    return "\n".join(lines)
+
+
+#: Shared with the Claude reader, because it is the job rather than the vendor.
+#:
+#: Asks for a reading and never for a rule to be applied. #43 measured what
+#: happens to a rule handed to a model — asked whether the presenter had dodged,
+#: it said yes on 4 of 4 dodges *and* 4 of 4 genuine answers. What replaces the
+#: rule is a forced ranking, a required quote, and `weakness.verified` checking
+#: that quote afterwards.
+INSTRUCTION = """\
+You are reviewing a rehearsal session. A panel of experts interrogated a \
+presenter, and the full transcript follows, one numbered line at a time.
+
+Some lines carry a note in parentheses. Those are facts about the session that \
+the transcript itself cannot show. Take them as true.
+
+Identify the answers the presenter handled worst, and list them worst first. \
+Return at most six. Fewer is correct when the session was short or went well; \
+an empty list is the right answer for a session with nothing wrong in it.
+
+Judge the substance, not the delivery. The most important thing you can catch \
+is an answer that sounds confident and specific but does not hold up — a figure \
+that cannot be right, arithmetic that does not work, a mechanism that does not \
+follow, a claim with nothing behind it. Nothing else in this system can see \
+those.
+
+For each one:
+- `ordinal` is the numbered line of the QUESTION, never the answer.
+- `quote` must be words copied exactly from that line.
+- `why` speaks to the presenter, in one or two sentences, about what was \
+missing from what they actually said. Never generic advice.
+
+Do not blame the presenter for a question a note says they were never given the \
+chance to answer. It still belongs on the list — they will face it again — but \
+say what actually happened.\
+"""
