@@ -7,6 +7,7 @@ decides. Nothing money-relevant is taken from the client.
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 from collections.abc import Sequence
 from typing import NoReturn
 
@@ -39,7 +40,12 @@ from app.modules.sessions.models import (
     SessionPanelist,
     SessionPhaseSpan,
 )
+from app.modules.billing.models import Account
+from app.modules.billing.tiers import FREE_TIER, RECORDING_RETENTION_DAYS
+from app.modules.sessions.models import SessionRecording
 from app.modules.sessions.schemas import (
+    RecordingRead,
+    RecordingState,
     GRACE_LIMIT,
     METERED_PHASES,
     EndReason,
@@ -376,6 +382,44 @@ class SessionService:
             end_reason=end_reason.value,
         )
         return session
+
+    async def recording(self, *, session_id: uuid.UUID) -> RecordingRead:
+        """Whether this room can still be heard, and until when.
+
+        Answered from `session_recordings` rather than from the object store.
+        The row outlives the audio deliberately — that is what lets an expired
+        room be reported as *expired* rather than as one that was never
+        recorded, and those are different sentences to the person reading them.
+        Asking the store instead would collapse the two into "no object".
+
+        The window is read from the owner's tier **now**, matching the retention
+        sweep exactly. A user who upgrades sees the date on their old rooms move
+        out, and one who downgrades sees it move in — there is one rule, applied
+        in two places, rather than a stored expiry that would have to be
+        rewritten on every tier change.
+        """
+        recording = await self._db.get(SessionRecording, session_id)
+        if recording is None:
+            return RecordingRead(state=RecordingState.NOT_RECORDED)
+        if recording.deleted_at is not None:
+            return RecordingRead(state=RecordingState.EXPIRED)
+
+        session = await self._load(session_id)
+        tier = await self._db.scalar(
+            select(Account.entitlement_tier).where(Account.user_id == session.user_id)
+        )
+        days = RECORDING_RETENTION_DAYS.get(
+            tier or FREE_TIER, RECORDING_RETENTION_DAYS[FREE_TIER]
+        )
+        # From `settled_at` when there is one, so the date a user is shown is
+        # measured from the same mark the sweep uses. A room still running has
+        # not started its window: it is playable and its expiry is not yet a
+        # fact, so `stored_at` stands in until settlement makes it one.
+        from_when = session.settled_at or recording.stored_at
+        return RecordingRead(
+            state=RecordingState.AVAILABLE,
+            expires_at=from_when + timedelta(days=days),
+        )
 
     async def record_progress(self, *, session_id: uuid.UUID) -> None:
         """The client is still there. Resets the reaper's clock, nothing else.

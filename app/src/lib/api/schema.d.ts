@@ -157,6 +157,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sessions/{session_id}/recording": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Play Recording
+         * @description A link to hear one room again.
+         *
+         *     Plays the stored object. ElevenLabs is never called and no credits are
+         *     consumed — re-synthesising a room costs about a hundred times what storing
+         *     it does, and could not reproduce the user's own voice at any price.
+         *
+         *     Ownership is settled by `OwnedSession` before this body runs, and the
+         *     recording's state is checked before a URL is asked for. `core/storage.py`
+         *     says why that order matters: signing is not a permission check, and that
+         *     layer signs whatever it is told to sign.
+         *
+         *     Refuses rather than signing a key that is not there. A URL to an absent
+         *     object is a link that reaches the store, fails there, and leaves the client
+         *     reading somebody else's error page — and the state is already published on
+         *     the session, so a well-behaved client never arrives here at all.
+         */
+        get: operations["sessions_play_recording"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sessions/{session_id}/end": {
         parameters: {
             query?: never;
@@ -575,6 +609,47 @@ export interface components {
             upload_url: string;
         };
         /**
+         * RecordingPlayback
+         * @description A short-lived link to one room's audio.
+         *
+         *     Minted on demand rather than carried on the session, so every link that
+         *     reaches a player is a live one. `expires_in_seconds` is published so a
+         *     client can decide whether to reuse the link it holds or ask for another —
+         *     without it the only way to find out is to play and fail.
+         */
+        RecordingPlayback: {
+            /** Url */
+            url: string;
+            /** Expires In Seconds */
+            expires_in_seconds: number;
+        };
+        /**
+         * RecordingRead
+         * @description What a client is told about a room's audio, without minting anything.
+         *
+         *     Carries no URL. A presigned link lives fifteen minutes and a session object
+         *     can be cached, re-rendered or scrolled past for much longer, so embedding
+         *     one here would hand out links that are dead by the time anybody presses
+         *     play. The URL is minted by its own endpoint, at the moment it is wanted.
+         */
+        RecordingRead: {
+            state: components["schemas"]["RecordingState"];
+            /** Expires At */
+            expires_at?: string | null;
+        };
+        /**
+         * RecordingState
+         * @description Whether a room can still be heard, and if not, why not.
+         *
+         *     Three states rather than a nullable URL, because two of them are ordinary
+         *     and mean different things to the person reading the screen. "No longer
+         *     available" is a retention window arriving exactly on schedule; "not
+         *     recorded" is saving having been off. Telling somebody the first when the
+         *     second is true reads as data loss.
+         * @enum {string}
+         */
+        RecordingState: "available" | "expired" | "not_recorded";
+        /**
          * RefreshRequest
          * @description The stored credential, offered in exchange for a fresh pair.
          */
@@ -618,6 +693,7 @@ export interface components {
             settled_at?: string | null;
             /** Material Ids */
             material_ids?: string[];
+            recording?: components["schemas"]["RecordingRead"];
             /** Archetypes */
             archetypes?: string[];
         };
@@ -667,6 +743,7 @@ export interface components {
             settled_at?: string | null;
             /** Material Ids */
             material_ids?: string[];
+            recording?: components["schemas"]["RecordingRead"];
             /** Archetypes */
             archetypes?: string[];
             /** Stream Ticket */
@@ -931,6 +1008,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sessions_play_recording: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordingPlayback"];
                 };
             };
             /** @description Validation Error */

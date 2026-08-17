@@ -211,6 +211,61 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/sessions/{session_id}/recording:
+    get:
+      tags:
+      - sessions
+      summary: Play Recording
+      description: 'A link to hear one room again.
+
+
+        Plays the stored object. ElevenLabs is never called and no credits are
+
+        consumed — re-synthesising a room costs about a hundred times what storing
+
+        it does, and could not reproduce the user''s own voice at any price.
+
+
+        Ownership is settled by `OwnedSession` before this body runs, and the
+
+        recording''s state is checked before a URL is asked for. `core/storage.py`
+
+        says why that order matters: signing is not a permission check, and that
+
+        layer signs whatever it is told to sign.
+
+
+        Refuses rather than signing a key that is not there. A URL to an absent
+
+        object is a link that reaches the store, fails there, and leaves the client
+
+        reading somebody else''s error page — and the state is already published on
+
+        the session, so a well-behaved client never arrives here at all.'
+      operationId: sessions_play_recording
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Session Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordingPlayback'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/sessions/{session_id}/end:
     post:
       tags:
@@ -838,6 +893,72 @@ components:
         credential for a single object at a single size — short-lived by
 
         construction, and not the kind of thing to hand back on every GET.'
+    RecordingPlayback:
+      properties:
+        url:
+          type: string
+          title: Url
+        expires_in_seconds:
+          type: integer
+          title: Expires In Seconds
+      type: object
+      required:
+      - url
+      - expires_in_seconds
+      title: RecordingPlayback
+      description: 'A short-lived link to one room''s audio.
+
+
+        Minted on demand rather than carried on the session, so every link that
+
+        reaches a player is a live one. `expires_in_seconds` is published so a
+
+        client can decide whether to reuse the link it holds or ask for another —
+
+        without it the only way to find out is to play and fail.'
+    RecordingRead:
+      properties:
+        state:
+          $ref: '#/components/schemas/RecordingState'
+        expires_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Expires At
+      type: object
+      required:
+      - state
+      title: RecordingRead
+      description: 'What a client is told about a room''s audio, without minting anything.
+
+
+        Carries no URL. A presigned link lives fifteen minutes and a session object
+
+        can be cached, re-rendered or scrolled past for much longer, so embedding
+
+        one here would hand out links that are dead by the time anybody presses
+
+        play. The URL is minted by its own endpoint, at the moment it is wanted.'
+    RecordingState:
+      type: string
+      enum:
+      - available
+      - expired
+      - not_recorded
+      title: RecordingState
+      description: 'Whether a room can still be heard, and if not, why not.
+
+
+        Three states rather than a nullable URL, because two of them are ordinary
+
+        and mean different things to the person reading the screen. "No longer
+
+        available" is a retention window arriving exactly on schedule; "not
+
+        recorded" is saving having been off. Telling somebody the first when the
+
+        second is true reads as data loss.'
     RefreshRequest:
       properties:
         refresh_token:
@@ -882,6 +1003,8 @@ components:
             format: uuid
           type: array
           title: Material Ids
+        recording:
+          $ref: '#/components/schemas/RecordingRead'
         archetypes:
           items:
             type: string
@@ -972,6 +1095,8 @@ components:
             format: uuid
           type: array
           title: Material Ids
+        recording:
+          $ref: '#/components/schemas/RecordingRead'
         archetypes:
           items:
             type: string

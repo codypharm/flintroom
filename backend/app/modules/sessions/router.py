@@ -5,7 +5,11 @@ Thin, per `CLAUDE.md`: parse the request, call a service, return a response.
 
 from fastapi import APIRouter, Depends, status
 
+from app.core.errors import RecordingNotAvailable
+from app.core.storage_s3 import DEFAULT_EXPIRY_SECONDS
 from app.modules.auth.dependencies import CurrentUser, rate_limit_user
+from app.modules.ingestion.dependencies import ObjectStorageDep
+from app.modules.voice.recording import recording_key
 from app.modules.auth.rate_limit import SESSION_START_LIMIT
 from app.modules.sessions.dependencies import (
     OwnedSession,
@@ -13,6 +17,8 @@ from app.modules.sessions.dependencies import (
     SettlementServiceDep,
 )
 from app.modules.sessions.schemas import (
+    RecordingPlayback,
+    RecordingState,
     EndReason,
     SessionRead,
     SessionStart,
@@ -71,6 +77,42 @@ async def read_session(
     return await _read(session, sessions)
 
 
+@router.get(
+    "/sessions/{session_id}/recording", response_model=RecordingPlayback
+)
+async def play_recording(
+    session: OwnedSession,
+    sessions: SessionServiceDep,
+    storage: ObjectStorageDep,
+) -> RecordingPlayback:
+    """A link to hear one room again.
+
+    Plays the stored object. ElevenLabs is never called and no credits are
+    consumed — re-synthesising a room costs about a hundred times what storing
+    it does, and could not reproduce the user's own voice at any price.
+
+    Ownership is settled by `OwnedSession` before this body runs, and the
+    recording's state is checked before a URL is asked for. `core/storage.py`
+    says why that order matters: signing is not a permission check, and that
+    layer signs whatever it is told to sign.
+
+    Refuses rather than signing a key that is not there. A URL to an absent
+    object is a link that reaches the store, fails there, and leaves the client
+    reading somebody else's error page — and the state is already published on
+    the session, so a well-behaved client never arrives here at all.
+    """
+    recording = await sessions.recording(session_id=session.id)
+    if recording.state is not RecordingState.AVAILABLE:
+        raise RecordingNotAvailable(
+            context={"session_id": str(session.id), "state": recording.state.value}
+        )
+
+    return RecordingPlayback(
+        url=storage.presign_get(recording_key(session.id)),
+        expires_in_seconds=DEFAULT_EXPIRY_SECONDS,
+    )
+
+
 @router.post("/sessions/{session_id}/end", response_model=SessionRead)
 async def end_session(
     session: OwnedSession,
@@ -106,6 +148,7 @@ async def _read(session, sessions: SessionServiceDep) -> SessionRead:
     return SessionRead.model_validate(session).model_copy(
         update={
             "material_ids": await sessions.materials(session_id=session.id),
+            "recording": await sessions.recording(session_id=session.id),
             "archetypes": [archetype.name for archetype in panel],
         }
     )

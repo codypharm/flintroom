@@ -177,6 +177,58 @@ class SessionStart(BaseModel):
     )
 
 
+class RecordingState(str, Enum):
+    """Whether a room can still be heard, and if not, why not.
+
+    Three states rather than a nullable URL, because two of them are ordinary
+    and mean different things to the person reading the screen. "No longer
+    available" is a retention window arriving exactly on schedule; "not
+    recorded" is saving having been off. Telling somebody the first when the
+    second is true reads as data loss.
+    """
+
+    #: There is an object, and a URL can be minted for it.
+    AVAILABLE = "available"
+    #: There was one, and the retention sweep removed it on schedule.
+    EXPIRED = "expired"
+    #: There never was one — saving was off, the room failed, or nothing was said.
+    NOT_RECORDED = "not_recorded"
+
+
+class RecordingRead(BaseModel):
+    """What a client is told about a room's audio, without minting anything.
+
+    Carries no URL. A presigned link lives fifteen minutes and a session object
+    can be cached, re-rendered or scrolled past for much longer, so embedding
+    one here would hand out links that are dead by the time anybody presses
+    play. The URL is minted by its own endpoint, at the moment it is wanted.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    state: RecordingState
+
+    #: When the audio stops being playable, or null when there is none.
+    #:
+    #: Published deliberately. The window is a promise on a tier card, and a
+    #: client that knows the date can say "available until March" instead of
+    #: leaving somebody to discover the answer by coming back too late.
+    expires_at: datetime | None = None
+
+
+class RecordingPlayback(BaseModel):
+    """A short-lived link to one room's audio.
+
+    Minted on demand rather than carried on the session, so every link that
+    reaches a player is a live one. `expires_in_seconds` is published so a
+    client can decide whether to reuse the link it holds or ask for another —
+    without it the only way to find out is to play and fail.
+    """
+
+    url: str
+    expires_in_seconds: int
+
+
 class SessionRead(BaseModel):
     """What a client is told about its own session.
 
@@ -207,6 +259,11 @@ class SessionRead(BaseModel):
     #: "which deck is this room attacking" is not a question the user should
     #: have to answer from memory.
     material_ids: list[uuid.UUID] = Field(default_factory=list)
+
+    #: Whether this room can still be heard. Never a URL — see `RecordingRead`.
+    recording: RecordingRead = Field(
+        default_factory=lambda: RecordingRead(state=RecordingState.NOT_RECORDED)
+    )
 
     #: Who is in this room, in the order they were seated. Fixed when it started,
     #: for the same reason and echoed back for the same reason.

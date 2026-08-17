@@ -91,6 +91,19 @@ class NotFound(FlintroomError):
     message = "Not found."
 
 
+class RecordingNotAvailable(NotFound):
+    """There is no audio to play for this room.
+
+    A 404, because there is nothing at that address — but its own `code`, so a
+    client can tell "this room has no recording" apart from "no such session".
+    Collapsing them would make a free-tier room on day thirty-one, behaving
+    exactly as documented, indistinguishable from a bad session id.
+    """
+
+    code = "recording_not_available"
+    message = "This session has no recording available."
+
+
 class AccountNotFound(NotFound):
     code = "account_not_found"
     message = "No ledger account for this user."
