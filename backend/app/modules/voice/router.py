@@ -83,6 +83,7 @@ async def stream_session(
             transcriber=parts.transcriber,
             model=parts.model,
             speaker=parts.speaker,
+            reader=parts.reader,
         )
     except ProviderUnavailable:
         # Nothing has been metered — the room never opened. Closed here rather

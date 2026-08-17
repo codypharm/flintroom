@@ -22,6 +22,7 @@ from app.core.errors import ProviderUnavailable
 from app.core.logging import get_logger
 from app.modules.sessions.service import SessionService
 from app.modules.voice.grounding import session_grounding
+from app.agents.auditor import ClaimReader
 from app.modules.voice.orchestrated import OrchestratedProvider
 from app.modules.voice.speech import Speaker
 from app.modules.voice.transcription import Transcriber
@@ -37,6 +38,7 @@ async def build_room(
     transcriber: Transcriber | None,
     model: PanelModel | None,
     speaker: Speaker | None = None,
+    reader: ClaimReader | None = None,
 ) -> OrchestratedProvider:
     """The room for one session: its panel, its grounding, its vendors.
 
@@ -47,6 +49,10 @@ async def build_room(
     indistinguishable from a slow model. Refusing here surfaces as the typed,
     unnamed failure the relay already knows how to settle and refund against,
     before a single second is metered.
+
+    A missing claim reader degrades the same way and for the same reason: the
+    Auditor is an improvement to a room that already interrogates, so without
+    one the panel simply never catches a figure moving.
 
     A missing speaker degrades instead. Captions are a v1 requirement in their
     own right — `CLAUDE.md` sets the floor at WCAG 2.2 AA *plus live captions* —
@@ -78,6 +84,7 @@ async def build_room(
         seated=len(panel),
         claims=len(grounding.claims),
         speaking=speaker is not None,
+        auditing=reader is not None,
     )
 
     return OrchestratedProvider(
@@ -86,4 +93,5 @@ async def build_room(
         model=model,
         speaker=speaker,
         grounding=grounding,
+        reader=reader,
     )

@@ -163,9 +163,11 @@ class ScriptedReader:
     def __init__(self, *readings: ClaimReading) -> None:
         self._readings = list(readings)
         self.heard: list[str] = []
+        self.known: list[tuple[str, ...]] = []
 
-    async def read(self, *, said: str) -> ClaimReading:
+    async def read(self, *, said: str, known_metrics: tuple[str, ...] = ()) -> ClaimReading:
         self.heard.append(said)
+        self.known.append(known_metrics)
         return self._readings.pop(0) if self._readings else ClaimReading()
 
 
@@ -221,7 +223,7 @@ async def test_a_reader_that_fails_costs_a_catch_and_never_the_room():
     """
 
     class Broken:
-        async def read(self, *, said: str) -> ClaimReading:
+        async def read(self, *, said: str, known_metrics=()) -> ClaimReading:
             raise ProviderUnavailable(reason="claim_reader_error")
 
     auditor = Auditor(reader=Broken())
@@ -316,3 +318,36 @@ def test_a_metric_no_archetype_owns_still_produces_a_catch():
     # logs and in the debrief, and "widget throughput" says which figure moved
     # where an empty domain says nothing at all.
     assert caught.domain == "widget throughput"
+
+
+async def test_the_reader_is_told_which_metrics_are_already_in_play():
+    """The scalable answer to "margin" meaning "gross margin".
+
+    Measured against live Gemini on real sentences: *"our gross margin held at
+    sixty-one percent"* then *"the margin is closer to seventy percent"*
+    produced `gross margin` and `margin`. Two metrics, no contradiction, and the
+    single case the whole feature exists to catch went unremarked.
+
+    Lowercasing does not reach it. Neither does stripping qualifiers, which is
+    the obvious fix and a trap: **gross margin and net margin are different
+    numbers**, and merging them manufactures a contradiction out of two true
+    statements — the expensive direction. A synonym table cannot reach it either.
+    Every industry names its own metrics, and the failure mode of a table that
+    over-matches is a false accusation rather than a missed catch.
+
+    So the reader is shown what has already been named and asked to reuse a name
+    when the speaker is plainly referring to it. That stays on the right side of
+    the extract/compute split: resolving *"the margin"* to the metric under
+    discussion is reading language, which is the model's job. Deciding that two
+    numbers disagree remains ordinary code.
+    """
+    reader = ScriptedReader(
+        ClaimReading(claims=(figure("gross margin", 61),)),
+        ClaimReading(claims=(figure("gross margin", 70),)),
+    )
+    auditor = Auditor(reader=reader)
+
+    await auditor.listen("Our gross margin held at sixty-one.", at_seconds=8)
+    await auditor.listen("The margin is closer to seventy.", at_seconds=24)
+
+    assert reader.known == [(), ("gross margin",)]

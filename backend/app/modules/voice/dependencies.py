@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import Depends, WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.auditor import ClaimReader
 from app.agents.model import PanelModel
 from app.core.database import get_db
 from app.core.logging import get_logger
@@ -29,7 +30,7 @@ VoiceTicketServiceDep = Annotated[VoiceTicketService, Depends(get_ticket_service
 class RoomParts:
     """The process-wide half of a room, read off application state.
 
-    A room is built from two halves. These three are per process and built once
+    A room is built from two halves. These four are per process and built once
     in the lifespan, for the reason the auth verifiers are: each holds
     connection state, and rebuilding them per socket would pay that cost on
     every interrogation. The other half — who is seated, what may be attacked —
@@ -42,12 +43,18 @@ class RoomParts:
     Absent parts are carried rather than refused here. Whether a missing one
     ends the room is `build_room`'s call, and it answers differently for each: a
     room with no transcriber or no model cannot work, while a room with no
-    speaker is merely silent.
+    speaker is merely silent and one with no claim reader merely never notices a
+    figure moving.
     """
 
     transcriber: Transcriber | None
     model: PanelModel | None
     speaker: Speaker | None
+
+    #: Stateless and process-wide, unlike the `Auditor` built around it — that
+    #: accumulates one session's figures and is made per stream in
+    #: `OrchestratedProvider.open`.
+    reader: ClaimReader | None = None
 
 
 def get_room_parts(websocket: WebSocket) -> RoomParts:
@@ -57,6 +64,7 @@ def get_room_parts(websocket: WebSocket) -> RoomParts:
         transcriber=getattr(state, "transcriber", None),
         model=getattr(state, "panel_model", None),
         speaker=getattr(state, "speaker", None),
+        reader=getattr(state, "claim_reader", None),
     )
 
 

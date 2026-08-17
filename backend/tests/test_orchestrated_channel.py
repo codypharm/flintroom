@@ -19,12 +19,14 @@ from collections.abc import AsyncIterator, Sequence
 import pytest
 
 from app.agents.archetypes import DEFAULT_PANEL, Archetype
+from app.agents.auditor import Auditor, ClaimReading
 from app.agents.context import Grounding
 from app.agents.model import ModelReply
 from app.core.errors import ProviderUnavailable
 from app.modules.voice.events import AgentTranscript, Heartbeat, Spent
 from app.modules.voice.orchestrated import HEARTBEAT_SECONDS, OrchestratedChannel
 from app.modules.voice.transcribers.elevenlabs import SAMPLE_RATE
+from app.modules.ingestion.schemas import QuantitativeClaim, Unit
 from app.modules.voice.transcription import Transcription
 
 pytestmark = pytest.mark.asyncio
@@ -787,3 +789,184 @@ async def test_a_room_says_it_is_alive_even_when_nobody_is_speaking():
 
     beats = [event for event in events if isinstance(event, Heartbeat)]
     assert len(beats) >= 2, "a quiet room must keep reporting that it is open"
+
+
+class ScriptedClaimReader:
+    """Answers with the figures a test declared for each utterance.
+
+    Keyed by what was said rather than positional, because the room may read an
+    utterance the test did not expect — and a positional script would silently
+    hand it somebody else's figures rather than failing.
+    """
+
+    def __init__(self, script: dict[str, tuple]) -> None:
+        self._script = script
+        self.heard: list[str] = []
+
+    async def read(self, *, said: str, known_metrics: tuple[str, ...] = ()) -> ClaimReading:
+        self.heard.append(said)
+        return ClaimReading(claims=self._script.get(said, ()))
+
+
+def claim(metric: str, value: float, *, unit: Unit = Unit.PERCENT) -> QuantitativeClaim:
+    return QuantitativeClaim(
+        quote="spoken", metric=metric, value=value, unit=unit, period="Q3 2026"
+    )
+
+
+async def three_turns(model, reader, said: Sequence[str]) -> None:
+    """Run a room across several utterances, letting each turn finish first.
+
+    Same pacing as `two_turns` and for the same reason — a script yielding every
+    final in one tick is a user talking over the panel, which the channel is
+    right to treat as barge-in. It also matters more here: the whole point is
+    that a reading started on one utterance is collected on the next, and a test
+    that delivered both at once would prove nothing about the ordering.
+    """
+    transcription = DrivenTranscription()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=transcription,
+        model=model,
+        grounding=Grounding(),
+        auditor=Auditor(reader=reader),
+    )
+
+    spoken = asyncio.Queue()
+
+    async def collect():
+        async for event in channel.events():
+            if isinstance(event, AgentTranscript):
+                spoken.put_nowait(event)
+
+    reading = asyncio.create_task(collect())
+    for utterance in said:
+        transcription.feed(Transcription(text=utterance, final=True))
+        await asyncio.wait_for(spoken.get(), timeout=1)
+    transcription.hang_up()
+    await asyncio.wait_for(reading, timeout=1)
+
+
+class WatchingModel(ScriptedPanelModel):
+    """Records the finding each composition was handed, in order."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.findings: list[object] = []
+
+    async def compose(self, *, archetype, context, finding=None) -> ModelReply:
+        self.findings.append(finding)
+        return await super().compose(
+            archetype=archetype, context=context, finding=finding
+        )
+
+
+async def test_a_contradiction_reaches_the_panel_on_the_turn_after_it_was_spoken():
+    """Targeted interruption, wired — and deliberately one turn late.
+
+    The Auditor reads figures out of an utterance with a model call measured at
+    0.97s. Composition takes 0.82s and cannot begin until the finding exists,
+    because the finding decides both who speaks and what they say — so waiting
+    for it is not a 0.15s overlap but a full extra hop in series, taking the
+    room from ~2.15s to ~3.1s and undoing the entire latency budget.
+
+    Reading a partial instead, the way selection does, is worse rather than
+    cheaper. Routing tolerates three words because prefix length was measured
+    not to change the choice; a *figure* has no such tolerance — "sixty" against
+    "sixty-one percent" is a different number, and a wrong number in a
+    panelist's mouth is the one failure the extract/compute split exists to make
+    impossible.
+
+    So the reading starts when an utterance finishes and is collected when the
+    next one does. That is not a compromise: between two finals there is a panel
+    answer, the user thinking and the user talking — five to ten seconds — and
+    0.97s disappears inside it. The catch routes the very next turn at no cost,
+    and findings do not go stale, being about two fixed moments already past.
+    """
+    reader = ScriptedClaimReader(
+        {
+            "Our gross margin is sixty-one.": (claim("gross margin", 61),),
+            "Margin is seventy percent.": (claim("gross margin", 70),),
+        }
+    )
+    model = WatchingModel()
+    await three_turns(
+        model,
+        reader,
+        [
+            "Our gross margin is sixty-one.",
+            "Margin is seventy percent.",
+            "And we are hiring twelve people.",
+        ],
+    )
+
+    # Nothing to contradict on turn one; turn two's own contradiction is still
+    # being read while that turn composes.
+    assert model.findings[0] is None
+    assert model.findings[1] is None
+
+    caught = model.findings[2]
+    assert caught is not None, "the catch never reached the panel"
+    assert caught.domain == "margin"
+    assert "61" in caught.summary and "70" in caught.summary
+
+
+async def test_a_slow_reading_never_stands_between_the_user_and_an_answer():
+    """The property the whole one-turn-behind design exists to buy.
+
+    A reading is a model call, and a model call can be slow or can hang. If the
+    room waited for one the Auditor would sit directly on the critical path —
+    the place the partial-transcript overlap was built to clear — and a
+    background improvement would become the reason the panel is late.
+
+    The scripted reader elsewhere in this file answers instantly, so it cannot
+    show this: every reading is already finished by the time it is collected,
+    and a version that waited would pass every other test here. Written after
+    exactly that mutation survived.
+
+    The reading is not cancelled, unlike a late routing call. A contradiction is
+    about two fixed moments already in the past, so a slow one is not wrong —
+    only later — and it is collected on a subsequent turn.
+    """
+
+    class NeverAnswers:
+        def __init__(self) -> None:
+            self.reading = asyncio.Event()
+
+        async def read(self, *, said: str, known_metrics: tuple[str, ...] = ()) -> ClaimReading:
+            self.reading.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+    reader = NeverAnswers()
+    model = WatchingModel()
+    transcription = DrivenTranscription()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=transcription,
+        model=model,
+        grounding=Grounding(),
+        auditor=Auditor(reader=reader),
+    )
+
+    spoken = asyncio.Queue()
+
+    async def collect():
+        async for event in channel.events():
+            if isinstance(event, AgentTranscript):
+                spoken.put_nowait(event)
+
+    reading = asyncio.create_task(collect())
+
+    transcription.feed(Transcription(text="Our gross margin is sixty-one.", final=True))
+    await asyncio.wait_for(spoken.get(), timeout=1)
+    await asyncio.wait_for(reader.reading.wait(), timeout=1)
+
+    # The second utterance must be answered while the first is still being read.
+    transcription.feed(Transcription(text="Margin is seventy percent.", final=True))
+    await asyncio.wait_for(spoken.get(), timeout=1), "the room waited for a reading"
+
+    transcription.hang_up()
+    await asyncio.wait_for(reading, timeout=1)
+
+    assert model.findings == [None, None]

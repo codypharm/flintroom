@@ -119,20 +119,24 @@ class GeminiClaimReader:
         self._http = http
         self._model = model
 
-    async def read(self, *, said: str) -> ClaimReading:
-        payload = await self._ask(said)
+    async def read(
+        self, *, said: str, known_metrics: tuple[str, ...] = ()
+    ) -> ClaimReading:
+        payload = await self._ask(said, known_metrics)
         return ClaimReading(
             claims=_claims_of(payload),
             usage=_usage_of(payload),
         )
 
-    async def _ask(self, said: str) -> dict[str, Any]:
+    async def _ask(self, said: str, known_metrics: tuple[str, ...]) -> dict[str, Any]:
         try:
             response = await self._http.post(
                 f"{BASE_URL}/{self._model}:generateContent",
                 headers={API_KEY_HEADER: self._api_key},
                 json={
-                    "contents": [{"role": "user", "parts": [{"text": said}]}],
+                    "contents": [
+                        {"role": "user", "parts": [{"text": _prompt(said, known_metrics)}]}
+                    ],
                     "systemInstruction": {"parts": [{"text": _INSTRUCTION}]},
                     "generationConfig": {
                         "maxOutputTokens": MAX_READING_TOKENS,
@@ -159,6 +163,38 @@ class GeminiClaimReader:
             raise ProviderUnavailable(reason="claim_reader_unreachable") from exc
 
         return response.json()
+
+
+def _prompt(said: str, known_metrics: tuple[str, ...]) -> str:
+    """The utterance, and the names the speaker has already used.
+
+    Measured live, this is the difference between catching the canonical
+    contradiction and missing it: *"our gross margin held at sixty-one
+    percent"* followed by *"the margin is closer to seventy percent"* produced
+    `gross margin` and `margin`, two metrics that are never compared, and the
+    room said nothing.
+
+    Names only, never the figures. What the model is being asked is *which
+    metric is this*, and showing it the previous values would invite it to
+    reconcile them — arithmetic, on the wrong side of the line, and precisely
+    what the extract/compute split exists to prevent.
+
+    Omitted entirely when there is nothing to list, rather than sent as an empty
+    section. Every session's first utterance takes that path, so it is the
+    commonest case and not an edge, and a prompt saying "already mentioned:
+    none" invites a model to treat the absence as meaningful.
+    """
+    if not known_metrics:
+        return said
+
+    named = "\n".join(f"- {metric}" for metric in known_metrics)
+    return (
+        f"Metrics this speaker has already named in this conversation:\n{named}\n\n"
+        "If a figure below refers to one of those, use that exact name for it. "
+        "Only when it is plainly a different measurement should you name a new "
+        "one — gross margin and net margin are not the same thing.\n\n"
+        f"What they just said:\n{said}"
+    )
 
 
 def _claims_of(payload: dict[str, Any]) -> tuple[QuantitativeClaim, ...]:

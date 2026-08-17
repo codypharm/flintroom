@@ -24,6 +24,7 @@ from app.modules.panels.router import router as panels_router
 from app.modules.ingestion.runner import ExtractionRunner
 from app.modules.sessions.router import router as sessions_router
 from app.modules.sessions.runner import SessionFactory, SweepRunner
+from app.agents.claim_readers import build_claim_reader
 from app.agents.panel_models import build_panel_model
 from app.modules.voice.speakers import build_speaker
 from app.modules.voice.transcribers import build_transcriber
@@ -89,6 +90,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Same trade as the provider above: a deployment with no bucket takes only
     # ingestion down, and refusing to boot over it would stop auth, balances and
     # the voice loop over a feature none of them use.
+    # The Auditor's ears. Absent is the mildest of the four: a room still
+    # interrogates, it simply never notices a figure that moved.
+    app.state.claim_reader = build_claim_reader(settings, http)
+    if app.state.claim_reader is None:
+        log.warning("claim_reader_unconfigured")
+
     app.state.object_storage = build_object_storage(settings)
     if app.state.object_storage is None:
         log.warning("object_storage_unconfigured")

@@ -135,3 +135,55 @@ async def test_a_room_that_raises_still_closes_its_stream():
             raise RuntimeError("the socket died")
 
     assert transcriber.closed == 1
+
+
+async def test_each_room_gets_its_own_running_claim_set():
+    """A shared Auditor would carry one person's figures into somebody else's room.
+
+    The Auditor accumulates every figure spoken during a session and checks each
+    new one against it. Built once and reused, the second room would open
+    holding the first user's numbers — and would then accuse its user of
+    contradicting a claim they never made, quoting a moment from a session that
+    was not theirs.
+
+    That is a correctness failure and a privacy one at the same time: the
+    summary a panelist reads aloud carries the earlier figure verbatim. It is
+    also exactly the shape `CLAUDE.md` guards against elsewhere by binding
+    per-session context at construction — and this is the one thing in the
+    room that is per *stream* rather than per session, since a provider outlives
+    a dropped socket and can be opened again.
+    """
+    reader = object()
+    provider = OrchestratedProvider(
+        panel=DEFAULT_PANEL,
+        transcriber=RecordingTranscriber(),
+        model=SilentModel(),
+        grounding=Grounding(),
+        reader=reader,
+    )
+
+    async with provider.open() as first:
+        first_auditor = first._auditor
+        first_auditor.heard.append(object())
+
+    async with provider.open() as second:
+        assert second._auditor is not first_auditor
+        assert second._auditor.heard == [], "a second room opened holding the first's figures"
+
+
+async def test_a_deployment_with_no_claim_reader_still_opens_rooms():
+    """One unconfigured model must not take the interrogation with it.
+
+    The same trade as the speaker: auth, balances, transcription, routing,
+    composition and captions all work without a claim reader. What is lost is
+    the panel noticing a figure that moved — a kind of question, not a session.
+    """
+    provider = OrchestratedProvider(
+        panel=DEFAULT_PANEL,
+        transcriber=RecordingTranscriber(),
+        model=SilentModel(),
+        grounding=Grounding(),
+    )
+
+    async with provider.open() as channel:
+        assert channel._auditor is None

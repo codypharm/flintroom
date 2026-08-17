@@ -21,7 +21,8 @@ from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 
 from app.agents.archetypes import Archetype
-from app.agents.context import Grounding, Routed, Said, TurnContext, USER
+from app.agents.auditor import Auditor, ClaimReader
+from app.agents.context import Finding, Grounding, Routed, Said, TurnContext, USER
 from app.agents.model import PanelModel
 from app.agents.panel import interrogate, select_speaker
 from app.agents.routing import choose
@@ -92,6 +93,7 @@ class OrchestratedProvider:
         model: PanelModel,
         speaker: Speaker | None = None,
         grounding: Grounding | None = None,
+        reader: ClaimReader | None = None,
     ) -> None:
         #: Who is seated, in seat order. Public because a room's roster is a
         #: fact about the room rather than an implementation detail of it — the
@@ -102,6 +104,9 @@ class OrchestratedProvider:
         self._model = model
         self._speaker = speaker
         self._grounding = grounding
+        # The reader is process-wide and stateless; the `Auditor` built around
+        # it is neither, so it is made per stream in `open()` rather than here.
+        self._reader = reader
 
     @asynccontextmanager
     async def open(self) -> AsyncIterator[OrchestratedChannel]:
@@ -118,6 +123,13 @@ class OrchestratedProvider:
                 model=self._model,
                 speaker=self._speaker,
                 grounding=self._grounding,
+                # A fresh one per stream, never shared. An `Auditor` accumulates
+                # every figure spoken in a session, so a reused one would open
+                # the next room already holding the last user's numbers — and
+                # would then accuse somebody of contradicting a claim they never
+                # made, quoting it verbatim in a panelist's voice. A correctness
+                # failure and a privacy one in the same object.
+                auditor=Auditor(reader=self._reader) if self._reader else None,
             )
 
 
@@ -139,9 +151,17 @@ class OrchestratedChannel:
         model: PanelModel,
         speaker: Speaker | None = None,
         grounding: Grounding | None = None,
+        auditor: Auditor | None = None,
         heartbeat_seconds: float = HEARTBEAT_SECONDS,
     ) -> None:
         self._panel = panel
+        # Optional, like the speaker: a room without one still transcribes,
+        # routes, composes, speaks and captions. What it loses is the panel
+        # catching a figure that moved.
+        self._auditor = auditor
+        # The reading of the utterance just finished, and the catch left over
+        # from the one before it. See `_audit`.
+        self._reading: asyncio.Task[Finding | None] | None = None
         # Injectable so a test can watch several beats without waiting for
         # them. The default is the only value production uses.
         self._heartbeat_seconds = heartbeat_seconds
@@ -279,8 +299,17 @@ class OrchestratedChannel:
                     # memory because *we* chose not to reply to them, and the next
                     # selection would then judge an answer it never saw.
                     self._transcript.append(Said(speaker=USER, text=result.text))
+                    # Collected before the new one starts, so this turn is
+                    # answered with the catch from the *previous* utterance and
+                    # never waits for its own. See `_audit`.
+                    finding = await self._take_finding()
+                    self._audit(result.text)
                     speaking = await self._restart(
-                        speaking, result.text, out, await self._take_routing(result.text)
+                        speaking,
+                        result.text,
+                        out,
+                        await self._take_routing(result.text),
+                        finding,
                     )
                     continue
 
@@ -367,6 +396,72 @@ class OrchestratedChannel:
             select_speaker(self._panel, context=context, model=self._model)
         )
 
+    def _audit(self, said: str) -> None:
+        """Start reading the figures out of the utterance that just finished.
+
+        **Deliberately one turn behind, and it costs nothing.** A reading is a
+        model call measured at 0.97s warm, and composition — 0.82s — cannot
+        begin until the finding exists, because a finding decides both who
+        speaks and what they say. Waiting for it is therefore not an overlap but
+        a whole extra hop in series, taking the room from ~2.15s to ~3.1s and
+        undoing the entire latency budget.
+
+        Reading a *partial* instead, the way selection does, is worse rather
+        than cheaper. Routing tolerates three words because prefix length was
+        measured not to change the choice; a figure has no such tolerance —
+        "sixty" against "sixty-one percent" is a different number, and a wrong
+        number in a panelist's mouth is the one failure the extract/compute
+        split exists to make impossible.
+
+        So it runs in the gap that already exists. Between two finished
+        utterances there is a panel answer, the user thinking and the user
+        talking — five to ten seconds — and 0.97s disappears inside it. The
+        catch routes the very next turn at no cost, and findings do not go
+        stale: they are about two fixed moments already in the past.
+        """
+        if self._auditor is None:
+            return
+        self._reading = asyncio.create_task(
+            self._auditor.listen(said, at_seconds=self._seconds_elapsed())
+        )
+
+    def _seconds_elapsed(self) -> int:
+        """How far into the room this utterance was, from audio forwarded.
+
+        The bytes rather than a wall clock, because they are what the room
+        actually heard: a phone that reconnects, or a stream that stalls, is
+        wall-clock time nobody spoke into. It is also the same counter metering
+        already trusts, so a timestamp a panelist reads aloud and a second the
+        user was charged for cannot disagree.
+        """
+        return self._heard_bytes // (SAMPLE_RATE * BYTES_PER_SAMPLE)
+
+    async def _take_finding(self) -> Finding | None:
+        """Collect the previous utterance's catch, if it is ready.
+
+        Never waits, for the reason `_take_routing` never waits: this sits
+        between the user stopping and the room answering. A reading that has not
+        finished is left running and collected on the turn after — it is not
+        wasted, only later — because a contradiction is about two fixed moments
+        and does not expire.
+        """
+        if self._reading is None or not self._reading.done():
+            return None
+
+        reading, self._reading = self._reading, None
+        try:
+            return reading.result()
+        except Exception:
+            # `Auditor.listen` already swallows its own provider failures, so
+            # anything arriving here is a bug rather than an outage. It still
+            # must not end a live metered room — the Auditor is an improvement
+            # to a session that works without it — but `CLAUDE.md` refuses to
+            # let an unexpected exception become invisible, so the traceback is
+            # logged in full rather than reduced to a type name. A swallowed
+            # bug with no stack is one nobody can fix.
+            log.exception("audit_failed")
+            return None
+
     async def _take_routing(self, said: str) -> Routed | None:
         """Collect the selection started during this utterance, and clear it.
 
@@ -432,6 +527,7 @@ class OrchestratedChannel:
         said: str,
         out: asyncio.Queue[VoiceEvent | None],
         routed: Routed | None,
+        finding: Finding | None,
     ) -> asyncio.Task:
         """Begin a turn, abandoning one already running.
 
@@ -441,7 +537,7 @@ class OrchestratedChannel:
         """
         if speaking is not None and not speaking.done():
             await self._stop(speaking)
-        return asyncio.create_task(self._turn(said, out, routed))
+        return asyncio.create_task(self._turn(said, out, routed, finding))
 
     @staticmethod
     async def _stop(speaking: asyncio.Task) -> None:
@@ -457,6 +553,7 @@ class OrchestratedChannel:
         said: str,
         out: asyncio.Queue[VoiceEvent | BaseException | None],
         routed: Routed | None = None,
+        finding: Finding | None = None,
     ) -> None:
         """One archetype's answer, from selection through to the last frame.
 
@@ -472,7 +569,7 @@ class OrchestratedChannel:
         and refund the user the first time they talked over a panelist.
         """
         try:
-            await self._answer(said, out, routed)
+            await self._answer(said, out, routed, finding)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -487,6 +584,7 @@ class OrchestratedChannel:
         said: str,
         out: asyncio.Queue[VoiceEvent | BaseException | None],
         routed: Routed | None = None,
+        finding: Finding | None = None,
     ) -> None:
         turn = await interrogate(
             self._panel,
@@ -499,6 +597,11 @@ class OrchestratedChannel:
             # one — an utterance that produced no partial, or a routing call the
             # final overtook — `interrogate` chooses here as it always has.
             routed=routed,
+            # The Auditor's catch from the previous utterance, if it found one.
+            # It outranks `routed` inside `interrogate`: a specific contradiction
+            # against specific figures is a better reason to hand somebody the
+            # floor than a guess made from half a sentence.
+            finding=finding,
         )
 
         # Recorded before the line is spoken, so that a panelist cut off two

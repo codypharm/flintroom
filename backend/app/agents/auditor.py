@@ -146,8 +146,21 @@ class ClaimReader(Protocol):
     cannot survive.
     """
 
-    async def read(self, *, said: str) -> ClaimReading:
+    async def read(
+        self, *, said: str, known_metrics: tuple[str, ...] = ()
+    ) -> ClaimReading:
         """The figures in this utterance, if any.
+
+        `known_metrics` is what the speaker has already named in this session,
+        so a bare *"the margin"* can be resolved to the `gross margin` under
+        discussion rather than becoming a second metric nothing will ever be
+        compared against. Measured live, that exact pair — `gross margin` then
+        `margin` — silently lost the one contradiction the feature exists for.
+
+        **This does not cross the extract/compute line.** Deciding that *"the
+        margin"* refers to a metric named a minute ago is reading language,
+        which is what a model is for. Deciding that two numbers disagree stays
+        in ordinary code, where it cannot be hallucinated.
 
         **May raise, and the caller survives it.** This is a background
         improvement to a room that already works, so a failure here costs a
@@ -186,6 +199,19 @@ class Auditor:
     #: and silently failing.
     readings: int = 0
 
+    def metrics(self) -> tuple[str, ...]:
+        """Every distinct metric named so far, oldest first.
+
+        Handed to the reader so it can reuse a name rather than invent a
+        variant. Order is preserved and duplicates dropped: a model reading a
+        list where `gross margin` appears nine times learns that the speaker
+        repeats themselves, not which metrics exist.
+        """
+        seen: dict[str, None] = {}
+        for spoken in self.heard:
+            seen.setdefault(spoken.claim.metric, None)
+        return tuple(seen)
+
     async def listen(self, said: str, *, at_seconds: int) -> Finding | None:
         """Read the figures out of one utterance and check them.
 
@@ -205,7 +231,7 @@ class Auditor:
             return None
 
         try:
-            reading = await self.reader.read(said=said)
+            reading = await self.reader.read(said=said, known_metrics=self.metrics())
         except FlintroomError as refused:
             # `reason` distinguishes a provider that is down from one that is
             # slow, which are different problems with different fixes. Never the

@@ -209,3 +209,45 @@ async def test_a_reading_reports_what_it_cost():
 
     assert reading.usage.input_tokens == 240
     assert reading.usage.output_tokens == 12
+
+
+async def test_the_metrics_already_named_are_put_in_front_of_the_model():
+    """Resolving "the margin" to "gross margin" is the model's job, not ours.
+
+    Measured live: *"our gross margin held at sixty-one percent"* then *"the
+    margin is closer to seventy percent"* came back as two different metrics, so
+    the contradiction the whole feature exists to catch went unremarked.
+
+    Fixing it in code is worse than not fixing it. Stripping qualifiers merges
+    **gross** and **net** margin, which are different numbers, and manufactures
+    a contradiction out of two true statements — the expensive direction. A
+    synonym table over-matches the same way, industry by industry, forever.
+
+    So the names already in play go to the model, which is what a model is
+    genuinely good at. The comparison stays in code where nothing can be
+    hallucinated.
+    """
+    reader, seen = reader_over(answering({"claims": []}))
+
+    await reader.read(
+        said="The margin is closer to seventy.",
+        known_metrics=("gross margin", "headcount"),
+    )
+
+    sent = seen[0].read().decode()
+    assert "gross margin" in sent and "headcount" in sent
+
+
+async def test_the_first_utterance_carries_no_list_at_all():
+    """Nothing has been named yet, and an empty list must not become noise.
+
+    A prompt reading "metrics already mentioned: (none)" invites a model to
+    explain itself or to treat the absence as meaningful. The opening utterance
+    of every session takes this path, so it is the commonest case rather than an
+    edge.
+    """
+    reader, seen = reader_over(answering({"claims": []}))
+
+    await reader.read(said="Our gross margin held at sixty-one percent.")
+
+    assert "already" not in seen[0].read().decode().lower()
