@@ -29,11 +29,13 @@ cannot survive.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
 from app.agents.context import Finding
 from app.agents.model import TurnUsage
+from app.agents.vocabulary import DOMAIN_TERMS, terms_for
 from app.core.errors import FlintroomError
 from app.core.logging import get_logger
 from app.modules.ingestion.schemas import QuantitativeClaim
@@ -316,13 +318,43 @@ def _finding(earlier: SpokenClaim, later: SpokenClaim) -> Finding:
     able to say what.
     """
     return Finding(
-        domain=later.claim.metric,
+        domain=_domain_of(later.claim.metric),
         summary=(
             f"At {_clock(earlier.at_seconds)} they said {_number(earlier.claim)} "
             f"for {earlier.claim.metric}; at {_clock(later.at_seconds)} they said "
             f"{_number(later.claim)}."
         ),
     )
+
+
+def _domain_of(metric: str) -> str:
+    """The canonical domain an archetype would recognise, from what was said.
+
+    A model reads a metric in the speaker's own words — *"gross margin"*,
+    *"pre-money valuation"*, *"monthly churn"*. `panel._owner` matches against
+    the canonical names an archetype declares — `margin`, `valuation`,
+    `retention` — and none of those phrases match one.
+
+    The failure is silent and looks exactly like success: `_owner` answers
+    `None`, the turn falls through to ordinary routing, somebody speaks, the
+    transcript reads perfectly well, and targeted interruption is simply off.
+
+    Matched through `vocabulary.DOMAIN_TERMS`, which is the same table routing
+    already uses, so the two cannot drift apart — and `vocabulary.py` names this
+    as the fix it was waiting for: a claim carries its metric explicitly, so a
+    figure arrives labelled rather than guessed at from the whole sentence.
+
+    Whole words, so `cost` does not match `costume`. Falls back to the metric
+    as spoken when nothing matches, which `_owner` will not recognise — and that
+    is correct: an unowned domain is a real contradiction with no natural voice
+    for it, and §3.3's answer is to let ordinary selection run rather than force
+    it on somebody and produce the engineer challenging the margin.
+    """
+    words = set(re.findall(r"[a-z0-9]+", metric.lower()))
+    for domain in DOMAIN_TERMS:
+        if words.intersection(terms_for(domain)):
+            return domain
+    return metric
 
 
 def _number(claim: QuantitativeClaim) -> str:

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.agents.archetypes import by_name
 from app.agents.auditor import Auditor, ClaimReading, SpokenClaim
 from app.core.errors import ProviderUnavailable
 from app.modules.ingestion.schemas import QuantitativeClaim, Unit
@@ -260,3 +261,58 @@ def test_a_metric_the_model_capitalised_differently_is_the_same_metric():
     auditor.hear(said("Revenue", 400_000, at=60, unit=Unit.USD))
 
     assert auditor.hear(said("revenue", 900_000, at=300, unit=Unit.USD)) is not None
+
+
+def test_a_catch_is_labelled_with_the_domain_that_owns_it():
+    """Without this, targeted interruption routes to nobody.
+
+    §3.3 assigns the interrupter by domain — the CFO catches the margin
+    contradiction, not the Technical Skeptic — and `panel._owner` matches
+    `Finding.domain` against the canonical domains an archetype declares:
+    `margin`, `headcount`, `compliance`. A model reads a metric out of speech in
+    the speaker's own words, which is *"gross margin"*, and that matches nothing.
+
+    The failure is silent and looks like success. `_owner` returns `None`, the
+    turn falls through to ordinary routing, somebody speaks, the transcript
+    reads fine — and the single most differentiated behaviour in the product is
+    off, with `chosen_by=model` in the logs to say everything is well.
+
+    `vocabulary.py` predicted this in its own docstring: *"the real fix is
+    routing on the claims the Auditor already extracts from live speech — those
+    carry the metric explicitly, so a figure about acquisition cost arrives
+    labelled rather than guessed at."* This is that fix, using the same table.
+    """
+    auditor = Auditor()
+
+    auditor.hear(said("gross margin", 61, at=120))
+    caught = auditor.hear(said("gross margin", 70, at=540))
+
+    assert caught is not None
+    assert caught.domain == "margin"
+    assert "margin" in by_name("cfo").domains
+
+
+def test_a_metric_no_archetype_owns_still_produces_a_catch():
+    """An unowned domain is a real contradiction with nobody obvious to raise it.
+
+    `_owner` already answers `None` rather than forcing it on somebody, and
+    lets ordinary selection run — the alternative produces the *"engineer
+    challenges the margin"* failure §3.3 exists to prevent. So the finding must
+    still exist and still be stateable; only its routing is undecided.
+
+    Dropping it instead would mean the Auditor silently ignores every figure
+    outside the eight archetypes' vocabulary, which is most figures in most
+    industries.
+    """
+    auditor = Auditor()
+
+    auditor.hear(said("widget throughput", 400, at=60, unit=Unit.COUNT))
+    caught = auditor.hear(said("widget throughput", 900, at=300, unit=Unit.COUNT))
+
+    assert caught is not None
+    assert "400" in caught.summary and "900" in caught.summary
+    # Labelled with what was actually said, rather than blanked. No archetype
+    # will match it and none should — but a finding nobody owns still appears in
+    # logs and in the debrief, and "widget throughput" says which figure moved
+    # where an empty domain says nothing at all.
+    assert caught.domain == "widget throughput"
