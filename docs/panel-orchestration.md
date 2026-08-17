@@ -1039,5 +1039,36 @@ waved away in the room is still in the record, and Phase 4 ranks weak answers
 from exactly that record.
 
 So the choice is no longer "dismissive or safe" but "dismissive in the room and
-recovered in the debrief, or absent from both". That is a product-tone decision
-and belongs to the architect.
+recovered in the debrief, or absent from both".
+
+### Decided: audible, and the safety net is architectural
+
+The architect chose the first framing on 2026-08-17. The room now produces lines
+like *"Sponsorship matters less than the operational debt of that rebuild"* — and
+also *"Data ownership is irrelevant without margin"*, which is a claim about a
+colleague's ground rather than a preference about order.
+
+That is accepted rather than tolerated, and the reason is that a real board
+member does dismiss a colleague's question. Learning **who will do that for you**
+is exactly the intelligence §3.1 asks a mixed room to provide, and it is not
+available from a panel that is unfailingly polite about whose question comes
+first.
+
+The ban clause — *"you are not saying they were wrong to ask"* — is kept in the
+prompt because the text above is what was measured and a tidied variant would
+not be. It is not kept because it works: it was present for every measurement,
+including the false claim.
+
+**This creates an obligation on Phase 4, filed as its own task.** The
+justification for shipping a dismissive panelist is that the question survives in
+`session_transcript_lines` and the debrief ranks weak answers from that record. A
+debrief that does not surface what the room skipped removes the justification
+retroactively, and does so silently — the room would look fine and the product
+would be helping people avoid the questions they most need to answer.
+
+One thing that will make that harder and is worth knowing now: `PanelTurn` records
+whether a turn disputed, and the transcript does not. Once written, a disputing
+line and an ordinary one are the same shape. Reconstructing which was which after
+the fact is guesswork, so if the debrief needs to tell "a colleague waved this
+away" from "the presenter dodged it", that flag has to be persisted rather than
+inferred.

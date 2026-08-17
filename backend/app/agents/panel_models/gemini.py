@@ -463,15 +463,28 @@ def _composition_prompt(
         # That comes from this archetype's own persona and from what was
         # actually said, and it would be worthless if it came from a rule.
         parts.append(
+            # Chosen by the architect 2026-08-17 from five measured framings;
+            # the table is in `docs/panel-orchestration.md`. This is the audible
+            # one, and audible means mildly dismissive — measured, it produces
+            # "Acquisition cost is a footnote if they leave in six weeks" and
+            # also "Data ownership does not touch the margin", which is a claim
+            # about a colleague's ground and a false one.
+            #
+            # Taken deliberately, because a question waved away in the room is
+            # still in `session_transcript_lines` and the debrief ranks weak
+            # answers from exactly that record. The safety net is architectural
+            # rather than lexical — **which makes it Phase 4's obligation to
+            # surface what the room skipped, not an enhancement.**
+            #
+            # The final clause is a ban that does not hold. It was present for
+            # every measurement above, including the false claim. Kept because
+            # the text below is what was measured and a tidied variant would
+            # not be; not kept because it works.
             f"{dispute.speaker} just asked: {dispute.text}\n"
-            # Three framings measured 2026-08-17; see
-            # `docs/panel-orchestration.md`. This is the least bad rather than
-            # the best: it is the only one that cannot harm the presenter, and
-            # its cost is that the disagreement is frequently inaudible.
-            "You want something answered first. Open by saying what, in your "
-            "own terms, then ask it. Never say their question does not matter, "
-            "is a footnote, or is the wrong question: it still stands and the "
-            "presenter still owes them an answer."
+            "Open by saying what matters more than that, in your own terms, "
+            "then put your own question to them. Their question still stands "
+            "— you are not letting the presenter off it, and you are not "
+            "saying they were wrong to ask."
         )
 
     if finding is not None:

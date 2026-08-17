@@ -632,12 +632,7 @@ def test_a_disputing_turn_is_told_to_argue_about_priority_only():
 
     assert "cfo" in prompt
     assert "still stands" in prompt
-    # Sequencing, not comparative worth. Measured: "say what matters more than
-    # that" produced "data ownership does not touch the margin" and "proof
-    # points do not alter unit economics" — substantive claims about a
-    # colleague's ground, one of them false, and both leaving the presenter
-    # free to think the question had been disposed of.
-    assert "answered first" in prompt
+    assert "matters more" in prompt
 
 
 def test_an_ordinary_turn_is_told_nothing_about_disputing():
@@ -646,4 +641,4 @@ def test_an_ordinary_turn_is_told_nothing_about_disputing():
     offered a reason to do something takes it."""
     prompt = _composition_prompt(CONTEXT, None, by_name("cfo"), dispute=None)
 
-    assert "answered first" not in prompt
+    assert "matters more" not in prompt
