@@ -1007,7 +1007,37 @@ The second framing is in place: the only one that cannot harm the presenter. Its
 cost is that the disagreement is frequently inaudible, so the feature currently
 underdelivers rather than misbehaves.
 
-That is a deliberate trade and not a finished answer. What has not been tried:
-moving the instruction into the archetype's system prompt rather than the turn
-prompt, or shaping the line as a single clause rather than two sentences. Both
-are worth a pass before concluding the feature cannot be had.
+### Both remaining ideas were tried, and the pattern closed
+
+| Instruction | asked | named | What went wrong |
+| --- | --- | --- | --- |
+| In the **persona** rather than the turn prompt | 8/8 | 3/8 | Audible and *rude*. "Never mind what the CFO just asked about." "Let technical_skeptic wait" — leaking an internal name. "Ignore him." The worst of the five on the one axis that matters |
+| **One clause**, one sentence | 7/8 | 0/8 | Safe and invisible again, plus one turn where the Technical Skeptic asked the CFO's burn question instead of its own |
+
+Five framings, and they sort into two columns with nothing in between:
+
+|            | audible | safe |
+| ---        | ---     | ---  |
+| matters more | yes   | no   |
+| answered first | no  | yes  |
+| name their subject | yes | no |
+| in the persona | yes | no |
+| one clause | no      | yes  |
+
+**Audible implies dismissive; safe implies invisible.** That is not a prompting
+failure to be solved with a sixth attempt. In English, voicing a difference of
+priority *is* a mild dismissal — "I want mine answered first" cannot be said
+without implying theirs is less urgent. The brief asked for audible and never
+dismissive, and those two may not both be available.
+
+### What that changes about the decision
+
+The harm was that a dismissed question goes unanswered. That argument is weaker
+than it was this morning, because the transcript now persists both sides of the
+room for the life of the account and the debrief is grounded in it. A question
+waved away in the room is still in the record, and Phase 4 ranks weak answers
+from exactly that record.
+
+So the choice is no longer "dismissive or safe" but "dismissive in the room and
+recovered in the debrief, or absent from both". That is a product-tone decision
+and belongs to the architect.
