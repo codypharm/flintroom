@@ -233,6 +233,22 @@ class ElevenLabsTranscriber:
         self._endpoint = endpoint
         self._connect = connect or websockets.connect
 
+        # Stated once per process, from the object that resolved it rather than
+        # from whoever passed it, so the line says what will actually be dialled.
+        #
+        # The threshold decides whether the panel talks over somebody mid-answer
+        # and costs 0.30s of latency between its plausible values, and it was
+        # invisible: a real session was judged comfortable in the belief it ran
+        # at 0.4 when `.env` said 0.7, and nothing anywhere could settle which
+        # had been heard. Never the key — a startup line is exactly where a
+        # credential gets attached as "useful context".
+        log.info(
+            "transcriber_ready",
+            provider=PROVIDER,
+            model=self._model,
+            silence_threshold_secs=self._silence_threshold_secs,
+        )
+
     @asynccontextmanager
     async def open(self) -> AsyncIterator[ElevenLabsTranscriptionStream]:
         """Open a transcription, and make sure it is closed again.

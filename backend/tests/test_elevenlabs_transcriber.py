@@ -16,6 +16,7 @@ network and a paid account, and neither is where the bugs live.
 from __future__ import annotations
 
 import base64
+import logging
 import json
 from contextlib import asynccontextmanager
 from unittest import mock
@@ -333,6 +334,31 @@ async def test_how_long_a_pause_lasts_can_be_changed_without_a_deploy():
             pass
 
     assert "vad_silence_threshold_secs=0.4" in connects.url
+
+
+def test_a_running_deployment_says_which_pause_length_it_is_using(caplog):
+    """The value in force must be readable without opening anybody's `.env`.
+
+    It was not, and the cost showed up the first evening it mattered: a real
+    session was judged comfortable in the belief that it ran at 0.4, and the
+    file said 0.7. The two differ by 0.30s of latency and by whether the panel
+    talks over somebody mid-answer — the whole point of the setting — and
+    nothing anywhere could have settled which had been heard.
+
+    At construction, so it is stated once per process rather than per room, and
+    on the object that resolved it rather than at the call site that passed it.
+    A transcriber built with the adapter's own default reports the same way as
+    one configured from `.env`, which is what makes the line trustworthy: it
+    says what will be dialled, not what somebody intended.
+    """
+    with caplog.at_level(logging.INFO):
+        ElevenLabsTranscriber(api_key="k", silence_threshold_secs=0.55)
+
+    (line,) = [r for r in caplog.records if r.getMessage() == "transcriber_ready"]
+    assert line.context["silence_threshold_secs"] == 0.55
+    # Never the key. `CLAUDE.md` permits zero secrets in logs, and a startup
+    # line is exactly where one gets casually attached to "useful context".
+    assert "k" not in str(line.context.values())
 
 
 def test_a_deployment_without_credentials_gets_no_transcriber_rather_than_a_broken_one():
