@@ -7,9 +7,11 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Index,
+    Integer,
     PrimaryKeyConstraint,
     SmallInteger,
     String,
+    Text,
     func,
     text,
 )
@@ -330,3 +332,73 @@ class SessionPanelist(Base):
     #: tie on the panel's own index, so the seat a user gave an archetype decides
     #: who speaks when nothing else separates them.
     seat: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+
+
+class TranscriptLine(Base):
+    """One line of one room, whoever said it. Append-only.
+
+    The first content Flintroom keeps. Everything else persisted so far is money
+    (`ledger_entries`), proof (`audit_events`) or telemetry (`session_costs`) —
+    none of it something a user would recognise as *theirs*. That is why
+    `docs/session-retention.md` exists, and why retention lives on this table
+    rather than being implied by it.
+
+    Both sides, in one table. A schema that separated the panel's questions from
+    the user's answers would make the natural read — the conversation — a union
+    of two queries ordered by a column they would have to agree on, and would
+    make "what did they say to the CFO's margin question" a join rather than two
+    adjacent rows.
+
+    Retained for the life of the account on every tier, including Free. Text is
+    tens of KB and does not compound; only audio does, which is why the two have
+    different windows and why that difference lives in `billing/tiers.py` rather
+    than here.
+    """
+
+    __tablename__ = "session_transcript_lines"
+    __table_args__ = (
+        # The pair *is* the fact, as with `session_materials`: this line, at this
+        # point in this room. A surrogate id would leave "the fourth thing said"
+        # expressible twice, and a retry that wrote a line again would be a
+        # duplicate rather than a no-op.
+        PrimaryKeyConstraint("session_id", "ordinal", name="pk_session_transcript_lines"),
+    )
+
+    #: A real foreign key, unlike `user_id` — it points at a table we own, so it
+    #: carries none of the portability cost the `auth.users` rule avoids. Cascade
+    #: because a line has no meaning without its room, and deleting the session
+    #: is how a transcript is disposed of.
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    #: Where this line falls in the room, from zero. Explicit rather than
+    #: inferred from a timestamp or an insert order: lines are written as they
+    #: are said, so two could share a clock reading, and "whatever order the rows
+    #: come out" is not an order — the same point `session_panelists.seat`
+    #: already makes about seats.
+    #:
+    #: Order is content here, not presentation. `Product.md` §3.5 ranks weak
+    #: *answers*, which is a judgement about a pair, and the same lines
+    #: rearranged describe a room that did not happen.
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    #: `USER`, or an archetype's `name` — the same identity used in logs, in
+    #: routing, and in the room's own in-memory transcript. Not a foreign key to
+    #: `session_panelists`: a transcript is a record of what was said, and it
+    #: must stay readable if the roster it was said by is ever reshaped.
+    speaker: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    #: Unbounded, because an utterance is. `String(n)` here would mean a user who
+    #: talked for ninety seconds without pausing lost the end of their own
+    #: sentence — silently, and only sometimes.
+    #:
+    #: Never logged. `CLAUDE.md` forbids transcript text in logs and, unlike a
+    #: secret, it cannot be caught by key-name redaction.
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+
+    said_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
