@@ -17,6 +17,7 @@ channel keeps working unmodified.
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 
@@ -586,6 +587,7 @@ class OrchestratedChannel:
         routed: Routed | None = None,
         finding: Finding | None = None,
     ) -> None:
+        started = time.monotonic()
         turn = await interrogate(
             self._panel,
             said=said,
@@ -613,6 +615,22 @@ class OrchestratedChannel:
         # The user's own line was recorded by the listener, not here, because
         # this task can be cancelled and that must not depend on it.
         self._transcript.append(Said(speaker=turn.archetype.name, text=turn.line))
+
+        # From the user going quiet to the room having something to say. The
+        # only number that tells an operator whether a slow room was slow here
+        # or slow on the wire — every latency figure in
+        # `docs/panel-orchestration.md` was measured on a laptop against a local
+        # server, and a phone adds a network nobody can see from a spike.
+        #
+        # `chosen_by` travels with it because the two explain each other: a turn
+        # that fell back to keyword routing is one where the model was late, and
+        # a slow turn with `chosen_by=model` is a slow composer instead.
+        log.info(
+            "panel_turn_latency",
+            seconds=round(time.monotonic() - started, 2),
+            chosen_by=turn.chosen_by,
+            archetype=turn.archetype.name,
+        )
 
         # The caption first, then the audio it captions. Synthesis streams over
         # the length of an utterance, so a client waiting for the last frame

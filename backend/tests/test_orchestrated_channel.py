@@ -14,6 +14,7 @@ in `relay.py` changes.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator, Sequence
 
 import pytest
@@ -970,3 +971,37 @@ async def test_a_slow_reading_never_stands_between_the_user_and_an_answer():
     await asyncio.wait_for(reading, timeout=1)
 
     assert model.findings == [None, None]
+
+
+async def test_a_room_records_how_long_each_turn_took(caplog):
+    """Open Risk #3 is measured in spikes and invisible in production.
+
+    Every latency figure in `docs/panel-orchestration.md` came from a script on
+    a laptop against a local server. A user on a phone experiences that plus the
+    wire, and when they say the room felt slow there is nothing to say whether
+    the panel was slow or the network was — which is the first question, and the
+    one that decides whether the fix is ours at all.
+
+    Timed from the finished utterance, because that is when the user stopped
+    talking and started waiting. Ending at the caption rather than at the last
+    audio frame: the caption is when the room has something to say, and
+    synthesis streams over the length of an utterance, so measuring to the end
+    would report the length of the answer rather than the wait for it.
+
+    A number, never the line. `CLAUDE.md` forbids transcripts in logs.
+    """
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=FakeTranscription(
+            [Transcription(text="Our gross margin is seventy percent.", final=True)]
+        ),
+        model=ScriptedPanelModel(),
+        grounding=Grounding(),
+    )
+
+    with caplog.at_level(logging.INFO):
+        await events_of(channel)
+
+    (timed,) = [r for r in caplog.records if r.getMessage() == "panel_turn_latency"]
+    assert timed.context["seconds"] >= 0
+    assert "text" not in timed.context and "line" not in timed.context
