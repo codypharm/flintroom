@@ -25,6 +25,8 @@ from app.core.errors import ProviderUnavailable
 from app.modules.sessions.schemas import EndReason, SessionState
 from app.modules.sessions.service import SessionService
 from app.modules.voice.dependencies import RoomParts
+from app.agents.context import USER, Said
+from app.modules.sessions.transcript import SessionTranscript
 from app.modules.voice.router import CLOSE_PROVIDER_UNAVAILABLE, stream_session
 from app.modules.voice.costs import SessionCost
 from app.modules.voice.tickets import VoiceTicketService
@@ -128,7 +130,7 @@ async def _admitted(db, account, **start):
     return session, ticket
 
 
-async def test_a_socket_reaches_the_panel_and_the_panel_answers(db, funded_account):
+async def test_a_socket_reaches_the_panel_and_the_panel_answers(db, funded_account, session_factory):
     """The whole chain, in one assertion: phone → room → archetype → caption.
 
     Before this route was rewired, a live socket reached ElevenLabs Agents — one
@@ -154,6 +156,7 @@ async def test_a_socket_reaches_the_panel_and_the_panel_answers(db, funded_accou
         VoiceTicketService(db),
         RoomParts(transcriber=FakeTranscriber(), model=model, speaker=None),
         db,
+        session_factory,
     )
 
     assert websocket.accepted
@@ -161,7 +164,7 @@ async def test_a_socket_reaches_the_panel_and_the_panel_answers(db, funded_accou
     assert websocket.transcripts == [LINE]
 
 
-async def test_a_room_is_grounded_in_its_own_deck(db, ingestion, storage, funded_account):
+async def test_a_room_is_grounded_in_its_own_deck(db, ingestion, storage, funded_account, session_factory):
     """The claims reach the composer, which is the wedge in one assertion.
 
     `CLAUDE.md` refuses to ship interrogation logic that cannot cite its source,
@@ -185,13 +188,14 @@ async def test_a_room_is_grounded_in_its_own_deck(db, ingestion, storage, funded
         VoiceTicketService(db),
         RoomParts(transcriber=FakeTranscriber(), model=model, speaker=None),
         db,
+        session_factory,
     )
 
     (context,) = model.composed_with
     assert context.grounding.claims == ("Gross margin of 61% in Q3 2026 (slide 1)",)
 
 
-async def test_a_deployment_that_cannot_hear_closes_before_metering(db, funded_account):
+async def test_a_deployment_that_cannot_hear_closes_before_metering(db, funded_account, session_factory):
     """An unconfigured room must not leave a session billing or stranded.
 
     The session stays out of `active`, which is what keeps the meter off it. A
@@ -209,6 +213,7 @@ async def test_a_deployment_that_cannot_hear_closes_before_metering(db, funded_a
         VoiceTicketService(db),
         RoomParts(transcriber=None, model=FakePanelModel(selects="cfo"), speaker=None),
         db,
+        session_factory,
     )
 
     assert websocket.closed_with == CLOSE_PROVIDER_UNAVAILABLE
@@ -216,7 +221,7 @@ async def test_a_deployment_that_cannot_hear_closes_before_metering(db, funded_a
     assert session.state is not SessionState.ACTIVE
 
 
-async def test_a_phone_that_hangs_up_mid_write_still_settles_the_room(db, funded_account):
+async def test_a_phone_that_hangs_up_mid_write_still_settles_the_room(db, funded_account, session_factory):
     """The room ends properly even when the user leaves at the worst moment.
 
     A phone disconnecting finishes one side of the relay's pump, which cancels
@@ -246,6 +251,7 @@ async def test_a_phone_that_hangs_up_mid_write_still_settles_the_room(db, funded
             speaker=None,
         ),
         db,
+        session_factory,
     )
 
     await db.refresh(session)
@@ -257,7 +263,7 @@ async def test_a_phone_that_hangs_up_mid_write_still_settles_the_room(db, funded
     assert cost.llm_input_tokens >= 0
 
 
-async def test_a_dead_panel_model_refunds_instead_of_billing_for_silence(db, funded_account):
+async def test_a_dead_panel_model_refunds_instead_of_billing_for_silence(db, funded_account, session_factory):
     """The failure this whole guard exists for, seen from the socket.
 
     A composer that stops answering used to leave a room open and metered with
@@ -288,6 +294,7 @@ async def test_a_dead_panel_model_refunds_instead_of_billing_for_silence(db, fun
             speaker=None,
         ),
         db,
+        session_factory,
     )
 
     assert websocket.closed_with == CLOSE_PROVIDER_UNAVAILABLE
@@ -295,7 +302,7 @@ async def test_a_dead_panel_model_refunds_instead_of_billing_for_silence(db, fun
     assert session.end_reason is EndReason.PROVIDER_FAILURE
 
 
-async def test_a_phone_already_gone_is_not_an_error_to_close_on(db, funded_account):
+async def test_a_phone_already_gone_is_not_an_error_to_close_on(db, funded_account, session_factory):
     """Hanging up is how rooms end, and it must not surface as a crash.
 
     The last thing this route does is close the socket. When the phone has
@@ -328,7 +335,45 @@ async def test_a_phone_already_gone_is_not_an_error_to_close_on(db, funded_accou
             speaker=None,
         ),
         db,
+        session_factory,
     )
 
     await db.refresh(session)
     assert session.state is SessionState.SETTLED
+
+
+async def test_a_room_leaves_its_words_behind(db, funded_account, session_factory):
+    """The whole chain again, but for what survives the socket closing.
+
+    Route → `build_room` → provider → channel → store → a row. Every piece was
+    tested on its own and the wiring is the part that is easy to get wrong: a
+    room whose store was never constructed still interrogates, still captions
+    and still settles, and nothing about it looks broken until the debrief has
+    nothing to read.
+
+    Both sides asserted, because they arrive by different routes — the user's
+    line from the transcription listener, the panelist's from the turn — and a
+    regression is far more likely to lose one than both.
+    """
+    session, ticket = await _admitted(db, funded_account, archetypes=["cfo"])
+
+    await stream_session(
+        FakeWebSocket(),
+        session.id,
+        ticket,
+        VoiceTicketService(db),
+        RoomParts(
+            transcriber=FakeTranscriber("Our gross margin is sixty-one percent."),
+            model=FakePanelModel(selects="cfo"),
+            speaker=None,
+        ),
+        db,
+        session_factory,
+    )
+
+    kept = await SessionTranscript(session_factory, session_id=session.id).lines()
+
+    assert kept == (
+        Said(speaker=USER, text="Our gross margin is sixty-one percent."),
+        Said(speaker="cfo", text=LINE),
+    )

@@ -19,7 +19,7 @@ from collections.abc import AsyncIterator
 import pytest
 
 from app.agents.archetypes import DEFAULT_PANEL, by_name
-from app.agents.context import Grounding
+from app.agents.context import USER, Grounding, Said
 from app.agents.model import ModelReply
 from app.modules.voice.orchestrated import OrchestratedProvider
 from app.modules.voice.transcription import Transcription
@@ -187,3 +187,37 @@ async def test_a_deployment_with_no_claim_reader_still_opens_rooms():
 
     async with provider.open() as channel:
         assert channel._auditor is None
+
+
+async def test_a_room_files_its_words_where_they_will_outlive_it():
+    """The provider carries the store down to the channel that does the writing.
+
+    `build_room` is the only place that knows which session a room belongs to,
+    so the store is bound there and travels with the provider — the same
+    asymmetry that made `OrchestratedProvider` per-room rather than per-process.
+    A provider that accepted one and dropped it would leave every room silently
+    unrecorded, and nothing about a live interrogation would look wrong.
+
+    Asserted by running a turn rather than by reading the channel's attributes,
+    for the reason the panel test gives: what is *in* the object is not the
+    claim.
+    """
+    kept: list[Said] = []
+
+    class Keeping:
+        async def record(self, line: Said) -> None:
+            kept.append(line)
+
+    provider = OrchestratedProvider(
+        panel=DEFAULT_PANEL,
+        transcriber=RecordingTranscriber(
+            [Transcription(text="Margin is seventy percent.", final=True)]
+        ),
+        model=SilentModel(),
+        transcript=Keeping(),
+    )
+
+    async with provider.open() as channel:
+        [event async for event in channel.events()]
+
+    assert Said(speaker=USER, text="Margin is seventy percent.") in kept

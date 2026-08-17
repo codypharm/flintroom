@@ -100,6 +100,17 @@ async def db(engine) -> AsyncSession:
         yield session
 
 
+@pytest_asyncio.fixture
+async def session_factory(db, engine):
+    """A factory, for the callers that need a session of their own.
+
+    Depends on `db` so the truncation that fixture performs has already happened
+    — a factory handed out before it would open sessions onto the previous
+    test's rows.
+    """
+    return async_sessionmaker(engine, expire_on_commit=False)
+
+
 @pytest.fixture
 def ledger(db) -> LedgerService:
     return LedgerService(db)

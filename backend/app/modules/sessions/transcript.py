@@ -15,7 +15,7 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.agents.context import Said
 from app.modules.sessions.models import TranscriptLine
@@ -31,8 +31,30 @@ class SessionTranscript:
     invisible and unrecoverable.
     """
 
-    def __init__(self, db: AsyncSession, *, session_id: uuid.UUID) -> None:
-        self._db = db
+    #: A factory, not a session — and this is the one decision here that is not
+    #: taste.
+    #:
+    #: `OrchestratedChannel.events` runs its listener as a task *beside* the loop
+    #: the relay consumes from, and says so: "the concurrency is the feature."
+    #: The relay already writes progress marks and spend from that loop. So a
+    #: store sharing the room's `AsyncSession` would have two tasks flushing the
+    #: same session concurrently, which SQLAlchemy does not allow — and the
+    #: channel doing no database work at all is the only reason this has not
+    #: happened already.
+    #:
+    #: It also fixes a second thing the shared session was quietly doing. A
+    #: session holds a pooled connection for as long as its transaction is open,
+    #: so a room that flushed without committing would pin one for twelve
+    #: minutes. The engine is built on SQLAlchemy's defaults — five connections
+    #: plus ten overflow — which would have capped the whole service at about
+    #: fifteen concurrent rooms, from a table nobody would think to look at.
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        *,
+        session_id: uuid.UUID,
+    ) -> None:
+        self._session_factory = session_factory
         self._session_id = session_id
         #: Where the next line falls. Held here because this object's lifetime
         #: *is* the room's, so the counter cannot outlive what it counts.
@@ -45,28 +67,39 @@ class SessionTranscript:
         self._next = 0
 
     async def record(self, line: Said) -> None:
-        """Keep one line, whoever said it.
+        """Keep one line, whoever said it. One line, one transaction.
 
-        Flushed rather than committed. The caller owns the transaction — the
-        relay already writes progress marks and spend against the same session —
-        and a store that committed on its own would split those into separate
-        transactions and decide, on its own authority, that a half-written turn
-        was durable.
+        Committed here rather than left to whoever owns the room's transaction,
+        because otherwise nothing owns it: the relay commits a progress mark
+        every fifteen seconds, and a line spoken at second one would become
+        durable on the back of an unrelated heartbeat at second ten. That is not
+        a transaction boundary, it is a coincidence — and it would change
+        silently the day the heartbeat did.
+
+        A line is its own unit of work. There is nothing it needs to be atomic
+        with: it is not money, it does not move a balance, and a room where the
+        third line survived and the fourth did not is still a better transcript
+        than no transcript.
+
+        The ordinal advances only after the commit lands, so a failed write is
+        retried into the same slot — which the composite primary key makes a
+        no-op rather than a duplicate.
 
         Deliberately not logged, not even at debug. `CLAUDE.md` forbids
         transcript text in logs, and unlike a secret it cannot be caught by
         key-name redaction: it is indistinguishable from any other string.
         """
-        self._db.add(
-            TranscriptLine(
-                session_id=self._session_id,
-                ordinal=self._next,
-                speaker=line.speaker,
-                text=line.text,
+        async with self._session_factory() as db:
+            db.add(
+                TranscriptLine(
+                    session_id=self._session_id,
+                    ordinal=self._next,
+                    speaker=line.speaker,
+                    text=line.text,
+                )
             )
-        )
+            await db.commit()
         self._next += 1
-        await self._db.flush()
 
     async def lines(self) -> tuple[Said, ...]:
         """The room, in order, both sides.
@@ -80,11 +113,12 @@ class SessionTranscript:
         in a finished session and a turn grounded in a live one are looking at
         the same shape. The database row is not part of the contract.
         """
-        rows = await self._db.execute(
-            select(TranscriptLine)
-            .where(TranscriptLine.session_id == self._session_id)
-            .order_by(TranscriptLine.ordinal)
-        )
-        return tuple(
-            Said(speaker=row.speaker, text=row.text) for row in rows.scalars()
-        )
+        async with self._session_factory() as db:
+            rows = await db.execute(
+                select(TranscriptLine)
+                .where(TranscriptLine.session_id == self._session_id)
+                .order_by(TranscriptLine.ordinal)
+            )
+            return tuple(
+                Said(speaker=row.speaker, text=row.text) for row in rows.scalars()
+            )

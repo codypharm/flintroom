@@ -16,6 +16,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.agents.context import USER, Said
 from app.modules.sessions.transcript import SessionTranscript
@@ -24,7 +25,9 @@ from app.modules.voice.transcript import TranscriptStore
 pytestmark = pytest.mark.asyncio
 
 
-async def test_a_room_reads_back_in_the_order_it_happened(db, sessions, funded_account):
+async def test_a_room_reads_back_in_the_order_it_happened(
+    db, engine, sessions, funded_account
+):
     """Order is the content, not a presentation detail.
 
     A transcript is a sequence of pairs — what was put to the user and what came
@@ -34,7 +37,15 @@ async def test_a_room_reads_back_in_the_order_it_happened(db, sessions, funded_a
     made yet.
     """
     session = await sessions.start(user_id=funded_account.user_id)
-    transcript = SessionTranscript(db, session_id=session.id)
+    # Committed on purpose, and it is the point rather than setup noise: the
+    # store writes on its own connection, so it can only see a session that is
+    # actually there. A room whose row was still uncommitted would fail the
+    # foreign key on its first line.
+    await db.commit()
+
+    transcript = SessionTranscript(
+        async_sessionmaker(engine, expire_on_commit=False), session_id=session.id
+    )
 
     await transcript.record(Said(speaker=USER, text="Our gross margin is seventy percent."))
     await transcript.record(Said(speaker="cfo", text="The deck says sixty-one."))

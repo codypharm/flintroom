@@ -15,12 +15,13 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.agents.model import PanelModel
 from app.core.errors import ProviderUnavailable
 from app.core.logging import get_logger
 from app.modules.sessions.service import SessionService
+from app.modules.sessions.transcript import SessionTranscript
 from app.modules.voice.grounding import session_grounding
 from app.agents.auditor import ClaimReader
 from app.modules.voice.orchestrated import OrchestratedProvider
@@ -39,6 +40,7 @@ async def build_room(
     model: PanelModel | None,
     speaker: Speaker | None = None,
     reader: ClaimReader | None = None,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> OrchestratedProvider:
     """The room for one session: its panel, its grounding, its vendors.
 
@@ -94,4 +96,21 @@ async def build_room(
         speaker=speaker,
         grounding=grounding,
         reader=reader,
+        # Built here because this is the only place that knows *which* session a
+        # room is, and the store binds that at construction rather than taking it
+        # per line — the provenance rule `CLAUDE.md` sets for `LedgerService`.
+        #
+        # Given the session factory rather than the room's own session, because
+        # the channel writes from a task running beside the relay's loop and the
+        # two would otherwise flush one `AsyncSession` concurrently. See
+        # `SessionTranscript` for the second reason, which is the connection pool.
+        #
+        # Optional in the same way the speaker is, and it degrades the same way:
+        # a room without one still interrogates and still captions. What it
+        # loses is the debrief, so nothing that serves a real user may omit it.
+        transcript=(
+            SessionTranscript(session_factory, session_id=session_id)
+            if session_factory is not None
+            else None
+        ),
     )

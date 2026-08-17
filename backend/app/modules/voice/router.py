@@ -16,10 +16,10 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.actors import ActorContext
-from app.core.database import get_db
+from app.core.database import get_db, get_session_factory
 from app.core.errors import FlintroomError, NotAuthenticated, ProviderUnavailable
 from app.core.logging import get_logger
 from app.core.request_context import current_request_id
@@ -48,6 +48,9 @@ async def stream_session(
     tickets: VoiceTicketServiceDep,
     parts: RoomPartsDep,
     db: Annotated[AsyncSession, Depends(get_db)],
+    session_factory: Annotated[
+        async_sessionmaker[AsyncSession], Depends(get_session_factory)
+    ],
 ) -> None:
     """Carry one interrogation between the phone and the voice provider.
 
@@ -84,6 +87,10 @@ async def stream_session(
             model=parts.model,
             speaker=parts.speaker,
             reader=parts.reader,
+            # The factory, not `db`. The room's transcript is written from a task
+            # running beside the relay's loop, and one `AsyncSession` cannot be
+            # flushed from two at once — see `SessionTranscript`.
+            session_factory=session_factory,
         )
     except ProviderUnavailable:
         # Nothing has been metered — the room never opened. Closed here rather

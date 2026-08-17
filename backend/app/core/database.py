@@ -54,6 +54,23 @@ async def get_db(connection: HTTPConnection) -> AsyncIterator[AsyncSession]:
         yield session
 
 
+async def get_session_factory(
+    connection: HTTPConnection,
+) -> async_sessionmaker[AsyncSession]:
+    """The factory itself, for the few callers that need a session of their own.
+
+    `get_db` hands out one session bound to the request, which is right for
+    almost everything. The exception is work that runs on a task *beside* the
+    request rather than inside it — a live room writes its transcript from the
+    channel's listener while the relay writes progress from the loop consuming
+    it, and one `AsyncSession` cannot be flushed from two tasks at once.
+
+    A dependency rather than a reach through `websocket.app`, so that a caller
+    can be handed one in a test without inventing an application to hang it off.
+    """
+    return connection.app.state.session_factory
+
+
 async def db_now(db: AsyncSession) -> datetime:
     """The database's clock, for any timestamp another timestamp is compared to.
 

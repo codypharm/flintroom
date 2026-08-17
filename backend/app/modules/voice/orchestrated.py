@@ -96,6 +96,7 @@ class OrchestratedProvider:
         speaker: Speaker | None = None,
         grounding: Grounding | None = None,
         reader: ClaimReader | None = None,
+        transcript: TranscriptStore | None = None,
     ) -> None:
         #: Who is seated, in seat order. Public because a room's roster is a
         #: fact about the room rather than an implementation detail of it — the
@@ -109,6 +110,11 @@ class OrchestratedProvider:
         # The reader is process-wide and stateless; the `Auditor` built around
         # it is neither, so it is made per stream in `open()` rather than here.
         self._reader = reader
+        # Per room, like the panel and the grounding, and for the same reason:
+        # it is bound to one session. Unlike the `Auditor` it is *not* rebuilt
+        # per stream — it holds the room's ordinal counter, and a fresh one would
+        # restart at zero and collide with the lines already written.
+        self._transcript = transcript
 
     @asynccontextmanager
     async def open(self) -> AsyncIterator[OrchestratedChannel]:
@@ -132,6 +138,7 @@ class OrchestratedProvider:
                 # made, quoting it verbatim in a panelist's voice. A correctness
                 # failure and a privacy one in the same object.
                 auditor=Auditor(reader=self._reader) if self._reader else None,
+                transcript=self._transcript,
             )
 
 
