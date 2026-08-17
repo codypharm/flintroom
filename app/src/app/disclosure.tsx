@@ -22,5 +22,21 @@ import { RecordingDisclosure } from '../components/modules/RecordingDisclosure';
  * which is what an unsigned-in visitor would be.
  */
 export default function DisclosureScreen() {
-  return <RecordingDisclosure retentionDays={30} onContinue={() => router.back()} />;
+  return (
+    <RecordingDisclosure
+      retentionDays={30}
+      onContinue={() => {
+        // Dismiss, then push onto the stack underneath. Not `dismissTo` or
+        // `replace`: both swap the *sheet's* route, so the room would render
+        // inside a form sheet rather than replacing it.
+        //
+        // In the real flow this is `enterRoom`, and the microphone is settled
+        // between these two steps. Here it goes straight through, because a
+        // button labelled "Enter the room" that only closed a sheet was a
+        // control naming an action it did not perform.
+        router.dismiss();
+        router.push('/room');
+      }}
+    />
+  );
 }
