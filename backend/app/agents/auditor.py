@@ -251,10 +251,38 @@ class Auditor:
 
 def _disagrees(earlier: SpokenClaim, later: SpokenClaim) -> bool:
     return (
-        earlier.claim.metric == later.claim.metric
+        _same_metric(earlier.claim.metric, later.claim.metric)
         and earlier.claim.comparable_to(later.claim)
         and _moved(earlier.claim.value, later.claim.value)
     )
+
+
+def _same_metric(earlier: str, later: str) -> bool:
+    """Whether two figures are about the same thing.
+
+    Case- and space-insensitive, because the model writes what the sentence
+    looked like. Measured against live Gemini across eight utterances, one run
+    produced `gross margin`, `Revenue`, `Churn`, `engineers` and `pre-money
+    valuation` — so the same figure arrives capitalised one way at minute two
+    and another at minute nine, and under exact equality those are two different
+    metrics whose contradiction is never checked.
+
+    It fails silently and in the safe direction, which is what makes it worth a
+    test: nothing errors, nobody is falsely accused, the room simply stops
+    catching things and looks exactly like a room where the user was
+    consistent.
+
+    **Deliberately no synonym matching.** The same measurement showed "eleven
+    engineers ... double that headcount" read as `engineers`, where another
+    sentence would say `headcount` — a genuine miss that lowercasing does not
+    fix. Closing it means either a synonym table (`vocabulary.py` has one, built
+    for routing rather than for identity) or asking a model whether two metrics
+    are the same thing, and the second puts judgement back on the side of the
+    line where hallucination lives. Left as a known miss until a real transcript
+    says how often it matters, because guessing wrong here produces a false
+    accusation and that is the expensive direction.
+    """
+    return earlier.strip().casefold() == later.strip().casefold()
 
 
 def _moved(before: float, after: float) -> bool:

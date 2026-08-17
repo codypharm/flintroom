@@ -239,3 +239,24 @@ async def test_a_deployment_with_no_reader_still_runs_rooms():
     auditor = Auditor()
 
     assert await auditor.listen("Our margin is seventy.", at_seconds=60) is None
+
+
+def test_a_metric_the_model_capitalised_differently_is_the_same_metric():
+    """Measured against live Gemini, and it does this constantly.
+
+    Eight utterances produced `gross margin`, `Revenue`, `Churn`, `engineers`
+    and `pre-money valuation` — the model matches the shape of the sentence it
+    read, so the same figure arrives capitalised one way at minute two and
+    another at minute nine. Under exact string equality those are two different
+    metrics and the contradiction is never checked.
+
+    It fails silently and in the safe direction, which is what makes it worth a
+    test: nothing errors, no false accusation is made, the room simply stops
+    catching things and looks exactly like a room where the user was
+    consistent.
+    """
+    auditor = Auditor()
+
+    auditor.hear(said("Revenue", 400_000, at=60, unit=Unit.USD))
+
+    assert auditor.hear(said("revenue", 900_000, at=300, unit=Unit.USD)) is not None
