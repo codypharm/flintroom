@@ -11,6 +11,8 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy import text
 
+from app.agents.model import TurnUsage
+from app.agents.weakness import WeaknessReading
 from app.core.database import Base, get_db
 from app.core.errors import NotAuthenticated
 from app.core.storage_s3 import S3ObjectStorage
@@ -28,6 +30,7 @@ from app.modules.auth.models import (  # noqa: F401  (registers the tables)
 from app.modules.billing.models import Account
 from app.modules.billing.dependencies import get_webhook_secret
 from app.modules.ingestion.dependencies import get_object_storage
+from app.modules.sessions.dependencies import get_weakness_reader
 from app.modules.ingestion.models import (  # noqa: F401  (registers the tables)
     ExtractionCost,
     Material,
@@ -301,7 +304,7 @@ async def auth(db, google, apple) -> AuthService:
 WEBHOOK_SECRET = "rc-signing-secret-with-no-production-counterpart"
 
 
-def _configured_app(db, google, apple, storage, *, webhook_secret: str | None):
+def _configured_app(db, google, apple, storage, reader, *, webhook_secret: str | None):
     """The app with every external edge substituted, and nothing else changed.
 
     The lifespan is deliberately not run: it starts the sweep loops and opens a
@@ -318,15 +321,23 @@ def _configured_app(db, google, apple, storage, *, webhook_secret: str | None):
     # because that is populated by the lifespan, which is deliberately not run.
     app.dependency_overrides[get_object_storage] = lambda: storage
     app.dependency_overrides[get_webhook_secret] = lambda: webhook_secret
+    # A scripted reader rather than a vendor. What the debrief endpoints are
+    # about is which room earns one and what comes back, not whether a model
+    # reads well — that is measured in `scripts/weakness.py`, against a real
+    # one, where a mock could not answer the question anyway.
+    app.dependency_overrides[get_weakness_reader] = lambda: reader
     return app
 
 
 @pytest_asyncio.fixture
-async def client(db, google, apple, storage):
+async def client(db, google, apple, storage, weakness_reader):
     """The app as a deployment that is configured properly."""
     async with AsyncClient(
         transport=ASGITransport(
-            app=_configured_app(db, google, apple, storage, webhook_secret=WEBHOOK_SECRET)
+            app=_configured_app(
+                db, google, apple, storage, weakness_reader,
+                webhook_secret=WEBHOOK_SECRET,
+            )
         ),
         base_url="http://test",
     ) as client:
@@ -334,7 +345,7 @@ async def client(db, google, apple, storage):
 
 
 @pytest_asyncio.fixture
-async def client_without_webhook_secret(db, google, apple, storage):
+async def client_without_webhook_secret(db, google, apple, storage, weakness_reader):
     """The app as a deployment that came up missing one variable.
 
     Worth a whole fixture because the failure is the interesting one: this
@@ -344,8 +355,33 @@ async def client_without_webhook_secret(db, google, apple, storage):
     """
     async with AsyncClient(
         transport=ASGITransport(
-            app=_configured_app(db, google, apple, storage, webhook_secret=None)
+            app=_configured_app(
+                db, google, apple, storage, weakness_reader, webhook_secret=None
+            )
         ),
         base_url="http://test",
     ) as client:
         yield client
+
+
+class ScriptedWeaknessReader:
+    """A reader whose answer a test sets, and which counts being asked.
+
+    Reading a room well is not a property a fake can hold — that is measured
+    against a live model in `scripts/weakness.py`. What this makes testable is
+    everything around the reading: which rooms earn one, that a second open does
+    not buy a second call, and what reaches the wire.
+    """
+
+    def __init__(self) -> None:
+        self.judged: tuple = ()
+        self.calls = 0
+
+    async def rank(self, *, room):
+        self.calls += 1
+        return WeaknessReading(judged=self.judged, usage=TurnUsage(1200, 300))
+
+
+@pytest.fixture
+def weakness_reader() -> ScriptedWeaknessReader:
+    return ScriptedWeaknessReader()

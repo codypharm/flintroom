@@ -431,6 +431,67 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/sessions/{session_id}/debrief:
+    get:
+      tags:
+      - sessions
+      summary: Read Debrief
+      description: 'What went badly in this room, worst first.
+
+
+        The first open reads the room with a reasoning model and stores the result;
+
+        every open after hands back what was stored. That matters on a phone, where
+
+        backgrounding and resuming re-fetches: a recomputed list would cost a second
+
+        model call *and* reshuffle, because the ranking moves between runs on the
+
+        same transcript.
+
+
+        `OwnedSession` settles who is asking before this body runs, which is more
+
+        than routine here — a transcript is the most private thing the product
+
+        holds, kept for the life of the account precisely so the debrief can read
+
+        it. A 403 returned after the model had read the room would still have read
+
+        the room.
+
+
+        Three rooms are refused rather than debriefed, each as a typed error a
+
+        client can act on: one still running, one where the panel never asked
+
+        anything, and one the provider broke — which offers a fresh room, because
+
+        the minutes are already back.'
+      operationId: sessions_read_debrief
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Session Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DebriefRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/balance:
     get:
       tags:
@@ -770,6 +831,33 @@ components:
         ordering, an internal rule, and showing three numbers that deplete in turn
 
         is the credits display §4.6 exists to refuse.'
+    DebriefRead:
+      properties:
+        weak_answers:
+          items:
+            $ref: '#/components/schemas/WeakAnswerRead'
+          type: array
+          title: Weak Answers
+      type: object
+      required:
+      - weak_answers
+      title: DebriefRead
+      description: 'What the coach and the prep sheet are both grounded in.
+
+
+        An object rather than a bare list, because the debrief will carry more than
+
+        this — a coaching thread, a soft-cap warning — and a client that unpacked
+        a
+
+        top-level array would have to change shape when it does.
+
+
+        An empty list is a real answer: this room had nothing worth raising. It is
+
+        not the same as the refusals, which arrive as typed errors precisely so a
+
+        client can tell "you did well" from "there is nothing here".'
     EndReason:
       type: string
       enum:
@@ -1401,6 +1489,48 @@ components:
       - msg
       - type
       title: ValidationError
+    WeakAnswerRead:
+      properties:
+        ordinal:
+          type: integer
+          title: Ordinal
+        question:
+          type: string
+          title: Question
+        asked_by:
+          type: string
+          title: Asked By
+        answer:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Answer
+        weakness:
+          type: string
+          title: Weakness
+        why:
+          type: string
+          title: Why
+      type: object
+      required:
+      - ordinal
+      - question
+      - asked_by
+      - answer
+      - weakness
+      - why
+      title: WeakAnswerRead
+      description: 'One question the room did not get a good enough answer to.
+
+
+        Carries the presenter''s own words back, not only a verdict. §3.5''s artefact
+
+        is *"the 6 questions you will get, and where your answers are thin"*, and
+        a
+
+        response of categories alone would be a scorecard — the delivery-metrics
+
+        product this one exists to refuse.'
   securitySchemes:
     HTTPBearer:
       type: http

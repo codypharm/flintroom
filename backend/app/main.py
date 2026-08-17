@@ -18,6 +18,7 @@ from app.core.storage_s3 import build_object_storage
 from app.modules.auth.providers import build_verifiers
 from app.modules.auth.router import router as auth_router
 from app.modules.billing.router import router as billing_router
+from app.agents.weakness_models import build_weakness_reader
 from app.modules.ingestion.extraction_models import build_extraction_model
 from app.modules.ingestion.router import router as materials_router
 from app.modules.panels.router import router as panels_router
@@ -106,6 +107,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.extraction_model = build_extraction_model(settings, http=http)
     if app.state.extraction_model is None:
         log.warning("extraction_model_unconfigured")
+
+    # Same shape, and the same reason it is a warning rather than a boot
+    # failure: a deployment without it signs people in, opens rooms and
+    # keeps transcripts. What it cannot do is produce the ranked list
+    # `Product.md` §3.5 calls "the part users will pay for", which is worth
+    # saying once at startup rather than discovering per session.
+    app.state.weakness_reader = build_weakness_reader(settings, http=http)
+    if app.state.weakness_reader is None:
+        log.warning("weakness_reader_unconfigured")
 
     engine = create_engine(settings.database_url)
     session_factory = create_session_factory(engine)

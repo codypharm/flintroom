@@ -12,6 +12,7 @@ from app.modules.ingestion.dependencies import ObjectStorageDep
 from app.modules.voice.recording import recording_key
 from app.modules.auth.rate_limit import SESSION_START_LIMIT
 from app.modules.sessions.dependencies import (
+    DebriefServiceDep,
     PreferenceServiceDep,
     RecordingRetentionDep,
     OwnedSession,
@@ -19,6 +20,7 @@ from app.modules.sessions.dependencies import (
     SettlementServiceDep,
 )
 from app.modules.sessions.schemas import (
+    DebriefRead,
     RecordingPreference,
     RecordingPreferenceUpdate,
     RecordingPlayback,
@@ -27,6 +29,7 @@ from app.modules.sessions.schemas import (
     SessionRead,
     SessionStart,
     SessionStarted,
+    WeakAnswerRead,
 )
 from app.modules.voice.dependencies import VoiceTicketServiceDep
 
@@ -226,4 +229,43 @@ async def _read(session, sessions: SessionServiceDep) -> SessionRead:
             "recording": await sessions.recording(session_id=session.id),
             "archetypes": [archetype.name for archetype in panel],
         }
+    )
+
+
+@router.get("/sessions/{session_id}/debrief", response_model=DebriefRead)
+async def read_debrief(
+    session: OwnedSession,
+    debrief: DebriefServiceDep,
+) -> DebriefRead:
+    """What went badly in this room, worst first.
+
+    The first open reads the room with a reasoning model and stores the result;
+    every open after hands back what was stored. That matters on a phone, where
+    backgrounding and resuming re-fetches: a recomputed list would cost a second
+    model call *and* reshuffle, because the ranking moves between runs on the
+    same transcript.
+
+    `OwnedSession` settles who is asking before this body runs, which is more
+    than routine here — a transcript is the most private thing the product
+    holds, kept for the life of the account precisely so the debrief can read
+    it. A 403 returned after the model had read the room would still have read
+    the room.
+
+    Three rooms are refused rather than debriefed, each as a typed error a
+    client can act on: one still running, one where the panel never asked
+    anything, and one the provider broke — which offers a fresh room, because
+    the minutes are already back.
+    """
+    return DebriefRead(
+        weak_answers=[
+            WeakAnswerRead(
+                ordinal=answer.ordinal,
+                question=answer.question,
+                asked_by=answer.asked_by,
+                answer=answer.answer,
+                weakness=answer.weakness.value,
+                why=answer.why,
+            )
+            for answer in await debrief.weak_answers(session_id=session.id)
+        ]
     )

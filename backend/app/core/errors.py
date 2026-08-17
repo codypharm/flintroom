@@ -208,6 +208,48 @@ class InvalidStateTransition(BusinessRuleViolation):
     message = "That session cannot move to that state."
 
 
+class SessionNotSettled(Conflict):
+    """§4.1 puts settlement first: the panel finishes, then the debrief opens.
+
+    Reading a live room would rank a conversation still happening, against a
+    transcript still being written — so the same session would produce a
+    different list a minute later, having already stored the first one.
+    """
+
+    code = "session_not_settled"
+    message = "This session is still running."
+
+
+class RoomHasNoQuestions(BusinessRuleViolation):
+    """The panel never asked anything, so there is nothing to be grounded in.
+
+    Deliberately not an empty list. The two mean different things to a client:
+    an empty list is *"you did well"*, and this is *"there is no session here"*.
+    A coach with nothing to cite would have to invent, which CLAUDE.md refuses.
+    """
+
+    code = "room_has_no_questions"
+    message = "This session ended before the panel asked anything."
+
+
+class RoomBroke(BusinessRuleViolation):
+    """The provider failed, so the minutes are already back in the balance.
+
+    `docs/debrief-and-sparring.md` decision 7: a restart is both cheaper for the
+    user and more honest than coaching them through a session the product broke.
+
+    The code carries the product decision, not just the refusal — an app that
+    only saw a 422 could not tell "your minutes are back, start again" from
+    "something went wrong."
+    """
+
+    code = "room_broke"
+    message = (
+        "This session was cut short by a technical fault. Your minutes have "
+        "been returned \u2014 start a fresh room."
+    )
+
+
 class SessionNotLive(BusinessRuleViolation):
     """The room is no longer running, so stop metering it.
 

@@ -27,48 +27,18 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.weakness import WeakAnswer, Weakness, WeaknessReader, weak_answers
-from app.core.errors import FlintroomError
+from app.core.errors import (
+    RoomBroke,
+    RoomHasNoQuestions,
+    SessionNotFound,
+    SessionNotSettled,
+)
 from app.core.logging import get_logger
 from app.modules.sessions.models import Session, SessionWeakAnswer, TranscriptLine
 from app.modules.sessions.schemas import EndReason, SessionState
 from app.agents.context import USER, Said
 
 log = get_logger(__name__, tag="debrief")
-
-
-class RoomHasNoQuestions(FlintroomError):
-    """The panel never asked anything, so there is nothing to be grounded in.
-
-    A 422 rather than an empty list, because the two mean different things to
-    the client: an empty list is *"you did well"*, and this is *"there is no
-    session here"*. A room that produced no question would leave the coach with
-    nothing to cite, and a coach that cannot cite has to invent — which
-    `CLAUDE.md` refuses outright.
-    """
-
-    code = "room_has_no_questions"
-    status_code = 422
-    message = "This session ended before the panel asked anything."
-
-
-class RoomBroke(FlintroomError):
-    """The provider failed, so the minutes are already back in the balance.
-
-    Decision 7: a restart is both cheaper for the user and more honest than
-    coaching them through a session the product broke.
-
-    Keyed on `PROVIDER_FAILURE` alone and deliberately **not** on
-    `REFUND_REASONS`, which is the obvious thing to reuse and would be wrong. It
-    holds two entries that mean opposite things here: `IDLE_TIMEOUT` is also
-    refunded, and a room that ended because the presenter went quiet for ninety
-    seconds has more to debrief than most — that silence is the most eloquent
-    dodge available. Refunding is about the money; this is about whose fault it
-    was.
-    """
-
-    code = "room_broke"
-    status_code = 422
-    message = "This session was cut short by a technical fault. Your minutes have been returned — start a fresh room."
 
 
 class DebriefService:
@@ -207,17 +177,3 @@ class DebriefService:
             )
             for row in rows.scalars()
         )
-
-
-class SessionNotFound(FlintroomError):
-    code = "session_not_found"
-    status_code = 404
-    message = "No such session."
-
-
-class SessionNotSettled(FlintroomError):
-    """§4.1 puts settlement first: the panel finishes, then the debrief opens."""
-
-    code = "session_not_settled"
-    status_code = 409
-    message = "This session is still running."

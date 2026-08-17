@@ -344,3 +344,42 @@ class PhaseSpanRead(BaseModel):
     phase: SessionPhase
     started_at: datetime
     ended_at: datetime | None = None
+
+
+class WeakAnswerRead(BaseModel):
+    """One question the room did not get a good enough answer to.
+
+    Carries the presenter's own words back, not only a verdict. §3.5's artefact
+    is *"the 6 questions you will get, and where your answers are thin"*, and a
+    response of categories alone would be a scorecard — the delivery-metrics
+    product this one exists to refuse.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    #: Which transcript line the question is. What sparring re-asks, and what a
+    #: coaching turn cites.
+    ordinal: int
+    question: str
+    asked_by: str
+
+    #: What they said in reply, or null when they said nothing — which is one of
+    #: the findings rather than missing data.
+    answer: str | None
+    weakness: str
+    why: str
+
+
+class DebriefRead(BaseModel):
+    """What the coach and the prep sheet are both grounded in.
+
+    An object rather than a bare list, because the debrief will carry more than
+    this — a coaching thread, a soft-cap warning — and a client that unpacked a
+    top-level array would have to change shape when it does.
+
+    An empty list is a real answer: this room had nothing worth raising. It is
+    not the same as the refusals, which arrive as typed errors precisely so a
+    client can tell "you did well" from "there is nothing here".
+    """
+
+    weak_answers: list[WeakAnswerRead]

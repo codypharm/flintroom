@@ -11,15 +11,17 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.errors import SessionNotFound
+from app.core.errors import ProviderUnavailable, SessionNotFound
 from app.core.logging import get_logger
 from app.modules.auth.dependencies import CallerContext, CurrentUser
 from app.modules.sessions.models import Session
 from app.modules.ingestion.dependencies import ObjectStorageDep
+from app.agents.weakness import WeaknessReader
+from app.modules.sessions.debrief import DebriefService
 from app.modules.sessions.preferences import PreferenceService
 from app.modules.sessions.retention import RecordingRetention
 from app.modules.sessions.service import SessionService
@@ -120,3 +122,37 @@ async def get_recording_retention(
 RecordingRetentionDep = Annotated[
     RecordingRetention, Depends(get_recording_retention)
 ]
+
+
+def get_weakness_reader(request: Request) -> WeaknessReader:
+    """The process-wide reader, built once in the application lifespan.
+
+    A deployment without model credentials fails here rather than at boot, on
+    the same grounds as the object store: auth, balances, the room and the
+    transcript all work without one. What is lost is the debrief's ranked list,
+    which `Product.md` §3.5 calls *"the part users will pay for"* — so the
+    failure is loud at the point of use and logged once at startup, rather than
+    silent in either place.
+
+    Vendor-anonymous, as `CLAUDE.md` requires: the client learns that the
+    debrief is unavailable, not which model vendor we buy.
+    """
+    reader = getattr(request.app.state, "weakness_reader", None)
+    if reader is None:
+        log.error("weakness_reader_unconfigured")
+        raise ProviderUnavailable(reason="debrief_unconfigured")
+    return reader
+
+
+WeaknessReaderDep = Annotated[WeaknessReader, Depends(get_weakness_reader)]
+
+
+async def get_debrief_service(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    reader: WeaknessReaderDep,
+) -> DebriefService:
+    """Reading a finished room, once."""
+    return DebriefService(db, reader=reader)
+
+
+DebriefServiceDep = Annotated[DebriefService, Depends(get_debrief_service)]

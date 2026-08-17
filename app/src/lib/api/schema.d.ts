@@ -271,6 +271,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sessions/{session_id}/debrief": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Debrief
+         * @description What went badly in this room, worst first.
+         *
+         *     The first open reads the room with a reasoning model and stores the result;
+         *     every open after hands back what was stored. That matters on a phone, where
+         *     backgrounding and resuming re-fetches: a recomputed list would cost a second
+         *     model call *and* reshuffle, because the ranking moves between runs on the
+         *     same transcript.
+         *
+         *     `OwnedSession` settles who is asking before this body runs, which is more
+         *     than routine here — a transcript is the most private thing the product
+         *     holds, kept for the life of the account precisely so the debrief can read
+         *     it. A 403 returned after the model had read the room would still have read
+         *     the room.
+         *
+         *     Three rooms are refused rather than debriefed, each as a typed error a
+         *     client can act on: one still running, one where the panel never asked
+         *     anything, and one the provider broke — which offers a fresh room, because
+         *     the minutes are already back.
+         */
+        get: operations["sessions_read_debrief"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/balance": {
         parameters: {
             query?: never;
@@ -499,6 +536,22 @@ export interface components {
             remaining_minutes: number;
             /** Has Time Remaining */
             has_time_remaining: boolean;
+        };
+        /**
+         * DebriefRead
+         * @description What the coach and the prep sheet are both grounded in.
+         *
+         *     An object rather than a bare list, because the debrief will carry more than
+         *     this — a coaching thread, a soft-cap warning — and a client that unpacked a
+         *     top-level array would have to change shape when it does.
+         *
+         *     An empty list is a real answer: this room had nothing worth raising. It is
+         *     not the same as the refusals, which arrive as typed errors precisely so a
+         *     client can tell "you did well" from "there is nothing here".
+         */
+        DebriefRead: {
+            /** Weak Answers */
+            weak_answers: components["schemas"]["WeakAnswerRead"][];
         };
         /**
          * EndReason
@@ -909,6 +962,29 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /**
+         * WeakAnswerRead
+         * @description One question the room did not get a good enough answer to.
+         *
+         *     Carries the presenter's own words back, not only a verdict. §3.5's artefact
+         *     is *"the 6 questions you will get, and where your answers are thin"*, and a
+         *     response of categories alone would be a scorecard — the delivery-metrics
+         *     product this one exists to refuse.
+         */
+        WeakAnswerRead: {
+            /** Ordinal */
+            ordinal: number;
+            /** Question */
+            question: string;
+            /** Asked By */
+            asked_by: string;
+            /** Answer */
+            answer: string | null;
+            /** Weakness */
+            weakness: string;
+            /** Why */
+            why: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -1250,6 +1326,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sessions_read_debrief: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DebriefRead"];
                 };
             };
             /** @description Validation Error */
