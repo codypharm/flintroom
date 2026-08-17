@@ -30,7 +30,7 @@ cannot survive.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from app.agents.context import Finding
 from app.agents.model import TurnUsage
@@ -115,6 +115,13 @@ class ClaimReading:
     usage: TurnUsage = TurnUsage()
 
 
+#: Checkable at runtime for the reason `TranscriptionStream` is: there is no
+#: base class to inherit and no type checker in the suite, so an adapter that
+#: drifted off this seam would stay green everywhere and surface as an Auditor
+#: that silently never catches anything. The fake in the tests cannot notice —
+#: it conforms by construction, which is precisely how a fake and a real adapter
+#: come apart.
+@runtime_checkable
 class ClaimReader(Protocol):
     """Whatever turns spoken words into typed figures.
 

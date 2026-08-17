@@ -163,19 +163,25 @@ async def test_the_lowest_latency_model_is_the_default():
     assert seen[0].read().decode().count(DEFAULT_SPEECH_MODEL) == 1
 
 
-async def test_a_refusal_becomes_a_502_that_does_not_name_the_vendor():
-    """CLAUDE.md: a provider failure must never identify the provider.
+async def test_a_refusal_arrives_as_our_type_rather_than_the_vendors():
+    """The vendor's exception must not escape the adapter that speaks to it.
 
-    It tells whoever is probing what our architecture is, and it goes stale the
-    moment the vendor is swapped — which is the swap this seam exists to permit.
+    A raw `httpx.HTTPStatusError` reaching a caller is a 500 with a traceback
+    rather than the refundable 502 the session finalizer knows how to settle.
+
+    **This used to also assert that the message omitted "eleven" and "voice",
+    and that proved nothing.** `ProviderUnavailable.message` is a class
+    constant, so those assertions were green regardless of anything this file
+    did — a test claiming to hold a `CLAUDE.md` guarantee while holding nothing.
+    The guarantee is real and is tested where it lives, against an actual
+    response body, in `test_error_handling.py`. Found when the identical pattern
+    in the claim reader's tests survived a mutation that named the vendor
+    outright.
     """
     speaker, _ = speaker_over(lambda request: httpx.Response(401, json={}))
 
-    with pytest.raises(ProviderUnavailable) as refused:
+    with pytest.raises(ProviderUnavailable):
         await collect(speaker, text="Anything.", voice=Voice.PRECISE)
-
-    assert "eleven" not in refused.value.message.lower()
-    assert "voice" not in refused.value.message.lower()
 
 
 async def test_an_unreachable_service_is_a_502_and_not_a_crash():

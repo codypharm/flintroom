@@ -10,7 +10,12 @@ import logging
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.core.errors import AccountNotFound, ActiveSessionExists, ProviderUnavailable
+from app.core.errors import (
+    AccountNotFound,
+    ActiveSessionExists,
+    FlintroomError,
+    ProviderUnavailable,
+)
 from app.main import create_app
 
 
@@ -100,3 +105,41 @@ async def test_a_handled_error_is_logged_with_its_context(client, caplog):
     assert record.context["user_id"] == "u-1"
     assert record.context["existing_session_id"] == "s-1"
     assert record.context["status_code"] == 409
+
+
+def test_no_error_message_anywhere_names_a_vendor():
+    """The guarantee, held once, in the only place it can be held.
+
+    `CLAUDE.md` forbids naming a provider to a client: it exposes internal
+    architecture to whoever is probing, and it goes stale the moment the vendor
+    is swapped — which the seams throughout this project exist to permit.
+
+    Three adapter tests used to assert this each for themselves, in the shape
+    `assert "gemini" not in raised.value.message.lower()`. Every one of them was
+    vacuous. `message` is a class attribute, so the assertion passed no matter
+    what the adapter did — proven when a mutation putting the vendor's name
+    straight into a raise site left all of them green.
+
+    So it is asserted here instead, against the classes rather than against a
+    call site, where a new error carrying "our Anthropic call failed" is caught
+    on the commit that adds it rather than never.
+    """
+    vendors = (
+        "elevenlabs", "eleven labs", "scribe", "gemini", "google", "anthropic",
+        "claude", "supabase", "revenuecat", "deepgram", "openai", "postgres",
+        "stripe", "s3", "minio",
+    )
+
+    def descendants(cls):
+        for child in cls.__subclasses__():
+            yield child
+            yield from descendants(child)
+
+    offenders = [
+        f"{error.__name__}: {error.message}"
+        for error in descendants(FlintroomError)
+        if isinstance(getattr(error, "message", None), str)
+        and any(vendor in error.message.lower() for vendor in vendors)
+    ]
+
+    assert offenders == []

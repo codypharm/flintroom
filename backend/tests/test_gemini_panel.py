@@ -122,9 +122,9 @@ async def test_a_provider_failure_is_typed_and_does_not_name_the_vendor():
     with pytest.raises(ProviderUnavailable) as failed:
         await model_with(transport).compose(archetype=by_name("cfo"), context=CONTEXT)
 
-    said = failed.value.message.lower()
-    assert "gemini" not in said
-    assert "google" not in said
+    # No assertion here that the message omits the vendor: `message` is a class
+    # attribute, so it would pass whatever this raise site does. Held for every
+    # error at once in `test_error_handling.py`, where it can actually fail.
 
 
 async def test_the_api_key_never_reaches_the_url():
