@@ -107,6 +107,18 @@ being wrong by 2× in either direction; the crossover point does not.
 **Deferred 2026-08-16, when `core/storage_s3.py` landed. Trigger to decide: task
 #29 resolving that sessions retain audio.**
 
+> **Resolved 2026-08-17 — Cloudflare R2.** The trigger fired: #29 decided that
+> sessions retain the full mixed room, both voices. Playback is pure egress and
+> R2 charges none, which is the whole cost of the feature. Two decisions taken
+> alongside it shrink the projection below: `SESSION_LIMIT` is 12 minutes rather
+> than the 20 assumed here, and retention is a per-tier window (30d / 90d /
+> 12mo) rather than indefinite. The caveat at the foot of this section is now
+> live rather than hypothetical — a tiered window is implemented as an
+> application sweep precisely *because* lifecycle rules cannot express it, with
+> a generous lifecycle rule kept only as a backstop. See
+> `docs/session-retention.md`. Everything below is preserved as the reasoning
+> that produced the answer.
+
 Development runs MinIO. Production is undecided, and deliberately so: the code
 speaks the S3 API and holds no vendor SDK above `core/storage_s3.py`, so AWS S3,
 Cloudflare R2, Backblaze B2 and a self-hosted MinIO differ by four environment
