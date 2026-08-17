@@ -271,8 +271,19 @@ the engine's own overhead is small. An earlier single-utterance probe suggested
 only 0.12s; the five-turn run is the one to believe.
 
 Unset means the adapter's default. Change it in `.env` and restart the backend —
-nothing in the app needs rebuilding, so 0.7 and 0.4 can be heard back to back in
+nothing in the app needs rebuilding, so two values can be heard back to back in
 the same sitting.
+
+**Judged on a real phone, 2026-08-17, and this is the only kind of evidence that
+counts here.** At 0.4 the panel interrupted a real person mid-answer. At 0.7 it
+did not, and the room read as comfortable. The floor is therefore somewhere
+between the two and 0.55 is untested; 0.7 ships until somebody sits with it and
+says otherwise.
+
+Worth stating plainly because the arithmetic points the other way: 0.4 is 0.30s
+faster and every measurement said take it. A room that interrupts you cannot be
+argued with, which is worse than a room that is slightly slow, and no
+measurement was ever going to say that.
 
 ## The store's callbacks are the only unauthenticated write path
 

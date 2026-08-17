@@ -715,6 +715,11 @@ depends on.
   passes through. Nothing bounds it from below except how rude the room feels
   when somebody pauses mid-answer, and synthetic speech has no mid-sentence
   pauses, so only a real person in a real room can set it.
+
+  **Settled on a phone, 2026-08-17: 0.4 interrupts a real person mid-answer;
+  0.7 does not.** So the 0.30s is not available and the room ships at ~1.77s to
+  caption, ~2.15s to first audio. 0.55 is untested and is where to look if the
+  budget has to come down again.
 - **Streaming composition is the one structural lever left**, and it is an
   architecture decision rather than a tuning one: synthesise the first sentence
   while the model is still writing the second. Worth roughly 0.4s, and it makes
