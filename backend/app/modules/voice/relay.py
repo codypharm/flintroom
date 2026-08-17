@@ -25,6 +25,9 @@ from app.core.logging import get_logger
 from app.modules.sessions.schemas import EndReason, SessionState
 from app.modules.sessions.service import SessionService
 from app.modules.sessions.settlement import SettlementService
+from app.modules.sessions.settlement import REFUND_REASONS
+from app.modules.voice.mixing import RoomMixer
+from app.modules.voice.recording import RoomRecordings
 from app.modules.voice.events import (
     AgentAudio,
     AgentTranscript,
@@ -51,9 +54,20 @@ class VoiceRelay:
         provider: VoiceProvider,
         client: ClientChannel,
         actor: ActorContext | None = None,
+        recordings: RoomRecordings | None = None,
     ) -> None:
         self._provider = provider
         self._client = client
+        # Optional, and it degrades the way the speaker does: a room without
+        # somewhere to file its audio still interrogates, still captions and
+        # still settles correctly. What it loses is playback.
+        self._recordings = recordings
+        # One room, one mixer. Held here rather than in the channel because the
+        # relay is the only place all three signals meet — the user's audio
+        # arrives on `_carry_user_audio`, the panel's and `Interrupted` on
+        # `_carry_provider_events` — and unlike the transcript, none of it needs
+        # a seam into the orchestration layer to reach us.
+        self._mixer = RoomMixer()
         self._actor = actor or ActorContext.system()
         # Built here rather than injected, for the reason `SessionService` gives
         # for its own audit service: every write this relay causes is attributed
@@ -85,7 +99,48 @@ class VoiceRelay:
                     )
         except ProviderUnavailable:
             await self._end(session_id=session_id, live=EndReason.PROVIDER_FAILURE)
+            # Nothing is kept. The `raise` is what skips the save below, and the
+            # room is refunded — see `_keep_recording` for why those are the
+            # same statement.
             raise
+
+        await self._keep_recording(session_id=session_id)
+
+    async def _keep_recording(self, *, session_id: uuid.UUID) -> None:
+        """Save the room, unless the room is one we said did not happen.
+
+        The rule is *derived* rather than restated. `docs/session-retention.md`
+        discards audio for a failed session on the grounds that a refunded room
+        is one the product has declared away — and `REFUND_REASONS` is already
+        the list of endings that refund. Reading it here means the two can never
+        drift into separate lists that disagree about the same session.
+
+        Done from the relay rather than from settlement, and that is the whole
+        reason this method exists here. `meter.py` closes a room that reaches
+        its cap while the socket is still open, from a loop that never held this
+        mixer — so a save hooked into settlement would silently miss every room
+        that ran its full length, which is exactly the room worth keeping.
+
+        Failures are absorbed by `RoomRecordings`, not here. A recording is
+        best-effort — it is the last thing to happen in a room already billed,
+        settled and handed to the debrief, and raising now would turn a lost
+        file into a failed session and refund a rehearsal that happened. Which
+        failures count as expected is a question about encoders and object
+        stores, so it belongs to the service that owns both.
+        """
+        if self._recordings is None:
+            return
+
+        session = await self._sessions.get(session_id=session_id)
+        if session.end_reason in REFUND_REASONS:
+            log.info(
+                "room_recording_discarded",
+                session_id=str(session_id),
+                end_reason=session.end_reason.value if session.end_reason else None,
+            )
+            return
+
+        await self._recordings.save(session_id=session_id, pcm=self._mixer.mixed())
 
     async def _pump(self, channel: VoiceChannel, *, session_id: uuid.UUID) -> bool:
         """Carry both directions at once, and stop as soon as either ends.
@@ -130,6 +185,10 @@ class VoiceRelay:
 
     async def _carry_user_audio(self, channel: VoiceChannel) -> None:
         async for pcm in self._client.audio():
+            # Before the forward, not after. This is the room's clock, and a
+            # frame counted only once the transcriber had accepted it would let
+            # a slow provider bend time for everything positioned against it.
+            self._mixer.heard(pcm)
             await channel.send_audio(pcm)
 
     async def _carry_provider_events(
@@ -249,10 +308,16 @@ class VoiceRelay:
             # only what we have not sent yet would let them talk over the user
             # who just cut in — which is the room failing to be interruptible,
             # the one thing barge-in exists to deliver.
+            # The recording drops the same audio the phone does. The two are
+            # one decision expressed twice, and a version that told the phone to
+            # stop while quietly keeping the rest would produce a file in which
+            # the panelist talks over the user for the seconds they were cut off.
+            self._mixer.interrupted()
             await self._client.discard_playback()
         elif isinstance(event, AgentAudio):
             # Straight through. The relay does no codec work in either
             # direction — that is what the PCM-throughout transport decision
             # bought, and re-encoding here would put decode latency into the
             # path the ~1.5s illusion threshold is measured across.
+            self._mixer.played(event.pcm)
             await self._client.send_audio(event.pcm)

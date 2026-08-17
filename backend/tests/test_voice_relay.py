@@ -14,6 +14,7 @@ that the fake agrees with itself.
 
 from __future__ import annotations
 
+import array
 import logging
 from datetime import timedelta
 
@@ -31,6 +32,7 @@ from app.modules.sessions.schemas import (
     EndReason,
     SessionState,
 )
+from app.modules.voice.recording import RoomRecordings, recording_key
 from app.modules.voice.events import (
     AgentAudio,
     AgentTranscript,
@@ -502,3 +504,126 @@ async def test_a_channel_still_delivering_keeps_the_room_from_being_reaped_as_or
     still_running = await sessions.get(session_id=session.id)
     assert still_running.state is SessionState.ACTIVE
     assert still_running.end_reason is None
+
+
+async def test_a_room_that_ends_normally_leaves_a_recording(
+    db, sessions, storage, funded_account
+):
+    """The whole audio path, from two sockets to one object.
+
+    The relay is the only place this can happen. All three signals pass through
+    it — the user's audio on one task, the panel's and `Interrupted` on the
+    other — and settlement cannot do it: `meter.py:186` closes a room that hits
+    its cap while the socket is still up, from a loop that never held a mixer.
+    That is the *longest* room, and the one most worth keeping.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+
+    relay = VoiceRelay(
+        db,
+        provider=FakeVoiceProvider([ChannelReady(), AgentAudio(b"\x10\x00" * 800)]),
+        client=FakeClientChannel([b"\x20\x00" * 800]),
+        recordings=RoomRecordings(storage),
+    )
+    await relay.run(session_id=session.id)
+
+    saved = await storage.get(recording_key(session.id))
+    assert saved is not None
+    assert saved[:4] == b"OggS"
+
+    # Both sources actually reached the mix. The container magic alone proves
+    # only that *something* was encoded — mutation testing showed it passes with
+    # either side unplugged, which is the whole failure this is guarding.
+    #
+    # Membership rather than an exact buffer, because the two arrive on separate
+    # tasks: whether they overlap (summing to 48) or fall clear of each other is
+    # a scheduling detail, and asserting it would test asyncio.
+    samples = array.array("h", relay._mixer.mixed())
+    assert any(sample in (32, 48) for sample in samples), "no user audio"
+    assert any(sample in (16, 48) for sample in samples), "no panel audio"
+
+
+async def test_a_room_that_failed_leaves_nothing_behind(
+    db, sessions, storage, funded_account
+):
+    """A refunded room is one the product has said did not happen.
+
+    `docs/session-retention.md` discards audio on the fail path, and the rule is
+    derived rather than restated: `REFUND_REASONS` already lists the endings
+    that give the user their money back, so "we refunded it" and "there is
+    nothing to keep" cannot drift apart into two lists that disagree.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+
+    relay = VoiceRelay(
+        db,
+        provider=DyingVoiceProvider([ChannelReady(), AgentAudio(b"\x10\x00" * 800)]),
+        client=FakeClientChannel([b"\x20\x00" * 800]),
+        recordings=RoomRecordings(storage),
+    )
+    with pytest.raises(ProviderUnavailable):
+        await relay.run(session_id=session.id)
+
+    assert await storage.get(recording_key(session.id)) is None
+
+
+async def test_a_room_the_meter_ended_as_idle_keeps_nothing(
+    db, sessions, settlement, storage, funded_account
+):
+    """The refund check, actually exercised — the test above does not reach it.
+
+    A provider failure re-raises out of `run` before the save is attempted, so
+    `test_a_room_that_failed_leaves_nothing_behind` proves nothing about
+    `REFUND_REASONS`; mutation testing showed it passes with that check deleted.
+
+    This is the case that needs it, and the one the wiring exists for. `meter.py`
+    can close a room *while the socket is still open* — so the relay reaches its
+    save with a room already settled and already refunded, and the end reason is
+    the only thing left that knows it should keep nothing.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+    await sessions.activate(session_id=session.id)
+    await settlement.close(session_id=session.id, end_reason=EndReason.IDLE_TIMEOUT)
+
+    relay = VoiceRelay(
+        db,
+        provider=FakeVoiceProvider([AgentAudio(b"\x10\x00" * 800)]),
+        client=FakeClientChannel([b"\x20\x00" * 800]),
+        recordings=RoomRecordings(storage),
+    )
+    await relay.run(session_id=session.id)
+
+    assert relay._mixer.mixed() != b"", "the room was recorded"
+    assert await storage.get(recording_key(session.id)) is None, "but not kept"
+
+
+async def test_the_recording_drops_what_the_phone_was_told_to_drop(
+    db, sessions, storage, funded_account
+):
+    """`Interrupted` has to reach the mixer, not only the socket.
+
+    The relay's answer to barge-in is `discard_playback` — the phone throws away
+    buffered frames nobody will hear. If the recording does not make the same
+    cut, the saved room has a panelist talking over the user for the seconds
+    they were silenced, which is the defect the mixer exists to prevent and is
+    trivially reintroduced here by handling the event on one side only.
+
+    Asserted on the mixer rather than by decoding the object, because the claim
+    is about which samples were kept, and Opus is lossy — a decoded comparison
+    would be testing the codec.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+
+    relay = VoiceRelay(
+        db,
+        provider=FakeVoiceProvider(
+            [ChannelReady(), AgentAudio(b"\x10\x00" * 400), Interrupted()]
+        ),
+        client=FakeClientChannel(),
+        recordings=RoomRecordings(storage),
+    )
+    await relay.run(session_id=session.id)
+
+    # The user never spoke, so the clock never advanced and every panel sample
+    # was still unplayed when the interruption landed.
+    assert relay._mixer.mixed() == b""

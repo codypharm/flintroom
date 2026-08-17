@@ -24,7 +24,11 @@ from app.core.errors import FlintroomError, NotAuthenticated, ProviderUnavailabl
 from app.core.logging import get_logger
 from app.core.request_context import current_request_id
 from app.modules.voice.client import WebSocketClientChannel
-from app.modules.voice.dependencies import RoomPartsDep, VoiceTicketServiceDep
+from app.modules.voice.dependencies import (
+    RoomPartsDep,
+    RoomRecordingsDep,
+    VoiceTicketServiceDep,
+)
 from app.modules.voice.relay import VoiceRelay
 from app.modules.voice.room import build_room
 
@@ -51,6 +55,7 @@ async def stream_session(
     session_factory: Annotated[
         async_sessionmaker[AsyncSession], Depends(get_session_factory)
     ],
+    recordings: RoomRecordingsDep,
 ) -> None:
     """Carry one interrogation between the phone and the voice provider.
 
@@ -103,6 +108,7 @@ async def stream_session(
         provider=room,
         client=WebSocketClientChannel(websocket),
         actor=ActorContext.user(user_id, request_id=current_request_id()),
+        recordings=recordings,
     )
 
     try:

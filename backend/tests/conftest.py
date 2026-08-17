@@ -49,6 +49,7 @@ from app.modules.sessions.meter import MeterService
 from app.modules.sessions.reaper import ReaperService
 from app.modules.sessions.service import SessionService
 from app.modules.sessions.settlement import SettlementService
+from app.modules.voice.recording import RoomRecordings
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
@@ -109,6 +110,13 @@ async def session_factory(db, engine):
     test's rows.
     """
     return async_sessionmaker(engine, expire_on_commit=False)
+
+
+@pytest.fixture
+def recordings(storage) -> RoomRecordings:
+    """Real MinIO, like every other storage test here — a fake object store
+    would agree with whatever we wrote rather than with S3."""
+    return RoomRecordings(storage)
 
 
 @pytest.fixture

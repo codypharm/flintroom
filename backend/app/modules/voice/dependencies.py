@@ -4,12 +4,14 @@ from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import Depends, WebSocket
+from starlette.requests import HTTPConnection
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.auditor import ClaimReader
 from app.agents.model import PanelModel
 from app.core.database import get_db
 from app.core.logging import get_logger
+from app.modules.voice.recording import RoomRecordings
 from app.modules.voice.speech import Speaker
 from app.modules.voice.tickets import VoiceTicketService
 from app.modules.voice.transcription import Transcriber
@@ -69,3 +71,26 @@ def get_room_parts(websocket: WebSocket) -> RoomParts:
 
 
 RoomPartsDep = Annotated[RoomParts, Depends(get_room_parts)]
+
+
+def get_room_recordings(connection: HTTPConnection) -> RoomRecordings | None:
+    """Somewhere to save a finished room, if this deployment has one.
+
+    `None` rather than a refusal, unlike `ingestion`'s storage dependency which
+    raises. The difference is what each one is for: a deck that cannot be
+    uploaded is a request that failed, while a room that cannot be recorded is a
+    rehearsal that still happened. Refusing the socket would trade an entire
+    interrogation for a missing file.
+
+    `HTTPConnection` rather than `Request`, for the reason `get_db` documents at
+    length: a WebSocket is not a `Request`, and asking for one dies in dependency
+    resolution before any of our code runs.
+    """
+    storage = getattr(connection.app.state, "object_storage", None)
+    if storage is None:
+        log.warning("room_recordings_unconfigured")
+        return None
+    return RoomRecordings(storage)
+
+
+RoomRecordingsDep = Annotated[RoomRecordings | None, Depends(get_room_recordings)]
