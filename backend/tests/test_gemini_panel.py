@@ -20,9 +20,13 @@ import pytest
 
 from app.agents.archetypes import DEFAULT_PANEL, Archetype, by_name
 from app.core.errors import ProviderUnavailable
-from app.agents.panel import Grounding, Said, TurnContext
+from app.agents.panel import Finding, Grounding, Said, TurnContext
 from app.agents.panel_models import build_panel_model
-from app.agents.panel_models.gemini import GeminiPanelModel, _persona_of
+from app.agents.panel_models.gemini import (
+    GeminiPanelModel,
+    _composition_prompt,
+    _persona_of,
+)
 from app.core.config import Settings
 
 CONTEXT = TurnContext(said="We hold 61% gross margin.", grounding=Grounding())
@@ -384,3 +388,65 @@ async def test_a_composed_line_reports_what_it_cost():
     assert reply.text == "Where does sixty-one percent come from?"
     assert reply.usage.input_tokens == 10
     assert reply.usage.output_tokens == 7
+
+
+def test_the_composer_is_forbidden_from_asserting_a_figure_of_its_own():
+    """Observed live, twice in one five-turn run against real speech.
+
+        "Eleven engineers cost two million dollars. Revenue grew four percent."
+        "Fuel surcharges rose fourteen percent last month."
+
+    The user said none of those numbers and no material was attached. They are
+    not hard questions, they are fabrications delivered in the voice of an
+    expert — and they are worse than the generic questions Open Risk #2 warns
+    about, because a user who knows their own numbers can tell instantly that
+    the room is making things up, and everything the panel says afterwards is
+    worth nothing.
+
+    It also violates a decision already taken.
+    `docs/auditor-grounding.md` puts external fact-checking out of scope for
+    v1 — *"verifying a claim against the world is a different product with a
+    different hallucination profile"* — and a panelist asserting the price of
+    fuel is doing exactly that, badly, with no way to be checked.
+
+    **Arithmetic on the user's own figures stays allowed**, and the distinction
+    is the whole rule. *"Which number pays for twenty-two engineers?"* after the
+    user said eleven and said they would double is the panel doing its job. What
+    is forbidden is introducing a quantity nobody supplied.
+
+    A prompt is a weak instrument and this is deliberately not the only guard —
+    the Auditor already keeps arithmetic away from a model on the listening
+    side. But there is no cheap structural equivalent here: a code check for
+    unfamiliar numbers cannot tell a fabricated cost from a correct doubling,
+    and would refuse the good line above.
+    """
+    instruction = _persona_of(by_name("cfo"))
+
+    assert "never state a number" in instruction.lower()
+
+
+def test_a_finding_is_not_announced_as_coming_from_a_deck():
+    """The Auditor now catches figures from speech, and there may be no deck.
+
+    Observed live with nothing attached: *"You said sixty-one last quarter and
+    seventy on the next slide."* There was no slide. The user contradicted
+    themselves out loud two turns earlier, and the panel invented a provenance
+    for it — which a presenter with no deck spots instantly, and which makes the
+    catch look like a hallucination even though the catch was real.
+
+    Ours, not the model's. The prompt asserted the source: *"this contradicts
+    what their material says"*, followed by *"cite what the material says"* —
+    written when a finding could only come from ingested material, and left
+    unchanged when the Auditor gained a second source. The model was doing as it
+    was told.
+
+    So the prompt states no source at all. `Finding.summary` already says where
+    each figure came from — a moment in the session, or a slide — and it is the
+    only thing that knows.
+    """
+    finding = Finding(domain="margin", summary="At 0:08 they said 61; at 0:24, 70.")
+    prompt = _composition_prompt(CONTEXT, finding, by_name("cfo"))
+
+    assert finding.summary in prompt
+    assert "material" not in prompt.lower()
+    assert "slide" not in prompt.lower()

@@ -258,6 +258,13 @@ def _persona_of(archetype: Archetype) -> str:
         f"Who you are: {archetype.persona}\n\n"
         f"What you go after: {archetype.attack_strategy}\n\n"
         f"{delivery}"
+        "NEVER STATE A NUMBER THEY DID NOT GIVE YOU. You may do arithmetic on "
+        "their own figures — if they said eleven engineers and said they would "
+        "double, twenty-two is theirs — and you may quote their material. You "
+        "may not introduce a quantity from anywhere else: not a market size, "
+        "not a competitor's margin, not what fuel or salaries cost. If you do "
+        "not have a number, ask for it. A question you cannot answer yourself "
+        "is the strongest thing you can say.\n\n"
         "Speak only as yourself, in the voice described above. Never narrate, "
         "never explain that you are an AI, and never speak for anybody else in "
         "the room. Write to be heard rather than read: no markdown, no lists, no "
@@ -336,9 +343,25 @@ def _composition_prompt(context, finding, archetype: Archetype) -> str:
 
     if finding is not None:
         parts.append(
-            "This contradicts what their material says, and it is why you are "
-            f"speaking now:\n{finding.summary}\n"
-            "Put it to them directly, and cite what the material says."
+            # No source asserted. A finding used to be able to come only from
+            # ingested material, and this said so; the Auditor now catches
+            # figures the speaker contradicted out loud, and there may be no
+            # deck at all. Told the old way, the model invented a provenance —
+            # measured live with nothing attached: *"you said sixty-one last
+            # quarter and seventy on the next slide."* There was no slide. A
+            # presenter spots that instantly, and a real catch then reads as a
+            # hallucination.
+            #
+            # `summary` already says where each figure came from and is the only
+            # thing that knows.
+            "This is why you are speaking now:\n"
+            f"{finding.summary}\n"
+            # Both figures, because that is the bar `docs/auditor-grounding.md`
+            # sets for interrupting a live room — a contradiction stateable
+            # precisely, or it is an accusation the user cannot check. "And no
+            # others" rather than "and nothing else", so the sentence forbids
+            # inventing a third number without also forbidding the second.
+            "Put it to them directly, using both figures above and no others."
         )
 
     parts.append(f"They just said:\n{context.said}")
