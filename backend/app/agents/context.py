@@ -59,6 +59,26 @@ class Said:
     #: somewhere.
     disputed: bool = False
 
+    #: What handed this speaker the floor, for panel lines. `None` for the user's
+    #: own, which nobody chose.
+    #:
+    #: Carried for the same reason as `disputed`: the debrief reads lines, not
+    #: turns. `chosen_by="finding"` is the record that the Auditor caught the
+    #: answer *before* this line — the only trace of a contradiction that
+    #: survives the room, since nothing persists a `Finding`.
+    #:
+    #: A stored copy of the finding's own summary was the alternative and is
+    #: worse. The line produced by a finding already states the contradiction in
+    #: words, grounded in what the user actually said (#45), so a summary beside
+    #: it would be a second version of the same fact, free to disagree with the
+    #: one the user heard.
+    #:
+    #: It also gives `SelectedBy`'s health metric somewhere durable to live.
+    #: `chosen_by=model` over total turns is what distinguishes a healthy room
+    #: from one whose selection model has been erroring for a week, and until now
+    #: that existed only in log lines.
+    chosen_by: SelectedBy | None = None
+
 
 @dataclass(frozen=True)
 class Grounding:

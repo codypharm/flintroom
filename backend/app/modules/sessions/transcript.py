@@ -97,6 +97,7 @@ class SessionTranscript:
                     speaker=line.speaker,
                     text=line.text,
                     disputed=line.disputed,
+                    chosen_by=line.chosen_by,
                 )
             )
             await db.commit()
@@ -121,6 +122,11 @@ class SessionTranscript:
                 .order_by(TranscriptLine.ordinal)
             )
             return tuple(
-                Said(speaker=row.speaker, text=row.text, disputed=row.disputed)
+                Said(
+                    speaker=row.speaker,
+                    text=row.text,
+                    disputed=row.disputed,
+                    chosen_by=row.chosen_by,
+                )
                 for row in rows.scalars()
             )

@@ -380,7 +380,11 @@ async def test_a_room_leaves_its_words_behind(db, funded_account, session_factor
 
     kept = await SessionTranscript(session_factory, session_id=session.id).lines()
 
-    assert kept == (
-        Said(speaker=USER, text="Our gross margin is sixty-one percent."),
-        Said(speaker="cfo", text=LINE),
-    )
+    # Speaker and text, not the whole `Said`. What this proves is that both
+    # sides reach the store through their two different routes; the fields a
+    # line carries about *how* it came to be said are asserted where they are
+    # decided, in test_orchestrated_channel.py.
+    assert [(line.speaker, line.text) for line in kept] == [
+        (USER, "Our gross margin is sixty-one percent."),
+        ("cfo", LINE),
+    ]

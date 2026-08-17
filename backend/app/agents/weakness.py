@@ -48,6 +48,25 @@ class Weakness(Enum):
     #: unambiguously one of them. Only the sentence beside it changes.
     NOT_REACHED = "not_reached"
 
+    #: The Auditor caught the answer contradicting something already said.
+    #:
+    #: The only weakness here that is not a reading of anything. `auditor.py`
+    #: keeps every comparison in ordinary code specifically so that "arithmetic
+    #: hallucination becomes impossible rather than discouraged" — the number was
+    #: seventy and then it was sixty-one, and no judgement is involved in saying
+    #: so. That is why it outranks a press: one is a panelist's dissatisfaction,
+    #: the other is a demonstrable inconsistency.
+    CONTRADICTED = "contradicted"
+
+    #: It was answered, and the same panelist asked again.
+    #:
+    #: The room's own live judgement, made with the whole conversation in view by
+    #: the archetype whose subject it was. #43 gave a panelist the right to press
+    #: its own unanswered question once, and one exercising that right is better
+    #: evidence than anything computed after the fact — which is why this sits in
+    #: the code floor rather than in the model's share of the ranking.
+    PRESSED = "pressed"
+
     #: A colleague took issue with its priorities and moved the room on. The
     #: presenter never had the floor.
     #:
@@ -109,7 +128,14 @@ def weak_answers(
     for ordinal, line in enumerate(transcript):
         if line.speaker == USER:
             continue
-        if _answer_to(transcript, ordinal) is not None:
+
+        answer = _answer_to(transcript, ordinal)
+        weakness = (
+            _why(transcript, ordinal, last_question, ended)
+            if answer is None
+            else _how_the_answer_went(transcript, ordinal)
+        )
+        if weakness is None:
             continue
 
         weak.append(
@@ -117,12 +143,65 @@ def weak_answers(
                 ordinal=ordinal,
                 question=line.text,
                 asked_by=line.speaker,
-                answer=None,
-                weakness=_why(transcript, ordinal, last_question, ended),
+                answer=answer,
+                weakness=weakness,
             )
         )
 
     return tuple(weak)
+
+
+def _how_the_answer_went(
+    transcript: Sequence[Said], ordinal: int
+) -> Weakness | None:
+    """What is wrong with the answer that was given, or `None` if nothing is.
+
+    Separate from `_why` because the two families are not comparable. `_why`
+    settles *whose* silence a missing answer was; this one reads an answer that
+    exists. Collapsing them would put "nobody spoke" and "the number was vague"
+    on one scale, and the coach has to say which it is holding.
+    """
+    if _interrupted_by_the_auditor(transcript, ordinal):
+        return Weakness.CONTRADICTED
+    if _pressed(transcript, ordinal):
+        return Weakness.PRESSED
+    return None
+
+
+def _interrupted_by_the_auditor(transcript: Sequence[Said], ordinal: int) -> bool:
+    """Whether a finding is what handed the next panelist the floor.
+
+    Which means the Auditor caught something in the answer to *this* question —
+    the turn it routes is always the one that follows the utterance it read.
+    """
+    caught = _next_question_after(transcript, ordinal)
+    return caught is not None and transcript[caught].chosen_by == "finding"
+
+
+def _pressed(transcript: Sequence[Said], ordinal: int) -> bool:
+    """Whether the panelist who asked this asked again straight after.
+
+    The next *question*, not the next line — an answer sits between them by
+    definition, which is what separates a press from #54's dispute. A dispute is
+    panel text immediately following panel text; a press is the same archetype
+    coming back around after hearing the reply and not being satisfied by it.
+
+    Only the immediately following question counts. A panelist returning to a
+    subject four turns later is a room circling, not a room judging one answer.
+    """
+    asked_again = _next_question_after(transcript, ordinal)
+    return (
+        asked_again is not None
+        and transcript[asked_again].speaker == transcript[ordinal].speaker
+    )
+
+
+def _next_question_after(transcript: Sequence[Said], ordinal: int) -> int | None:
+    """Where the panel speaks next, or `None` if this was the room's last word."""
+    for candidate in range(ordinal + 1, len(transcript)):
+        if transcript[candidate].speaker != USER:
+            return candidate
+    return None
 
 
 def _why(

@@ -92,6 +92,36 @@ async def test_a_line_that_took_issue_with_a_colleague_reads_back_as_one(
     )
 
 
+async def test_what_handed_a_panelist_the_floor_reads_back_too(
+    db, engine, sessions, funded_account
+):
+    """A finding routes one turn and is then gone.
+
+    Nothing persists a `Finding` — it is read from one utterance, decides who
+    speaks next, and is discarded. So the routing reason on the line it produced
+    is the only surviving evidence that the Auditor caught a contradiction, and
+    `weakness.py` ranks on exactly that.
+
+    `None` for the user's own line, because nobody chose it. Asserted here rather
+    than assumed: a column defaulting to `"model"` would quietly claim the
+    selection model had spoken for every sentence the presenter said, and the
+    room's health metric is a ratio over that field.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+    await db.commit()
+
+    transcript = SessionTranscript(
+        async_sessionmaker(engine, expire_on_commit=False), session_id=session.id
+    )
+
+    await transcript.record(Said(speaker=USER, text="Margin is seventy."))
+    await transcript.record(
+        Said(speaker="cfo", text="You said sixty-one before.", chosen_by="finding")
+    )
+
+    assert [line.chosen_by for line in await transcript.lines()] == [None, "finding"]
+
+
 async def test_the_store_still_fits_the_seam_the_room_writes_through():
     """A guard, not a driver — and the one the `Protocol` exists to make possible.
 

@@ -90,11 +90,26 @@ Four properties of an answer are checkable without judgement:
 | Nobody answered it at all | Transcript structure — a panel question with no user line after it |
 | A panelist pressed it again | #43's press rule; the room judged it live, with better context than any retrospective pass has |
 | The Auditor caught a contradiction in it | `Finding`, already typed and already domain-routed |
-| The answer contains no figure, name, date or mechanism | The same four specifics the composition prompt already reasons about |
 
 Those rank top, with no model involved. The model then ranks **only the
 answered-but-questionable remainder**, and must quote the transcript line it is
 judging; a citation that does not match a stored line is dropped.
+
+> **Corrected 2026-08-17, during implementation.** This decision originally
+> listed a fourth floor signal — *"the answer contains no figure, name, date or
+> mechanism"*, the four specifics the composition prompt already reasons about.
+> It does not survive contact with code. **Mechanism is not detectable without
+> judgement**, and a check that fires on the other three would flag *"we rebuilt
+> the ingestion path so retries stop duplicating rows"* — a mechanism, precisely
+> answered, containing no figure and no date. That is a false accusation, and
+> `docs/auditor-grounding.md` sets the priority between the two errors
+> explicitly: *"a missed catch costs one challenge, a false one costs the room
+> its credibility."*
+>
+> So the presence of a figure or a date is computed and **handed to the model as
+> an observation**, not applied as a verdict. It makes the comparative ranking a
+> choice between things with evidence attached rather than a matter of taste,
+> which is what that call is for. The floor keeps only what is certain.
 
 This is not #43 again, and the difference is precise. #43 asked for an absolute
 yes/no with no alternative on offer, and got yes every time. Ranking the worst

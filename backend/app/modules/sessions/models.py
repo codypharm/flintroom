@@ -419,6 +419,24 @@ class TranscriptLine(Base):
         Boolean, nullable=False, server_default="false"
     )
 
+    #: What handed this speaker the floor — `finding`, `model` or `fallback`.
+    #: Null for the user's own lines, which nobody chose.
+    #:
+    #: `chosen_by="finding"` is the only record that outlives the room of the
+    #: Auditor having caught a contradiction: a `Finding` is read from one
+    #: utterance, routes the next turn, and is discarded. The debrief ranks a
+    #: contradiction above a panelist's dissatisfaction and needs to know which
+    #: it is holding.
+    #:
+    #: Deliberately not an `Enum` column. `SelectedBy` is a routing vocabulary
+    #: that may grow a fourth path, and a Postgres enum turns adding one into a
+    #: migration that locks the table this room is actively writing to.
+    #:
+    #: Nullable rather than defaulted: a default of `"model"` would claim the
+    #: selection model had spoken for every sentence the presenter said, and the
+    #: room's health metric is a ratio over this column.
+    chosen_by: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
     said_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

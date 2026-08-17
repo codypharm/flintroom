@@ -670,8 +670,16 @@ class OrchestratedChannel:
         # a colleague's priorities is indistinguishable from any other panel line
         # following panel text — so the question it moved the room off would look
         # exactly like one the presenter ducked, and #56 would tell them so.
+        # `chosen_by` for the same reason: a finding is read from one utterance,
+        # routes one turn, and is gone. Nothing persists it, so the routing
+        # reason on this line is the only surviving evidence that the Auditor
+        # caught the answer before it — which is what `weakness.py` reads to rank
+        # a contradiction above a panelist's mere dissatisfaction.
         asked = Said(
-            speaker=turn.archetype.name, text=turn.line, disputed=turn.disputed
+            speaker=turn.archetype.name,
+            text=turn.line,
+            disputed=turn.disputed,
+            chosen_by=turn.chosen_by,
         )
         self._transcript.append(asked)
         await self._keep(asked)

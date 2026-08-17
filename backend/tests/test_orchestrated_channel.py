@@ -211,7 +211,11 @@ async def test_a_challenge_is_kept_against_the_panelist_who_made_it():
 
     await events_of(channel)
 
-    assert Said(speaker="cfo", text="The deck says sixty-one.") in transcript.lines
+    # The pair, not the whole `Said`. Attribution is the claim here, and a line
+    # carrying a new field it has no opinion about is not a regression in it.
+    assert ("cfo", "The deck says sixty-one.") in [
+        (line.speaker, line.text) for line in transcript.lines
+    ]
 
 
 class TakingTurns:
@@ -998,7 +1002,7 @@ def claim(metric: str, value: float, *, unit: Unit = Unit.PERCENT) -> Quantitati
     )
 
 
-async def three_turns(model, reader, said: Sequence[str]) -> None:
+async def three_turns(model, reader, said: Sequence[str], transcript=None) -> None:
     """Run a room across several utterances, letting each turn finish first.
 
     Same pacing as `two_turns` and for the same reason — a script yielding every
@@ -1014,6 +1018,7 @@ async def three_turns(model, reader, said: Sequence[str]) -> None:
         model=model,
         grounding=Grounding(),
         auditor=Auditor(reader=reader),
+        transcript=transcript,
     )
 
     spoken = asyncio.Queue()
@@ -1093,6 +1098,48 @@ async def test_a_contradiction_reaches_the_panel_on_the_turn_after_it_was_spoken
     assert caught is not None, "the catch never reached the panel"
     assert caught.domain == "margin"
     assert "61" in caught.summary and "70" in caught.summary
+
+
+async def test_a_line_the_auditor_caused_is_recorded_as_one():
+    """The only trace of a contradiction that outlives the room.
+
+    Nothing persists a `Finding`. It is read from one utterance, routes the next
+    turn, and is gone — so by the time a debrief opens, the fact that the Auditor
+    caught something has to have been written down or it never happened.
+
+    The routing reason is where it lives, because the alternative is a stored
+    copy of the finding's summary sitting beside a panel line that already states
+    the same contradiction in words the user heard (#45). Two versions of one
+    fact, free to disagree.
+
+    Asserted on the recorded line rather than on the turn: the turn is already
+    known to be right — `test_a_contradiction_reaches_the_panel_on_the_turn_after
+    _it_was_spoken` proves it — and a channel that knew and did not write it down
+    would look identical from every other angle in this file.
+    """
+    reader = ScriptedClaimReader(
+        {
+            "Our gross margin is sixty-one.": (claim("gross margin", 61),),
+            "Margin is seventy percent.": (claim("gross margin", 70),),
+        }
+    )
+    transcript = FakeTranscript()
+
+    await three_turns(
+        WatchingModel(),
+        reader,
+        [
+            "Our gross margin is sixty-one.",
+            "Margin is seventy percent.",
+            "And we are hiring twelve people.",
+        ],
+        transcript=transcript,
+    )
+
+    caused_by = [
+        line.chosen_by for line in transcript.lines if line.speaker != USER
+    ]
+    assert caused_by == ["model", "model", "finding"]
 
 
 async def test_a_slow_reading_never_stands_between_the_user_and_an_answer():

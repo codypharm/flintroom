@@ -64,6 +64,86 @@ def test_a_question_nobody_answered_is_weak():
     )
 
 
+def test_an_answer_the_auditor_caught_contradicting_itself_is_the_hardest_evidence():
+    """A figure that moved. Not an opinion about the answer — arithmetic.
+
+    The Auditor is the wedge in one object: `auditor.py` refuses to put a model
+    anywhere near the comparison precisely so that *"arithmetic hallucination
+    becomes impossible rather than discouraged"*. A finding is therefore the one
+    weakness in this file that is not a reading of anything — the number was
+    seventy and then it was sixty-one, and no judgement is involved in saying so.
+
+    It outranks a press. Both mark the same answer here, and they are not equal
+    evidence: a press is a panelist's dissatisfaction, a finding is a
+    demonstrable inconsistency. Asserting the precedence rather than leaving it
+    to declaration order, because the order of an enum is not a decision anybody
+    would think to preserve.
+
+    Why the *routing reason* rather than a stored finding: nothing persists a
+    `Finding`, and the panel line that a finding produced already says what the
+    contradiction was, in words, grounded — #45 made the composer cite what the
+    user actually said. A stored summary would be a second copy of that, free to
+    drift from it.
+    """
+    room = (
+        Said(speaker=USER, text="Margin is seventy percent."),
+        Said(speaker="cfo", text="Across which lines?"),
+        Said(speaker=USER, text="Blended it is about sixty-one."),
+        Said(
+            speaker="cfo",
+            text="You said seventy a moment ago. Which is it?",
+            chosen_by="finding",
+        ),
+        Said(speaker=USER, text="Sixty-one is the right number."),
+    )
+
+    assert weak_answers(room, ended=EndReason.USER_ENDED) == (
+        WeakAnswer(
+            ordinal=1,
+            question="Across which lines?",
+            asked_by="cfo",
+            answer="Blended it is about sixty-one.",
+            weakness=Weakness.CONTRADICTED,
+        ),
+    )
+
+
+def test_a_question_the_same_panelist_asked_again_was_answered_badly():
+    """The room already judged this one, live, and it judged it insufficient.
+
+    #43 gave a panelist the right to press its own unanswered question once, and
+    a panelist exercising it is the best evidence available that an answer did
+    not land — better than anything computed afterwards, because it was made with
+    the whole room in view by the archetype whose subject it was.
+
+    So this signal is not an opinion about the answer. It is a record of one the
+    product already formed and acted on, which is why it belongs in the code
+    floor rather than in the model's share of the ranking.
+
+    The second question here *is* answered, with a figure, and nobody presses it
+    again. It must not appear — an implementation that flagged every question a
+    panelist asked twice in a room would satisfy the first half of this and be
+    noise.
+    """
+    room = (
+        Said(speaker=USER, text="Margin held at seventy."),
+        Said(speaker="cfo", text="Off what base?"),
+        Said(speaker=USER, text="It has been strong all year."),
+        Said(speaker="cfo", text="Off what base, though?"),
+        Said(speaker=USER, text="Around forty million."),
+    )
+
+    assert weak_answers(room, ended=EndReason.USER_ENDED) == (
+        WeakAnswer(
+            ordinal=1,
+            question="Off what base?",
+            asked_by="cfo",
+            answer="It has been strong all year.",
+            weakness=Weakness.PRESSED,
+        ),
+    )
+
+
 def test_a_question_a_colleague_waved_away_is_not_the_presenters_fault():
     """Someone else moved the room on. The presenter never got the floor.
 
