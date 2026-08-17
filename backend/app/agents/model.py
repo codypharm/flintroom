@@ -58,7 +58,7 @@ class PanelModel(Protocol):
         ...
 
     async def compose(
-        self, *, archetype: Archetype, context, finding=None
+        self, *, archetype: Archetype, context, finding=None, dispute=None
     ) -> ModelReply:
         """Write this archetype's next line.
 
@@ -73,6 +73,13 @@ class PanelModel(Protocol):
         well as to the routing, because an archetype handed the floor for a
         contradiction and not told what the contradiction was produces a
         challenge that sounds authoritative and cites nothing.
+
+        `dispute` is a colleague's line this archetype may take issue with —
+        never with its substance, only with whether it is what matters most.
+        Whether a turn is allowed one is decided by `app/agents/dispute.py`
+        before this is called, because it is an occasion rather than a
+        judgement: a model asked whether it disagrees says yes, and #43
+        measured exactly that. What the difference *is* comes from here.
 
         Returns text and what it cost. Speech is the voice provider's job, and
         keeping that out of here is what lets the same adapter serve the debrief

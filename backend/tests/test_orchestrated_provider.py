@@ -70,7 +70,7 @@ class SilentModel:
     async def select(self, *, candidates, context) -> ModelReply:
         return ModelReply(text=self._speaker)
 
-    async def compose(self, *, archetype, context, finding=None) -> ModelReply:
+    async def compose(self, *, archetype, context, finding=None, dispute=None) -> ModelReply:
         self.spoke_as.append(archetype.name)
         self.saw_claims.append(context.grounding.claims)
         return ModelReply(text="Where is that from?")

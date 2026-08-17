@@ -171,6 +171,14 @@ class PanelTurn:
     line: str
     chosen_by: SelectedBy
 
+    #: Whether this turn opened by taking issue with a colleague's priorities.
+    #:
+    #: Reported so the room can count what it has spent. Derived after the fact
+    #: it cannot be: a disputing line and an ordinary one are the same shape, and
+    #: a caller inferring one from the text would be reading tea leaves about a
+    #: bound that has to be exact.
+    disputed: bool = False
+
     #: Both model calls of this turn, summed — routing and composition.
     #:
     #: Carried on the turn rather than counted by the caller because a turn is

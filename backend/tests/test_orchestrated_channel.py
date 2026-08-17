@@ -85,7 +85,7 @@ class ScriptedPanelModel:
         self.selecting.set()
         return ModelReply(text=self._speaker)
 
-    async def compose(self, *, archetype: Archetype, context, finding=None) -> ModelReply:
+    async def compose(self, *, archetype: Archetype, context, finding=None, dispute=None) -> ModelReply:
         self.composed_for.append(archetype.name)
         self.said.append(context.said)
         return ModelReply(text=self._line)
@@ -521,7 +521,7 @@ async def test_the_second_turn_can_see_the_first():
     seen: list[tuple[str, ...]] = []
 
     class Watching(ScriptedPanelModel):
-        async def compose(self, *, archetype, context, finding=None) -> ModelReply:
+        async def compose(self, *, archetype, context, finding=None, dispute=None) -> ModelReply:
             seen.append(
                 tuple(line.text for line in context.grounding.transcript)
             )
@@ -553,7 +553,7 @@ async def test_a_user_who_talks_through_the_answer_is_still_on_record():
     seen: list[tuple[str, ...]] = []
 
     class Watching(ScriptedPanelModel):
-        async def compose(self, *, archetype, context, finding=None) -> ModelReply:
+        async def compose(self, *, archetype, context, finding=None, dispute=None) -> ModelReply:
             seen.append(tuple(line.text for line in context.grounding.transcript))
             return ModelReply(text="Against what basis?")
 
@@ -586,7 +586,7 @@ async def test_the_deck_stays_in_front_of_every_turn():
     seen: list[tuple[str, ...]] = []
 
     class Watching(ScriptedPanelModel):
-        async def compose(self, *, archetype, context, finding=None) -> ModelReply:
+        async def compose(self, *, archetype, context, finding=None, dispute=None) -> ModelReply:
             seen.append(context.grounding.claims)
             return ModelReply(text="Where is that from?")
 
@@ -817,7 +817,7 @@ async def test_a_room_that_cannot_compose_ends_instead_of_billing_in_silence():
     """
 
     class BrokenModel(ScriptedPanelModel):
-        async def compose(self, *, archetype, context, finding=None) -> ModelReply:
+        async def compose(self, *, archetype, context, finding=None, dispute=None) -> ModelReply:
             raise ProviderUnavailable(reason="panel_model_error")
 
     channel = OrchestratedChannel(
@@ -961,7 +961,7 @@ class WatchingModel(ScriptedPanelModel):
         super().__init__(**kwargs)
         self.findings: list[object] = []
 
-    async def compose(self, *, archetype, context, finding=None) -> ModelReply:
+    async def compose(self, *, archetype, context, finding=None, dispute=None) -> ModelReply:
         self.findings.append(finding)
         return await super().compose(
             archetype=archetype, context=context, finding=finding

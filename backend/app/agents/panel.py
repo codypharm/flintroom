@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from app.agents.archetypes import Archetype, by_name
+from app.agents.dispute import contested
 from app.agents.context import (
     USER,
     Finding,
@@ -96,6 +97,7 @@ async def interrogate(
     grounding: Grounding | None = None,
     finding: Finding | None = None,
     routed: Routed | None = None,
+    disputes_spent: int = 0,
 ) -> PanelTurn:
     """Answer one thing the user said, in one archetype's voice.
 
@@ -141,7 +143,18 @@ async def interrogate(
     # handed the floor because of a contradiction and then not told what the
     # contradiction was produces a challenge that sounds authoritative and cites
     # nothing — Open Risk #2 arriving from the one path meant to cure it.
-    written = await model.compose(archetype=archetype, context=context, finding=finding)
+    # Decided here rather than inside the composer, because it is an occasion
+    # and not a judgement — `app/agents/dispute.py` says why at length. A
+    # finding outranks it: the Auditor catching a contradiction is a better use
+    # of a turn than a difference of emphasis, and a line doing both would do
+    # neither clearly.
+    dispute = (
+        None if finding else contested(archetype, panel, context, spent=disputes_spent)
+    )
+
+    written = await model.compose(
+        archetype=archetype, context=context, finding=finding, dispute=dispute
+    )
 
     # Never the line itself, and never a claim. Ingested material contents are
     # forbidden in logs (CLAUDE.md) and a panelist's line quotes them directly —
@@ -157,6 +170,7 @@ async def interrogate(
         archetype=archetype,
         line=written.text,
         chosen_by=chosen_by,
+        disputed=dispute is not None,
         # Routing plus composition. A turn that fell back to keywords still
         # carries whatever the failed routing call cost, because the provider
         # charged for it either way.

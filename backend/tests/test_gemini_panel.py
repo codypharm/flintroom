@@ -610,3 +610,40 @@ def test_the_rules_say_what_to_do_with_an_unfinished_sentence():
     changed, because the ranking was the missing part rather than the data.
     """
     assert "still speaking" in _SELECTION_INSTRUCTION
+
+
+def test_a_disputing_turn_is_told_to_argue_about_priority_only():
+    """The one instruction that keeps this safe.
+
+    A panelist may say margin is not what sinks this. It may not say the CFO's
+    margin challenge was wrong — because a panel able to talk a colleague out of
+    a valid question sends somebody away having rehearsed the wrong thing, which
+    is the delivery-coach failure the wedge exists to refuse.
+
+    So the prompt has to carry both halves: name what matters more, and leave
+    their question standing.
+    """
+    prompt = _composition_prompt(
+        CONTEXT,
+        None,
+        by_name("technical_skeptic"),
+        dispute=Said(speaker="cfo", text="Where does sixty-one percent come from?"),
+    )
+
+    assert "cfo" in prompt
+    assert "still stands" in prompt
+    # Sequencing, not comparative worth. Measured: "say what matters more than
+    # that" produced "data ownership does not touch the margin" and "proof
+    # points do not alter unit economics" — substantive claims about a
+    # colleague's ground, one of them false, and both leaving the presenter
+    # free to think the question had been disposed of.
+    assert "answered first" in prompt
+
+
+def test_an_ordinary_turn_is_told_nothing_about_disputing():
+    """No dispute, no instruction. A composer shown a rule it is not meant to
+    apply is a composer given the idea — #43's whole finding is that a model
+    offered a reason to do something takes it."""
+    prompt = _composition_prompt(CONTEXT, None, by_name("cfo"), dispute=None)
+
+    assert "answered first" not in prompt

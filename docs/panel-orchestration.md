@@ -943,3 +943,71 @@ at three words the CFO is frequently the *correct* answer, and a share of what
 this instrument reports as concentration is routing working. Separating those
 two would need a corpus whose first three words are deliberately neutral, which
 is a different instrument than this one.
+
+## Letting the panel disagree, 2026-08-17
+
+`Product.md` §3.1 asks for a mixed room whose members "disagree with each other".
+Every line until now was addressed to the presenter, so the champion and the CFO
+never noticed each other existed — a star, not a table.
+
+Shape settled with the architect, and the division is the design: **code owns the
+occasion, the panelist owns the substance.** `app/agents/dispute.py` answers only
+whether this is a turn where a difference of priority may be voiced. It never
+decides what the difference is.
+
+### What the architect refused, and why it was right
+
+The first proposal was a declared-opposition field on `Archetype` — the Champion
+argues with the CFO. Rejected on the grounds that a hardcoded rivalry fires on
+schedule whether or not the colleague said anything worth disputing.
+
+Pulling that thread found something worse than a stilted room. A panelist able to
+dismiss a colleague's challenge can send the presenter away without answering a
+question a real board would have pressed — the panel working against the product's
+own purpose. So the scope narrowed to **priority only, never substance**: a
+panelist may say margin is not what sinks this, and may not say the CFO was wrong
+to ask.
+
+### The gate
+
+Four checks, all against data that already existed. Cap unspent; the archetype
+has `domains` of its own; the previous panel line is not its own; that speaker's
+domains do not overlap its own.
+
+Two properties fall out rather than being written. A panelist pressing its own
+unanswered question (#43) cannot also dispute, because the previous speaker is
+itself. And the Distracted Executive never disputes, because it deliberately has
+no domains — its complaint is that you are not making the point clearly, which
+is not a subject.
+
+The cap is in code. #43 measured what a model does when asked to judge whether a
+rule applies: asked whether the presenter had dodged, it said yes on 4 of 4
+dodges *and* 4 of 4 genuine answers.
+
+### Three framings, three failures
+
+`scripts/dispute.py` runs eight pairs and counts two checkable things: does the
+line still put a question to the presenter, and is the colleague referenced at
+all. The third question — is their question left standing — needs a person.
+
+| Instruction | asked | named | What went wrong |
+| --- | --- | --- | --- |
+| "say what matters more than that" | 8/8 | 0/8 | Best lines by a distance, and dismissive. Produced substantive claims about a colleague's ground, one of them false: *"Data ownership does not touch the margin."* |
+| "you want something answered first" | 7/8 | — | Safe and invisible. *"Onboarding moved everything. What did it move to our gross margin?"* signals no disagreement at all |
+| "name their subject, say yours comes first" | 8/8 | 3/8 | Audible and stilted — it narrates the mechanic: *"Technical skeptic asked about data ownership. I want mine answered first."* In one case the skeptic asked the CFO's question instead of its own |
+
+The first framing carried an explicit ban — *"you are not saying they were wrong
+to ask"* — and violated it anyway. A prohibition in the instruction is not a
+prohibition, which is the same finding as #43 and as the partial-routing work
+earlier the same day.
+
+### Shipped, and honestly weaker than intended
+
+The second framing is in place: the only one that cannot harm the presenter. Its
+cost is that the disagreement is frequently inaudible, so the feature currently
+underdelivers rather than misbehaves.
+
+That is a deliberate trade and not a finished answer. What has not been tried:
+moving the instruction into the archetype's system prompt rather than the turn
+prompt, or shaping the line as a single clause rather than two sentences. Both
+are worth a pass before concluding the feature cannot be had.

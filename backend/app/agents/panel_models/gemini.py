@@ -112,7 +112,7 @@ class GeminiPanelModel:
         self._composition_model = composition_model
 
     async def compose(
-        self, *, archetype: Archetype, context, finding=None
+        self, *, archetype: Archetype, context, finding=None, dispute=None
     ) -> ModelReply:
         """Write this archetype's next line.
 
@@ -125,7 +125,7 @@ class GeminiPanelModel:
         return await self._generate(
             model=self._composition_model,
             system=_persona_of(archetype),
-            prompt=_composition_prompt(context, finding, archetype),
+            prompt=_composition_prompt(context, finding, archetype, dispute),
             max_tokens=MAX_LINE_TOKENS,
         )
 
@@ -429,7 +429,9 @@ def _silence_of(archetype: Archetype, context) -> str:
     return "has not spoken yet"
 
 
-def _composition_prompt(context, finding, archetype: Archetype) -> str:
+def _composition_prompt(
+    context, finding, archetype: Archetype, dispute=None
+) -> str:
     """What this archetype is allowed to work from.
 
     Claims first, because they are the thing a challenge must trace back to —
@@ -446,6 +448,31 @@ def _composition_prompt(context, finding, archetype: Archetype) -> str:
     if mine:
         asked = "\n".join(f"- {question}" for question in mine)
         parts.append(f"You have already asked — do not repeat these:\n{asked}")
+
+    if dispute is not None:
+        # Priority, never substance, and both halves of that are in the text.
+        #
+        # "What matters more" is a stance about emphasis: it cannot be wrong,
+        # which is what makes a panel arguing with itself safe. "Their question
+        # still stands" is the other half and the load-bearing one — a panelist
+        # able to talk a colleague out of a valid challenge would send somebody
+        # away having rehearsed the wrong thing, which is the delivery-coach
+        # failure the wedge exists to refuse.
+        #
+        # Code chose the occasion; nothing here says what the difference is.
+        # That comes from this archetype's own persona and from what was
+        # actually said, and it would be worthless if it came from a rule.
+        parts.append(
+            f"{dispute.speaker} just asked: {dispute.text}\n"
+            # Three framings measured 2026-08-17; see
+            # `docs/panel-orchestration.md`. This is the least bad rather than
+            # the best: it is the only one that cannot harm the presenter, and
+            # its cost is that the disagreement is frequently inaudible.
+            "You want something answered first. Open by saying what, in your "
+            "own terms, then ask it. Never say their question does not matter, "
+            "is a footnote, or is the wrong question: it still stands and the "
+            "presenter still owes them an answer."
+        )
 
     if finding is not None:
         parts.append(

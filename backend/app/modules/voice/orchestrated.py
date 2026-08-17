@@ -212,6 +212,12 @@ class OrchestratedChannel:
         # would be twenty model calls for a sentence and turn the cheapest hop
         # in the turn into the most expensive thing in the room.
         self._routing: asyncio.Task[Routed] | None = None
+        # How many turns in this room have opened by taking issue with a
+        # colleague. Counted here because the cap is per room and nothing else
+        # has that lifetime — `interrogate` sees one turn, and the transcript
+        # cannot say which lines disputed because a disputing line and an
+        # ordinary one are the same shape.
+        self._disputes = 0
 
     async def _keep(self, line: Said) -> None:
         """File one line where it will outlive the room, if anywhere.
@@ -644,6 +650,11 @@ class OrchestratedChannel:
             # against specific figures is a better reason to hand somebody the
             # floor than a guess made from half a sentence.
             finding=finding,
+            # The room's own tally. `interrogate` sees one turn and cannot know
+            # what this room has already spent, so the bound would not exist if
+            # the count stayed here unpassed — silently, because every turn on
+            # its own would still look correct.
+            disputes_spent=self._disputes,
         )
 
         # Recorded before the line is spoken, so that a panelist cut off two
@@ -657,6 +668,9 @@ class OrchestratedChannel:
         asked = Said(speaker=turn.archetype.name, text=turn.line)
         self._transcript.append(asked)
         await self._keep(asked)
+
+        if turn.disputed:
+            self._disputes += 1
 
         # From the user going quiet to the room having something to say. The
         # only number that tells an operator whether a slow room was slow here

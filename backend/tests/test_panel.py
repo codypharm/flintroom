@@ -47,7 +47,7 @@ class FakePanelModel:
             raise ProviderUnavailable(reason="panel_model_error")
         return self._selects
 
-    async def compose(self, *, archetype, context, finding=None) -> ModelReply:
+    async def compose(self, *, archetype, context, finding=None, dispute=None) -> ModelReply:
         self.asked_to_write_as.append(archetype.name)
         self.composed_with.append((context, finding))
         return self._writes
