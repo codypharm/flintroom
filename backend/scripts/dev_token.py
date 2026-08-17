@@ -90,7 +90,34 @@ async def release(db, user_id: uuid.UUID) -> int:
     return len(rows)
 
 
-async def issue(*, email: str, tier: str, hours: int) -> str:
+async def top_up(db, user_id: uuid.UUID, minutes: int) -> None:
+    """Put minutes on the account, the way a purchase would.
+
+    Into the top-up bucket rather than the free grant, and that is the whole
+    reason this is not simply a second `grant_signup_free_minutes`. The free
+    grant is idempotent by design — it has to be, or every sign-in would hand
+    out another one — so re-running this script cannot refill it, and a
+    developer who has used their thirty minutes has no way back into a room
+    except by editing the database.
+
+    Top-up is also the bucket that never expires (§4.5), so a period boundary
+    mid-testing will not silently take these away.
+
+    A fresh idempotency key each run, unlike everything else here. Idempotency
+    exists to stop a retried webhook granting twice; a person typing
+    `--minutes 60` is asking for sixty more minutes, and refusing them because
+    they asked yesterday would be the guard misfiring.
+    """
+    granted = await LedgerService(db, actor=ActorContext.system()).grant_topup(
+        user_id=user_id,
+        seconds=minutes * 60,
+        idempotency_key=f"dev-topup:{uuid.uuid4()}",
+    )
+    if granted:
+        print(f"granted {minutes} top-up minutes", file=sys.stderr)
+
+
+async def issue(*, email: str, tier: str, hours: int, minutes: int = 0) -> str:
     settings = get_settings()
     engine = create_engine(settings.database_url)
     sessions = create_session_factory(engine)
@@ -129,8 +156,26 @@ async def issue(*, email: str, tier: str, hours: int) -> str:
             # Always, not on request. Every run of this script is somebody about
             # to open a room, and a stale lock is the one thing guaranteed to
             # stop them.
+            if minutes:
+                await top_up(db, user_id, minutes)
+
             if freed := await release(db, user_id):
                 print(f"released {freed} stale room(s)", file=sys.stderr)
+
+            # Always, and to stderr so it never pollutes the token on stdout.
+            # "No minutes remaining" is otherwise a dead end: the free grant is
+            # idempotent, so re-running looks like it should have helped and
+            # silently did nothing.
+            balance = await LedgerService(db, actor=ActorContext.system()).balance(
+                user_id=user_id
+            )
+            print(
+                f"balance: {balance.remaining_minutes} min "
+                f"(allowance {balance.allowance_seconds // 60}, "
+                f"free {balance.free_seconds // 60}, "
+                f"top-up {balance.topup_seconds // 60})",
+                file=sys.stderr,
+            )
 
         return AccessTokens(
             secret=settings.jwt_secret, ttl=timedelta(hours=hours)
@@ -162,13 +207,30 @@ def main() -> None:
         help="Entitlement tier for a newly created account. Ignored if it exists.",
     )
     parser.add_argument(
+        "--minutes",
+        type=int,
+        default=0,
+        help=(
+            "Grant this many top-up minutes. The free signup grant is "
+            "idempotent and cannot be repeated, so this is the way back into a "
+            "room once it is spent."
+        ),
+    )
+    parser.add_argument(
         "--no-write",
         action="store_true",
         help="Only print the token, leaving app/.env.local alone.",
     )
     args = parser.parse_args()
 
-    token = asyncio.run(issue(email=args.email, tier=args.tier, hours=args.hours))
+    token = asyncio.run(
+        issue(
+            email=args.email,
+            tier=args.tier,
+            hours=args.hours,
+            minutes=args.minutes,
+        )
+    )
     print(token)
 
     if not args.no_write:
