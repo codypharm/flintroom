@@ -46,6 +46,11 @@ class AuditEventType(str, Enum):
     #: application sweep over a bucket lifecycle rule precisely so that there is
     #: a row to point at when somebody asks whether it was.
     RECORDING_EXPIRED = "recording_expired"
+    #: A user asked for a room's audio to be destroyed. Distinct from expiry on
+    #: purpose: one is us keeping a published promise on a schedule, the other
+    #: is somebody exercising a right, and a privacy request is answered by
+    #: showing which of the two happened.
+    RECORDING_DELETED = "recording_deleted"
 
     # Security.
     PERMISSION_DENIED = "permission_denied"

@@ -211,7 +211,105 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/preferences/recording:
+    get:
+      tags:
+      - sessions
+      summary: Read Recording Preference
+      description: Whether rooms are being saved for this account.
+      operationId: sessions_read_recording_preference
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordingPreference'
+      security:
+      - HTTPBearer: []
+    put:
+      tags:
+      - sessions
+      summary: Set Recording Preference
+      description: 'Turn saving on or off for future rooms.
+
+
+        `PUT` rather than `POST`, because this sets a value rather than appending
+
+        one — the second identical request is the same state, which is exactly what
+
+        a toggle tapped twice on a slow connection produces.
+
+
+        Affects rooms started after this. Existing recordings are deliberately left
+
+        alone: they were made under a disclosure the user accepted, and destroying
+
+        them as a side effect of a switch would be a surprise in the one direction
+
+        that cannot be undone. Deleting a room is its own explicit action, below.'
+      operationId: sessions_set_recording_preference
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordingPreference'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordingPreference'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
   /v1/sessions/{session_id}/recording:
+    delete:
+      tags:
+      - sessions
+      summary: Delete Recording
+      description: 'Destroy one room''s audio, because the user asked.
+
+
+        204 whether or not there was anything there. `CLAUDE.md` lists duplicate
+
+        actions as a case to handle rather than a 500, and a second tap is asking
+
+        for something already true — answering 404 would tell somebody their
+
+        deletion failed at the moment it had in fact succeeded.
+
+
+        The transcript survives. The two artefacts have separate lifetimes by
+
+        design, and this must not quietly take the debrief''s grounding with it.'
+      operationId: sessions_delete_recording
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Session Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
     get:
       tags:
       - sessions
@@ -916,6 +1014,25 @@ components:
         client can decide whether to reuse the link it holds or ask for another —
 
         without it the only way to find out is to play and fail.'
+    RecordingPreference:
+      properties:
+        records_rooms:
+          type: boolean
+          title: Records Rooms
+      type: object
+      required:
+      - records_rooms
+      title: RecordingPreference
+      description: 'Whether this account''s rooms are recorded.
+
+
+        One field, and it is the control the first-session disclosure points at.
+
+        `docs/session-retention.md` chose on-by-default with a way out; this is the
+
+        way out, and without it the disclosure would be describing something that
+
+        does not exist.'
     RecordingRead:
       properties:
         state:

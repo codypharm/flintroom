@@ -216,6 +216,18 @@ class RecordingRead(BaseModel):
     expires_at: datetime | None = None
 
 
+class RecordingPreference(BaseModel):
+    """Whether this account's rooms are recorded.
+
+    One field, and it is the control the first-session disclosure points at.
+    `docs/session-retention.md` chose on-by-default with a way out; this is the
+    way out, and without it the disclosure would be describing something that
+    does not exist.
+    """
+
+    records_rooms: bool
+
+
 class RecordingPlayback(BaseModel):
     """A short-lived link to one room's audio.
 

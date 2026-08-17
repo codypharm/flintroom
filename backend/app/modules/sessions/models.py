@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     Enum,
@@ -455,4 +456,49 @@ class SessionRecording(Base):
     #: deletion already uses.
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
+    )
+
+
+class UserPreference(Base):
+    """What one account has chosen, where the choice is not money.
+
+    Separate from `accounts` deliberately. That table is a cache over
+    `ledger_entries` with an invariant — replaying the entries must reproduce it
+    — and a consent flag has no such property. Putting one there would leave the
+    row without a single reason to exist, and every future preference would land
+    beside it by precedent.
+
+    **A row is written only when somebody chooses something.** Every default
+    lives in this class, not in a signup path, so an account that has never
+    opened Settings has no row at all — which is also what makes adding the next
+    preference a column with a default rather than a backfill.
+    """
+
+    __tablename__ = "user_preferences"
+
+    #: Plain UUID, never a foreign key to `auth.users` — see CLAUDE.md
+    #: → Database portability.
+    user_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+
+    #: Whether interrogations are recorded for later playback.
+    #:
+    #: True by default, matching the disclosure: `docs/session-retention.md`
+    #: chose on-by-default with a control, because most people never open
+    #: Settings and an opt-in would build a compounding cost centre the majority
+    #: never switch on — leaving "come back and play it" broken for almost
+    #: everyone.
+    #:
+    #: Turning it off stops *new* rooms being recorded. It deliberately does not
+    #: delete existing ones: those were made under a disclosure the user
+    #: accepted, and silently destroying them on a toggle would be a surprise in
+    #: the destructive direction. Deleting a room is its own explicit action.
+    records_rooms: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )

@@ -23,6 +23,7 @@ from app.core.database import get_db, get_session_factory
 from app.core.errors import FlintroomError, NotAuthenticated, ProviderUnavailable
 from app.core.logging import get_logger
 from app.core.request_context import current_request_id
+from app.modules.sessions.preferences import PreferenceService
 from app.modules.voice.client import WebSocketClientChannel
 from app.modules.voice.dependencies import (
     RoomPartsDep,
@@ -109,6 +110,10 @@ async def stream_session(
         client=WebSocketClientChannel(websocket),
         actor=ActorContext.user(user_id, request_id=current_request_id()),
         recordings=recordings,
+        # Read once, here, before a single frame is accumulated. A room started
+        # by somebody who turned recording off never holds their audio in
+        # memory at all — "off" should mean not gathered, not merely not kept.
+        records=await PreferenceService(db).records_rooms(user_id=user_id),
     )
 
     try:

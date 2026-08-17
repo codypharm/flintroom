@@ -55,6 +55,7 @@ class VoiceRelay:
         client: ClientChannel,
         actor: ActorContext | None = None,
         recordings: RoomRecordings | None = None,
+        records: bool = True,
     ) -> None:
         self._provider = provider
         self._client = client
@@ -67,6 +68,11 @@ class VoiceRelay:
         # arrives on `_carry_user_audio`, the panel's and `Interrupted` on
         # `_carry_provider_events` — and unlike the transcript, none of it needs
         # a seam into the orchestration layer to reach us.
+        # Whether this account wants its rooms kept. Decided before the socket
+        # opens and passed in, rather than read here: the relay is a router, and
+        # "may we record this person" is a consent question that belongs to the
+        # service that owns the preference.
+        self._records = records
         self._mixer = RoomMixer()
         self._actor = actor or ActorContext.system()
         # Built here rather than injected, for the reason `SessionService` gives
@@ -128,7 +134,10 @@ class VoiceRelay:
         failures count as expected is a question about encoders and object
         stores, so it belongs to the service that owns both.
         """
-        if self._recordings is None:
+        if self._recordings is None or not self._records:
+            # Nothing accumulated, so there is nothing to save. Returning before
+            # the session read keeps a room the user asked not to record from
+            # costing a query it has no use for.
             return
 
         session = await self._sessions.get(session_id=session_id)
@@ -188,7 +197,8 @@ class VoiceRelay:
             # Before the forward, not after. This is the room's clock, and a
             # frame counted only once the transcriber had accepted it would let
             # a slow provider bend time for everything positioned against it.
-            self._mixer.heard(pcm)
+            if self._records:
+                self._mixer.heard(pcm)
             await channel.send_audio(pcm)
 
     async def _carry_provider_events(
@@ -319,5 +329,6 @@ class VoiceRelay:
             # direction — that is what the PCM-throughout transport decision
             # bought, and re-encoding here would put decode latency into the
             # path the ~1.5s illusion threshold is measured across.
-            self._mixer.played(event.pcm)
+            if self._records:
+                self._mixer.played(event.pcm)
             await self._client.send_audio(event.pcm)

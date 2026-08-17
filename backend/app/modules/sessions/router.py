@@ -12,11 +12,14 @@ from app.modules.ingestion.dependencies import ObjectStorageDep
 from app.modules.voice.recording import recording_key
 from app.modules.auth.rate_limit import SESSION_START_LIMIT
 from app.modules.sessions.dependencies import (
+    PreferenceServiceDep,
+    RecordingRetentionDep,
     OwnedSession,
     SessionServiceDep,
     SettlementServiceDep,
 )
 from app.modules.sessions.schemas import (
+    RecordingPreference,
     RecordingPlayback,
     RecordingState,
     EndReason,
@@ -75,6 +78,58 @@ async def read_session(
 ) -> SessionRead:
     """One session, if it belongs to the caller."""
     return await _read(session, sessions)
+
+
+@router.get("/preferences/recording", response_model=RecordingPreference)
+async def read_recording_preference(
+    user_id: CurrentUser, preferences: PreferenceServiceDep
+) -> RecordingPreference:
+    """Whether rooms are being saved for this account."""
+    return RecordingPreference(
+        records_rooms=await preferences.records_rooms(user_id=user_id)
+    )
+
+
+@router.put("/preferences/recording", response_model=RecordingPreference)
+async def set_recording_preference(
+    body: RecordingPreference,
+    user_id: CurrentUser,
+    preferences: PreferenceServiceDep,
+) -> RecordingPreference:
+    """Turn saving on or off for future rooms.
+
+    `PUT` rather than `POST`, because this sets a value rather than appending
+    one — the second identical request is the same state, which is exactly what
+    a toggle tapped twice on a slow connection produces.
+
+    Affects rooms started after this. Existing recordings are deliberately left
+    alone: they were made under a disclosure the user accepted, and destroying
+    them as a side effect of a switch would be a surprise in the one direction
+    that cannot be undone. Deleting a room is its own explicit action, below.
+    """
+    await preferences.set_records_rooms(
+        user_id=user_id, enabled=body.records_rooms
+    )
+    return body
+
+
+@router.delete(
+    "/sessions/{session_id}/recording", status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_recording(
+    session: OwnedSession, retention: RecordingRetentionDep
+) -> None:
+    """Destroy one room's audio, because the user asked.
+
+    204 whether or not there was anything there. `CLAUDE.md` lists duplicate
+    actions as a case to handle rather than a 500, and a second tap is asking
+    for something already true — answering 404 would tell somebody their
+    deletion failed at the moment it had in fact succeeded.
+
+    The transcript survives. The two artefacts have separate lifetimes by
+    design, and this must not quietly take the debrief's grounding with it.
+    """
+    await retention.delete(session_id=session.id)
 
 
 @router.get(

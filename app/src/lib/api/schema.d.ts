@@ -157,6 +157,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/preferences/recording": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Recording Preference
+         * @description Whether rooms are being saved for this account.
+         */
+        get: operations["sessions_read_recording_preference"];
+        /**
+         * Set Recording Preference
+         * @description Turn saving on or off for future rooms.
+         *
+         *     `PUT` rather than `POST`, because this sets a value rather than appending
+         *     one — the second identical request is the same state, which is exactly what
+         *     a toggle tapped twice on a slow connection produces.
+         *
+         *     Affects rooms started after this. Existing recordings are deliberately left
+         *     alone: they were made under a disclosure the user accepted, and destroying
+         *     them as a side effect of a switch would be a surprise in the one direction
+         *     that cannot be undone. Deleting a room is its own explicit action, below.
+         */
+        put: operations["sessions_set_recording_preference"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sessions/{session_id}/recording": {
         parameters: {
             query?: never;
@@ -185,7 +218,19 @@ export interface paths {
         get: operations["sessions_play_recording"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Recording
+         * @description Destroy one room's audio, because the user asked.
+         *
+         *     204 whether or not there was anything there. `CLAUDE.md` lists duplicate
+         *     actions as a case to handle rather than a 500, and a second tap is asking
+         *     for something already true — answering 404 would tell somebody their
+         *     deletion failed at the moment it had in fact succeeded.
+         *
+         *     The transcript survives. The two artefacts have separate lifetimes by
+         *     design, and this must not quietly take the debrief's grounding with it.
+         */
+        delete: operations["sessions_delete_recording"];
         options?: never;
         head?: never;
         patch?: never;
@@ -624,6 +669,19 @@ export interface components {
             expires_in_seconds: number;
         };
         /**
+         * RecordingPreference
+         * @description Whether this account's rooms are recorded.
+         *
+         *     One field, and it is the control the first-session disclosure points at.
+         *     `docs/session-retention.md` chose on-by-default with a way out; this is the
+         *     way out, and without it the disclosure would be describing something that
+         *     does not exist.
+         */
+        RecordingPreference: {
+            /** Records Rooms */
+            records_rooms: boolean;
+        };
+        /**
          * RecordingRead
          * @description What a client is told about a room's audio, without minting anything.
          *
@@ -1021,6 +1079,59 @@ export interface operations {
             };
         };
     };
+    sessions_read_recording_preference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordingPreference"];
+                };
+            };
+        };
+    };
+    sessions_set_recording_preference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordingPreference"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordingPreference"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     sessions_play_recording: {
         parameters: {
             query?: never;
@@ -1040,6 +1151,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RecordingPlayback"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sessions_delete_recording: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -21,9 +21,12 @@ same shape as RLS sitting behind service-role access in `CLAUDE.md`.
 
 from __future__ import annotations
 
+import uuid
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.actors import ActorContext
 from app.core.logging import get_logger
 from app.core.storage import ObjectStorage
 from app.modules.audit_log.schemas import AuditEventType
@@ -48,10 +51,21 @@ BATCH = 100
 class RecordingRetention:
     """Removes room audio that has outlived its tier's window."""
 
-    def __init__(self, db: AsyncSession, storage: ObjectStorage) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        storage: ObjectStorage,
+        actor: ActorContext | None = None,
+    ) -> None:
         self._db = db
         self._storage = storage
-        self._audit = AuditService(db)
+        # Provenance at construction, never per call (`CLAUDE.md`). It is the
+        # difference between "the window expired" and "this user asked", which
+        # is the first question a privacy request asks — and a service that
+        # could be told per call could answer it wrongly.
+        #
+        # Defaults to SYSTEM, which is what the sweep is.
+        self._audit = AuditService(db, actor)
 
     async def sweep(self) -> None:
         """Expire one batch of rooms, and say so even when there are none.
@@ -64,24 +78,55 @@ class RecordingRetention:
         expired = await self._expired()
 
         for recording, session_id in expired:
-            # The object first, the row second. A row marked deleted over an
-            # object that is still there is the failure that cannot be seen: the
-            # sweep never looks at it again, and the audio outlives its window
-            # while the evidence says otherwise.
-            await self._storage.delete(recording_key(session_id))
-            recording.deleted_at = func.now()
-
-            # Not a `ledger_entries` row — no money moves. This is the proof a
-            # published window was honoured, which is exactly what
-            # `audit_events` is for (`CLAUDE.md` -> Audit model).
-            await self._audit.record(
-                AuditEventType.RECORDING_EXPIRED,
-                session_id=session_id,
-                stored_bytes=recording.byte_size,
-            )
+            await self._remove(recording, session_id, AuditEventType.RECORDING_EXPIRED)
 
         await self._db.commit()
         log.info("recordings_swept", expired=len(expired))
+
+    async def delete(self, *, session_id: uuid.UUID) -> None:
+        """Destroy one room's audio because somebody asked.
+
+        The same path the sweep takes, on purpose. Two triggers, one removal:
+        if a user-requested delete had its own implementation, the ordering and
+        the audit row could drift apart from the scheduled one — and the whole
+        argument for an application sweep over a bucket rule was that deletion
+        is provable, which is worth least if the two kinds of proof differ.
+
+        Silent on a room that has no audio, or none any more. `CLAUDE.md` lists
+        duplicate actions as a case to handle rather than a 500, and here the
+        second tap is asking for something already true. The transcript is
+        untouched: the two artefacts have separate lifetimes by design, and this
+        must not quietly take the debrief's grounding with it.
+        """
+        recording = await self._db.get(SessionRecording, session_id)
+        if recording is None or recording.deleted_at is not None:
+            return
+
+        await self._remove(recording, session_id, AuditEventType.RECORDING_DELETED)
+        await self._db.commit()
+
+    async def _remove(
+        self,
+        recording: SessionRecording,
+        session_id: uuid.UUID,
+        why: AuditEventType,
+    ) -> None:
+        """Object first, row second, evidence either way.
+
+        The order is the important part. A row marked deleted over an object
+        that is still there is the failure that cannot be seen: nothing looks at
+        that row again, and the audio outlives its window while the record says
+        otherwise.
+
+        Not a `ledger_entries` row — no money moves. This is proof that audio is
+        gone, which is exactly what `audit_events` is for (`CLAUDE.md` -> Audit
+        model).
+        """
+        await self._storage.delete(recording_key(session_id))
+        recording.deleted_at = func.now()
+        await self._audit.record(
+            why, session_id=session_id, stored_bytes=recording.byte_size
+        )
 
     async def _expired(self) -> list[tuple[SessionRecording, object]]:
         """Rooms whose audio is past the window their owner is on *now*.

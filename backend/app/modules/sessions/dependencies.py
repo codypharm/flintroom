@@ -19,6 +19,9 @@ from app.core.errors import SessionNotFound
 from app.core.logging import get_logger
 from app.modules.auth.dependencies import CallerContext, CurrentUser
 from app.modules.sessions.models import Session
+from app.modules.ingestion.dependencies import ObjectStorageDep
+from app.modules.sessions.preferences import PreferenceService
+from app.modules.sessions.retention import RecordingRetention
 from app.modules.sessions.service import SessionService
 from app.modules.sessions.settlement import SettlementService
 
@@ -84,3 +87,36 @@ async def get_owned_session(
 #: taking a raw `session_id`, so ownership is resolved once, before the handler,
 #: and no endpoint can be added that forgets it.
 OwnedSession = Annotated[Session, Depends(get_owned_session)]
+
+
+async def get_preference_service(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> PreferenceService:
+    """Choices, which are not audited as an actor's writes.
+
+    No `CallerContext`, unlike the services either side of it: this writes no
+    money and no audit row, and the log line it emits already names the user.
+    """
+    return PreferenceService(db)
+
+
+PreferenceServiceDep = Annotated[PreferenceService, Depends(get_preference_service)]
+
+
+async def get_recording_retention(
+    caller: CallerContext,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    storage: ObjectStorageDep,
+) -> RecordingRetention:
+    """Deleting a room's audio, attributed to whoever asked.
+
+    The sweep builds this with no actor and lands as SYSTEM. Through a request
+    it is the user, which is what makes "the window expired" and "this person
+    asked" distinguishable in `audit_events` afterwards.
+    """
+    return RecordingRetention(db, storage, actor=caller)
+
+
+RecordingRetentionDep = Annotated[
+    RecordingRetention, Depends(get_recording_retention)
+]
