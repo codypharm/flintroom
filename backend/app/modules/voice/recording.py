@@ -18,8 +18,11 @@ import uuid
 from av.error import FFmpegError
 from botocore.exceptions import ClientError
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.logging import get_logger
 from app.core.storage import ObjectStorage
+from app.modules.sessions.models import SessionRecording
 from app.modules.voice.encoding import OPUS_CONTENT_TYPE, to_opus
 
 log = get_logger(__name__, tag="voice")
@@ -39,8 +42,15 @@ def recording_key(session_id: uuid.UUID) -> str:
 class RoomRecordings:
     """Saves what a room sounded like, for the rooms that get one."""
 
-    def __init__(self, storage: ObjectStorage) -> None:
+    def __init__(
+        self, storage: ObjectStorage, *, db: AsyncSession | None = None
+    ) -> None:
         self._storage = storage
+        # Optional so the relay can be exercised without a database in the
+        # picture. A room with no row is still playable — the key is
+        # deterministic — but it is invisible to the retention sweep, which is
+        # why nothing serving a real user may omit it.
+        self._db = db
 
     async def save(self, *, session_id: uuid.UUID, pcm: bytes) -> None:
         """Encode one room and put it away.
@@ -84,6 +94,17 @@ class RoomRecordings:
             # trade a lost recording for a refunded rehearsal that happened.
             log.exception("room_recording_failed", session_id=str(session_id))
             return
+
+        # Written after the object, never before. A row promising audio that
+        # does not exist would make the sweep chase a key forever and the
+        # playback endpoint hand out a URL to nothing. The opposite order costs
+        # storage until somebody notices — worse for us, invisible to the user,
+        # and that is the trade being made.
+        if self._db is not None:
+            self._db.add(
+                SessionRecording(session_id=session_id, byte_size=len(encoded))
+            )
+            await self._db.commit()
 
         log.info(
             "room_recorded", session_id=str(session_id), stored_bytes=len(encoded)

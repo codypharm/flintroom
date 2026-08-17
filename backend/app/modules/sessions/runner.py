@@ -26,10 +26,12 @@ from contextlib import AbstractAsyncContextManager
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
+from app.core.storage import ObjectStorage
 from app.modules.auth.rate_limit import PostgresRateLimiter
 from app.modules.auth.refresh import RefreshTokenService
 from app.modules.sessions.meter import MeterService
 from app.modules.sessions.reaper import ReaperService
+from app.modules.sessions.retention import RecordingRetention
 from app.modules.sessions.schemas import TICK_INTERVAL
 
 log = get_logger(__name__, tag="sessions")
@@ -44,8 +46,15 @@ class SweepRunner:
         self,
         session_factory: SessionFactory,
         interval: float = TICK_INTERVAL.total_seconds(),
+        storage: ObjectStorage | None = None,
     ) -> None:
         self._session_factory = session_factory
+        # Optional, so a deployment without object storage still bills and
+        # reaps. Nothing was recorded in that case either, so there is nothing
+        # to expire — but see `docs/deployment.md`, because the same silence
+        # would follow from storage being *misconfigured* in a deployment that
+        # is recording, and only one of those is fine.
+        self._storage = storage
         self._interval = interval
         self._stopping = asyncio.Event()
 
@@ -99,7 +108,13 @@ class SweepRunner:
         letting it go ahead means the reaper spends the same pass finishing
         those closures rather than meeting them a full interval later.
 
-        The auth sweeps come last and are pure housekeeping — expired refresh
+        Retention runs last and only when there is somewhere for audio to have
+        been. It is the only sweep here that talks to a network service other
+        than the database, so a slow object store delays housekeeping rather
+        than the meter — and `BATCH` is what stops a large expiring cohort
+        holding the pass open at all.
+
+        The auth sweeps come before it and are pure housekeeping — expired refresh
         tokens and dead rate-limit windows, neither of which anyone is waiting
         on. They ride this loop rather than one of their own because a second
         scheduler would be a second thing to run, monitor and get wrong, for
@@ -110,6 +125,10 @@ class SweepRunner:
             await self._guarded("reaper", ReaperService(db).reap)
             await self._guarded("refresh_tokens", RefreshTokenService(db).sweep)
             await self._guarded("rate_limits", PostgresRateLimiter(db).sweep)
+            if self._storage is not None:
+                await self._guarded(
+                    "recordings", RecordingRetention(db, self._storage).sweep
+                )
 
     @staticmethod
     async def _guarded(name: str, sweep: Callable[[], Awaitable[None]]) -> None:

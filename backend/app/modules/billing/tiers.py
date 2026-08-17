@@ -228,3 +228,42 @@ def max_panel_size(tier: str) -> int:
 def may_author_archetypes(tier: str) -> bool:
     """Whether this tier may write its own archetype."""
     return tier in CUSTOM_ARCHETYPE_TIERS
+
+
+# --- Retained audio -------------------------------------------------------
+
+#: How long a room's audio can still be played back, per tier, in days.
+#:
+#: Decided with the architect 2026-08-17, closing the "recording-retention
+#: window" that `Product.md` §413 listed under *"Undecided, do not invent"*. See
+#: `docs/session-retention.md` for the reasoning; the short version is below,
+#: because the numbers look arbitrary without it.
+#:
+#: **The transcript is not on this table and never expires.** Text is tens of KB
+#: and does not compound, so §4.4's "full session history" stays literally true
+#: on every tier. Audio accrues every month, grows with every session ever run,
+#: and keeps being charged for an account that churned a year ago — it is the
+#: only cost in this product that behaves that way, so the window binds where
+#: the cost actually is.
+#:
+#: **Free is thirty days, not seven, and that is not generosity.** A free
+#: account is capped at fifteen minutes for life, so it produces ~2.7 MB and
+#: then stops forever — even a hundred thousand of them retained indefinitely is
+#: single-digit dollars a month. A short free window saves nothing measurable
+#: while deleting the one artefact §4.4 says has to sell the subscription.
+#:
+#: **Pro is the only tier where retention compounds**, because it is the only
+#: one generating tens of megabytes every month indefinitely. A year is what
+#: makes "full session history" mean something without becoming an unbounded
+#: promise, and a bounded number is a clean sentence for the privacy policy.
+#:
+#: Published, so the terms above the material limits apply with full force:
+#: these can be lengthened in a deploy and cannot be shortened without telling
+#: customers.
+RECORDING_RETENTION_DAYS: dict[str, int] = {
+    "free": 30,
+    "starter": 90,
+    "pro": 365,
+    "pro_annual": 365,
+    "teams": 90,
+}

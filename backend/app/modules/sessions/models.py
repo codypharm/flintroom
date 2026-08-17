@@ -402,3 +402,57 @@ class TranscriptLine(Base):
     said_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class SessionRecording(Base):
+    """That a room has audio, and whether it still does.
+
+    A row per session rather than columns on `sessions`, following
+    `session_costs`: the sessions row is on the hot path — it carries the
+    one-live-per-user lock and the reaper's partial index — and widening it for
+    a fact only two background jobs and one playback endpoint ever read would put
+    that cost on every room, forever, for the benefit of none of them.
+
+    Its real job is to make expiry *answerable*. The object key is deterministic,
+    so audio could in principle be found without this — but "which rooms are past
+    their window" is a question about owners, tiers and settlement times, and
+    none of that is in a key. Without a row the only way to ask would be to list
+    a bucket.
+    """
+
+    __tablename__ = "session_recordings"
+
+    #: One recording per room, so the session *is* the identity. Cascade because
+    #: a recording has no meaning without its session, and deleting the session
+    #: is how an account's audio goes with it.
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("sessions.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+
+    #: What was actually stored, after encoding. Kept for the storage
+    #: projections in `docs/session-retention.md`, which are currently derived
+    #: from one measured sine wave and should eventually be answered from real
+    #: rooms — the same reason `session_costs` exists rather than trusting §4.4.
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    stored_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    #: When the retention sweep removed the object, or null while it is still
+    #: playable.
+    #:
+    #: The row survives the audio it describes, deliberately. It is the evidence
+    #: that a published window was honoured — `docs/session-retention.md` chose
+    #: an application sweep over a bucket lifecycle rule precisely because a
+    #: rule leaves nothing to show anyone, and a row deleted alongside its object
+    #: would leave exactly as little.
+    #:
+    #: It is also what makes the delete retryable: a store that refuses today is
+    #: found again on the next pass, which is the shape `ingestion`'s material
+    #: deletion already uses.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )

@@ -40,6 +40,12 @@ class AuditEventType(str, Enum):
     # point here: a promise to destroy a document is unfalsifiable without a
     # record that the user asked and we acted.
     MATERIAL_DELETED = "material_deleted"
+    #: A room's audio reached the end of its tier's window and was removed.
+    #: Unlike `MATERIAL_DELETED` nobody asked for this one — it is the published
+    #: retention window being kept, and `docs/session-retention.md` chose an
+    #: application sweep over a bucket lifecycle rule precisely so that there is
+    #: a row to point at when somebody asks whether it was.
+    RECORDING_EXPIRED = "recording_expired"
 
     # Security.
     PERMISSION_DENIED = "permission_denied"

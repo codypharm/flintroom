@@ -84,6 +84,40 @@ Two lines nearby that mean something specific:
   recovered, and the backlog is the row count matching `ix_materials_deleted`.
   Alert on this one directly rather than only on the index size.
 
+**Alert on the absence of `recordings_swept`, and treat it differently from the
+other two.**
+
+Retention rides the billing loop as a fifth sweep and emits one line per pass,
+empty ones included. Its silence has a consequence the others do not: the meter
+stopping loses money, and extraction stopping loses time, but this stopping
+means **room audio is outliving the window published on the tier cards**
+(`billing/tiers.py` → `RECORDING_RETENTION_DAYS`). That is a promise being
+broken quietly, and `docs/session-retention.md` chose an application sweep over
+a bucket lifecycle rule precisely so the deletion could be proved — which is
+worth nothing if nobody notices the prover has stopped.
+
+`expired=N` on that line is how many rooms the pass removed. A number pinned at
+`BATCH` on every pass means the backlog is growing faster than one pass clears
+it, not that everything is fine.
+
+Two more, in the same area:
+
+- `object_storage_unconfigured` at startup — no bucket, so the retention sweep
+  is skipped entirely and `recordings_swept` never appears. Expected in a
+  deployment that records nothing. **In one that does, this is the line that
+  explains a missing sweep**, and the two are indistinguishable downstream, so
+  check for it before concluding the loop died.
+- `room_recording_failed` — a room finished and its audio could not be encoded
+  or stored. Nothing is retried: the mixer's buffer died with the socket, so
+  the recording is gone for good. Unlike the material line above, no user has
+  been told anything, so this is a quality signal rather than a broken promise —
+  but a *rate* rather than a one-off means playback is broadly not working.
+
+The lifecycle rule on the bucket is a backstop for the first of these and must
+stay generous enough never to be the thing doing the work. If rooms are
+disappearing at Pro's window plus the margin rather than at Pro's window, the
+sweep is dead and the backstop is covering for it.
+
 ## Migrations run before the new version serves
 
 Alembic reads `DATABASE_URL` from the environment, never from `alembic.ini`

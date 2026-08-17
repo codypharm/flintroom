@@ -112,7 +112,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Requests take their session from here via `get_db`. Built once, and by
     # the same scope that disposes of the engine.
     app.state.session_factory = session_factory
-    runner = SweepRunner(session_factory)
+    # Storage passed in so the retention sweep can expire room audio. Without
+    # it that sweep is skipped — correct for a deployment that records nothing,
+    # and a silent hazard for one that does, which is why
+    # `object_storage_unconfigured` is logged above and alerted on.
+    runner = SweepRunner(session_factory, storage=app.state.object_storage)
     sweeps = asyncio.create_task(runner.run())
 
     # A second loop, deliberately. Reading a pro-tier deck is minutes of model
