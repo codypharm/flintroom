@@ -103,7 +103,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Built at boot rather than on first use so an unconfigured deployment says
     # so once, at startup, instead of once per deck that silently fails to
     # ground. The extraction sweep is what will consume it.
-    app.state.extraction_model = build_extraction_model(settings)
+    app.state.extraction_model = build_extraction_model(settings, http=http)
     if app.state.extraction_model is None:
         log.warning("extraction_model_unconfigured")
 

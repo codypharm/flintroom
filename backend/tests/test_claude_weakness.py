@@ -16,7 +16,6 @@ from __future__ import annotations
 import json
 
 import httpx
-import pytest
 
 from app.agents.context import USER, Said
 from app.agents.model import TurnUsage
@@ -29,8 +28,6 @@ from app.agents.weakness import (
 )
 from app.agents.weakness_models.claude import ClaudeWeaknessReader
 from app.modules.sessions.schemas import EndReason
-
-pytestmark = pytest.mark.asyncio
 
 
 ROOM = (

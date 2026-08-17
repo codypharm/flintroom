@@ -182,7 +182,15 @@ class Settings(BaseSettings):
     #: Decided independently of the panel LLM (task #13). The two jobs have
     #: opposite requirements: extraction is batch, latency-insensitive and
     #: structured-output; the panel is conversational and dies above ~1.5s.
-    extraction_provider: Literal["claude"] = "claude"
+    #: Two values since #61. It was `Literal["claude"]` alone, which made
+    #: switching vendors a missing adapter rather than a setting — discovered
+    #: when the Anthropic account could not be funded and a shipped feature
+    #: turned out to be unrunnable.
+    #:
+    #: The failure that produced was the polite kind, and worth remembering:
+    #: `build_extraction_model` returns `None` without a key *by design*, so the
+    #: process booted, signed people in, accepted uploads, and grounded nothing.
+    extraction_provider: Literal["gemini", "claude"] = "gemini"
 
     #: Optional, on the same grounds as the voice keys and the bucket. Absent
     #: means material cannot be read; it does not mean the process should refuse
@@ -234,7 +242,15 @@ class Settings(BaseSettings):
     #: `docs/ingestion.md` rests on an unverified ~$0.01 per page. Changing it is
     #: a cost decision that belongs to a human holding measured numbers from
     #: `extraction_costs` — not to whoever is editing the adapter.
-    extraction_model: str = "claude-sonnet-5"
+    #: Set alongside `extraction_provider`; the two move together, and a model
+    #: name from the wrong vendor is a 404 on every deck.
+    #:
+    #: A vision model rather than a reasoning one either way. Extraction is not
+    #: a judgement — the model pulls what a page says into a typed claim, and
+    #: every derived figure is arithmetic computed elsewhere — so there is
+    #: nothing here for thinking to improve, and `docs/ingestion.md`'s
+    #: ~$0.01/page rests on this line more than on any other.
+    extraction_model: str = "gemini-3.5-flash"
 
     #: Which vendor reads a finished room for the debrief.
     #:

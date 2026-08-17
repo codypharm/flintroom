@@ -215,7 +215,27 @@ requirements.** Extraction is batch, latency-insensitive, structured-output, run
 once per deck; the panel is conversational and dies above ~1.5s. Coupling them
 would make ingestion inherit Phase 3's blockage and buy nothing.
 
-**Claude is the first adapter.** It accepts a PDF directly and processes each page
+> **Superseded 2026-08-17 (#61). Gemini is the default; both adapters exist.**
+> Extraction shipped against Claude alone, with `extraction_provider` a
+> single-valued `Literal` — so when the Anthropic account could not be funded,
+> switching vendors was not a setting but a missing adapter, and a built feature
+> could not run. The failure was the polite kind: `build_extraction_model`
+> returns `None` without a key by design, so the process booted, signed people
+> in, accepted uploads, and grounded nothing.
+>
+> `GeminiExtractionModel` is now the sibling module this document always said a
+> second vendor would be, and the vendor-neutral half — `to_claims`, the
+> locator, the merge — moved to `extraction_models/reading.py` and is shared
+> unchanged. **The image-and-text-together property below is preserved and
+> asserted on the bytes on the wire**, because an adapter that lost it would
+> authenticate, return claims, pass almost every test, and silently drop every
+> figure a deck draws rather than writes.
+>
+> **Every per-page cost figure in this document was estimated against Claude and
+> now needs re-measuring.** The reasoning stands; the number moves with the
+> vendor.
+
+**Claude was the first adapter, and the reasoning is why both take pages this way.** It accepts a PDF directly and processes each page
 as text and image together, which matters more than it first appears: **chart data
 is not in the text layer.** §3.2 asks for *"claims, figures, and chart data"* per
 slide, and `pypdf` returns a chart's axis labels and none of its values. Batch

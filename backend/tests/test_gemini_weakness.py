@@ -31,8 +31,6 @@ from app.agents.weakness_models.gemini import GeminiWeaknessReader
 from app.core.errors import ProviderUnavailable
 from app.modules.sessions.schemas import EndReason
 
-pytestmark = pytest.mark.asyncio
-
 
 ROOM = (
     Said(speaker=USER, text="Sponsorship is locked in for the year."),

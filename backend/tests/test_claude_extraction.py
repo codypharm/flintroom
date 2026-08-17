@@ -568,12 +568,19 @@ def test_no_extraction_model_without_credentials():
 
 
 def test_the_configured_provider_is_the_one_built():
-    """The single place that decides which vendor is in use."""
+    """The single place that decides which vendor is in use.
+
+    `EXTRACTION_PROVIDER` is named explicitly rather than left to the default,
+    and that is the assertion rather than boilerplate: the default moved to
+    Gemini in #61, and a test that relied on it would have gone on passing while
+    quietly proving something about a different adapter.
+    """
     model = build_extraction_model(
         Settings(
             _env_file=None,
             **BASE_ENVIRONMENT,
             ANTHROPIC_API_KEY="test-key-with-no-production-counterpart",
+            EXTRACTION_PROVIDER="claude",
         )
     )
 
@@ -947,6 +954,7 @@ def test_the_configured_concurrency_reaches_the_model():
         Settings(
             **BASE_ENVIRONMENT,
             ANTHROPIC_API_KEY="test-key-with-no-production-counterpart",
+            EXTRACTION_PROVIDER="claude",
             EXTRACTION_CONCURRENT_CALLS=2,
         )
     )
