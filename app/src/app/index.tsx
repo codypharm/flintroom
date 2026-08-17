@@ -47,6 +47,15 @@ export default function HomeScreen() {
         <Link href="/disclosure" style={[styles.link, { color: colors.primary }]}>
           Recording disclosure
         </Link>
+        {/*
+          Not temporary — Settings is a real destination. The link is, though:
+          it belongs behind whatever the app shell turns out to be, and that is
+          a top-level structural decision the settings brief names and leaves
+          open (header affordance now, tab bar once Library and Debrief exist).
+        */}
+        <Link href="/settings" style={[styles.link, { color: colors.primary }]}>
+          Settings
+        </Link>
       </View>
     </SafeAreaView>
   );
