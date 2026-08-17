@@ -351,3 +351,85 @@ async def test_the_reader_is_told_which_metrics_are_already_in_play():
     await auditor.listen("The margin is closer to seventy.", at_seconds=24)
 
     assert reader.known == [(), ("gross margin",)]
+
+
+def test_a_figure_restated_without_a_period_is_about_the_same_period():
+    """How people actually talk, and what the live run proved we were missing.
+
+    Measured against real sentences: *"our gross margin held at sixty-one
+    percent last quarter"* then *"the margin is closer to seventy percent"*.
+    The second names no period, because nobody repeats one — they said it once
+    and the conversation is still about it. Requiring both to state a period
+    left the canonical contradiction, the one this whole feature exists for,
+    silently uncaught even after the metric names were resolved.
+
+    So a figure with no period stated inherits the last period stated for that
+    metric, which is what a person in the room does. Per metric, never across
+    one: revenue's quarter says nothing about what margin refers to.
+
+    This is inference, and it is the aggressive option of the three considered.
+    The failure it risks is real — somebody who says "revenue was 400k in Q1"
+    and later "revenue is 900k" meaning today would be challenged for growing —
+    which is why the assumption is stated in the finding rather than hidden, so
+    the challenge can be checked and refused by the user rather than only
+    endured.
+    """
+    auditor = Auditor()
+
+    auditor.hear(said("gross margin", 61, at=8, period="last quarter"))
+    caught = auditor.hear(said("gross margin", 70, at=24, period=None))
+
+    assert caught is not None
+    assert "61" in caught.summary and "70" in caught.summary
+    # The inferred period is on the record. A user challenged on an assumption
+    # they can see is a user who can correct it; one challenged on a hidden
+    # assumption can only conclude the room is wrong about something.
+    assert "last quarter" in caught.summary
+
+
+def test_one_metrics_period_never_becomes_another_metrics_period():
+    """Inheritance is per metric, or it invents comparisons out of nothing.
+
+    A session states a quarter once, while discussing revenue, and then talks
+    about six other figures without repeating it. If any bare period could pick
+    up any earlier one, every metric in the room would silently be dated from a
+    single sentence — turning a guard that exists to reduce false positives into
+    the largest source of them.
+
+    The ordering here is the whole test, and the first version of it was
+    vacuous: revenue's quarter has to be the *most recent* stated period, so a
+    lookup that ignored the metric would reach it before the margin's own. With
+    revenue merely earlier, both the correct code and the broken code agreed,
+    and the mutation survived.
+    """
+    auditor = Auditor()
+
+    auditor.hear(said("gross margin", 61, at=10, period="Q3 2026"))
+    auditor.hear(said("revenue", 400_000, at=20, unit=Unit.USD, period="Q1 2026"))
+    caught = auditor.hear(said("gross margin", 70, at=40, period=None))
+
+    assert caught is not None, "the margin borrowed revenue's quarter and stopped matching"
+    assert "Q3 2026" in caught.summary
+
+
+def test_a_bare_figure_takes_the_period_most_recently_stated_for_it():
+    """The context you are in is the last one named, not the first.
+
+    A speaker who talks about Q1, then moves to Q3, and then says a bare number
+    means Q3 — they have moved the conversation on. Reaching for the earliest
+    period instead would date every later figure from the opening sentence of
+    the session, and would then compare it against a quarter nobody has
+    mentioned for ten minutes.
+
+    Both orderings produce *a* catch here, which is why the assertion is on
+    which one: the summary has to name the figure actually being contradicted,
+    or the panelist quotes a number the user has already superseded.
+    """
+    auditor = Auditor()
+
+    auditor.hear(said("gross margin", 61, at=10, period="Q1 2026"))
+    auditor.hear(said("gross margin", 90, at=20, period="Q3 2026"))
+    caught = auditor.hear(said("gross margin", 70, at=40, period=None))
+
+    assert caught is not None
+    assert "Q3 2026" in caught.summary and "90" in caught.summary

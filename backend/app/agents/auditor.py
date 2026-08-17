@@ -271,10 +271,47 @@ class Auditor:
         return caught
 
     def _contradiction(self, spoken: SpokenClaim) -> Finding | None:
+        spoken = self._dated(spoken)
         for earlier in self.heard:
             if _disagrees(earlier, spoken):
                 return _finding(earlier, spoken)
         return None
+
+    def _dated(self, spoken: SpokenClaim) -> SpokenClaim:
+        """Give a bare figure the period the speaker last stated for it.
+
+        Nobody repeats a period. They say it once — *"gross margin held at
+        sixty-one percent last quarter"* — and every figure after that is about
+        the same window until they say otherwise. Requiring both sides to state
+        one left the canonical contradiction uncaught even once the metric names
+        resolved, which is what the first live run showed.
+
+        Per metric and never across one: a quarter mentioned while discussing
+        revenue says nothing about what a margin refers to, and letting any bare
+        period pick up any earlier one would silently date every figure in the
+        room from a single sentence — turning the guard that exists to reduce
+        false positives into the largest source of them.
+
+        The stored claim is left exactly as spoken; only the copy used for
+        comparison is dated. What the user actually said is evidence, and a
+        panelist quoting an inference back at them as though they had said it is
+        how a challenge becomes unanswerable.
+        """
+        if spoken.claim.period is not None:
+            return spoken
+
+        for earlier in reversed(self.heard):
+            if (
+                _same_metric(earlier.claim.metric, spoken.claim.metric)
+                and earlier.claim.period is not None
+            ):
+                return SpokenClaim(
+                    claim=spoken.claim.model_copy(
+                        update={"period": earlier.claim.period}
+                    ),
+                    at_seconds=spoken.at_seconds,
+                )
+        return spoken
 
 
 def _disagrees(earlier: SpokenClaim, later: SpokenClaim) -> bool:
@@ -343,12 +380,13 @@ def _finding(earlier: SpokenClaim, later: SpokenClaim) -> Finding:
     cannot be checked is a panelist asserting something is wrong without being
     able to say what.
     """
+    covering = f" for {earlier.claim.period}" if earlier.claim.period else ""
     return Finding(
         domain=_domain_of(later.claim.metric),
         summary=(
             f"At {_clock(earlier.at_seconds)} they said {_number(earlier.claim)} "
-            f"for {earlier.claim.metric}; at {_clock(later.at_seconds)} they said "
-            f"{_number(later.claim)}."
+            f"for {earlier.claim.metric}{covering}; at {_clock(later.at_seconds)} "
+            f"they said {_number(later.claim)}."
         ),
     )
 
