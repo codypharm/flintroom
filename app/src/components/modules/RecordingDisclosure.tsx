@@ -28,28 +28,30 @@ export function RecordingDisclosure({
   return (
     <View style={styles.sheet}>
       <Text style={styles.heading} accessibilityRole="header">
-        The room listens, and it remembers
+        Rooms are recorded
       </Text>
 
       {/*
-        Plain sentences rather than a bulleted list of terms. A list reads as
-        something to skim past; this has to read as something addressed to the
-        person holding the phone, because whether they actually took it in is
-        the only measure that matters.
+        Four facts, one sentence each, and nothing else. Every line that is
+        merely true rather than necessary costs attention on the one screen
+        where being read is the entire point — and a disclosure people skip is
+        not a disclosure.
+
+        What was cut and why: that the panel interrupts (interesting, not
+        needed); that transcripts outlive the audio (a second retention rule the
+        policy carries, and it dilutes the one that matters here).
       */}
       <Text style={styles.body}>
-        Flintroom needs your microphone to hear you argue. The panel interrupts,
-        so it listens the whole time you are in the room.
+        Your microphone is on while you are in the room.
       </Text>
 
       <Text style={styles.body}>
         Each room is saved — your voice and the panel&rsquo;s — so you can play it
-        back afterwards. Rooms are kept for {retentionDays} days, then deleted.
-        What was said stays as text for as long as you have an account.
+        back. Recordings are deleted after {retentionDays} days.
       </Text>
 
       <Text style={styles.aside}>
-        You can delete any room, or stop saving them, in Settings.
+        Delete a room or turn off saving in Settings.
       </Text>
 
       <Pressable
