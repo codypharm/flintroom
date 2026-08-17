@@ -94,6 +94,28 @@ dependencies = [
     # plus the DrawingML schema by hand. MIT, pure Python, one dependency
     # (`lxml`), no system binary. Confined to `parsing.py`.
     "python-pptx>=1.0",
+    # Encoding a saved room. `docs/session-retention.md` retains the full mixed
+    # interrogation, and storing it raw would be ten times the bytes *and* ten
+    # times the egress — on the one cost in this product that compounds, in the
+    # dimension that is charged repeatedly. Measured on a full twelve-minute
+    # room: 23.04 MB of PCM16 in, 2.90 MB of Ogg/Opus out, 12.4s to encode.
+    #
+    # Nothing already here can do it. Mixing needs no library at all — that is
+    # `array` and addition, measured at 0.039 ms against a 20 ms frame budget —
+    # but `audioop` was removed in Python 3.13 (PEP 594) and nothing in the
+    # standard library of 3.14 speaks Opus or writes an Ogg container.
+    #
+    # PyAV over an ffmpeg subprocess, on the same grounds `pypdfium2` was chosen
+    # over `pypdf` plus poppler: the wheels bundle ffmpeg and libopus, so there
+    # is no system binary to install, version or debug. Whether libopus is
+    # compiled into a distro's ffmpeg varies by base image, and that is a
+    # failure discovered in production rather than at install.
+    #
+    # 17 MB, against an image that already carries LibreOffice for PPTX
+    # rendering. Confined to `voice/encoding.py`, so replacing it — or the codec
+    # — touches one module, and the mixer that decides what goes *in* a
+    # recording never imports it.
+    "av>=18.1.0",
 ]
 
 [dependency-groups]

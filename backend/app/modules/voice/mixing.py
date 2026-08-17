@@ -19,12 +19,41 @@ import array
 #: PCM16 little-endian, matching the relay in both directions.
 _SAMPLE = "h"
 
+#: What the relay carries, and therefore what a sample is worth in wall clock.
+SAMPLE_RATE = 16_000
+
+#: The longest room this will hold in memory, in seconds.
+#:
+#: **Deliberately not `SESSION_LIMIT`, and deliberately larger than it.** A room
+#: is capped at twelve minutes today, which is the only reason a live one costs
+#: ~23 MB of PCM16 — but that constant lives in `sessions/schemas.py`, is a
+#: decision about how long a rehearsal should be, and could reasonably be raised
+#: by somebody thinking about nothing but session length. Importing it here would
+#: make this module's memory ceiling move silently when they did, at ~1.92 MB per
+#: minute per concurrent room.
+#:
+#: Set above the session cap so it never fires in an ordinary room: this is a
+#: backstop against unbounded growth, not a second session limit competing with
+#: the first. If it starts firing, the two have drifted and that is the thing to
+#: look at.
+RECORDING_LIMIT_SECONDS = 20 * 60
+
 
 class RoomMixer:
     """One room, accumulating as it happens."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, max_samples: int | None = None) -> None:
         self._room = array.array(_SAMPLE)
+        self._max_samples = (
+            max_samples
+            if max_samples is not None
+            else RECORDING_LIMIT_SECONDS * SAMPLE_RATE
+        )
+        #: Whether anything was dropped for want of room. Reported rather than
+        #: raised: a room that stopped recording still interrogates, still
+        #: settles and still bills correctly, and failing one over its own
+        #: recording would trade a complete rehearsal for a partial file.
+        self.truncated = False
         #: How far the *user's* stream has reached, in samples — and therefore
         #: what time it is. The uplink is continuous and ungated, so this
         #: advances at exactly one second of samples per second of room.
@@ -90,6 +119,19 @@ class RoomMixer:
         exactly when both sources are loud at once.
         """
         samples = array.array(_SAMPLE, pcm)
+
+        # Trimmed at the far end rather than refused outright, so a room that
+        # reaches the ceiling mid-utterance keeps the part that fits.
+        #
+        # Both cursors then stall at the cap, because this returns where the
+        # *stored* samples end. That is deliberate: past this point nothing more
+        # is recorded, so there is no position left to be right about, and a
+        # clock that kept running would only invite arithmetic on a region that
+        # does not exist.
+        if at + len(samples) > self._max_samples:
+            self.truncated = True
+            del samples[max(0, self._max_samples - at) :]
+
         if len(self._room) < at + len(samples):
             self._room.extend([0] * (at + len(samples) - len(self._room)))
 

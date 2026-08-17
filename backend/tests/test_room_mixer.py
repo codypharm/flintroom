@@ -112,3 +112,26 @@ def test_two_loud_voices_at_once_clip_rather_than_invert():
     mixer.heard(pcm(30000))
 
     assert mixer.mixed() == pcm(32767)
+
+
+def test_a_room_that_runs_long_stops_growing_rather_than_growing_forever():
+    """The mixer bounds its own memory. It does not inherit a bound.
+
+    A live room is ~23 MB of PCM16 today, and only because `SESSION_LIMIT`
+    happens to be twelve minutes — a constant in `sessions/schemas.py` with
+    nothing tying it to this module. Raising it is a plausible product change
+    and an entirely reasonable one to make without thinking about audio, at
+    which point a per-room memory ceiling silently becomes no ceiling, at
+    ~1.92 MB per minute per concurrent room.
+
+    Dropping the tail is the right failure. A room that refused to record past
+    its limit still interrogates, still settles and still bills correctly; one
+    that raised would trade a complete rehearsal for a partial recording.
+    """
+    mixer = RoomMixer(max_samples=4)
+
+    mixer.heard(pcm(1, 2, 3))
+    mixer.heard(pcm(4, 5, 6))
+
+    assert mixer.mixed() == pcm(1, 2, 3, 4)
+    assert mixer.truncated
