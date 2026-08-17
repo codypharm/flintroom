@@ -58,6 +58,40 @@ async def test_a_room_reads_back_in_the_order_it_happened(
     )
 
 
+async def test_a_line_that_took_issue_with_a_colleague_reads_back_as_one(
+    db, engine, sessions, funded_account
+):
+    """The flag is only useful if it survives the write.
+
+    Everything upstream of here already carries it — `PanelTurn.disputed` from
+    #54's gate, `Said.disputed` through the channel — and none of that reaches
+    the debrief, which reads rows rather than objects. A column left off would
+    lose the fact at exactly the boundary where it stops being recoverable: once
+    the room is over, a disputing line and an ordinary one are the same text by
+    the same speaker in the same position.
+
+    What it costs to lose is not a feature. `weakness.py` reads this flag to tell
+    a question a colleague talked over from one the presenter ducked, and only
+    one of those is the user's fault.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+    await db.commit()
+
+    transcript = SessionTranscript(
+        async_sessionmaker(engine, expire_on_commit=False), session_id=session.id
+    )
+
+    await transcript.record(Said(speaker="champion", text="Who will sponsor this?"))
+    await transcript.record(
+        Said(speaker="cfo", text="The debt matters more. What does it cost?", disputed=True)
+    )
+
+    assert await transcript.lines() == (
+        Said(speaker="champion", text="Who will sponsor this?"),
+        Said(speaker="cfo", text="The debt matters more. What does it cost?", disputed=True),
+    )
+
+
 async def test_the_store_still_fits_the_seam_the_room_writes_through():
     """A guard, not a driver — and the one the `Protocol` exists to make possible.
 

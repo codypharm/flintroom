@@ -400,6 +400,25 @@ class TranscriptLine(Base):
     #: secret, it cannot be caught by key-name redaction.
     text: Mapped[str] = mapped_column(Text, nullable=False)
 
+    #: Whether this line opened by taking issue with the previous panelist's
+    #: priorities — the turn shape #54 added.
+    #:
+    #: Persisted rather than derived, because it is not derivable. Once written,
+    #: a disputing line and an ordinary one are the same text by the same kind of
+    #: speaker in the same position; only the room knew the difference, and only
+    #: at the moment it happened.
+    #:
+    #: `weakness.py` reads it to separate a question a colleague talked over from
+    #: one the presenter ducked. Both are unanswered, one is the user's fault,
+    #: and telling somebody they dodged a question that was taken away from them
+    #: reads as the product not having listened.
+    #: `"false"` rather than `text("false")`: `TranscriptLine.text` is a column
+    #: on this class, so the SQLAlchemy import of the same name is shadowed
+    #: inside this body.
+    disputed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+
     said_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

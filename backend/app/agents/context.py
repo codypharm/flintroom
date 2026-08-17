@@ -39,6 +39,26 @@ class Said:
     speaker: str
     text: str
 
+    #: Whether this line opened by taking issue with the previous panelist's
+    #: priorities — the turn shape #54 added.
+    #:
+    #: Here rather than only on `PanelTurn` because the debrief needs it and the
+    #: transcript is what the debrief reads. Once written, a disputing line and
+    #: an ordinary one are indistinguishable: both are panel text following panel
+    #: text. So the question the disputing line moved the room off is, from the
+    #: outside, identical to one the presenter simply ducked — and telling
+    #: somebody they ducked a question a colleague waved away is both wrong and
+    #: reads as the product not having listened.
+    #:
+    #: The room knows this for certain at the moment it happens, which is the
+    #: only moment it is knowable. Reconstructing it later is guesswork.
+    #:
+    #: Defaults to False so the user's own lines, the Auditor's interruptions and
+    #: every existing caller stay unchanged — a dispute is the exception, and an
+    #: exception that has to be declared everywhere is one that will be forgotten
+    #: somewhere.
+    disputed: bool = False
+
 
 @dataclass(frozen=True)
 class Grounding:

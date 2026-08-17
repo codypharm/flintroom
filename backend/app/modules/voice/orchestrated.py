@@ -665,7 +665,14 @@ class OrchestratedChannel:
         #
         # The user's own line was recorded by the listener, not here, because
         # this task can be cancelled and that must not depend on it.
-        asked = Said(speaker=turn.archetype.name, text=turn.line)
+        # `disputed` travels onto the line because the debrief reads the
+        # transcript and not the turn. Once written, a line that took issue with
+        # a colleague's priorities is indistinguishable from any other panel line
+        # following panel text — so the question it moved the room off would look
+        # exactly like one the presenter ducked, and #56 would tell them so.
+        asked = Said(
+            speaker=turn.archetype.name, text=turn.line, disputed=turn.disputed
+        )
         self._transcript.append(asked)
         await self._keep(asked)
 

@@ -214,6 +214,83 @@ async def test_a_challenge_is_kept_against_the_panelist_who_made_it():
     assert Said(speaker="cfo", text="The deck says sixty-one.") in transcript.lines
 
 
+class TakingTurns:
+    """Hands the floor to a different archetype each time it is asked."""
+
+    def __init__(self, *speakers: str) -> None:
+        self._speakers = list(speakers)
+        self._next = 0
+
+    async def select(self, *, candidates: Sequence[Archetype], context) -> ModelReply:
+        speaker = self._speakers[min(self._next, len(self._speakers) - 1)]
+        self._next += 1
+        return ModelReply(text=speaker)
+
+    async def compose(
+        self, *, archetype: Archetype, context, finding=None, dispute=None
+    ) -> ModelReply:
+        return ModelReply(text=f"{archetype.name} asks something.")
+
+
+class WatchingTranscript(FakeTranscript):
+    """Signals when the panel has spoken, so a test can wait rather than sleep.
+
+    A sleep long enough to be reliable here is also long enough to pass against
+    a channel that never wrote the second line at all.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.panel_spoke = asyncio.Event()
+
+    async def record(self, line: Said) -> None:
+        await super().record(line)
+        if line.speaker != USER:
+            self.panel_spoke.set()
+
+
+async def test_a_disputing_line_is_recorded_as_one():
+    """The flag has to survive the write, or the debrief cannot be fair.
+
+    `PanelTurn.disputed` is already correct — #54's tests prove the gate and
+    prove the turn carries what it decided. This is the next link: a turn that
+    knew it was disputing, writing a line that does not say so.
+
+    It would fail silently, which is what makes it worth a test. The room would
+    behave identically, the transcript would read perfectly well, and the only
+    symptom would appear a week later in a debrief telling somebody they ducked
+    a question the CFO talked over — the exact accusation #56 exists to prevent.
+    """
+    transcript = WatchingTranscript()
+    transcription = DrivenTranscription()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=transcription,
+        model=TakingTurns("champion", "cfo"),
+        grounding=Grounding(),
+        transcript=transcript,
+    )
+
+    reader = asyncio.create_task(events_of(channel))
+
+    # One utterance at a time, each answered before the next arrives. Two finals
+    # fed together is barge-in: the second cancels the turn answering the first,
+    # and there is never a colleague's line to take issue with.
+    for said in ("Sponsorship is locked in.", "We rebuilt onboarding last quarter."):
+        transcript.panel_spoke.clear()
+        transcription.feed(Transcription(text=said, final=True))
+        await asyncio.wait_for(transcript.panel_spoke.wait(), timeout=1)
+
+    transcription.hang_up()
+    await asyncio.wait_for(reader, timeout=1)
+
+    panel = [line for line in transcript.lines if line.speaker != USER]
+    assert [(line.speaker, line.disputed) for line in panel] == [
+        ("champion", False),
+        ("cfo", True),
+    ]
+
+
 async def test_words_spoken_through_a_cancelled_turn_are_still_kept():
     """Talking over the panel must not erase what you said.
 
