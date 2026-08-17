@@ -233,6 +233,47 @@ lines that say why are:
 
 Neither is an error to the user, and neither will appear in an error rate.
 
+`panel_routing_outrun` joins them, and means something different: the model was
+answering, just not before the user stopped talking. Selection runs against a
+partial transcript while somebody is still speaking, and an utterance shorter
+than the call leaves the final arriving first. A few of these are ordinary —
+short answers exist. A lot of them means either the panel model has slowed down
+or `VAD_SILENCE_THRESHOLD_SECS` has been set too low to cover it, and the
+symptom is the same as the ones above: a room that quietly routes by keyword.
+
+`panel_routing_started` carries a `words` count and nothing else. It is there
+because routing on two words and routing on twelve are indistinguishable in a
+transcript, and `CLAUDE.md` forbids putting the text itself in a log line.
+
+## How long a pause has to last is a setting, and it has no measurable floor
+
+`VAD_SILENCE_THRESHOLD_SECS` decides when the transcription engine calls the
+user's turn over. It sits **directly inside perceived latency** — 0.77s of a
+~2.15s room at the shipped default of 0.7, the largest single term after
+composition — so lowering it is the cheapest latency available.
+
+It is a setting rather than a constant because nothing bounds it from below that
+anyone can compute. Too low and the panel starts answering while somebody is
+drawing breath mid-sentence, and a room that interrupts you cannot be argued
+with — which is worse than a room that is slightly slow. Synthetic speech has no
+mid-sentence hesitations, so no spike, no test and no scripted run can find that
+floor. Only a person, in a real room, pausing the way people actually pause.
+
+Measured end to end across five turns, everything else held constant:
+
+| threshold | speech stops → caption | → first audio |
+| --- | --- | --- |
+| 0.7 (default) | 1.77s | ~2.15s |
+| 0.4 | **1.47s** | ~1.85s |
+
+The full 0.30s comes through, so the setting is very nearly the whole term and
+the engine's own overhead is small. An earlier single-utterance probe suggested
+only 0.12s; the five-turn run is the one to believe.
+
+Unset means the adapter's default. Change it in `.env` and restart the backend —
+nothing in the app needs rebuilding, so 0.7 and 0.4 can be heard back to back in
+the same sitting.
+
 ## The store's callbacks are the only unauthenticated write path
 
 `POST /v1/webhooks/revenuecat` takes no token. The shared secret *is* the

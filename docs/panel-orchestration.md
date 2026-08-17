@@ -707,10 +707,14 @@ depends on.
 - **~2.15s to first audio against 1.5s.** Closer, not closed. What remains is
   VAD (0.77s), composition (0.82s) and synthesis (0.38s), and none of the three
   is free to remove.
-- **The VAD threshold is a human judgement, not a measurement.** 0.7 → 0.4 is
-  worth ~0.12s and nothing bounds it from below except how rude the room feels
-  when somebody pauses mid-answer. Synthetic speech has no mid-sentence pauses,
-  so only a real person in a real room can set it.
+- **The VAD threshold is a human judgement, not a measurement.** Now
+  `VAD_SILENCE_THRESHOLD_SECS`, settable per deployment, because judging it
+  means hearing two values back to back and a judgement costing a rebuild per
+  trial is one nobody makes twice. Measured across five turns, 0.7 → 0.4 is
+  worth **0.30s** — 1.77s to caption becomes 1.47s — so the whole threshold
+  passes through. Nothing bounds it from below except how rude the room feels
+  when somebody pauses mid-answer, and synthetic speech has no mid-sentence
+  pauses, so only a real person in a real room can set it.
 - **Streaming composition is the one structural lever left**, and it is an
   architecture decision rather than a tuning one: synthesise the first sentence
   while the model is still writing the second. Worth roughly 0.4s, and it makes

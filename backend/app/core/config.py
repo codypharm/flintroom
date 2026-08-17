@@ -107,6 +107,26 @@ class Settings(BaseSettings):
     #: which fails audibly rather than silently.
     elevenlabs_default_voice_id: str | None = None
 
+    #: How long the user must be quiet before the engine calls their turn over.
+    #:
+    #: **Settable because it cannot be measured.** It sits directly inside
+    #: perceived latency — 0.77s of a ~2.15s room, the largest term after
+    #: composition — so lowering it is the cheapest latency left. What bounds it
+    #: from below is not a number anyone can compute: too low and the panel
+    #: talks over somebody drawing breath mid-answer, and a room that interrupts
+    #: you cannot be argued with. Synthetic speech has no mid-sentence
+    #: hesitations, so no spike and no test can find that floor — only a person
+    #: pausing the way people actually pause.
+    #:
+    #: A judgement that costs an edit and a redeploy per trial is a judgement
+    #: nobody makes twice, so this is `.env` rather than a constant.
+    #:
+    #: `None` means "whatever the adapter chose", rather than repeating its
+    #: number here. Two copies of one float in two layers drift silently, and
+    #: the reasoning behind the value lives with the vendor it was measured
+    #: against — `voice/transcribers/elevenlabs.SILENCE_THRESHOLD_SECS`.
+    vad_silence_threshold_secs: float | None = None
+
     #: What RevenueCat signs its callbacks with, from the webhook integration's
     #: HMAC settings.
     #:

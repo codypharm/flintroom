@@ -18,6 +18,7 @@ from __future__ import annotations
 import base64
 import json
 from contextlib import asynccontextmanager
+from unittest import mock
 
 import pytest
 
@@ -293,6 +294,45 @@ BASE_ENVIRONMENT = {
 
 def _settings(**overrides) -> Settings:
     return Settings(_env_file=None, **BASE_ENVIRONMENT, **overrides)
+
+
+async def test_how_long_a_pause_lasts_can_be_changed_without_a_deploy():
+    """The one number in the latency budget nothing can measure for us.
+
+    It decides when the engine calls a turn over, so it sits directly inside
+    perceived latency — 0.77s of a 2.15s room at the current value, and the
+    largest remaining term after composition. Lowering it is the cheapest
+    latency left.
+
+    It is also the only term with a floor no measurement can find. Too low and
+    the panel talks over somebody drawing breath mid-answer, which is worse than
+    a pause: a room that interrupts you cannot be argued with. Synthetic speech
+    has no mid-sentence hesitations, so no test and no scripted spike can say
+    where that line is — only a person, in a real room, pausing the way people
+    actually pause.
+
+    So it is a setting rather than a constant. Judging it means hearing 0.7
+    against 0.4 back to back, and a judgement that costs an edit, a rebuild and
+    a redeploy per trial is a judgement nobody makes more than once.
+    """
+    socket = FakeSocket([])
+
+    @asynccontextmanager
+    async def connects(url, **kwargs):
+        connects.url = url
+        yield socket
+
+    # Substituted where the vendor actually is, so this exercises the same path
+    # `build_transcriber` hands a running deployment rather than a seam opened
+    # for the test.
+    with mock.patch("websockets.connect", connects):
+        transcriber = build_transcriber(
+            _settings(elevenlabs_api_key="k", vad_silence_threshold_secs=0.4)
+        )
+        async with transcriber.open():
+            pass
+
+    assert "vad_silence_threshold_secs=0.4" in connects.url
 
 
 def test_a_deployment_without_credentials_gets_no_transcriber_rather_than_a_broken_one():

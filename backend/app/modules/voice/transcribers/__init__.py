@@ -25,4 +25,13 @@ def build_transcriber(settings: Settings) -> Transcriber | None:
     if not settings.elevenlabs_api_key:
         return None
 
-    return ElevenLabsTranscriber(api_key=settings.elevenlabs_api_key)
+    # Only when configured, so an unset deployment gets the adapter's own
+    # measured default rather than a copy of it kept in `Settings` — one float
+    # in one place, and the reasoning next to the vendor it was measured
+    # against.
+    threshold = (
+        {"silence_threshold_secs": settings.vad_silence_threshold_secs}
+        if settings.vad_silence_threshold_secs is not None
+        else {}
+    )
+    return ElevenLabsTranscriber(api_key=settings.elevenlabs_api_key, **threshold)
