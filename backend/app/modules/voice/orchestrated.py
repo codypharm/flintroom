@@ -39,6 +39,7 @@ from app.modules.voice.events import (
     VoiceEvent,
 )
 from app.modules.voice.speech import Speaker
+from app.modules.voice.transcript import TranscriptStore
 from app.modules.voice.transcription import Transcriber, TranscriptionStream
 
 log = get_logger(__name__, tag="voice")
@@ -137,11 +138,17 @@ class OrchestratedProvider:
 class OrchestratedChannel:
     """One interrogation, driven turn by turn.
 
-    Holds the transcript for the life of the room and nothing beyond it. What a
-    saved session retains is an open product decision, so this deliberately
-    accumulates in memory and writes none of it — adding persistence here would
-    answer that question by accident, and in the direction that keeps the most
-    data.
+    Holds the transcript twice, for two different lifetimes. The list in memory
+    is what each turn is grounded in and dies with the room. The `TranscriptStore`
+    is what outlives it, and `docs/session-retention.md` settles what that means:
+    text for the life of the account on every tier, because the debrief is
+    grounded in it and `Product.md` §405 makes that a precondition rather than a
+    feature.
+
+    This is the only object holding **both sides** of the room. `UserSpoke`
+    carries no text and `AgentTranscript` is deliberately only the panel, so the
+    relay — where every other per-session write happens — never learns a word the
+    user said. That asymmetry is why the seam is here.
     """
 
     def __init__(
@@ -153,9 +160,15 @@ class OrchestratedChannel:
         speaker: Speaker | None = None,
         grounding: Grounding | None = None,
         auditor: Auditor | None = None,
+        transcript: TranscriptStore | None = None,
         heartbeat_seconds: float = HEARTBEAT_SECONDS,
     ) -> None:
         self._panel = panel
+        # Optional, like the speaker and the auditor: a room still runs without
+        # somewhere to file its words, and every test that is not about
+        # persistence should not have to supply one. Production always does —
+        # without it the debrief has nothing to be grounded in.
+        self._transcript_store = transcript
         # Optional, like the speaker: a room without one still transcribes,
         # routes, composes, speaks and captions. What it loses is the panel
         # catching a figure that moved.
@@ -192,6 +205,18 @@ class OrchestratedChannel:
         # would be twenty model calls for a sentence and turn the cheapest hop
         # in the turn into the most expensive thing in the room.
         self._routing: asyncio.Task[Routed] | None = None
+
+    async def _keep(self, line: Said) -> None:
+        """File one line where it will outlive the room, if anywhere.
+
+        Paired with every `self._transcript.append`, because the room's own
+        memory and the record it leaves behind must hold the same thing — a line
+        the panel is shown but that never reaches the debrief is a contradiction
+        the coach cannot see and cannot be told about.
+        """
+        if self._transcript_store is None:
+            return
+        await self._transcript_store.record(line)
 
     async def send_audio(self, pcm: bytes) -> None:
         """Straight through to the transcriber.
@@ -299,7 +324,9 @@ class OrchestratedChannel:
                     # they said; losing it would erase their words from the room's
                     # memory because *we* chose not to reply to them, and the next
                     # selection would then judge an answer it never saw.
-                    self._transcript.append(Said(speaker=USER, text=result.text))
+                    said = Said(speaker=USER, text=result.text)
+                    self._transcript.append(said)
+                    await self._keep(said)
                     # Collected before the new one starts, so this turn is
                     # answered with the catch from the *previous* utterance and
                     # never waits for its own. See `_audit`.
@@ -614,7 +641,9 @@ class OrchestratedChannel:
         #
         # The user's own line was recorded by the listener, not here, because
         # this task can be cancelled and that must not depend on it.
-        self._transcript.append(Said(speaker=turn.archetype.name, text=turn.line))
+        asked = Said(speaker=turn.archetype.name, text=turn.line)
+        self._transcript.append(asked)
+        await self._keep(asked)
 
         # From the user going quiet to the room having something to say. The
         # only number that tells an operator whether a slow room was slow here

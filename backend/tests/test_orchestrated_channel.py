@@ -21,7 +21,7 @@ import pytest
 
 from app.agents.archetypes import DEFAULT_PANEL, Archetype
 from app.agents.auditor import Auditor, ClaimReading
-from app.agents.context import Grounding
+from app.agents.context import USER, Grounding, Said
 from app.agents.model import ModelReply
 from app.core.errors import ProviderUnavailable
 from app.modules.voice.events import AgentTranscript, Heartbeat, Spent
@@ -91,6 +91,20 @@ class ScriptedPanelModel:
         return ModelReply(text=self._line)
 
 
+class FakeTranscript:
+    """A store that keeps the room in a list instead of a database.
+
+    Asserted against directly, because the point of the seam is that the channel
+    hands over whole lines and does not know where they land.
+    """
+
+    def __init__(self) -> None:
+        self.lines: list[Said] = []
+
+    async def record(self, line: Said) -> None:
+        self.lines.append(line)
+
+
 async def events_of(channel: OrchestratedChannel) -> list:
     return [event async for event in channel.events()]
 
@@ -140,6 +154,98 @@ async def test_a_finished_utterance_becomes_a_panel_line():
 
     assert AgentTranscript("Seventy percent against a deck that says 61.") in events
     assert model.said == ["Our gross margin is seventy percent."]
+
+
+async def test_what_the_user_said_outlives_the_room():
+    """The tracer bullet for persistence, and the half nothing else can supply.
+
+    `UserSpoke` carries no text and `AgentTranscript` is deliberately only the
+    panel (`events.py`), so the relay never learns a word the user said. This
+    channel is the only object holding both sides — which is why the seam is
+    here and not there.
+
+    Without it the coach has nothing. `Product.md` §405 grounds debrief and
+    sparring in the session's transcript, and `CLAUDE.md` requires that scope be
+    structural rather than a system prompt: a coach that cannot see the
+    transcript has no grounding to be constrained *to*.
+    """
+    transcript = FakeTranscript()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=FakeTranscription(
+            [Transcription(text="Our gross margin is seventy percent.", final=True)]
+        ),
+        model=ScriptedPanelModel(),
+        grounding=Grounding(),
+        transcript=transcript,
+    )
+
+    await events_of(channel)
+
+    assert Said(speaker=USER, text="Our gross margin is seventy percent.") in transcript.lines
+
+
+async def test_a_challenge_is_kept_against_the_panelist_who_made_it():
+    """Half a transcript is worse than none, and this is the half that grades.
+
+    `Product.md` §3.5 ranks weak *answers*, which is a judgement about a pair —
+    what was asked and what came back. A record of only the user's side cannot
+    express it, and a coach reading one would be inventing the question.
+
+    Attribution is the assertion, not merely presence. Sparring re-runs a
+    specific panelist's challenge, and `CLAUDE.md` requires the archetype whose
+    domain covers a metric to be the one that owns it — a line filed under the
+    wrong name puts the Technical Skeptic's words in the CFO's mouth a week
+    later.
+    """
+    transcript = FakeTranscript()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=FakeTranscription(
+            [Transcription(text="Our gross margin is seventy percent.", final=True)]
+        ),
+        model=ScriptedPanelModel(speaker="cfo", line="The deck says sixty-one."),
+        grounding=Grounding(),
+        transcript=transcript,
+    )
+
+    await events_of(channel)
+
+    assert Said(speaker="cfo", text="The deck says sixty-one.") in transcript.lines
+
+
+async def test_words_spoken_through_a_cancelled_turn_are_still_kept():
+    """Talking over the panel must not erase what you said.
+
+    A second utterance cancels the turn answering the first — that is barge-in,
+    and `orchestrated.py` is explicit that the user's line is recorded by the
+    listener rather than by the turn precisely *"because this task can be
+    cancelled and that must not depend on it."* The record has to inherit that
+    property, or the transcript loses exactly the sentences a user was most
+    insistent about.
+
+    It is also the sharper half of a metering promise. A room that ends badly is
+    still handed to the debrief, and a debrief missing the user's last words is
+    reasoning about a room that did not happen.
+    """
+    transcript = FakeTranscript()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=FakeTranscription(
+            [
+                Transcription(text="Margin is seventy percent.", final=True),
+                Transcription(text="Well — closer to sixty.", final=True),
+            ]
+        ),
+        model=ScriptedPanelModel(),
+        grounding=Grounding(),
+        transcript=transcript,
+    )
+
+    await events_of(channel)
+
+    said = [line.text for line in transcript.lines if line.speaker == USER]
+    assert said == ["Margin is seventy percent.", "Well — closer to sixty."]
 
 
 async def test_a_partial_result_does_not_put_words_in_the_room():
