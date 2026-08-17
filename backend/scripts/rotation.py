@@ -15,6 +15,13 @@ Costs one selection call per utterance per prefix length — 32 calls against
 `gemini-3.5-flash-lite`, which is fractions of a cent, but it is not free and it
 is not offline.
 
+**One run is not evidence.** Measured 2026-08-17 across three runs of an
+unchanged prompt, the busiest archetype moved by two out of eight in a single
+column — wide enough to swallow any effect worth arguing about. Take the median
+of at least three runs on each side, and treat a difference of one as nothing.
+Several earlier before/after readings in `docs/panel-orchestration.md` were
+single runs and are weaker than they read.
+
 **Prefix length is a variable because a live room routes on an unfinished
 sentence.** `OrchestratedChannel` starts selection on the first partial so the
 hop overlaps the tail of the utterance, so a prompt that only behaves on a whole
@@ -91,7 +98,14 @@ async def run(model: GeminiPanelModel, *, words: int | None) -> list[str]:
         reply = await model.select(
             candidates=PANEL,
             context=TurnContext(
-                said=shown, grounding=Grounding(transcript=tuple(transcript))
+                said=shown,
+                grounding=Grounding(transcript=tuple(transcript)),
+                # A truncated row *is* a partial — that is what it is simulating
+                # — and until this was set the harness measured the production
+                # path without the one flag the production path sets. Every
+                # before/after taken with it missing compared two identical
+                # prompts and read the noise as an effect.
+                unfinished=words is not None,
             ),
         )
         chosen.append(reply.text)

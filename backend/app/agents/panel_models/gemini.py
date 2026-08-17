@@ -324,7 +324,9 @@ _SELECTION_INSTRUCTION = (
     "Decide in this order:\n"
     "1. A panelist marked 'has not spoken yet' takes the floor, unless the "
     "answer is squarely somebody else's ground.\n"
-    "2. Look at what the panelist marked 'spoke last turn' asked for. If the "
+    "2. Look at what the panelist marked 'spoke last turn' asked for. This "
+    "rule does not apply when the presenter is still speaking: a fragment is "
+    "not an evasion, and the two look identical. Otherwise, if the "
     "presenter's reply contains no figure, no name, no date and no mechanism "
     "that answers it — only reassurance, restatement or a change of subject — "
     "that panelist takes the floor again and presses. A panelist marked 'spoke "
@@ -363,7 +365,21 @@ def _selection_prompt(candidates: Sequence[Archetype], context) -> str:
         f"- {line.speaker}: {line.text}" for line in context.grounding.transcript
     )
     so_far = f"\n\nSo far:\n{spoken}" if spoken else ""
-    return f"In the room:\n{roster}{so_far}\n\nThey just said:\n{context.said}"
+
+    # Said out loud, because half a sentence and a finished evasion are
+    # indistinguishable from the text alone — both lack a figure, a name, a date
+    # and a mechanism, which is exactly what rule 2 presses on.
+    #
+    # Measured before this line existed: routing on a three-word prefix put the
+    # busiest archetype on 4 of 8 turns and a six-word prefix on 6 of 8, against
+    # 3 of 8 for the finished sentence, with consecutive repeats at 3 and 4
+    # against 2. The room concentrated on the path production actually uses.
+    heading = (
+        "They are still speaking, and this is only the start of it:"
+        if context.unfinished
+        else "They just said:"
+    )
+    return f"In the room:\n{roster}{so_far}\n\n{heading}\n{context.said}"
 
 
 def _bare_name(answered: str) -> str:

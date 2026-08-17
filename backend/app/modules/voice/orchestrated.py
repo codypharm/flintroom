@@ -420,6 +420,12 @@ class OrchestratedChannel:
         context = TurnContext(
             said=said,
             grounding=Grounding(claims=self._claims, transcript=tuple(self._transcript)),
+            # This is the whole point of routing early, and until now the prompt
+            # was never told. Selection here runs on a prefix of a sentence
+            # still being spoken; the rule that presses an unanswered question
+            # cannot tell that from an evasion, because neither contains a
+            # figure, a name, a date or a mechanism.
+            unfinished=True,
         )
         # A count, never the text. `CLAUDE.md` forbids transcripts in logs, and
         # this is the one number that says whether routing had anything to work

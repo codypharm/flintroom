@@ -95,6 +95,19 @@ class TurnContext:
     said: str
     grounding: Grounding
 
+    #: Whether `said` is a prefix of a sentence still being spoken.
+    #:
+    #: Routing runs on the first partial so its ~0.77s hop overlaps the tail of
+    #: the utterance — the whole plan for holding the ~1.5s illusion threshold
+    #: (Open Risk #3). Composition never does: a panelist answering half a
+    #: sentence is not barge-in, it is not listening.
+    #:
+    #: So this is only ever true for selection, and the reason it has to be said
+    #: out loud is that half a sentence and a finished evasion look identical.
+    #: Both lack a figure, a name, a date and a mechanism, and the rule that
+    #: presses an evasion cannot tell them apart on its own.
+    unfinished: bool = False
+
 
 @dataclass(frozen=True)
 class Finding:

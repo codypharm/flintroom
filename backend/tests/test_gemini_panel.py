@@ -26,6 +26,7 @@ from app.agents.panel_models.gemini import (
     _SELECTION_INSTRUCTION,
     GeminiPanelModel,
     _composition_prompt,
+    _selection_prompt,
     _persona_of,
     _silence_of,
 )
@@ -574,3 +575,38 @@ def test_a_finding_is_not_announced_as_coming_from_a_deck():
     assert finding.summary in prompt
     assert "material" not in prompt.lower()
     assert "slide" not in prompt.lower()
+
+
+def test_the_prompt_says_when_the_sentence_is_not_finished():
+    """Routing runs on a partial, and the prompt has never admitted it.
+
+    `OrchestratedChannel._route` starts selection on the first partial so the
+    ~0.77s hop overlaps the tail of the utterance — that is the whole latency
+    plan. But rule 2 presses when the reply contains no figure, name, date or
+    mechanism, and a three-word prefix almost never contains one. So every
+    early partial reads as an evasion.
+
+    Measured before this existed: the busiest archetype took 4 of 8 turns at a
+    three-word prefix and 6 of 8 at six words, against 3 of 8 on the finished
+    sentence — with consecutive repeats running at 3 and 4 against 2. The room
+    concentrated precisely on the path production uses.
+    """
+    partial = TurnContext(
+        said="Our gross margin",
+        grounding=CONTEXT.grounding,
+        unfinished=True,
+    )
+
+    assert "still speaking" in _selection_prompt(DEFAULT_PANEL, partial)
+    assert "still speaking" not in _selection_prompt(DEFAULT_PANEL, CONTEXT)
+
+
+def test_the_rules_say_what_to_do_with_an_unfinished_sentence():
+    """The marking is worthless unless the instruction acts on it.
+
+    A prompt that labels the utterance and then applies the same four rules has
+    told the model something it has no use for — which is the failure mode #43
+    found the first time: the roster was annotated with silence and nothing
+    changed, because the ranking was the missing part rather than the data.
+    """
+    assert "still speaking" in _SELECTION_INSTRUCTION

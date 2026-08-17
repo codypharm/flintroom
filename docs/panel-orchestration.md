@@ -887,3 +887,59 @@ cancels it and `routing.choose` answers instantly.
   architecture decision rather than a tuning one: synthesise the first sentence
   while the model is still writing the second. Worth roughly 0.4s, and it makes
   the turn interruptible in the middle of its own generation.
+
+## Telling the room the sentence is not finished, 2026-08-17
+
+Routing runs on the first partial so its ~0.77s hop overlaps the tail of the
+utterance. The prompt was never told that, and rule 2 presses when the reply
+contains no figure, name, date or mechanism — which a three-word prefix never
+does. The hypothesis was that every early partial therefore read as an evasion,
+concentrating the room on the path production actually uses.
+
+`TurnContext.unfinished` now carries it, `_route` sets it, and rule 2 says it
+does not apply while the presenter is still speaking.
+
+### The harness was not testing the thing
+
+`scripts/rotation.py` truncates the utterance to simulate a partial and never
+set the flag. So the first before/after compared two identical prompts and read
+the difference as an effect. It is set now.
+
+### One run is not evidence, and several earlier ones were
+
+Three runs of an unchanged prompt moved the busiest archetype by two out of
+eight in a single column. That is wider than most of the differences argued over
+in this document. The instrument's docstring now says to take medians of at
+least three, and the earlier single-run figures here should be read as weaker
+than they were written.
+
+### Placement mattered more than wording
+
+Written as its own paragraph between rules 1 and 2, the guidance made things
+worse across every column — repeats rose from 3 to 5 at three words and from 3
+to 5 at twelve. Folded into rule 2 as a condition, it behaved. That is the same
+finding as *Giving the floor away*: the ranked list is load-bearing, and a
+paragraph inserted into it damages the ranking rather than adding to it.
+
+### What it actually bought, in medians of three
+
+|          | busiest before | after | repeats before | after |
+| ---      | ---            | ---   | ---            | ---   |
+| 3 words  | 5/8            | 3/8   | 3              | 3     |
+| 6 words  | 6/8            | 6/8   | 4              | 4     |
+| 12 words | 2/8            | 2/8   | 3              | 3     |
+| full     | 4/8            | 5/8   | 3              | 3     |
+
+`scripts/followup.py` is unchanged at 4/4 dodges pressed and 2/4 answers, so
+rule 2 still works on a finished sentence — the risk was disarming it entirely.
+
+**The hypothesis was half wrong.** Repeats are identical in every column, so
+rule 2 over-firing on partials was *not* what concentrated the room. The
+three-word column improved and nothing else did.
+
+The likely remainder is the corpus rather than the prompt: half of `SAID` opens
+on money — "Our gross margin", "Freight is already", "Nobody has churned" — so
+at three words the CFO is frequently the *correct* answer, and a share of what
+this instrument reports as concentration is routing working. Separating those
+two would need a corpus whose first three words are deliberately neutral, which
+is a different instrument than this one.
