@@ -539,3 +539,75 @@ class UserPreference(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+
+class SessionWeakAnswer(Base):
+    """One question the room did not get a good enough answer to.
+
+    `Product.md` §3.5's ranked weak-answer list, made durable.
+    `docs/debrief-and-sparring.md` decision 1 has it computed when the debrief
+    first opens rather than at settlement, and written once — because the coach,
+    the prep sheet and #55's calibration all read it, and three separate
+    derivations of the same room would be free to disagree about what happened
+    in a session the user has already read.
+
+    Durability is not only about cost. The ranking is a model's reading and
+    **moves between runs on the same transcript** (measured; see
+    `scripts/weakness.py`), so a list recomputed on every open would reshuffle
+    under somebody working through it, and the prep sheet they screenshotted
+    would stop matching the screen.
+    """
+
+    __tablename__ = "session_weak_answers"
+    __table_args__ = (
+        # The pair *is* the fact, as with transcript lines: this finding, at
+        # this position in this session's ranking. A surrogate id would leave
+        # "the worst answer" expressible twice, and a retry that wrote the list
+        # again would duplicate rather than conflict.
+        PrimaryKeyConstraint("session_id", "rank", name="pk_session_weak_answers"),
+    )
+
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    #: Where this sits in the ranking, from zero. Worst first.
+    #:
+    #: **The order is the model's** and is stored rather than derived. It was
+    #: decided with the whole room in view by the only thing that read it, and
+    #: nothing downstream is better placed to sort it — a table of category
+    #: severities written before any room existed cannot outrank a judgement made
+    #: after seeing one.
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    #: Which transcript line the *question* is. Not a foreign key to
+    #: `session_transcript_lines` despite the composite key existing: a weak
+    #: answer must stay readable if a transcript is ever pruned, and the text is
+    #: copied below rather than joined for the same reason.
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    #: Copied from the transcript rather than read from the model's reply. It
+    #: cannot misquote what it was not asked to supply, and the prep sheet
+    #: showing somebody their own words has to show *their* words.
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    asked_by: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    #: What they said in reply, or null when they said nothing — which is itself
+    #: one of the findings.
+    answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    #: One of `Weakness`. Plain text, not a Postgres enum: the vocabulary may
+    #: gain a member, and adding a value to an enum type is a migration that
+    #: locks a table.
+    weakness: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    #: The model's sentence to the presenter about what was missing. The part a
+    #: person actually reads — a category cannot say what was thin about an
+    #: answer.
+    why: Mapped[str] = mapped_column(Text, nullable=False)
+
+    found_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
