@@ -23,13 +23,45 @@ from app.core.errors import ProviderUnavailable
 from app.agents.panel import Finding, Grounding, Said, TurnContext
 from app.agents.panel_models import build_panel_model
 from app.agents.panel_models.gemini import (
+    _SELECTION_INSTRUCTION,
     GeminiPanelModel,
     _composition_prompt,
     _persona_of,
+    _silence_of,
 )
 from app.core.config import Settings
 
 CONTEXT = TurnContext(said="We hold 61% gross margin.", grounding=Grounding())
+
+#: A room where the CFO asked, was fobbed off, and pressed — so the marking the
+#: follow-up cap turns on is reachable. Note the presenter's reply sitting inside
+#: the pair: consecutive *panel* turns are never consecutive transcript lines.
+_PRESSED = TurnContext(
+    said="Acquisition is something we have got smarter about.",
+    grounding=Grounding(
+        transcript=(
+            Said(speaker="champion", text="What proof can I take to committee?"),
+            Said(speaker="user", text="There are honestly so many."),
+            Said(speaker="cfo", text="What did each customer cost to acquire?"),
+            Said(speaker="user", text="We have got much smarter about that."),
+            Said(speaker="cfo", text="That is not a number. What did it cost?"),
+        )
+    ),
+)
+
+#: A room part-way through, so every silence marking is reachable — an opening
+#: turn can only ever produce "has not spoken yet".
+_MID_ROOM = TurnContext(
+    said="Freight is already inside that number.",
+    grounding=Grounding(
+        transcript=(
+            Said(speaker="cfo", text="Where does sixty-one percent come from?"),
+            Said(speaker="user", text="It held all of last year."),
+            Said(speaker="technical_skeptic", text="Held through the replatform?"),
+            Said(speaker="user", text="Through all of it."),
+        )
+    ),
+)
 
 #: `_env_file=None` matters more than it looks. Without it `Settings` reads the
 #: developer's real `backend/.env`, so the no-key test passes on a machine with no
@@ -296,6 +328,98 @@ async def test_the_router_sees_the_conversation_and_not_just_the_questions():
     body = seen[0].content.decode()
     assert "Where does four hundred thousand come from?" in body
     assert "Mostly two enterprise contracts." in body
+
+
+async def test_the_roster_says_who_has_not_spoken_yet():
+    """Measured, "prefer whoever has been quiet" was text the model ignored.
+
+    `scripts/rotation.py` against the live model, eight utterances and a panel of
+    three: the CFO took **seven of eight** turns and the Champion took none. The
+    instruction naming silence as a criterion has been there the whole time, so
+    the failure is not that the model disagreed — it is that nothing in the
+    request says how long anybody has been silent, and counting it out of a
+    transcript is arithmetic a router does badly while a room waits.
+
+    Measured again with the count annotated and the criteria left unordered, the
+    spread barely moved. So this is necessary and not sufficient, and it is
+    tested separately from the ordering for exactly that reason: either one
+    alone leaves the room with one voice in it.
+    """
+    transport, seen = answering("champion")
+
+    await model_with(transport).select(candidates=DEFAULT_PANEL, context=CONTEXT)
+
+    roster = json.loads(seen[0].content)["contents"][0]["parts"][0]["text"]
+    assert roster.count("has not spoken yet") == len(DEFAULT_PANEL)
+
+
+async def test_the_roster_counts_panel_turns_and_not_the_presenters():
+    """A room alternates, so counting every line doubles every distance.
+
+    Which sounds harmless and is not: `_SELECTION_INSTRUCTION` hangs a hard rule
+    on **"spoke last turn"**, and if the presenter's reply sits between a
+    panelist and the present moment then nobody is ever marked with it. The rule
+    would read as satisfied on every turn while forbidding nothing — a room back
+    to one voice, arriving through the counting rather than through the prompt.
+
+    Asserted against a transcript in the shape a real one has, question and
+    answer alternating, because that is the only shape where the bug exists.
+    """
+    transport, seen = answering("champion")
+
+    await model_with(transport).select(candidates=DEFAULT_PANEL, context=_MID_ROOM)
+
+    roster = json.loads(seen[0].content)["contents"][0]["parts"][0]["text"]
+    assert "- technical_skeptic: The Technical Skeptic." in roster
+    assert "[spoke last turn]" in roster
+    assert "[silent for 1 turn]" in roster
+    assert "[has not spoken yet]" in roster
+
+
+def test_a_panelist_who_has_already_pressed_is_marked_as_having_done_so():
+    """The cap on following up, and the only thing rule 2 can hang it on.
+
+    A panelist may press a question the presenter dodged — measured, 3-4 of 4
+    genuine dodges — and that is the behaviour the ranked instruction very nearly
+    cost. What it may not do is press the press. Without a marking distinct from
+    "spoke last turn" there is nothing to write that rule against, and the
+    measured result is the room this whole change was opened to fix: the busiest
+    archetype back at 5.5 of 8 against 4.
+
+    Two panel turns, not two lines. The presenter answers in between — that is
+    what a follow-up *is* — so a rule counting raw transcript entries would never
+    see a panelist twice in a row and the cap would never fire.
+    """
+    assert _silence_of(by_name("cfo"), _PRESSED) == "spoke the last two turns"
+    # The panelist before them is unaffected: the cap binds the presser alone,
+    # and blanketing everyone who spoke recently would empty the room.
+    assert _silence_of(by_name("champion"), _PRESSED) == "silent for 2 turns"
+
+
+def test_the_rules_and_the_roster_use_the_same_words_for_silence():
+    """Two halves of one change, and nothing else couples them.
+
+    The instruction hangs its rules on the exact phrases `_silence_of` stamps on
+    the roster. Reword either side alone and the request still goes out, still
+    parses, still returns a name — and the rules now quote a marking that is not
+    there, so the model is back to picking on relevance and the room is back to
+    one voice. Nothing fails. That is the whole reason this is asserted rather
+    than left to whoever edits the prompt next.
+
+    Deliberately not a test of the wording. What it pins is that the two sides
+    move together; either may be rewritten freely as long as both are.
+    """
+    marks = {
+        _silence_of(archetype, context)
+        for archetype in DEFAULT_PANEL
+        for context in (CONTEXT, _MID_ROOM, _PRESSED)
+    }
+
+    assert marks, "no annotation to bind to"
+    for mark in marks:
+        if mark.startswith("silent for"):
+            continue  # A count, not a phrase — rule 3 cannot quote every value.
+        assert mark in _SELECTION_INSTRUCTION
 
 
 def test_the_composer_is_told_how_this_archetype_speaks():

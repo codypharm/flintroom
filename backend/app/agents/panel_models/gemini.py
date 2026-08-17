@@ -26,6 +26,7 @@ from typing import Any
 import httpx
 
 from app.agents.archetypes import Archetype
+from app.agents.context import USER
 from app.agents.model import ModelReply, TurnUsage
 from app.core.errors import ProviderUnavailable
 from app.core.logging import get_logger
@@ -192,22 +193,6 @@ class GeminiPanelModel:
         return ModelReply(text=_text_of(payload), usage=_usage_of(payload))
 
 
-def _bare_name(answered: str) -> str:
-    """An archetype name out of whatever the model decided to wrap it in.
-
-    Asked for a name, a model returns `**cfo**`, `"cfo"`, `cfo.` or a name with a
-    newline after it. All four are the same answer and none of them match an
-    archetype, so left alone they fall through to the caller's fallback — the
-    room keeps running and silently stops routing, which looks exactly like a
-    panel choosing at random.
-
-    Deliberately narrow: strip the punctuation a model decorates with, take the
-    first word, and stop. Anything cleverer starts guessing at which archetype
-    was meant, and a wrong guess is worse than a fallback because it is confident.
-    """
-    return answered.strip().strip('*"\'`.,:;!?').split()[0].lower() if answered.strip() else ""
-
-
 def _usage_of(payload: dict[str, Any]) -> TurnUsage:
     """What Google says the call cost.
 
@@ -279,23 +264,96 @@ def _persona_of(archetype: Archetype) -> str:
     )
 
 
+#: **Ranked, not a list of preferences**, and the ranking is the entire fix.
+#:
+#: What was here before named three criteria joined by "or" — relevance, silence,
+#: disagreement — and left the model to weigh them. Measured against the live
+#: model over eight utterances and a panel of three (`scripts/rotation.py`), it
+#: weighed them by taking the easiest: the CFO answered **seven of eight** and the
+#: Champion never spoke at all. Relevance is the criterion a model can always
+#: justify, so an unordered list collapses to relevance alone.
+#:
+#: Annotating the roster with each panelist's silence and changing nothing else
+#: barely moved it — 6 of 8 to the CFO. The model was shown the silence and
+#: declined to act on it, which is why the ordering below is phrased as steps
+#: with one hard prohibition rather than as a fourth thing to consider.
+#:
+#: Both together: three distinct archetypes at every prefix length, the CFO down
+#: to 2-4 of 8, and the Champion speaking in every run. Ranges rather than
+#: figures because the split moves by a turn between runs; `scripts/rotation.py`
+#: is how to check the shape still holds after editing any of this.
+#:
+#: **Rule 2 is a follow-up that has to be earned, and can only be spent once.**
+#:
+#: An earlier draft forbade consecutive turns outright, and that was wrong twice
+#: over. It gave up the sharpest move a room has — the person who asked something
+#: noticing it was not answered — which is the signal the transcript is carried
+#: for at all (`test_the_router_sees_the_conversation_and_not_just_the_questions`).
+#: And it did not even do what it claimed: measured, the "unless nobody else has
+#: any claim on it" escape hatch fired constantly once the last utterance was a
+#: reply rather than fresh ground, pressing 2 of 4 dodges and 2 of 4 genuine
+#: answers. No prohibition, and no discrimination either.
+#:
+#: What the criterion turns on is the fix. Asking the model *"did they dodge?"*
+#: scores 4 of 4 on dodges and **4 of 4 on real answers** — a model asked for a
+#: judgement returns the agreeable one. Asking whether the reply contains a
+#: figure, name, date or mechanism is checkable, and scores 4 of 4 against 1-2 of
+#: 4. The same split `docs/auditor-grounding.md` is built on: the model reads,
+#: the decision is made against something that cannot be talked into existence.
+#:
+#: The cap is what keeps this from restoring the original bug. Uncapped, a vague
+#: presenter — which is every presenter worth rehearsing — pushes the busiest
+#: archetype from 4 of 8 to 5.5 of 8. Capped it returns to 4 of 8 while still
+#: pressing 3-4 of 4 dodges. Chosen by the architect, 2026-08-17, over pressing
+#: freely and over not pressing at all.
+#:
+#: The Auditor overrules all of it regardless: a finding routes by domain in
+#: `panel.interrogate` and never reaches this prompt, so a contradiction is put
+#: by whoever owns it whether or not they just spoke.
+#:
+#: The quoted phrases are stamped on the roster by `_silence_of`. Reword either
+#: side alone and the rules quote a marking that is not there;
+#: `test_the_rules_and_the_roster_use_the_same_words_for_silence` is what makes
+#: that fail loudly rather than silently.
 _SELECTION_INSTRUCTION = (
     "You are directing a panel. Given what the presenter just said and who is in "
-    "the room, name the single panelist who should speak next. Prefer whoever's "
-    "expertise the answer just touched, whoever has been quiet, or whoever would "
-    "disagree with what was said last. Reply with the name and nothing else."
+    "the room, name the single panelist who should speak next.\n\n"
+    "Each panelist in the roster is marked with how long they have been off the "
+    "floor. A room where one person asks everything is a failure, however "
+    "relevant that person is.\n\n"
+    "Decide in this order:\n"
+    "1. A panelist marked 'has not spoken yet' takes the floor, unless the "
+    "answer is squarely somebody else's ground.\n"
+    "2. Look at what the panelist marked 'spoke last turn' asked for. If the "
+    "presenter's reply contains no figure, no name, no date and no mechanism "
+    "that answers it — only reassurance, restatement or a change of subject — "
+    "that panelist takes the floor again and presses. A panelist marked 'spoke "
+    "the last two turns' has already pressed once and never takes the floor a "
+    "third time, however badly the presenter answered. If the reply contains a "
+    "specific of any kind, it was answered: pick somebody else even if the "
+    "answer was weak.\n"
+    "3. Otherwise pick whoever the answer just touched, or whoever would "
+    "disagree with it — but never the panelist marked 'spoke last turn'.\n"
+    "4. On a tie, pick whoever has been silent longest.\n\n"
+    "Reply with the name and nothing else."
 )
 
 
 def _selection_prompt(candidates: Sequence[Archetype], context) -> str:
-    """The whole room, attributed.
+    """The whole room, attributed, with each panelist's silence counted.
 
     Who has been quiet and what ground is covered is precisely what this call is
     for. The roster is sent as written, which is what makes a custom archetype
     work with nothing registered anywhere — its persona is just more text.
+
+    The silence is counted here rather than left in the transcript for the model
+    to derive. Measured, a model asked to do that arithmetic mid-room gets it
+    wrong in the direction that matters: it picked the same panelist three turns
+    running while being told not to. Counting is what code is for.
     """
     roster = "\n".join(
         f"- {archetype.name}: {archetype.title}. {archetype.attack_strategy}"
+        f" [{_silence_of(archetype, context)}]"
         for archetype in candidates
     )
     # Both sides, in order. A list of the panel's questions with no answers
@@ -321,6 +379,38 @@ def _bare_name(answered: str) -> str:
     """
     stripped = answered.strip().strip('*"\'`.,:;!?')
     return stripped.split()[0].lower() if stripped.split() else ""
+
+
+def _silence_of(archetype: Archetype, context) -> str:
+    """How long this panelist has been off the floor, in turns.
+
+    Words rather than a number, because the ordering in `_SELECTION_INSTRUCTION`
+    turns on three cases and a model reading `[0]` has to know which end of the
+    scale it is on. "spoke last turn" is the one that has to be unmissable — it
+    is the only annotation with a rule attached to it.
+
+    Only panel turns are counted. Including the presenter's would double every
+    distance and make "spoke last turn" unreachable, so the rule that depends on
+    it would never fire — the same failure this whole change exists to fix,
+    arriving by a different route. It is also what makes the two-turn case mean
+    anything: a follow-up *has* the presenter's reply in the middle of it, so
+    consecutive panel turns are never consecutive transcript lines.
+    """
+    spoken = [line for line in context.grounding.transcript if line.speaker != USER]
+
+    # Checked before the distance scan, because both would answer for the same
+    # archetype and the cap is the stronger statement — "spoke last turn" invites
+    # a press and this forbids one.
+    recent = [line.speaker for line in spoken[-2:]]
+    if len(recent) == 2 and recent[0] == recent[1] == archetype.name:
+        return "spoke the last two turns"
+
+    for distance, line in enumerate(reversed(spoken)):
+        if line.speaker == archetype.name:
+            if distance == 0:
+                return "spoke last turn"
+            return f"silent for {distance} turn{'s' if distance > 1 else ''}"
+    return "has not spoken yet"
 
 
 def _composition_prompt(context, finding, archetype: Archetype) -> str:

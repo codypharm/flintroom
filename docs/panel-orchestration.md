@@ -702,6 +702,169 @@ model largely ignores it, so the model path has no counterpart to
 routing would have bought nothing measurable and spent the headroom the overlap
 depends on.
 
+## Giving the floor away, 2026-08-17
+
+The bias above, fixed. Same corpus, same roster, same model, so the numbers sit
+directly against the table in the previous section:
+
+| routing sees | before | after |
+| --- | --- | --- |
+| 3 words | cfo ×7, skeptic ×1 | cfo ×3, skeptic ×3, champion ×2 |
+| 6 words | cfo ×5, skeptic ×3 | cfo ×3-4, skeptic ×3-4, champion ×1 |
+| 12 words | cfo ×5, skeptic ×3 | cfo ×3, skeptic ×3, champion ×2 |
+| the finished sentence | cfo ×4, skeptic ×3, champion ×1 | cfo ×2-3, skeptic ×3, champion ×2-3 |
+
+Three distinct archetypes at every prefix length, against one or two before.
+The Champion previously spoke **once in forty selections** and never at the
+lengths a live room actually routes on.
+
+Ranges where two runs of `scripts/rotation.py` disagreed, and they are the honest
+form: the exact split moves by a turn between runs and nothing here should be
+read as a fixed number. What holds across every run is the shape — three voices
+at every prefix length, and the CFO leading rather than monopolising.
+
+### The data was never the missing part
+
+Two changes, and it is worth recording that the obvious one is the weaker one.
+
+**Annotating the roster** — each panelist marked `[has not spoken yet]`,
+`[spoke last turn]` or `[silent for N turns]` by `_silence_of` — and changing
+nothing else moved 5 of 8 to **6 of 8**. Slightly worse. The model was handed the
+silence it had been asked to weigh and declined to weigh it.
+
+**Ranking the criteria** is what worked. The instruction had named three
+considerations joined by *or* — relevance, silence, disagreement — and left the
+model to balance them. It balanced them by taking the one it can always justify.
+Relevance is defensible on every single turn; "somebody else has been quiet" is
+never defensible on any particular turn, only across a room. An unordered list of
+criteria where one is locally justifiable and the others are only globally
+justifiable collapses to the first, and that is a general shape worth remembering
+rather than a fact about this prompt.
+
+Replaced with numbered steps and one hard prohibition: a panelist who has not
+spoken takes the floor unless the ground is squarely somebody else's; otherwise
+relevance decides, but never the panelist marked as having just spoken.
+
+### Both halves are needed, for different reasons
+
+The ranked instruction alone — the model counting silence out of the transcript
+itself — reaches the same spread. It does not reach the same rooms:
+
+```
+ranked instruction only   cf cf cf te te ch ch te   ← three CFO turns running
+with the roster counted   cf te ch cf te cf ch te   ← never twice in a row
+```
+
+Asked to both count and decide, the model approximates the count and the hard
+prohibition stops binding. Counting turns is arithmetic, code does it exactly,
+and it costs about five tokens per panelist on a call already sending the roster.
+
+The coupling this creates is real and invisible: the rules quote the exact
+phrases `_silence_of` stamps. Reword either side alone and the request still goes
+out, still parses, still returns a name — and the room quietly returns to one
+voice. `test_the_rules_and_the_roster_use_the_same_words_for_silence` exists so
+that fails loudly instead.
+
+### Pressing a dodge, without holding the floor
+
+The first draft of rule 2 forbade consecutive turns outright. That was wrong
+twice over, and the second way is the instructive one.
+
+It gave up the sharpest move a room has. *"That is not what I asked"* is the
+single most useful thing a panel does — `routing.py` says so in its own
+docstring, and `test_the_router_sees_the_conversation_and_not_just_the_questions`
+exists precisely so the model can tell an answered question from an evaded one.
+A rule forbidding the follow-up makes that signal unusable in the only case it is
+collected for. It also cuts against the wedge: a CFO who asks where 61% comes
+from, is told *"margin has always been a strength for us"*, and then rotates
+politely away is the room `Product.md` §1 exists to refuse.
+
+**And it did not do what it claimed.** Measured on
+`scripts/followup.py` — eight scenarios, four genuine dodges and four real
+answers to the same four questions — the "unless nobody else has any claim on it"
+escape hatch fired constantly once the last utterance was a *reply* rather than
+fresh ground: 2 of 4 dodges pressed and 2 of 4 answers pressed. No prohibition,
+and no discrimination either. The rotation corpus never showed this because every
+utterance in it opens new ground.
+
+### Ask for something checkable, not for a judgement
+
+| rule 2 says | presses a dodge | presses a real answer |
+| --- | --- | --- |
+| never follow up (first draft) | 2/4 | 2/4 |
+| "if the presenter dodged, press" | 4/4 | **4/4** |
+| "if the reply contains no figure, name, date or mechanism, press" | 4/4 | 1-2/4 |
+
+The middle row is the finding worth keeping. Asked whether the presenter dodged,
+the model says yes every time — a judgement invites the agreeable answer, and a
+rule that always fires is not a rule. Asked whether the reply contains a
+*specific*, it discriminates cleanly.
+
+This is the same split `docs/auditor-grounding.md` is built on, arriving
+somewhere it was not expected: let the model read, and decide against something
+that cannot be talked into existence.
+
+### The cap, and what it is buying
+
+A follow-up rule that fires correctly still concentrates the room, because the
+presenter it fires on is vague — and a vague presenter is every presenter worth
+rehearsing. Same corpus, same model, only rule 2 varying:
+
+| rule 2 | busiest archetype | consecutive repeats |
+| --- | --- | --- |
+| never follow up | 4.0 / 8 | 0.5 |
+| press, uncapped | 5.5 / 8 | 4.0 |
+| **press once, then yield** | **4.0-4.5 / 8** | **2.5-3.0** |
+
+So the cap buys back essentially all of the rotation while keeping 3-4 of 4
+dodges pressed. A panelist may press their own question; they may not press the
+press. It hangs on a fourth marking, `spoke the last two turns`, counted in
+`_silence_of` — and counted in *panel* turns, since a follow-up has the
+presenter's reply in the middle of it and consecutive panel turns are never
+consecutive transcript lines.
+
+**Chosen by the architect on 2026-08-17**, over pressing freely and over not
+pressing at all. It is panel tone, which `CLAUDE.md` reserves.
+
+The Auditor overrules all of it regardless: a finding routes by domain in
+`panel.interrogate` and never reaches this prompt, so a contradiction is put by
+whoever owns it whether or not they just spoke.
+
+`routing.py`, the keyword fallback, is untouched: it already weighs silence
+against relevance numerically (`QUIET_WEIGHT` against `DOMAIN_WEIGHT`) and only
+runs when the model call fails or names nobody.
+
+### Known: a truncated reply looks like an evasion
+
+Rule 2 asks whether the reply contains a specific, and a three-word prefix
+almost never does — so routing on an early partial reads every utterance as a
+dodge. It shows up consistently: across runs the 3-word and 6-word columns carry
+the worst concentration (cfo ×5-6 of 8) while 12-word and full sit at 3-4.
+
+That is the production path, so it matters. The fix is cheap and not yet
+built — the room *knows* whether it is looking at a partial, and the instruction
+does not say. Filed rather than bolted on, because it wants its own measurement.
+
+### What the longer prompt cost
+
+The instruction nearly trebled and the roster gained a marking per panelist, on a
+call that sits inside a 1.5s budget. Measured twice, twelve calls each time,
+alternating old and new against the same context so a slow minute lands on both:
+
+| | input tokens | median | range |
+| --- | --- | --- | --- |
+| before | 265 | 0.69s / 0.73s | 0.58 – 1.07s |
+| after | 473 | 0.75s / 0.66s | 0.58 – 0.88s |
+
+**No measurable cost.** The two runs disagree on the sign, so the difference is
+smaller than the noise — which is the honest reading and not the +0.06s the first
+run alone appeared to show. 200 extra input tokens on a prompt this small do not
+register; the output is still two tokens either way.
+
+None of it would reach the user regardless. Selection starts on the first partial
+and overlaps the tail of the utterance, and if it is outrun `_take_routing`
+cancels it and `routing.choose` answers instantly.
+
 ### Still open
 
 - **~2.15s to first audio against 1.5s.** Closer, not closed. What remains is
