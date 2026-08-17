@@ -19,7 +19,10 @@ comparison needed a model to test, the split has leaked.
 
 from __future__ import annotations
 
-from app.agents.auditor import Auditor, SpokenClaim
+import pytest
+
+from app.agents.auditor import Auditor, ClaimReading, SpokenClaim
+from app.core.errors import ProviderUnavailable
 from app.modules.ingestion.schemas import QuantitativeClaim, Unit
 
 
@@ -144,3 +147,95 @@ def test_a_figure_restated_unchanged_is_somebody_being_consistent():
     auditor.hear(said("ARR", 1_200_000, at=45, unit=Unit.USD))
 
     assert auditor.hear(said("ARR", 1_200_000, at=400, unit=Unit.USD)) is None
+
+
+# --- Reading figures out of speech -----------------------------------------
+#
+# The model's entire job, and the boundary `mocking.md` allows a fake at. What
+# stays real is everything we decide: when a claim is stamped, what happens to
+# the room when the model fails, and what a reading costs.
+
+
+class ScriptedReader:
+    """A claim reader that answers with whatever the test handed it."""
+
+    def __init__(self, *readings: ClaimReading) -> None:
+        self._readings = list(readings)
+        self.heard: list[str] = []
+
+    async def read(self, *, said: str) -> ClaimReading:
+        self.heard.append(said)
+        return self._readings.pop(0) if self._readings else ClaimReading()
+
+
+def figure(metric: str, value: float, *, unit: Unit = Unit.PERCENT,
+           period: str | None = "Q3 2026") -> QuantitativeClaim:
+    return QuantitativeClaim(
+        quote="spoken", metric=metric, value=value, unit=unit, period=period
+    )
+
+
+async def test_a_figure_spoken_now_is_checked_against_one_spoken_earlier():
+    """The tracer bullet for the live path: speech in, a grounded catch out.
+
+    The Auditor's comparison is pure and needs no model; this is the edge where
+    a model turns an utterance into something comparable. Two responsibilities
+    meet here and only one of them is the model's — it reads figures out of
+    speech, and the room decides what they mean.
+
+    The moment is stamped here rather than by the model, deliberately. A model
+    asked what time it is will answer, plausibly and wrongly, and the timestamp
+    is half the evidence a panelist puts to the user.
+    """
+    reader = ScriptedReader(
+        ClaimReading(claims=(figure("gross margin", 61),)),
+        ClaimReading(claims=(figure("gross margin", 70),)),
+    )
+    auditor = Auditor(reader=reader)
+
+    assert await auditor.listen("Our gross margin is sixty-one.", at_seconds=120) is None
+    caught = await auditor.listen("Margin is seventy percent.", at_seconds=540)
+
+    assert caught is not None
+    assert "61" in caught.summary and "70" in caught.summary
+    # The moments come from the caller's clock, which is the point of stamping
+    # them here. A reading that lost them would still name both figures and
+    # would be an accusation the user cannot check.
+    assert "2:00" in caught.summary and "9:00" in caught.summary
+    assert reader.heard == ["Our gross margin is sixty-one.", "Margin is seventy percent."]
+
+
+async def test_a_reader_that_fails_costs_a_catch_and_never_the_room():
+    """A live metered interrogation must not end because a side-channel broke.
+
+    The Auditor is a background improvement to a room that already works: the
+    panel challenges what the user said whether or not anything was extracted.
+    Letting a reader failure propagate would take down a session — settling it,
+    refunding it, and losing the user the room they came for — over the loss of
+    one *additional* kind of question.
+
+    The same trade `select_speaker` makes for routing, and for the same reason:
+    in a live room a pause with nobody in it is the failure a user notices
+    first.
+    """
+
+    class Broken:
+        async def read(self, *, said: str) -> ClaimReading:
+            raise ProviderUnavailable(reason="claim_reader_error")
+
+    auditor = Auditor(reader=Broken())
+
+    assert await auditor.listen("Our margin is seventy.", at_seconds=60) is None
+
+
+async def test_a_deployment_with_no_reader_still_runs_rooms():
+    """One unconfigured model must not take the interrogation with it.
+
+    Same shape as `build_speaker` and `build_panel_model`: the process boots,
+    says so once, and the feature is absent rather than fatal. A room without a
+    claim reader still transcribes, routes, composes, speaks and captions — it
+    simply never catches a figure moving.
+    """
+    auditor = Auditor()
+
+    assert await auditor.listen("Our margin is seventy.", at_seconds=60) is None

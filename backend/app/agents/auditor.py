@@ -29,11 +29,16 @@ cannot survive.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from app.agents.context import Finding
+from app.agents.model import TurnUsage
+from app.core.errors import FlintroomError
+from app.core.logging import get_logger
 from app.modules.ingestion.schemas import QuantitativeClaim
+
+log = get_logger(__name__, tag="auditor")
 
 
 #: How far two figures may differ and still be the same figure, spoken twice.
@@ -91,6 +96,57 @@ def _clock(seconds: int) -> str:
     return f"{seconds // 60}:{seconds % 60:02d}"
 
 
+@dataclass(frozen=True, slots=True)
+class ClaimReading:
+    """The figures in one utterance, and what reading them cost.
+
+    Text and price together, for the reason `ModelReply` pairs them: the two
+    arrive from the same call, and separating them is how a cost gets attributed
+    to the wrong turn. `auditor_invocations` is already a column in
+    `session_costs` because §4.3 expects this to run per utterance rather than
+    once per deck, which is materially more calls than a document diff.
+
+    Empty by default. Most of what a person says in an interrogation carries no
+    figure at all, so *nothing here* is the ordinary answer rather than a
+    failure.
+    """
+
+    claims: tuple[QuantitativeClaim, ...] = ()
+    usage: TurnUsage = TurnUsage()
+
+
+class ClaimReader(Protocol):
+    """Whatever turns spoken words into typed figures.
+
+    Structural (`Protocol`) like `PanelModel` and `Transcriber`, so an adapter
+    is a class that happens to fit rather than one that had to import us.
+
+    **Not called an extraction model, deliberately.** `ingestion` already has an
+    `ExtractionModel` and the two are different jobs with opposite requirements:
+    that one is batch, latency-insensitive and runs once per deck; this one runs
+    inside a live metered room on every utterance. `CLAUDE.md` treats a name
+    collision as a real cost — it made `audit_log` and `auditor` distinct for the
+    same reason — and two things called extraction would make every search for
+    either useless.
+
+    **Its only job is reading.** It never decides what a figure means, whether
+    two disagree, or who should say so; every comparison is ordinary code in this
+    module. That split is structural rather than stylistic: it makes arithmetic
+    hallucination impossible instead of discouraged, and a confidently wrong
+    number in a panelist's mouth, live, is the one failure the grounding story
+    cannot survive.
+    """
+
+    async def read(self, *, said: str) -> ClaimReading:
+        """The figures in this utterance, if any.
+
+        **May raise, and the caller survives it.** This is a background
+        improvement to a room that already works, so a failure here costs a
+        kind of question and never the session.
+        """
+        ...
+
+
 @dataclass
 class Auditor:
     """One session's running claim set, and what it catches.
@@ -101,7 +157,71 @@ class Auditor:
     most data.
     """
 
+    #: Optional, on the same grounds as the speaker: a deployment without one
+    #: still transcribes, routes, composes, speaks and captions. It simply never
+    #: catches a figure moving, which is a feature absent rather than a room
+    #: broken.
+    reader: ClaimReader | None = None
+
     heard: list[SpokenClaim] = field(default_factory=list)
+
+    #: What every reading in this session has cost, accumulated. Reported to
+    #: `session_costs` rather than counted by the caller, because only the
+    #: adapter knows what the provider charged and only this object sees every
+    #: call.
+    spent: TurnUsage = TurnUsage()
+
+    #: How many times a reader was actually asked. §4.3 reserves the column, and
+    #: a count that is not the number of utterances is the interesting one: it
+    #: separates a room where extraction ran from one where it was configured
+    #: and silently failing.
+    readings: int = 0
+
+    async def listen(self, said: str, *, at_seconds: int) -> Finding | None:
+        """Read the figures out of one utterance and check them.
+
+        The moment is stamped here rather than taken from the model. A model
+        asked when something was said will answer, plausibly and wrongly, and
+        the timestamp is half the evidence a panelist puts to somebody — the
+        difference between an accusation and something the user can check.
+
+        **Every failure is swallowed.** The Auditor improves a room that already
+        works: the panel challenges what the user said whether or not anything
+        was extracted. Letting a reader failure out would settle the session and
+        refund it, losing the user the room they came for, over the loss of one
+        additional kind of question. Same trade as `select_speaker`, and the
+        same reason.
+        """
+        if self.reader is None:
+            return None
+
+        try:
+            reading = await self.reader.read(said=said)
+        except FlintroomError as refused:
+            # `reason` distinguishes a provider that is down from one that is
+            # slow, which are different problems with different fixes. Never the
+            # utterance — `CLAUDE.md` forbids transcripts in logs.
+            log.warning(
+                "claim_reading_failed",
+                reason=refused.context.get("reason", "unknown"),
+            )
+            return None
+
+        self.readings += 1
+        self.spent = TurnUsage(
+            input_tokens=self.spent.input_tokens + reading.usage.input_tokens,
+            output_tokens=self.spent.output_tokens + reading.usage.output_tokens,
+        )
+
+        # The first catch wins, and the rest of the utterance is still recorded.
+        # A panelist interrupts with one contradiction, not a list — and the
+        # figures that did not trigger anything are exactly what the next
+        # utterance will be checked against.
+        caught = None
+        for claim in reading.claims:
+            found = self.hear(SpokenClaim(claim=claim, at_seconds=at_seconds))
+            caught = caught or found
+        return caught
 
     def hear(self, spoken: SpokenClaim) -> Finding | None:
         """Take in one figure, and say whether it contradicts an earlier one.
