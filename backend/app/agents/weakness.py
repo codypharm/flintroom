@@ -1,291 +1,409 @@
-"""Reading a finished room back for what went wrong.
+"""Telling a finished room apart from what it looks like.
 
-`Product.md` §3.5 ranks weak answers; `docs/debrief-and-sparring.md` decision 2
-settles who decides one. **Code sets the floor; the model only orders what is
-left.**
+`Product.md` §3.5 wants a ranked weak-answer list. `docs/debrief-and-sparring.md`
+decision 2 puts that judgement in a reasoning model — reversed there, in the
+open, hours after the opposite was decided and built. No rule expressible in code
+can see a fluent, specific, confidently *wrong* answer, and catching exactly that
+is what §1 means by attacking substance rather than delivery.
 
-#43 is the reason for that division. Asked whether the presenter had dodged, a
-model said yes on 4 of 4 dodges *and* 4 of 4 genuine answers — an absolute
-judgement offered no alternative is not a signal, it is agreement. So the cases
-that can be decided are decided here, from properties of the transcript that are
-true or false rather than argued, and the model is left only the comparative
-ordering of what remains.
+**This module is not that judgement.** It is what has to happen before it can be
+made honestly.
 
-**No model in this module, structurally** — the refusal `auditor.py` makes, for a
-sharper reason. This is the artifact the coach, the prep sheet and #55's
-calibration all read. A fabrication here does not stay here: it propagates into
-three places at once, wearing the authority of a stored record, and the user is
-told they fumbled something they never said.
+Three facts about a room are absent from its transcript, and a model handed the
+raw text reads all three the same way — as the presenter ducking:
+
+- **The room ended here.** A hanging final question and an evasion are the same
+  bytes.
+- **This line cut across the previous question.** `Said.disputed`. Once written,
+  a disputing line is ordinary panel text following ordinary panel text.
+- **The Auditor caught a figure moving.** `Said.chosen_by == "finding"` — the
+  only trace that survives, since nothing persists a `Finding`.
+
+So this annotates. Each note is a fact the room held and the text lost, written
+plainly enough to sit in a prompt, and **nothing here decides anything**. The
+distinction matters: a model that is told *"the cap stopped the room here"* is
+better informed, where a model that is told *"this one is weak"* has been
+relieved of the job it is there to do.
+
+Verification lives here too, after the model: a weak answer must quote a line
+that exists. That is what keeps fabrication non-viable rather than discouraged,
+and it is the one property the first, code-first design had that this one is not
+allowed to lose.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+from typing import Protocol, runtime_checkable
 
 from app.agents.context import USER, Said
+from app.agents.model import TurnUsage
+from app.core.logging import get_logger
 from app.modules.sessions.schemas import EndReason
+
+log = get_logger(__name__, tag="debrief")
+
+
+#: The room hit its limit while this question was on the table.
+#:
+#: Phrased as a fact about the session rather than as an instruction about how to
+#: treat it. "Do not blame the presenter for this one" would be a rule, and #43
+#: measured what a model does with a rule it is asked to apply — it applies it,
+#: everywhere. A model told what happened can work out the rest, and a debrief
+#: that says *"the room ran out before you got to this"* is the sentence a person
+#: would say anyway.
+ENDED_AT_THE_CAP = "The session reached its time limit here, with this question unanswered."
+
+#: This panelist took issue with the previous one's priorities and moved the room
+#: onto its own question, before the presenter had answered.
+#:
+#: The turn shape #54 added, and the debt it created. The architect accepted the
+#: audible framing on the ground that the waved-away question survives in the
+#: transcript — which it does, illegibly. A disputing line is panel text
+#: following panel text, indistinguishable from a panelist who simply had the
+#: floor next, so this is the room saying what it knew at the time.
+#:
+#: Stated as what happened, not as who to excuse. What it implies about the
+#: question above is a reading, and reading is the model's job.
+CUT_ACROSS = (
+    "This panelist interrupted with a different priority; "
+    "the question above it was never answered."
+)
+
+#: The Auditor caught the answer above this line contradicting something the
+#: presenter had already said, and this line is the interruption it caused.
+#:
+#: The one piece of hard evidence a room produces, and it does not survive one.
+#: A `Finding` is read from an utterance, routes the next turn, and is discarded;
+#: `auditor.py` keeps every comparison in ordinary code so that a moving figure
+#: is arithmetic rather than an impression, and by the debrief that arithmetic is
+#: gone.
+#:
+#: A reasoning model can sometimes notice the same contradiction unaided.
+#: *Sometimes* is the objection: this is the product's sharpest claim about
+#: itself, and it should not be re-derived by inspection when the room already
+#: proved it deterministically.
+AUDITOR_CAUGHT = (
+    "A figure in the answer above this line contradicted one the presenter "
+    "gave earlier; that is what prompted this interruption."
+)
+
+
+@dataclass(frozen=True)
+class Annotated:
+    """One line of the room, plus what the room knew that the line does not say.
+
+    Carries its `ordinal` rather than relying on position, because this is what
+    the model is shown and what it must quote back. A weak answer arrives naming
+    an ordinal, and that ordinal has to mean the same thing on both sides of the
+    call.
+    """
+
+    ordinal: int
+    said: Said
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+def annotate(
+    transcript: Sequence[Said], *, ended: EndReason
+) -> tuple[Annotated, ...]:
+    """The room as the model should see it: the text, plus what it cannot show.
+
+    `ended` is required rather than defaulted. There is no safe value to assume —
+    a room stopped by the cap and a room stopped by ninety seconds of silence
+    produce an identical final line, and a default would quietly pick one of
+    those readings for every caller that did not think about it.
+    """
+    ending = _hanging_question(transcript)
+
+    return tuple(
+        Annotated(
+            ordinal=ordinal,
+            said=line,
+            notes=_notes_on(ordinal, line, ending=ending, ended=ended),
+        )
+        for ordinal, line in enumerate(transcript)
+    )
+
+
+def _notes_on(
+    ordinal: int, line: Said, *, ending: int | None, ended: EndReason
+) -> tuple[str, ...]:
+    """What the room knew about this line and the transcript does not record.
+
+    A tuple because one line can carry more than one — the room can perfectly
+    well run out of time on a question that was itself an interruption.
+    """
+    notes: list[str] = []
+
+    if line.disputed:
+        notes.append(CUT_ACROSS)
+    if line.chosen_by == "finding":
+        notes.append(AUDITOR_CAUGHT)
+    if ordinal == ending and _ran_out(ended):
+        notes.append(ENDED_AT_THE_CAP)
+
+    return tuple(notes)
+
+
+def _ran_out(ended: EndReason) -> bool:
+    """Whether the room stopped for a reason that was not the presenter's silence.
+
+    `IDLE_TIMEOUT` is the exception and gets no note: it means no user speech
+    while the panel awaited an answer, for ninety seconds. Silence that long in
+    front of a question is not the clock running out, it is an answer.
+    """
+    return ended is not EndReason.IDLE_TIMEOUT
+
+
+def _hanging_question(transcript: Sequence[Said]) -> int | None:
+    """The question the room stopped on, or `None` if it did not stop on one.
+
+    Strictly the last line, and only if the panel said it. The looser reading —
+    the last *panel* line anywhere in the transcript — was written first and is
+    wrong: a room whose final exchange was a question and an answer would have
+    that question marked as the one time ran out on, while the answer to it sits
+    directly underneath.
+
+    Which is worse than an omission. A note is a fact handed to a model that has
+    no way to check it, so a false one is believed, and this particular false one
+    would tell somebody the clock robbed them of a question they answered.
+    """
+    if not transcript or transcript[-1].speaker == USER:
+        return None
+    return len(transcript) - 1
 
 
 class Weakness(Enum):
-    """Why an answer is on the list.
+    """The vocabulary a weak answer may be filed under.
 
-    Carried rather than collapsed into a rank, because the coach has to *say*
-    which one it is and the four do not read alike. "Nobody answered this" and
-    "you answered without a number in it" are different conversations, and a
-    single severity score would leave the coach guessing at which it was holding.
+    Fixed, and the model must choose from it. Free-text categories would be
+    unusable downstream — the prep sheet groups by this, sparring branches on it,
+    and #55 will count it — and a vocabulary that drifts between runs cannot be
+    counted at all.
+
+    Six, deliberately few. Every one of them is a sentence a person would
+    recognise about their own answer; a taxonomy finer than that is a taxonomy
+    nobody can tell apart, including the model choosing from it.
+
+    No `PRESSED`. A panelist asking twice is *evidence* rather than a kind of
+    weakness, it is plainly visible in the transcript without help, and the
+    answer it points at is already either evasive or unsupported. It survives in
+    the `why`, where it reads better anyway: "the CFO had to ask twice."
     """
 
-    #: The room moved on and the presenter never spoke.
+    #: Nobody answered it. The presenter moved on, or said nothing.
     UNANSWERED = "unanswered"
 
-    #: The room ended on this question. Structurally identical to `UNANSWERED`
-    #: and morally its opposite — the clock stopped it, not the presenter.
-    #:
-    #: Kept on the list rather than dropped: §3.5's artefact is "the 6 questions
-    #: you will get", and a question the room ran out of time on is
-    #: unambiguously one of them. Only the sentence beside it changes.
+    #: A colleague took issue with its priority and moved the room on, before
+    #: the presenter had the floor. Not their fault; still their question.
+    DISMISSED = "dismissed"
+
+    #: The room ended on it. The clock, not the presenter.
     NOT_REACHED = "not_reached"
 
-    #: The Auditor caught the answer contradicting something already said.
-    #:
-    #: The only weakness here that is not a reading of anything. `auditor.py`
-    #: keeps every comparison in ordinary code specifically so that "arithmetic
-    #: hallucination becomes impossible rather than discouraged" — the number was
-    #: seventy and then it was sixty-one, and no judgement is involved in saying
-    #: so. That is why it outranks a press: one is a panelist's dissatisfaction,
-    #: the other is a demonstrable inconsistency.
+    #: A figure moved. The Auditor's catch, or the same thing spotted on reading.
     CONTRADICTED = "contradicted"
 
-    #: It was answered, and the same panelist asked again.
-    #:
-    #: The room's own live judgement, made with the whole conversation in view by
-    #: the archetype whose subject it was. #43 gave a panelist the right to press
-    #: its own unanswered question once, and one exercising that right is better
-    #: evidence than anything computed after the fact — which is why this sits in
-    #: the code floor rather than in the model's share of the ranking.
-    PRESSED = "pressed"
+    #: Asserted with nothing behind it — no figure, no source, no mechanism.
+    UNSUPPORTED = "unsupported"
 
-    #: A colleague took issue with its priorities and moved the room on. The
-    #: presenter never had the floor.
-    #:
-    #: The obligation #54 created. The audible framing of inter-panelist
-    #: disagreement was chosen knowing it is mildly dismissive, on the ground
-    #: that the safety net is architectural rather than lexical — this is that
-    #: net, and without it the room can talk somebody out of answering a question
-    #: and then blame them for not answering it.
-    DISMISSED = "dismissed"
+    #: Answered, fluently, but not the question that was asked.
+    EVASIVE = "evasive"
+
+
+@dataclass(frozen=True)
+class Judgement:
+    """What the model says about one question, before anything is believed.
+
+    Separate from `WeakAnswer` on purpose. This is a claim; a `WeakAnswer` is a
+    claim that survived checking, and collapsing the two would leave nothing in
+    the type system to distinguish what a model said from what is true.
+    """
+
+    #: Which line it is judging. Checked against `quote`, never trusted alone.
+    ordinal: int
+
+    #: The words it read there. The evidence that it read there at all.
+    quote: str
+
+    weakness: Weakness
+
+    #: The sentence the coach says. Prose, because this is the part a person
+    #: reads, and a category cannot tell somebody what was thin about an answer.
+    why: str
 
 
 @dataclass(frozen=True)
 class WeakAnswer:
-    """One question the room did not get a good enough answer to."""
+    """One question the room did not get a good enough answer to.
 
-    #: Where the *question* sits in the transcript, counted from zero.
-    #:
-    #: The question rather than the answer, because the question is what the
-    #: coach replays and what sparring re-asks — and because an unanswered
-    #: question has no answer line to point at.
-    #:
-    #: This is a position in the sequence handed to `weak_answers`. The store
-    #: passes lines in `ordinal` order, so the mapping is identity; keeping the
-    #: statement here rather than assuming it is what lets this module stay
-    #: testable without a database.
+    Every field but `weakness` and `why` is read from the transcript rather than
+    taken from the model. It cannot misquote what it is not asked to supply, and
+    the prep sheet showing a user their own words has to show *their* words.
+    """
+
     ordinal: int
-
     question: str
     asked_by: str
 
-    #: What the user said in reply, or `None` when they said nothing.
-    #:
-    #: Kept alongside the question because §3.5's artifact shows "where your
-    #: answers are thin", which is unreadable without the answer, and because
-    #: sparring compares a re-answer against the original.
+    #: What they said in reply, or `None` when they said nothing.
     answer: str | None
 
     weakness: Weakness
+    why: str
 
 
-def weak_answers(
-    transcript: Sequence[Said], *, ended: EndReason
+def verified(
+    judged: Sequence[Judgement], transcript: Sequence[Said]
 ) -> tuple[WeakAnswer, ...]:
-    """The ranked list, from a finished room.
+    """The judgements that survive being checked against the room.
 
-    Takes the transcript both sides, in order, exactly as `SessionTranscript`
-    returns it — `Said` rather than database rows, so a debrief grounded in a
-    finished session and a turn grounded in a live one reason about one shape.
+    Handing the verdict to a model buys the ability to see a fluent, confidently
+    wrong answer, which no rule in code can. What it must not buy is the ability
+    to invent one: a debrief that tells somebody they fumbled a question nobody
+    asked is worse than one that misses a real fumble, because it destroys the
+    premise that the product was listening.
 
-    `ended` is required rather than defaulted, because there is no safe value to
-    assume. A room that stopped at the cap and a room that stopped because the
-    presenter sat in silence produce an identical final line, and only one of
-    them is a dodge. A default would pick one of those readings for every caller
-    that forgot to think about it, silently.
+    So a judgement must name a line *and* quote it, and the two must agree. The
+    ordinal alone would be cheap — any integer in range looks plausible, and a
+    model that picked one without reading would pass. The quote is what makes
+    reading the only way through.
+
+    Dropped rather than raised. A model that got one of eight wrong has still
+    produced seven useful ones, and a debrief that refuses to open because a
+    single quote drifted is worse for the user than a debrief with seven items.
+    The drop is logged, because a quiet one is how a prompt regression becomes a
+    debrief that silently gets shorter.
     """
-    weak: list[WeakAnswer] = []
-    last_question = _last_question_in(transcript)
+    kept: list[WeakAnswer] = []
 
-    for ordinal, line in enumerate(transcript):
-        if line.speaker == USER:
+    for judgement in judged:
+        if not _quotes_the_room(judgement, transcript):
+            # Never the quote itself: it is transcript text either way — the
+            # model's copy of it, or its invention about a room — and
+            # `CLAUDE.md` forbids transcript text in logs without exception.
+            log.warning(
+                "weak_answer_unverified",
+                ordinal=judgement.ordinal,
+                weakness=judgement.weakness.value,
+            )
             continue
 
-        answer = _answer_to(transcript, ordinal)
-        weakness = (
-            _why(transcript, ordinal, last_question, ended)
-            if answer is None
-            else _how_the_answer_went(transcript, ordinal)
-        )
-        if weakness is None:
-            continue
-
-        weak.append(
+        line = transcript[judgement.ordinal]
+        kept.append(
             WeakAnswer(
-                ordinal=ordinal,
+                ordinal=judgement.ordinal,
                 question=line.text,
                 asked_by=line.speaker,
-                answer=answer,
-                weakness=weakness,
+                answer=_answer_to(transcript, judgement.ordinal),
+                weakness=judgement.weakness,
+                why=judgement.why,
             )
         )
 
-    return tuple(weak)
+    return tuple(kept)
 
 
-def _how_the_answer_went(
-    transcript: Sequence[Said], ordinal: int
-) -> Weakness | None:
-    """What is wrong with the answer that was given, or `None` if nothing is.
+def _quotes_the_room(judgement: Judgement, transcript: Sequence[Said]) -> bool:
+    """Whether the quoted words are really at the ordinal named.
 
-    Separate from `_why` because the two families are not comparable. `_why`
-    settles *whose* silence a missing answer was; this one reads an answer that
-    exists. Collapsing them would put "nobody spoke" and "the number was vague"
-    on one scale, and the coach has to say which it is holding.
+    Containment rather than equality, and normalised for case and whitespace. A
+    model quoting the clause it is judging out of a three-sentence question is
+    doing the right thing; failing it for that would train the prompt toward
+    copying whole lines, which makes the check pass without making it stronger.
     """
-    if _interrupted_by_the_auditor(transcript, ordinal):
-        return Weakness.CONTRADICTED
-    if _pressed(transcript, ordinal):
-        return Weakness.PRESSED
-    return None
+    if not 0 <= judgement.ordinal < len(transcript):
+        return False
+    return _plainly(judgement.quote) in _plainly(transcript[judgement.ordinal].text)
 
 
-def _interrupted_by_the_auditor(transcript: Sequence[Said], ordinal: int) -> bool:
-    """Whether a finding is what handed the next panelist the floor.
-
-    Which means the Auditor caught something in the answer to *this* question —
-    the turn it routes is always the one that follows the utterance it read.
-    """
-    caught = _next_question_after(transcript, ordinal)
-    return caught is not None and transcript[caught].chosen_by == "finding"
-
-
-def _pressed(transcript: Sequence[Said], ordinal: int) -> bool:
-    """Whether the panelist who asked this asked again straight after.
-
-    The next *question*, not the next line — an answer sits between them by
-    definition, which is what separates a press from #54's dispute. A dispute is
-    panel text immediately following panel text; a press is the same archetype
-    coming back around after hearing the reply and not being satisfied by it.
-
-    Only the immediately following question counts. A panelist returning to a
-    subject four turns later is a room circling, not a room judging one answer.
-    """
-    asked_again = _next_question_after(transcript, ordinal)
-    return (
-        asked_again is not None
-        and transcript[asked_again].speaker == transcript[ordinal].speaker
-    )
-
-
-def _next_question_after(transcript: Sequence[Said], ordinal: int) -> int | None:
-    """Where the panel speaks next, or `None` if this was the room's last word."""
-    for candidate in range(ordinal + 1, len(transcript)):
-        if transcript[candidate].speaker != USER:
-            return candidate
-    return None
-
-
-def _why(
-    transcript: Sequence[Said],
-    ordinal: int,
-    last_question: int | None,
-    ended: EndReason,
-) -> Weakness:
-    """Which of the three unanswered readings this is.
-
-    All three look identical in the transcript — a panel line with no user line
-    after it — and only one of them is the presenter's fault. Ordered so the
-    exonerating readings are tested first, because the cost of the two mistakes
-    is not symmetric: calling a dodge something else understates one line of a
-    debrief, and calling something else a dodge accuses somebody of ducking a
-    question they were never allowed to answer.
-    """
-    if _disputed_next(transcript, ordinal):
-        return Weakness.DISMISSED
-    if ordinal == last_question and not _went_silent(ended):
-        return Weakness.NOT_REACHED
-    return Weakness.UNANSWERED
-
-
-def _disputed_next(transcript: Sequence[Said], ordinal: int) -> bool:
-    """Whether the panel line that followed this one took issue with it.
-
-    Only the immediately following line, matching `dispute.contested`, which
-    offers a panelist only the line just spoken. A dispute two turns later is
-    not what moved the room off this question.
-    """
-    following = transcript[ordinal + 1 :]
-    return bool(following) and following[0].disputed
-
-
-def _went_silent(ended: EndReason) -> bool:
-    """Whether the room ended because the presenter stopped speaking.
-
-    The one end reason under which a hanging final question *is* the presenter's
-    to answer for. `IDLE_TIMEOUT` means no user speech while the panel awaited an
-    answer — ninety seconds of it — and silence that long in front of a question
-    is the most eloquent dodge available.
-    """
-    return ended is EndReason.IDLE_TIMEOUT
-
-
-def _last_question_in(transcript: Sequence[Said]) -> int | None:
-    """Where the room's final question sits, or `None` if it asked none.
-
-    The final *question*, not the final line: a room that ended with the user
-    still talking has no hanging question, and its last panel line was answered
-    by definition.
-    """
-    for ordinal in reversed(range(len(transcript))):
-        if transcript[ordinal].speaker != USER:
-            return ordinal
-    return None
+def _plainly(text: str) -> str:
+    """Case- and whitespace-insensitive, so a reflowed quote still matches."""
+    return " ".join(text.lower().split())
 
 
 def _answer_to(transcript: Sequence[Said], ordinal: int) -> str | None:
-    """What the user said to the question at `ordinal`, if anything.
+    """What the presenter said in reply to the question at `ordinal`, if anything.
 
-    Everything up to the next panel line, because a presenter answering a hard
-    question pauses, and a pause is two transcript lines rather than one. Reading
-    only the line immediately after would score somebody as unanswered for
-    breathing.
+    Everything up to the next panel line, because a person answering a hard
+    question pauses, and a pause is two transcript lines rather than one.
     """
-    spoken = [
-        line.text
-        for line in _until_the_room_speaks_again(transcript, ordinal)
-        if line.speaker == USER
-    ]
-    return " ".join(spoken) if spoken else None
-
-
-def _until_the_room_speaks_again(
-    transcript: Sequence[Said], ordinal: int
-) -> list[Said]:
-    """The lines between this question and whatever the panel said next."""
-    following: list[Said] = []
+    spoken: list[str] = []
 
     for line in transcript[ordinal + 1 :]:
         if line.speaker != USER:
             break
-        following.append(line)
+        spoken.append(line.text)
 
-    return following
+    return " ".join(spoken) if spoken else None
+
+
+@dataclass(frozen=True)
+class WeaknessReading:
+    """What a reader said about a room, and what saying it cost.
+
+    Text and price arrive together, the pairing `ModelReply` already makes. The
+    debrief is unmetered but not free, and §4.3 names the unmetered phases as the
+    model's largest uncontrolled exposure — a seam that returned only judgements
+    would leave the one call this phase makes invisible to the only table that
+    reconciles against an invoice.
+    """
+
+    judged: tuple[Judgement, ...] = ()
+    usage: TurnUsage = TurnUsage()
+
+
+@dataclass(frozen=True)
+class Ranked:
+    """The room's weak answers, verified, and what reading them cost."""
+
+    answers: tuple[WeakAnswer, ...] = ()
+    usage: TurnUsage = TurnUsage()
+
+
+#: Checkable at runtime for the reason `TranscriptStore` and `ClaimReader` are:
+#: there is no base class to inherit and no type checker in the suite, so an
+#: adapter that drifted off this seam would stay green everywhere and surface as
+#: a debrief that never finds anything — which reads exactly like a good room.
+@runtime_checkable
+class WeaknessReader(Protocol):
+    """Whatever reads a finished room and says what went badly in it."""
+
+    async def rank(self, *, room: Sequence[Annotated]) -> WeaknessReading:
+        """Judge the room. One call, offline, after everything.
+
+        Takes `Annotated` rather than `Said`, and that is the seam's whole point:
+        a reader handed the raw transcript cannot tell a question the clock took
+        away from one the presenter ducked, and will say so confidently.
+
+        Returns `Judgement`s — claims, not conclusions. Every one is checked
+        against the transcript before anything downstream believes it.
+
+        **May raise, and the caller must survive it.** Unlike a turn, nothing is
+        live here, so a failure costs a retry rather than silence in a room.
+        """
+        ...
+
+
+async def weak_answers(
+    transcript: Sequence[Said], *, ended: EndReason, reader: WeaknessReader
+) -> Ranked:
+    """What went badly in this room, ranked, from a finished transcript.
+
+    Three steps and each belongs where it is. Code annotates, because the facts
+    involved are not in the text and no amount of reading recovers them. The
+    model judges, because that is reading and code cannot do it. Code verifies,
+    because a claim about a room can be checked against the room.
+
+    The order the reader returns is kept. It is the ranking — that is what was
+    asked for — and re-sorting by category here would overrule a judgement made
+    with the whole room in view using a table written before any room existed.
+    """
+    reading = await reader.rank(room=annotate(transcript, ended=ended))
+
+    return Ranked(
+        answers=verified(reading.judged, transcript), usage=reading.usage
+    )

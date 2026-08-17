@@ -77,50 +77,88 @@ including abandoned ones, and abandoned ones will now have none. Accepted — a
 user who walked out of a room is a poor signal for how hard the next one should
 be.
 
-### 2. Code sets the floor; the model only orders what is left
+### 2. The model judges; code supplies what the transcript does not carry
 
-The Auditor's rule, applied to a second problem: *"No model here, structurally.
-The model's only job is pulling figures out of speech into a typed claim; every
-comparison is ordinary code."*
+**Reversed 2026-08-17, hours after it was taken, on the architect's push.** The
+original decision put the verdict in code and left the model only a comparative
+ordering of what the rules had not already caught. It was built, committed, and
+is wrong. The reasoning below is the replacement; the original is preserved at
+the end of this section, because the argument that overturned it is worth more
+than the conclusion.
 
-Four properties of an answer are checkable without judgement:
+A reasoning model reads the transcript, decides which answers were weak, ranks
+them, and writes the reason. Code annotates first and verifies after.
 
-| Signal | Where it comes from |
+**Why the model.** Two things settle it.
+
+*The hole was where the product lives.* No rule expressible in code can see a
+fluent, specific, confidently **wrong** answer. It has a figure in it, it is on
+topic, nobody presses it, and it contradicts nothing else said — so it passes
+every structural check there is. But catching exactly that is what §1 means by
+attacking *substance* rather than delivery, and a debrief that misses it is
+scoring the shape of a conversation rather than its content.
+
+*This is the only place in the product that can afford a good model.* Everything
+else is fighting a clock: the panel has ~1.5s before the room stops feeling real
+(Open Risk #3), and the Auditor's claim read already costs 0.97s and had to be
+pushed a turn late to stay off the critical path. The debrief runs **once, after
+the room, offline**, on a transcript of a few thousand tokens. A long think costs
+cents against a room that cost ~$0.48 to hold. The constraint that shaped every
+other agent decision in this codebase simply is not present here, and the first
+design carried it over out of habit.
+
+**What #43 actually proved, stated precisely**, because it had been doing more
+work than it can bear. It measured a **binary** judgement, on **one utterance**,
+**live**, with no alternative on offer — *"did the presenter dodge?"* — and got
+yes on 4 of 4 dodges and 4 of 4 genuine answers. *"Rank these eight answers
+worst-first and quote the line you are judging"* is a different task and a
+different instrument. #43 still rules out asking a model whether a rule applies.
+It does not rule out asking one to read.
+
+**What code still owns, and cannot hand over.** Three facts are not in the
+transcript at all, and a model given the raw text will read all three as a dodge
+— correctly, because there is nothing there to read otherwise:
+
+| Fact | Why the text cannot carry it |
 | --- | --- |
-| Nobody answered it at all | Transcript structure — a panel question with no user line after it |
-| A panelist pressed it again | #43's press rule; the room judged it live, with better context than any retrospective pass has |
-| The Auditor caught a contradiction in it | `Finding`, already typed and already domain-routed |
+| The room ended here | A hanging final question and an evasion are the same bytes |
+| This line cut across the previous question | `disputed`; once written, a disputing line is ordinary panel text |
+| The Auditor caught a figure moving | `chosen_by="finding"`; nothing persists a `Finding` |
 
-Those rank top, with no model involved. The model then ranks **only the
-answered-but-questionable remainder**, and must quote the transcript line it is
-judging; a citation that does not match a stored line is dropped.
+So code **annotates** the transcript with what only the room knew, and the model
+reads the annotated version. That is not a judgement being withheld from the
+model — it is evidence being handed to it. The two columns added for the old
+design are needed more under this one, not less: they are now the model's only
+protection against accusing somebody of ducking a question that was taken away
+from them.
 
-> **Corrected 2026-08-17, during implementation.** This decision originally
-> listed a fourth floor signal — *"the answer contains no figure, name, date or
-> mechanism"*, the four specifics the composition prompt already reasons about.
-> It does not survive contact with code. **Mechanism is not detectable without
-> judgement**, and a check that fires on the other three would flag *"we rebuilt
-> the ingestion path so retries stop duplicating rows"* — a mechanism, precisely
-> answered, containing no figure and no date. That is a false accusation, and
-> `docs/auditor-grounding.md` sets the priority between the two errors
-> explicitly: *"a missed catch costs one challenge, a false one costs the room
-> its credibility."*
->
-> So the presence of a figure or a date is computed and **handed to the model as
-> an observation**, not applied as a verdict. It makes the comparative ranking a
-> choice between things with evidence attached rather than a matter of taste,
-> which is what that call is for. The floor keeps only what is certain.
+**What code still owns, after.** Every weak answer must quote the transcript line
+it is about, and a quote that does not match a stored line is dropped. The
+category comes from a fixed vocabulary; an unrecognised one is dropped too.
+Fabrication stays non-viable rather than discouraged — which is the one property
+the first design had that this one must not lose.
 
-This is not #43 again, and the difference is precise. #43 asked for an absolute
-yes/no with no alternative on offer, and got yes every time. Ranking the worst
-three of eight is a **forced choice** — the model has to discriminate to produce
-an answer at all. The residual failure is a bad ordering, not a fabricated
-finding, because the quote check makes fabrication non-viable rather than
-discouraged.
+**Accepted costs**, recorded so they are not discovered as surprises:
 
-*Known hole:* a fluent, specific, confidently **wrong** answer looks strong to
-every one of the four code signals. The Auditor catches it only when it
-contradicts something else the user said. Recorded rather than solved.
+- The ranking will vary between runs on the same transcript. It gets measured
+  against real rooms, the way #43 and #54 were, rather than assumed.
+- A model having an off run can silently omit an unanswered question. #56's
+  obligation rides on that never happening, so it is the first thing the
+  measurement script counts.
+- A per-debrief model call now exists where none did. It lands in
+  `session_costs.debrief_seconds`' neighbourhood and §4.3 wants it counted.
+
+> **The original decision, kept.** *Code sets the floor; the model only orders
+> what is left.* Four properties of an answer were held to be checkable without
+> judgement — nobody answered it, a panelist pressed it again, the Auditor caught
+> a contradiction, and the answer contained no figure, name, date or mechanism.
+> The fourth was already withdrawn during implementation: mechanism is not
+> detectable without judgement, and firing on the other three would flag *"we
+> rebuilt the ingestion path so retries stop duplicating rows"* as evasive — a
+> false accusation, and `docs/auditor-grounding.md` prices the two errors
+> against each other explicitly (*"a missed catch costs one challenge, a false
+> one costs the room its credibility"*). The remaining three survive as
+> annotations rather than verdicts.
 
 ### 3. The coach's scope is enforced by cite-or-redirect
 
