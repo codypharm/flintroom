@@ -36,6 +36,19 @@ class AuditEventType(str, Enum):
     TOPUP_PURCHASED = "topup_purchased"
     WEBHOOK_REJECTED = "webhook_rejected"
 
+    #: Somebody asked for their account to be deleted, and the window opened.
+    ACCOUNT_DELETION_REQUESTED = "account_deletion_requested"
+
+    #: They signed in during the window and it was called off. Worth proving
+    #: separately: a deletion reversed is exactly the thing somebody asks about
+    #: later, and "we have no record of that" is not an answer.
+    ACCOUNT_DELETION_CANCELLED = "account_deletion_cancelled"
+
+    #: The window closed and the purge ran. The row outlives the account by
+    #: design — `audit_events` carries no foreign keys precisely so a record
+    #: cannot disappear with the thing it describes.
+    ACCOUNT_DELETED = "account_deleted"
+
     # Retention. The row outlives the thing it describes, which is the whole
     # point here: a promise to destroy a document is unfalsifiable without a
     # record that the user asked and we acted.

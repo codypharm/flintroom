@@ -24,6 +24,39 @@ class Account(Base):
     #: Monotonic counter, not a calendar key. It advances once per elapsed
     #: entitlement period and makes the allowance grant idempotent by
     #: construction: the key is derived from it, so a re-grant cannot insert.
+    #: When somebody asked for this account to be deleted, or null.
+    #:
+    #: A timestamp on the account rather than a state, for the reason
+    #: `grace_started_at` is one on a session: nothing about how the account
+    #: behaves changes during the window — the balance is still the balance and
+    #: the sweeps still sweep — so a state would double the table for no
+    #: behavioural difference.
+    #:
+    #: Null again once cancelled, which is what makes signing in able to call it
+    #: off (`docs/account-deletion.md` decision 5). Set once and never advanced:
+    #: a second request must not push the purge back another seven days, or the
+    #: deletion recedes from the person who asked for it.
+    deletion_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+
+    #: When the purge actually ran, or null.
+    #:
+    #: Two timestamps rather than clearing the first, because they answer
+    #: different questions: when somebody asked, and when it happened. The
+    #: request stays true after the purge, and the sweep needs to tell an
+    #: account it has already emptied from one whose window has just closed —
+    #: without that it would re-purge every pass, writing an audit row each time
+    #: and making the swept count useless as an alerting signal.
+    #:
+    #: **The row itself survives**, and that is the anonymisation working rather
+    #: than a leftover. `accounts` holds tier, period and three balances and
+    #: nothing identifying; once `auth_identities` is destroyed the `user_id` is
+    #: an opaque key, and the ledger and cost telemetry keep pointing at it.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     period_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     period_ends_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
