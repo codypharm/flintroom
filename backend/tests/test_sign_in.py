@@ -37,7 +37,7 @@ async def test_a_first_sign_in_creates_an_account(auth, google, db):
     """
     token = google.token_for(subject="google-1", email="dana@example.com")
 
-    user_id = await auth.sign_in(provider="google", id_token=token)
+    user_id = (await auth.sign_in(provider="google", id_token=token)).user_id
 
     account = await db.get(Account, user_id)
     assert account is not None
@@ -262,10 +262,12 @@ async def test_a_new_account_starts_with_the_free_minutes(auth, google, ledger):
     boundary and leaves this one alone — which is what "lifetime, never
     renewed" means in code rather than in prose.
     """
-    user_id = await auth.sign_in(
-        provider="google",
-        id_token=google.token_for(subject="google-1", email="dana@example.com"),
-    )
+    user_id = (
+        await auth.sign_in(
+            provider="google",
+            id_token=google.token_for(subject="google-1", email="dana@example.com"),
+        )
+    ).user_id
 
     balance = await ledger.balance(user_id=user_id)
     assert balance.free_seconds == FREE_TIER_LIFETIME_SECONDS
@@ -286,7 +288,7 @@ async def test_the_free_minutes_are_granted_once_per_user_ever(auth, google, led
     """
     token = google.token_for(subject="google-1", email="dana@example.com")
 
-    user_id = await auth.sign_in(provider="google", id_token=token)
+    user_id = (await auth.sign_in(provider="google", id_token=token)).user_id
     await auth.sign_in(provider="google", id_token=token)
     await auth.sign_in(provider="google", id_token=token)
 
@@ -301,10 +303,12 @@ async def test_linking_a_second_provider_does_not_grant_again(
     """Linking is the other door into an existing account, so it needs the
     same guard — and it is the one nobody thinks of, because it looks like a
     first sign-in from that provider's point of view."""
-    user_id = await auth.sign_in(
-        provider="google",
-        id_token=google.token_for(subject="google-1", email="dana@example.com"),
-    )
+    user_id = (
+        await auth.sign_in(
+            provider="google",
+            id_token=google.token_for(subject="google-1", email="dana@example.com"),
+        )
+    ).user_id
     await auth.sign_in(
         provider="apple",
         id_token=apple.token_for(subject="apple-1", email="dana@example.com"),

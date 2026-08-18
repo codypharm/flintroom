@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Mapping, Protocol
+from typing import Mapping, NamedTuple, Protocol
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -14,11 +14,33 @@ from app.core.errors import NotAuthenticated
 from app.core.logging import get_logger
 from app.modules.auth.models import AuthIdentity
 from app.modules.auth.oidc import ProviderIdentity
+from app.modules.billing.deletion import AccountDeletion
 from app.modules.billing.models import Account
 from app.modules.billing.service import LedgerService
 from app.modules.billing.tiers import FREE_TIER
 
 log = get_logger(__name__, tag="auth")
+
+
+class SignIn(NamedTuple):
+    """Who signed in, and the one thing that happened because they did.
+
+    A pair rather than a bare `user_id`, because `docs/account-deletion.md`
+    decision 5 makes signing in *do something*: it calls off a pending
+    deletion, and the user has to be told. An account that quietly un-deletes
+    itself is worse than one that stayed deleted — the user never learns their
+    data is still there.
+
+    Reported here rather than read from `GET /me` afterwards, because it is an
+    event and not a state. A moment later there is no pending deletion to
+    describe, and the one chance to say what happened has gone.
+    """
+
+    user_id: uuid.UUID
+
+    #: Whether this sign-in reversed a deletion. False on almost every call —
+    #: the ordinary path finds nothing to cancel.
+    deletion_cancelled: bool = False
 
 
 class IdentityVerifier(Protocol):
@@ -36,8 +58,16 @@ class AuthService:
         self._db = db
         self._verifiers = verifiers
 
-    async def sign_in(self, *, provider: str, id_token: str) -> uuid.UUID:
-        """Verify a provider token and return the user it belongs to."""
+    async def sign_in(self, *, provider: str, id_token: str) -> SignIn:
+        """Verify a provider token and return the user it belongs to.
+
+        **Also calls off a pending deletion**, which is a rule about the
+        product rather than about identity — `docs/account-deletion.md`
+        decision 5. It lives here rather than in the route handler because
+        `CLAUDE.md` keeps business logic out of routers, and because a second
+        entry point that signed somebody in *without* calling it off would
+        purge an account belonging to a user actively using the app.
+        """
         verifier = self._verifiers.get(provider)
         if verifier is None:
             # An unconfigured provider is a refused sign-in rather than a 404:
@@ -53,7 +83,7 @@ class AuthService:
             # grant is idempotent, so this costs one indexed read and repairs an
             # account whose creation succeeded while its grant did not.
             await self._ensure_free_minutes(known.user_id)
-            return known.user_id
+            return await self._admit(known.user_id)
 
         user_id = await self._linked_by_email(identity)
         if user_id is None:
@@ -114,10 +144,25 @@ class AuthService:
                 provider=identity.provider,
             )
             await self._ensure_free_minutes(winner_id)
-            return winner_id
+            return await self._admit(winner_id)
 
         await self._ensure_free_minutes(user_id)
-        return user_id
+        return await self._admit(user_id)
+
+    async def _admit(self, user_id: uuid.UUID) -> SignIn:
+        """Let them in, calling off a deletion if one was pending.
+
+        On every return path from `sign_in`, including the one that just
+        created the account — which cannot have a deletion pending, and costs
+        one indexed update to prove it. The alternative is three call sites
+        that have to stay in agreement, and the one that drifts is the one that
+        purges an account somebody is signed into.
+
+        No object store is involved and none is needed: this clears a column.
+        The purge that touches a bucket is the sweep's, seven days away.
+        """
+        cancelled = await AccountDeletion(self._db).cancel(user_id=user_id)
+        return SignIn(user_id=user_id, deletion_cancelled=cancelled)
 
     async def _ensure_free_minutes(self, user_id: uuid.UUID) -> None:
         """Product.md §4.4's 15 lifetime minutes, via the owning service.

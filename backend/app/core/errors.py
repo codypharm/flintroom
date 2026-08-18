@@ -498,6 +498,25 @@ class WebhookUnconfigured(FlintroomError):
     message = "Callbacks are not available."
 
 
+class DeletionSweepUnconfigured(FlintroomError):
+    """The account-deletion sweep was started without an object store.
+
+    Never reaches a client — the only caller is the sweep loop, and it is
+    logged there. Typed anyway, so that the thing which stops a purge is a
+    named condition rather than an `AttributeError` two frames into a bucket
+    call.
+
+    Deny by default, and here the default is unusually expensive to get wrong:
+    a purge that ran without the store would destroy `session_recordings` and
+    `materials`, the only rows that know an object exists, leaving audio and
+    decks in the bucket with nothing left pointing at them.
+    """
+
+    status_code = 503
+    code = "deletion_sweep_unconfigured"
+    message = "Account deletion is not available."
+
+
 class ProviderUnavailable(FlintroomError):
     """An upstream service failed. Never let its exception type escape.
 

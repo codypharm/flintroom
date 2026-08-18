@@ -57,6 +57,15 @@ SESSION_START_LIMIT = 10
 #: mobile-native case — is ordinary use rather than a refusal.
 MATERIAL_REGISTER_LIMIT = 60
 
+#: Account deletions requested per minute per account.
+#:
+#: Tight, and not because the endpoint is expensive — it writes one column. It
+#: is tight because it is irreversible after seven days and because the sweep
+#: behind it destroys objects in a bucket, so a loop here is a loop against a
+#: paid store. Nobody deletes their account three times in a minute; a client
+#: retrying a failed request twice is the whole of the honest traffic.
+ACCOUNT_DELETION_LIMIT = 5
+
 #: How long a finished window is kept before deletion.
 #:
 #: Not zero, and not "anything not current". A pass that deleted every window

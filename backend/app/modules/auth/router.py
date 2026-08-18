@@ -8,13 +8,25 @@ from fastapi import APIRouter, Depends, Response, status
 
 from app.modules.auth.dependencies import (
     AccessTokensDep,
+    AccountDeletionDep,
     AuthServiceDep,
     CurrentUser,
     RefreshTokensDep,
     rate_limit,
+    rate_limit_user,
 )
-from app.modules.auth.schemas import Identity, RefreshRequest, SignedIn, SignInRequest
-from app.modules.auth.rate_limit import REFRESH_LIMIT, SIGN_IN_LIMIT
+from app.modules.auth.schemas import (
+    DeletionScheduled,
+    Identity,
+    RefreshRequest,
+    SignInRequest,
+    SignedIn,
+)
+from app.modules.auth.rate_limit import (
+    ACCOUNT_DELETION_LIMIT,
+    REFRESH_LIMIT,
+    SIGN_IN_LIMIT,
+)
 from app.modules.auth.tokens import ACCESS_TOKEN_TTL
 
 router = APIRouter(tags=["auth"])
@@ -28,6 +40,40 @@ async def read_current_identity(user_id: CurrentUser) -> Identity:
     means sign in again.
     """
     return Identity(user_id=user_id)
+
+
+@router.delete(
+    "/me",
+    response_model=DeletionScheduled,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[
+        Depends(rate_limit_user("account_deletion", ACCOUNT_DELETION_LIMIT))
+    ],
+)
+async def delete_current_account(
+    user_id: CurrentUser, deletion: AccountDeletionDep
+) -> DeletionScheduled:
+    """Ask for this account to be destroyed.
+
+    Apple has required this since 2022 for any app supporting account creation,
+    so it is a store blocker rather than a courtesy — and `docs/privacy-policy.md`
+    cannot be published while it claims a control that does not exist.
+
+    `DELETE /me` rather than a POST to a sub-resource, because the account is
+    the thing being deleted and it is the resource this token already
+    identifies. Nothing is read from the request: no body, no path parameter,
+    nothing a caller could point at somebody else's account.
+
+    **202, not 204.** The window means nothing has been destroyed yet, and a
+    204 would say otherwise on the one endpoint where overstating what happened
+    is worst. The body carries the date so the app can say how long the user
+    has to change their mind.
+
+    Repeating it is not an error. A retry returns the same date rather than a
+    409 — the app would otherwise have to render "already scheduled" as a
+    failure, on the screen where a confusing answer costs the most trust.
+    """
+    return DeletionScheduled(purge_at=await deletion.request(user_id=user_id))
 
 
 @router.post(
@@ -48,12 +94,15 @@ async def sign_in(
     the client cannot know in advance. Repeating the call is safe and returns
     the same user, so a retry on a flaky connection costs nothing.
     """
-    user_id = await auth.sign_in(provider=payload.provider, id_token=payload.id_token)
+    admitted = await auth.sign_in(
+        provider=payload.provider, id_token=payload.id_token
+    )
 
     return SignedIn(
-        access_token=tokens.issue(user_id=user_id),
-        refresh_token=await refresh.issue(user_id=user_id),
+        access_token=tokens.issue(user_id=admitted.user_id),
+        refresh_token=await refresh.issue(user_id=admitted.user_id),
         expires_in=int(ACCESS_TOKEN_TTL.total_seconds()),
+        deletion_cancelled=admitted.deletion_cancelled,
     )
 
 

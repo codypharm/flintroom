@@ -20,6 +20,7 @@ from app.core.database import get_db
 from app.core.errors import NotAuthenticated
 from app.core.request_context import current_request_id
 from app.modules.auth.rate_limit import RATE_LIMIT_WINDOW, PostgresRateLimiter
+from app.modules.billing.deletion import AccountDeletion
 from app.modules.auth.refresh import RefreshTokenService
 from app.modules.auth.service import AuthService, IdentityVerifier
 from app.modules.auth.tokens import AccessTokens
@@ -96,6 +97,23 @@ async def get_refresh_tokens(
 
 
 RefreshTokensDep = Annotated[RefreshTokenService, Depends(get_refresh_tokens)]
+
+
+async def get_account_deletion(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> AccountDeletion:
+    """Deletion as a request reaches it.
+
+    No object store. `request` never touches a bucket — it marks a column and
+    revokes tokens — and the purge that does is the sweep's, seven days later.
+    Handing an endpoint the store would advertise a capability this path does
+    not have and cannot be given: a synchronous purge is not what the architect
+    chose.
+    """
+    return AccountDeletion(db)
+
+
+AccountDeletionDep = Annotated[AccountDeletion, Depends(get_account_deletion)]
 
 
 def rate_limit(namespace: str, limit: int) -> Callable[..., Awaitable[None]]:

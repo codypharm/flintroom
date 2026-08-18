@@ -18,14 +18,21 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
+from botocore.exceptions import ClientError
 from sqlalchemy import func, select, update
 
 from app.core.database import Base
+from app.core.errors import DeletionSweepUnconfigured, NotAuthenticated
 from app.modules.billing.models import Account, LedgerEntry
 from app.modules.auth.models import AuthIdentity
+from app.modules.auth.refresh import RefreshTokenService
 from app.modules.billing.deletion import KNOWN_TABLES, AccountDeletion
-from app.modules.sessions.models import Session
+from app.modules.ingestion.models import Material
+from app.modules.sessions.models import Session, SessionRecording
 from app.modules.sessions.schemas import EndReason
+from app.modules.voice.recording import recording_key
+from tests.materials import uploaded
+from tests.pdfs import minimal_pdf
 
 
 def test_every_table_carrying_a_user_is_accounted_for():
@@ -115,7 +122,7 @@ async def test_cancelling_an_account_nobody_deleted_is_not_an_error(
 
 
 async def test_the_sweep_leaves_nothing_of_the_person_and_all_of_the_money(
-    db, engine, sessions, settlement, funded_account, ledger
+    db, engine, storage, sessions, settlement, funded_account, ledger
 ):
     """The purge, and the two halves of `docs/account-deletion.md`.
 
@@ -136,7 +143,7 @@ async def test_the_sweep_leaves_nothing_of_the_person_and_all_of_the_money(
     # mutation that skipped it passed the first version of this test.
     await _signed_in_with(db, funded_account.user_id)
 
-    deletion = AccountDeletion(db)
+    deletion = AccountDeletion(db, storage)
     await deletion.request(user_id=funded_account.user_id)
     await _requested_days_ago(db, funded_account.user_id, days=8)
 
@@ -154,9 +161,7 @@ async def test_the_sweep_leaves_nothing_of_the_person_and_all_of_the_money(
     assert await _deleted_at(db, funded_account.user_id) is not None
 
 
-async def test_a_purged_account_is_not_purged_again(
-    db, funded_account
-):
+async def test_a_purged_account_is_not_purged_again(db, storage, funded_account):
     """The sweep runs continuously, and every pass sees every purged account.
 
     `deletion_requested_at` is deliberately not cleared by the purge — it is
@@ -167,7 +172,7 @@ async def test_a_purged_account_is_not_purged_again(
     That count is the alerting signal `docs/deployment.md` wants, and a signal
     that is permanently non-zero is a signal nobody can read.
     """
-    deletion = AccountDeletion(db)
+    deletion = AccountDeletion(db, storage)
     await deletion.request(user_id=funded_account.user_id)
     await _requested_days_ago(db, funded_account.user_id, days=8)
 
@@ -176,7 +181,7 @@ async def test_a_purged_account_is_not_purged_again(
 
 
 async def test_the_sweep_does_not_touch_an_account_inside_its_window(
-    db, funded_account
+    db, storage, funded_account
 ):
     """Seven days means seven days.
 
@@ -185,7 +190,7 @@ async def test_the_sweep_does_not_touch_an_account_inside_its_window(
     recoverable — and would do it to whichever account happened to be nearest
     the boundary.
     """
-    deletion = AccountDeletion(db)
+    deletion = AccountDeletion(db, storage)
     await deletion.request(user_id=funded_account.user_id)
     await _requested_days_ago(db, funded_account.user_id, days=6)
 
@@ -259,3 +264,194 @@ async def _ledger_rows(db, user_id) -> int:
         .where(LedgerEntry.user_id == user_id)
     )
     return rows.scalar_one()
+
+
+async def test_requesting_deletion_signs_every_device_out(db, funded_account):
+    """`docs/account-deletion.md`: revoked at request time, not at purge.
+
+    The window is seven days long, and a refresh token left alive spans all of
+    it. Signing out is part of the request rather than a courtesy that follows
+    it: a credential someone else is holding must not outlive the moment its
+    owner asked to be forgotten, and the whole point of the window is that the
+    account is still there to be used.
+
+    Asserted on the credential failing rather than on a column, because a
+    `revoked_at` that nothing reads would pass a column check and still let the
+    session continue.
+    """
+    refresh = RefreshTokenService(db)
+    token = await refresh.issue(user_id=funded_account.user_id)
+
+    await AccountDeletion(db).request(user_id=funded_account.user_id)
+
+    with pytest.raises(NotAuthenticated):
+        await refresh.rotate(token=token)
+
+
+async def test_the_purge_takes_the_audio_out_of_storage(
+    db, storage, sessions, settlement, funded_account
+):
+    """`docs/account-deletion.md`: object storage is included.
+
+    Nothing cascades into a bucket. `session_recordings` goes with the session
+    it hangs off, and the `.ogg` behind it stays exactly where it was — so a
+    purge that only touched Postgres would leave a row saying the audio is gone
+    over audio that is not, which the retention design calls out as worse than
+    either state on its own.
+
+    Worse here than there, because the row is destroyed rather than marked: the
+    orphaned object has nothing left pointing at it, so no later sweep can find
+    it and nothing will ever raise.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+    await sessions.activate(session_id=session.id)
+    await settlement.close(session_id=session.id, end_reason=EndReason.USER_ENDED)
+    key = await _room_audio(db, storage, session.id)
+
+    deletion = AccountDeletion(db, storage)
+    await deletion.request(user_id=funded_account.user_id)
+    await _requested_days_ago(db, funded_account.user_id, days=8)
+
+    assert await deletion.sweep() == 1
+    assert await storage.exists(key) is False
+
+
+async def _room_audio(db, storage, session_id) -> str:
+    """A room with audio behind it, without paying for the encoder.
+
+    The bytes are not opus and nothing here decodes them. What is under test is
+    that the key is reached, and a real object in real MinIO is what proves it —
+    a fake store would agree with whatever the deletion path happened to do.
+    """
+    key = recording_key(session_id)
+    await storage.put(key, b"not really opus", content_type="audio/ogg")
+    db.add(SessionRecording(session_id=session_id, byte_size=15))
+    await db.commit()
+    return key
+
+
+async def test_the_purge_takes_the_deck_and_its_thumbnail_too(
+    db, storage, ingestion, funded_account
+):
+    """Two keys, and the second is the one that gets forgotten.
+
+    `ingestion/models.py` keeps the thumbnail under a key of its own so that
+    retention could one day be a bucket rule over a prefix — which means a
+    deletion written against `storage_key` alone looks complete and leaves the
+    rendered first page behind. That page is not the innocuous artefact it
+    sounds like: a title slide routinely carries the company name, the round
+    size and the word "Confidential", and the model says so in writing.
+    """
+    deck, thumbnail = await _uploaded_deck(db, storage, ingestion, funded_account)
+
+    deletion = AccountDeletion(db, storage)
+    await deletion.request(user_id=funded_account.user_id)
+    await _requested_days_ago(db, funded_account.user_id, days=8)
+
+    assert await deletion.sweep() == 1
+    assert await storage.exists(deck) is False
+    assert await storage.exists(thumbnail) is False
+
+
+async def test_a_sweep_without_an_object_store_refuses_rather_than_orphaning(
+    db, funded_account
+):
+    """Deny by default, on the one path where the evidence goes with the data.
+
+    `session_recordings` and `materials` are the only rows that know an object
+    exists, and the purge destroys them. A sweep that ran without the store
+    would therefore not leave audio behind *visibly*, the way a failed
+    retention pass does — it would leave it behind with nothing pointing at it,
+    unreachable by any later sweep and undetectable by anything short of
+    listing the bucket.
+    """
+    deletion = AccountDeletion(db)
+    await deletion.request(user_id=funded_account.user_id)
+    await _requested_days_ago(db, funded_account.user_id, days=8)
+
+    with pytest.raises(DeletionSweepUnconfigured):
+        await deletion.sweep()
+
+    assert await _deleted_at(db, funded_account.user_id) is None
+
+
+async def test_a_store_that_fails_leaves_the_account_for_the_next_pass(
+    db, storage, sessions, settlement, funded_account
+):
+    """One unerasable account must not jam the queue behind it.
+
+    The purge is all-or-nothing on purpose: a store that raises rolls the
+    transaction back, so the rows survive alongside the objects rather than
+    being destroyed over bytes that are still there. But the sweep runs over
+    every due account, and a bucket that is permanently unhappy about one key
+    would otherwise stop every other deletion in the system, indefinitely, with
+    the failure looking like a quiet loop.
+
+    So the account is skipped, not counted, and met again next pass — the same
+    shape ingestion uses for a material whose objects would not go.
+    """
+    # Both identifiers read out before anything can roll back. A rollback
+    # expires every ORM object in the session, and the refresh that follows is
+    # blocking IO inside an async call — `MissingGreenlet`, nowhere near the
+    # real cause. `_column` below documents the same trap.
+    user_id = funded_account.user_id
+    session = await sessions.start(user_id=user_id)
+    session_id = session.id
+    await sessions.activate(session_id=session_id)
+    await settlement.close(session_id=session_id, end_reason=EndReason.USER_ENDED)
+    await _room_audio(db, storage, session_id)
+
+    await AccountDeletion(db).request(user_id=user_id)
+    await _requested_days_ago(db, user_id, days=8)
+
+    assert await AccountDeletion(db, _UnhappyStore(storage)).sweep() == 0
+    assert await db.get(Session, session_id) is not None
+    assert await _deleted_at(db, user_id) is None
+
+    # And the retry is the point: nothing about the failure marked the account
+    # as handled, so the next pass finds it exactly as it was.
+    assert await AccountDeletion(db, storage).sweep() == 1
+
+
+class _UnhappyStore:
+    """A store that refuses to delete, and is otherwise real.
+
+    Wrapping rather than faking wholesale: everything the purge does apart from
+    the one failing call still goes to MinIO, so the test exercises the real
+    query and the real ordering and changes exactly one fact about the world.
+    """
+
+    def __init__(self, real) -> None:
+        self._real = real
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+    async def delete(self, key: str) -> None:
+        raise ClientError({"Error": {"Code": "AccessDenied"}}, "DeleteObject")
+
+
+async def _uploaded_deck(db, storage, ingestion, account) -> tuple[str, str]:
+    """A deck through the real handshake, with both its objects in the bucket.
+
+    `tests/materials.py` rather than a hand-built row, for the reason that file
+    gives: a copy drifts, and the copy that drifts is the one that stops
+    exercising the real upload and starts asserting against something somebody
+    assembled by hand.
+
+    The thumbnail is written directly. Rendering one means running the
+    extractor, and what is under test is a key being reached rather than a page
+    being drawn.
+    """
+    material = await uploaded(ingestion, account, minimal_pdf("Gross margin 61%"))
+
+    thumbnail = f"{material.storage_key}.thumb.jpg"
+    await storage.put(thumbnail, b"not really a jpeg", content_type="image/jpeg")
+    await db.execute(
+        update(Material)
+        .where(Material.id == material.id)
+        .values(thumbnail_key=thumbnail)
+    )
+    await db.commit()
+
+    return material.storage_key, thumbnail

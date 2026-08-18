@@ -1,6 +1,7 @@
 """Request and response shapes for authentication."""
 
 import uuid
+from datetime import datetime
 
 from pydantic import BaseModel, Field
 
@@ -51,3 +52,30 @@ class SignedIn(BaseModel):
     #: Seconds. The client refreshes on this rather than parsing the token,
     #: which keeps the token opaque to the app and its format ours to change.
     expires_in: int
+
+    #: Whether this sign-in called off a scheduled deletion.
+    #:
+    #: `docs/account-deletion.md` decision 5, and the app owes the user a
+    #: sentence when it is true — an account that quietly un-deletes itself is
+    #: worse than one that stayed deleted.
+    #:
+    #: Defaulted, and refresh never sets it. Rotating a token is not somebody
+    #: coming back, so a refresh that reported a cancellation would be claiming
+    #: an event that did not happen.
+    deletion_cancelled: bool = False
+
+
+class DeletionScheduled(BaseModel):
+    """When an account that asked to be deleted actually goes.
+
+    The date rather than a bare acknowledgement, because the window is
+    recoverable and a user who is not told when it closes cannot use it. It is
+    also what makes the repeat request legible: asking twice returns the same
+    moment, which is the wire-level expression of a window that does not move.
+
+    Nothing else is returned. `CLAUDE.md` wants minimum necessary fields, and
+    the caller already knows whose account this is — they authenticated as
+    them.
+    """
+
+    purge_at: datetime

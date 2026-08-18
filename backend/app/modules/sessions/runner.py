@@ -29,6 +29,7 @@ from app.core.logging import get_logger
 from app.core.storage import ObjectStorage
 from app.modules.auth.rate_limit import PostgresRateLimiter
 from app.modules.auth.refresh import RefreshTokenService
+from app.modules.billing.deletion import AccountDeletion
 from app.modules.sessions.meter import MeterService
 from app.modules.sessions.reaper import ReaperService
 from app.modules.sessions.retention import RecordingRetention
@@ -129,9 +130,18 @@ class SweepRunner:
                 await self._guarded(
                     "recordings", RecordingRetention(db, self._storage).sweep
                 )
+                # Both storage-dependent sweeps are behind the same guard, and
+                # account deletion is behind it for a stronger reason than
+                # retention: retention leaves a row saying the audio is still
+                # there, so a skipped pass is visible. A purge without the
+                # bucket destroys the only rows that know an object exists, and
+                # `AccountDeletion.sweep` refuses rather than run that way.
+                await self._guarded(
+                    "account_deletion", AccountDeletion(db, self._storage).sweep
+                )
 
     @staticmethod
-    async def _guarded(name: str, sweep: Callable[[], Awaitable[None]]) -> None:
+    async def _guarded(name: str, sweep: Callable[[], Awaitable[object]]) -> None:
         """Run one sweep, surviving anything it throws.
 
         A deliberately broad catch, and the one place it is the right call. In a

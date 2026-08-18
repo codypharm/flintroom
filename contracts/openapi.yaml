@@ -24,6 +24,53 @@ paths:
                 $ref: '#/components/schemas/Identity'
       security:
       - HTTPBearer: []
+    delete:
+      tags:
+      - auth
+      summary: Delete Current Account
+      description: 'Ask for this account to be destroyed.
+
+
+        Apple has required this since 2022 for any app supporting account creation,
+
+        so it is a store blocker rather than a courtesy — and `docs/privacy-policy.md`
+
+        cannot be published while it claims a control that does not exist.
+
+
+        `DELETE /me` rather than a POST to a sub-resource, because the account is
+
+        the thing being deleted and it is the resource this token already
+
+        identifies. Nothing is read from the request: no body, no path parameter,
+
+        nothing a caller could point at somebody else''s account.
+
+
+        **202, not 204.** The window means nothing has been destroyed yet, and a
+
+        204 would say otherwise on the one endpoint where overstating what happened
+
+        is worst. The body carries the date so the app can say how long the user
+
+        has to change their mind.
+
+
+        Repeating it is not an error. A retry returns the same date rather than a
+
+        409 — the app would otherwise have to render "already scheduled" as a
+
+        failure, on the screen where a confusing answer costs the most trust.'
+      operationId: auth_delete_current_account
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeletionScheduled'
+      security:
+      - HTTPBearer: []
   /v1/auth/sessions:
     post:
       tags:
@@ -1053,6 +1100,33 @@ components:
         not the same as the refusals, which arrive as typed errors precisely so a
 
         client can tell "you did well" from "there is nothing here".'
+    DeletionScheduled:
+      properties:
+        purge_at:
+          type: string
+          format: date-time
+          title: Purge At
+      type: object
+      required:
+      - purge_at
+      title: DeletionScheduled
+      description: 'When an account that asked to be deleted actually goes.
+
+
+        The date rather than a bare acknowledgement, because the window is
+
+        recoverable and a user who is not told when it closes cannot use it. It is
+
+        also what makes the repeat request legible: asking twice returns the same
+
+        moment, which is the wire-level expression of a window that does not move.
+
+
+        Nothing else is returned. `CLAUDE.md` wants minimum necessary fields, and
+
+        the caller already knows whose account this is — they authenticated as
+
+        them.'
     EndReason:
       type: string
       enum:
@@ -1626,6 +1700,10 @@ components:
         expires_in:
           type: integer
           title: Expires In
+        deletion_cancelled:
+          type: boolean
+          title: Deletion Cancelled
+          default: false
       type: object
       required:
       - access_token

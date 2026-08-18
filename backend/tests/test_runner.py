@@ -25,6 +25,8 @@ from .conftest import create_funded_account
 from app.modules.auth.models import RefreshToken
 from app.modules.auth.refresh import RefreshTokenService
 from app.main import create_app
+from app.modules.billing.deletion import AccountDeletion
+from app.modules.billing.models import Account
 from app.modules.billing.schemas import Bucket, EntryReason
 from app.modules.sessions.models import Session as SessionModel
 from app.modules.sessions.meter import MeterService
@@ -229,3 +231,38 @@ async def test_one_pass_also_clears_expired_auth_rows(runner, account, db):
     ).scalar_one()
     assert remaining == 0
 
+
+
+async def test_one_pass_purges_an_account_whose_window_has_closed(
+    engine, storage, db, account
+):
+    """A deletion sweep nobody runs is a promise nobody keeps.
+
+    The same failure the two passes above guard against, with the worst
+    possible subject. `AccountDeletion.sweep` is written and tested; unwired, it
+    is indistinguishable from working — the request succeeds, the app says
+    seven days, and the data simply stays.
+
+    Given its own runner because the shared fixture has no object store, and a
+    purge without one is refused: the rows that know an object exists are the
+    ones being destroyed, so a store-less purge orphans the audio permanently.
+    """
+    await AccountDeletion(db).request(user_id=account.user_id)
+    await db.execute(
+        update(Account)
+        .where(Account.user_id == account.user_id)
+        .values(deletion_requested_at=func.now() - timedelta(days=8))
+    )
+    await db.commit()
+
+    runner = SweepRunner(
+        async_sessionmaker(engine, expire_on_commit=False), storage=storage
+    )
+    await runner.once()
+
+    deleted_at = (
+        await db.execute(
+            select(Account.deleted_at).where(Account.user_id == account.user_id)
+        )
+    ).scalar_one()
+    assert deleted_at is not None
