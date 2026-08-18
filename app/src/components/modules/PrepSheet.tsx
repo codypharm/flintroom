@@ -38,7 +38,17 @@ import { color, radius, space, type } from '../../theme/tokens';
  * ---
  *
  * **The spine is fault, and it is the one thing here that must not be
- * rearranged for looks.** Two of the six weakness kinds are not the presenter's
+ * rearranged for looks.** The headings say so bluntly — "On you" / "Not on
+ * you" — chosen by the architect over two softer pairs, on the ground that this
+ * is how a coach actually talks after a hard session (§9: direct and
+ * unsentimental, never cruel). The bluntness is the register, not an accident;
+ * softening it later is a decision somebody has to take deliberately.
+ *
+ * The note under the second heading is load-bearing rather than decorative.
+ * "Not on you" clears the blame and says nothing about what happens next, and
+ * the *only* reason these two findings are on a prep sheet is that the question
+ * is still coming.
+ * Two of the six weakness kinds are not the presenter's
  * doing — `dismissed` means a panelist cut across them, `not_reached` means the
  * clock ran out. Pooling those with `evasive` would tell somebody they failed
  * six times when they failed four, which is exactly the accusation #56 exists
@@ -138,13 +148,13 @@ export function PrepSheet({ answers, onSpar, onShare }: PrepSheetProps) {
       </Text>
 
       {yours.length > 0 && (
-        <Section heading="What you did" groups={yours} onSpar={onSpar} answers={answers} />
+        <Section heading="On you" groups={yours} onSpar={onSpar} answers={answers} />
       )}
 
       {theirs.length > 0 && (
         <Section
-          heading="What the room did"
-          note="Not yours to answer for — but you will still be asked."
+          heading="Not on you"
+          note="You will still be asked these."
           groups={theirs}
           onSpar={onSpar}
           answers={answers}

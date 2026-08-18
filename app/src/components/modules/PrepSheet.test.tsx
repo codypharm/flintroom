@@ -52,7 +52,7 @@ it('opens with the kind of trouble rather than the first question', async () => 
   expect(screen.getByText(/twice/i)).toBeOnTheScreen();
 });
 
-it('keeps what the room did apart from what you did', async () => {
+it('keeps what is theirs apart from what is not', async () => {
   /**
    * The load-bearing rule, and the reason the brief calls the spine "fault".
    *
@@ -61,6 +61,11 @@ it('keeps what the room did apart from what you did', async () => {
    * `evasive` would tell somebody they failed three times when they failed once,
    * and would undo #56, which exists precisely so this product never accuses
    * anybody of ducking a question that was taken away from them.
+   *
+   * Anchored regexes, and not fussiness: "on you" is a substring of "not on
+   * you", so an unanchored match would find the second heading and call it the
+   * first — and the test below, which asserts the first heading is *absent*,
+   * would then pass for a screen showing exactly the accusation it forbids.
    */
   await show([
     answer({ ordinal: 1, weakness: 'evasive' }),
@@ -68,8 +73,10 @@ it('keeps what the room did apart from what you did', async () => {
     answer({ ordinal: 5, weakness: 'not_reached', question: 'What stops a competitor?', answer: null }),
   ]);
 
-  expect(screen.getByText(/what you did/i)).toBeOnTheScreen();
-  expect(screen.getByText(/what the room did/i)).toBeOnTheScreen();
+  expect(screen.getByText(/^on you$/i)).toBeOnTheScreen();
+  expect(screen.getByText(/^not on you$/i)).toBeOnTheScreen();
+  // The heading clears the blame; this is what keeps them on the sheet at all.
+  expect(screen.getByText(/still be asked/i)).toBeOnTheScreen();
 });
 
 it('never counts the room against the presenter', async () => {
@@ -133,7 +140,7 @@ it('says nothing was found without apologising for it', async () => {
   expect(screen.queryByText(/^0$/)).toBeNull();
 });
 
-it('renders a room where nothing was the presenter’s fault without a zero', async () => {
+it('renders a room where nothing was theirs without an empty accusation', async () => {
   /**
    * Every finding was a dismissal or the clock. The "what you did" heading must
    * not appear as an empty group with a zero beside it — that is the accusation
@@ -144,6 +151,6 @@ it('renders a room where nothing was the presenter’s fault without a zero', as
     answer({ ordinal: 3, weakness: 'not_reached', answer: null }),
   ]);
 
-  expect(screen.getByText(/what the room did/i)).toBeOnTheScreen();
-  expect(screen.queryByText(/what you did/i)).toBeNull();
+  expect(screen.getByText(/^not on you$/i)).toBeOnTheScreen();
+  expect(screen.queryByText(/^on you$/i)).toBeNull();
 });
