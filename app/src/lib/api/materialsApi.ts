@@ -33,9 +33,38 @@ export interface PickedFile {
   size?: number | null;
 }
 
+/**
+ * What this account may upload, published so the screen can say it up front.
+ *
+ * The endpoint exists for exactly this: "so the app can refuse an oversized
+ * file locally, before it reads a byte", with the server refusal still the real
+ * wall. Shipping the tier table in an app release instead is how a pricing
+ * change and the picker start disagreeing with nobody noticing.
+ */
+export interface MaterialLimits {
+  tier: string;
+  maxUploadBytes: number;
+  maxPagesPerMaterial: number;
+  acceptedContentTypes: string[];
+}
+
 export interface MaterialsApi {
   attach(file: PickedFile, read: (uri: string) => Promise<Blob>): Promise<AttachedMaterial>;
   state(id: string): Promise<AttachedState>;
+  limits(): Promise<MaterialLimits>;
+  /**
+   * Destroy a material and everything extracted from it.
+   *
+   * Local state is not enough. `docs/ingestion.md` has the source document
+   * deleted once extraction succeeds but the claims outlive it, and a session
+   * started against a material this account still owns can still be grounded in
+   * it — so a Remove that only cleared a variable would be a screen saying the
+   * deck is gone while the room still quotes from it.
+   *
+   * A second call is a 404 by design, and that is treated as success: the thing
+   * the caller wanted gone is gone.
+   */
+  remove(id: string): Promise<void>;
 }
 
 export interface MaterialsApiOptions {
@@ -122,6 +151,37 @@ export function createMaterialsApi({
         filename: registered.filename,
         state: drawable(completed.state),
       };
+    },
+
+    limits: async () => {
+      const read = (await (await send('/v1/materials/limits')).json()) as {
+        tier: string;
+        max_upload_bytes: number;
+        max_pages_per_material: number;
+        accepted_content_types: string[];
+      };
+
+      return {
+        tier: read.tier,
+        maxUploadBytes: read.max_upload_bytes,
+        maxPagesPerMaterial: read.max_pages_per_material,
+        acceptedContentTypes: read.accepted_content_types,
+      };
+    },
+
+    remove: async (id) => {
+      const response = await fetcher(`${baseUrl}/v1/materials/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${await accessToken()}` },
+      });
+
+      // 404 is success here. The material is not found from the moment of the
+      // request that deleted it, so a retry after a dropped response must not
+      // report a failure for work that was already done.
+      if (response.ok || response.status === 404) return;
+      if (response.status === 401) throw new SignedOut('refused by DELETE /v1/materials');
+
+      throw new Error(`DELETE /v1/materials failed with ${response.status}`);
     },
 
     state: async (id) => {

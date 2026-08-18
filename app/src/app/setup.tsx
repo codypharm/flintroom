@@ -7,6 +7,7 @@ import { PanelSetup } from '../components/modules/PanelSetup';
 import {
   createMaterialsApi,
   type AttachedMaterial,
+  type MaterialLimits,
 } from '../lib/api/materialsApi';
 import { createPanelsApi, type Catalogue } from '../lib/api/panelsApi';
 import { API_BASE_URL, auth } from '../lib/auth';
@@ -59,6 +60,7 @@ export default function SetupRoute() {
   const [seated, setSeated] = useState<string[]>([]);
 
   const [material, setMaterial] = useState<AttachedMaterial | null>(null);
+  const [limits, setLimits] = useState<MaterialLimits | null>(null);
   const polling = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -89,6 +91,22 @@ export default function SetupRoute() {
             : 'Could not reach the server. Try again in a moment.'
         )
       );
+
+    // Separately, and allowed to fail. The screen states the formats it
+    // accepts either way — those are a fact about the product — and only the
+    // size and page numbers wait on this. A deck picker that refused to draw
+    // because a limits call timed out would be worse than one missing a number.
+    materials
+      .limits()
+      .then((read) => live && setLimits(read))
+      // Quiet on purpose, and measured rather than assumed: today this fails
+      // with a 502 in any deployment without object storage, because
+      // `read_limits` hangs off `IngestionServiceDep` and that dependency
+      // builds a store the response never touches. The screen is correct
+      // either way — it states the formats and drops the numbers — but the
+      // fallback is load-bearing rather than defensive, which is worth knowing
+      // before somebody deletes it as dead code.
+      .catch(() => undefined);
 
     return () => {
       live = false;
@@ -130,6 +148,19 @@ export default function SetupRoute() {
 
     const [file] = picked.assets;
 
+    // Refused here rather than after the upload, which is what
+    // `/v1/materials/limits` exists for: "so the app can refuse an oversized
+    // file locally, before it reads a byte". The server refusal stays the real
+    // wall — this only saves somebody watching a hundred megabytes climb before
+    // being told it was never going to be accepted.
+    if (limits !== null && (file.size ?? 0) > limits.maxUploadBytes) {
+      Alert.alert(
+        'That deck is too large',
+        `Your plan takes up to ${Math.round(limits.maxUploadBytes / (1024 * 1024))} MB.`
+      );
+      return;
+    }
+
     try {
       const attached = await materials.attach(file, async (uri) =>
         // Straight from the file to the signed URL. Nothing reads the deck into
@@ -153,7 +184,28 @@ export default function SetupRoute() {
             : 'We could not reach the server. Try again in a moment.'
       );
     }
-  }, [watch]);
+  }, [watch, limits]);
+
+  const detach = useCallback(async () => {
+    if (material === null) return;
+
+    // Cleared first. The request is the thing that must not be skipped, but the
+    // row is the thing somebody is looking at — leaving a deck on screen for a
+    // round trip after they asked for it gone reads as the tap not registering,
+    // and the commonest next move is tapping again.
+    const going = material;
+    setMaterial(null);
+    if (polling.current !== null) clearInterval(polling.current);
+
+    try {
+      await materials.remove(going.id);
+    } catch {
+      // Deliberately quiet. A 404 is already success inside `remove`, so this
+      // is a network failure against a material the server still holds — which
+      // costs nothing until a session is started against it, and no session can
+      // be now that nothing on this screen refers to it.
+    }
+  }, [material]);
 
   const chooseDifficulty = useCallback(
     (level: number) => {
@@ -194,7 +246,9 @@ export default function SetupRoute() {
         seated={seated}
         onSeatedChange={setSeated}
         material={material}
+        limits={limits}
         onAttach={attach}
+        onRemoveMaterial={() => void detach()}
         onDifficultyChange={chooseDifficulty}
         onStart={() => undefined}
       />

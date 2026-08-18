@@ -1,7 +1,8 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import type { AttachedMaterial } from '../../lib/api/materialsApi';
+import type { AttachedMaterial, MaterialLimits } from '../../lib/api/materialsApi';
 import { color, radius, space, type } from '../../theme/tokens';
+import { DeckAttach } from './DeckAttach';
 
 /**
  * Who is in the room, what they can attack, and how hard they push.
@@ -91,7 +92,10 @@ export interface PanelSetupProps {
    * is a guess about a screen nobody has used.
    */
   material: AttachedMaterial | null;
+  /** What this account may upload, or null while unknown. See `DeckAttach`. */
+  limits: MaterialLimits | null;
   onAttach: () => void;
+  onRemoveMaterial: () => void;
   onDifficultyChange: (level: number) => void;
   onStart: () => void;
 }
@@ -139,7 +143,9 @@ export function PanelSetup({
   seated,
   onSeatedChange,
   material,
+  limits,
   onAttach,
+  onRemoveMaterial,
   onDifficultyChange,
   onStart,
 }: PanelSetupProps) {
@@ -225,28 +231,22 @@ export function PanelSetup({
         </View>
       </View>
 
-      <Text style={styles.footnote}>{seatsLine(room, seated.length)}</Text>
+      {/* Belongs to the roster above it, so it sits on the same left edge
+          rather than centred under a left-aligned card. */}
+      <Text style={styles.groupNote}>{seatsLine(room, seated.length)}</Text>
 
-      <Text style={styles.title} accessibilityRole="header">
+      <Text style={styles.sectionTitle} accessibilityRole="header">
         What they can attack
       </Text>
 
-      <View style={styles.group}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={onAttach}
-          style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-        >
-          <View style={styles.rowText}>
-            <Text style={styles.rowTitle}>
-              {material ? material.filename : 'Attach a deck'}
-            </Text>
-            <Text style={styles.rowDetail}>{materialLine(material)}</Text>
-          </View>
-        </Pressable>
-      </View>
+      <DeckAttach
+        material={material}
+        limits={limits}
+        onAttach={onAttach}
+        onRemove={onRemoveMaterial}
+      />
 
-      <Text style={styles.title} accessibilityRole="header">
+      <Text style={styles.sectionTitle} accessibilityRole="header">
         How hard they push
       </Text>
 
@@ -345,26 +345,6 @@ function seatsLine(room: Room, taken: number): string {
 }
 
 /**
- * What the deck row says about itself.
- *
- * The absent case is not an empty state to be apologised for — a deckless room
- * is first-class (`docs/auditor-grounding.md`), and the line says what
- * attaching one *buys* rather than what is missing.
- */
-function materialLine(material: AttachedMaterial | null): string {
-  if (material === null) {
-    return 'Optional. With one, they quote your own figures back at you.';
-  }
-  if (material.state === 'extracting') {
-    return 'Being read. This takes a moment.';
-  }
-  if (material.state === 'failed') {
-    return 'Could not be read. Attach another, or start without it.';
-  }
-  return 'Read, and ready to be used against you.';
-}
-
-/**
  * Why Start cannot be pressed yet, or null when it can.
  *
  * A sentence rather than a boolean, because a disabled button with no reason is
@@ -392,14 +372,32 @@ const styles = StyleSheet.create({
 
   content: {
     paddingHorizontal: space.screen,
-    paddingTop: space.loose,
+    paddingTop: space.section,
     paddingBottom: space.major,
   },
 
+  /**
+   * Two heading sizes and two intervals, which between them are the hierarchy.
+   *
+   * Three headings at one size and one 32/12 interval gave the screen no
+   * loudest thing — squint and it was three identical white slabs. The panel is
+   * the decision and the other two are adjustments to it, so the first heading
+   * is the screen's title and the rest step down. The section break goes to 48
+   * against 12 inside a group, so a break is four times a gap rather than not
+   * quite three.
+   *
+   * No top margin on the title: the content's own padding is the space above
+   * it, and a margin there would double it.
+   */
   title: {
+    ...type.headlineLg,
+    color: color.onSurface,
+    marginBottom: space.base,
+  },
+  sectionTitle: {
     ...type.headlineSm,
     color: color.onSurface,
-    marginTop: space.section,
+    marginTop: space.major,
     marginBottom: space.snug,
   },
 
@@ -478,6 +476,14 @@ const styles = StyleSheet.create({
 
   startLabel: { ...type.labelLg, fontSize: 16, color: color.onPrimary },
 
+  /** A note about the group above it. Left-aligned, because the group is. */
+  groupNote: {
+    ...type.bodySm,
+    color: color.onSurfaceVariant,
+    marginTop: space.snug,
+  },
+
+  /** A note about the button above it, which is centred, so this is too. */
   footnote: {
     ...type.bodySm,
     color: color.onSurfaceVariant,
