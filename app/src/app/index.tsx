@@ -56,6 +56,15 @@ export default function HomeScreen() {
           Recording disclosure
         </Link>
         {/*
+          The real front door, and the one link here that will eventually be
+          where the app opens. Nothing else can assemble a room: /room posts an
+          empty body with a pasted token and takes the shipped default panel,
+          which is an instrument rather than a way in.
+        */}
+        <Link href="/setup" style={[styles.link, { color: colors.primary }]}>
+          Set up a room
+        </Link>
+        {/*
           Not temporary — Settings is a real destination. The link is, though:
           it belongs behind whatever the app shell turns out to be, and that is
           a top-level structural decision the settings brief names and leaves
