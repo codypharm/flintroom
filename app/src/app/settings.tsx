@@ -67,7 +67,7 @@ const FIRST_RUN: Holdings = {
 
 export default function SettingsRoute() {
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: color.surface }} edges={['bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: color.surface }} edges={['top', 'bottom']}>
       <SettingsScreen
         holdings={FIRST_RUN}
         onRecordingChange={() => {

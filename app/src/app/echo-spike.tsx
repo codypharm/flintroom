@@ -1,6 +1,7 @@
 import { useTheme } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { Button, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   AudioContext,
@@ -344,6 +345,13 @@ export default function EchoSpikeScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
+        {/*
+          `auto`, overriding the root's `dark`. This screen is a dev harness
+          that follows the system theme rather than the product's committed
+          light ground, so its background flips and the glyphs have to flip
+          with it.
+        */}
+        <StatusBar style="auto" />
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={[styles.heading, { color: colors.text }]}>Echo spike</Text>
         <Text style={[styles.body, { color: colors.text }]}>

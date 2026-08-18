@@ -216,7 +216,7 @@ export default function DebriefRoute() {
   }
 
   return (
-    <SafeAreaView style={styles.screen} edges={['bottom']}>
+    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <Debrief
         answers={answers}
         pressed={pressed}
@@ -241,7 +241,7 @@ export default function DebriefRoute() {
  */
 function Refusal({ refusal }: { refusal: RoomRefusal }) {
   return (
-    <SafeAreaView style={[styles.screen, styles.refused]} edges={['bottom']}>
+    <SafeAreaView style={[styles.screen, styles.refused]} edges={['top', 'bottom']}>
       <Text style={styles.title}>{refusal.title}</Text>
       <Text style={styles.body}>{refusal.body}</Text>
 

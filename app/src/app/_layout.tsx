@@ -1,5 +1,6 @@
 import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'react-native';
 
 import { FONTS } from '../theme/fonts';
@@ -32,9 +33,35 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+      {/*
+        Dark glyphs, unconditionally, and not `auto`.
+
+        `auto` follows the system appearance; this product does not. `tokens.ts`
+        holds one palette, so every screen below is `#fcf9f8` whatever the phone
+        is set to, and light glyphs would be unreadable on it. The two screens
+        that *do* follow the theme are the dev harnesses, and they say so
+        themselves.
+      */}
+      <StatusBar style="dark" />
+      {/*
+        No headers, anywhere.
+
+        Every screen in this app draws its own title — `Room`, `Echo spike`,
+        `Before you go in`, `Who is in the room` — so a stack header is a second
+        title stacked above the first. Worse, a route with no `Stack.Screen`
+        entry falls back to its *filename*, which is how six screens came to be
+        headed `onboarding`, `setup`, `room`, `prep-sheet` in lowercase.
+
+        Set here rather than per route so a new screen inherits it: the failure
+        this replaces was silent and opt-out, and the fix should be the default.
+        Back is still available — `Stack` keeps the edge-swipe gesture with the
+        header hidden, and Android has the system gesture regardless.
+
+        The cost is that each screen owns its own top safe-area inset. That is
+        `edges={['top', 'bottom']}` on every `SafeAreaView` below, and it is the
+        honest trade: the header was paying that rent by occupying the space.
+      */}
+      <Stack screenOptions={{ headerShown: false }}>
         {/*
           A native sheet rather than a full screen. It is a one-time
           interruption before entering the room, which is the case a modal is

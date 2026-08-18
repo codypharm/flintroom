@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { AudioContext, AudioManager, AudioRecorder } from 'react-native-audio-api';
+import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { enterHandsFree, leaveHandsFree } from '../../modules/audio-routing';
@@ -220,6 +221,13 @@ export default function RoomScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
+        {/*
+          `auto`, overriding the root's `dark`. This screen is a dev harness
+          that follows the system theme rather than the product's committed
+          light ground, so its background flips and the glyphs have to flip
+          with it.
+        */}
+        <StatusBar style="auto" />
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={[styles.heading, { color: colors.text }]}>Room</Text>
 

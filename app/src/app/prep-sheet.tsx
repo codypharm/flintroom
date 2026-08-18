@@ -62,7 +62,7 @@ const MEASURED: WeakAnswer[] = [
 
 export default function PrepSheetRoute() {
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: color.surface }} edges={['bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: color.surface }} edges={['top', 'bottom']}>
       <PrepSheet
         answers={MEASURED}
         onSpar={() => {
