@@ -13,7 +13,8 @@
       "supportsTablet": false,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Flintroom uses your microphone so the panel can hear your argument and respond to it during a rehearsal session."
-      }
+      },
+      "usesAppleSignIn": true
     },
     "android": {
       "adaptiveIcon": {
@@ -44,7 +45,13 @@
       ],
       "react-native-audio-api",
       "expo-secure-store",
-      "expo-font"
+      "expo-font",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.297672297774-d658jvif92sqquviai5me198720j4qfg"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

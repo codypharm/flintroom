@@ -226,3 +226,89 @@ break in production:
   for a different buyer.
 - **Re-onboarding.** What an existing user sees when their event passes, or when
   they return after a long absence, is a retention question and not this one.
+
+---
+
+## Amended 2026-08-18, while building the flow (#70)
+
+Five things this document decided, or implied, that the build had to change.
+Each is recorded because the code now disagrees with the prose above, and a
+reader who trusts the prose would be misled.
+
+### The reveal moves after sign-in
+
+The diagram draws `5 questions ─► "Here's your room" ─► Sign in`. **The
+argument never established that ordering.** What it establishes is *survey
+first, sign-in after* — "identity is asked for once there is something to lose…
+rather than a toll gate in front of a stranger" — and that contrast is with
+sign-in *at launch*. Somebody who has filled in five answers is not a stranger,
+and those answers are the thing they would lose.
+
+Moving the reveal to the far side of sign-in buys three things the original
+could not have:
+
+- **The reveal stops being a preview that can lie.** Rendered before an account
+  exists, it is a guess the client assembles; rendered after, it is the
+  account's actual seated panel — the same room `POST /v1/sessions` will build.
+- **No unauthenticated endpoint.** The pre-auth version needed a public
+  `/v1/panels/preview` and an IP-keyed rate limiter. The product still has zero
+  public endpoints, which is a better place to be heading into store review.
+- **The free grant is already in place.** `_ensure_free_minutes` runs during
+  sign-in, so the reveal can name the 15 minutes. Before sign-in it could not
+  mention them at all.
+
+The cost, stated plainly: somebody who abandons at the sign-in sheet leaves
+having answered five questions and seen nothing. That is real, and it is
+softened only by this document's own decision to hold the answers on-device.
+
+### The reveal is the setup screen, not a screen of its own
+
+Both are authenticated now and both fetch the same catalogue seconds apart. A
+distinct reveal handing off to a setup screen showing the identical panel with
+controls is the reveal deflating into a form one tap later. So `setup.tsx` opens
+pre-seated from `ArchetypeCatalogue.seated` on a first run, and is the ordinary
+setup screen on every visit after.
+
+### The five questions are one sheet, not five screens
+
+"Each has to justify its screen" was about the *number* of questions, and is
+kept. The pagination it implied is not: a form you fill before a meeting reads
+as serious work to this audience, where paged cards with progress dots read as
+the consumer-app theater this document warns they will dismiss. The sheet also
+carries no progress indicator of any kind — its own length is the progress.
+
+### Q1 lists only v1 situations, plus "Something else"
+
+The testing note asks that "the deferred use cases are actually caught by Q1".
+Read literally that requires *offering* them, and offering them is worse than
+the problem: **a picker option is a promise.** Listing "Job interview" tells
+every user — most of whom came for a board review — that the product does
+interviews, and then refuses them. It would also make the reveal deliberately
+false, showing a CFO to somebody who asked for a hiring manager.
+
+"Something else" catches anyone off-scope without advertising anything, and its
+count is the v2 demand signal `Product.md` §2 asks be "justified by usage data".
+The note is reworded accordingly: nobody may silently land in the wrong room.
+
+### The free grant is bound to sign-in, not to finishing onboarding
+
+Above: "Completing onboarding triggers a 15-minute grant." In fact
+`_ensure_free_minutes` runs on **every** sign-in path in `auth/service.py`,
+including the race-loser branch, and is idempotent inside `LedgerService`. The
+code is right and this sentence was wrong: "granted once per user ever" is a
+property of the *user*, and hanging it off a UI flow makes it re-runnable.
+
+## Not built, and deliberately
+
+**Q2 has no picker.** `@expo/ui` splits it across `DatePicker` on SwiftUI and
+`DateTimePicker` on Compose, both inside a `Host` — a two-platform native
+integration that cannot be verified without a device build, for a nullable field
+whose only consumer (the event countdown) does not exist yet. `TablePlan` takes
+`onPickDate: (() => void) | null` and renders the row as a statement when it is
+null, on `PanelSetup`'s rule that *"a control that opens nothing is worse than a
+statement"*.
+
+**The first room does not start from here.** Onboarding hands off to `/setup`,
+and `setup.tsx`'s start button is still `onStart={() => undefined}` — `room.tsx`
+authenticates from a dev-token text field and mints its session with a raw
+`fetch`. Making that read the real session is #41's work, not this flow's.

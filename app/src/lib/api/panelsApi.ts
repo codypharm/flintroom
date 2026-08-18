@@ -21,6 +21,18 @@ export interface ArchetypeOffered {
 
 export interface Catalogue {
   archetypes: ArchetypeOffered[];
+  /**
+   * Who the survey already put in the chairs, in seat order.
+   *
+   * The reveal. Derived on the server from the answers rather than assembled
+   * here, so the room shown is the room a session will build — a client-side
+   * map would be a second copy free to disagree across a release, which is the
+   * failure `/v1/archetypes` exists to prevent for the roster itself.
+   *
+   * Never empty: an account that answered nothing falls through to the shipped
+   * default panel, so no screen needs a branch for it.
+   */
+  seated: string[];
   seats: number;
   mayAuthor: boolean;
   upgradeSeats: number | null;
@@ -43,6 +55,7 @@ export interface PanelsApiOptions {
 /** The catalogue as the wire spells it, before the app renames it. */
 interface CatalogueBody {
   archetypes: ArchetypeOffered[];
+  seated?: string[];
   seats: number;
   may_author: boolean;
   upgrade_seats: number | null;
@@ -83,6 +96,7 @@ export function createPanelsApi({
 
       return {
         archetypes: body.archetypes,
+        seated: body.seated ?? [],
         seats: body.seats,
         mayAuthor: body.may_author,
         upgradeSeats: body.upgrade_seats,

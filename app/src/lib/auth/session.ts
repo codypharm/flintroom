@@ -62,16 +62,44 @@ export interface Admission {
   deletionCancelled: boolean;
 }
 
+/**
+ * The plan somebody filled in before they had an account.
+ *
+ * Camel-cased here and snake-cased on the wire by `authApi`, which is the one
+ * place that translation is allowed to live. Every field optional, because the
+ * survey can be abandoned at any point and still produce an account — a
+ * required field would turn "I skipped a question" into "sign-in failed", at
+ * the moment somebody has spent five answers and has nothing yet to show.
+ */
+export interface OnboardingPlan {
+  situation: string | null;
+  happensOn: string | null;
+  role: string | null;
+  audience: string[];
+}
+
 export interface AuthApi {
-  signIn(provider: string, idToken: string): Promise<IssuedTokens>;
+  signIn(
+    provider: string,
+    idToken: string,
+    plan?: OnboardingPlan
+  ): Promise<IssuedTokens>;
   refresh(refreshToken: string): Promise<IssuedTokens>;
   /** Revokes the family server-side. Takes the refresh token, not a bearer. */
   signOut(refreshToken: string): Promise<void>;
 }
 
 export interface AuthSession {
-  /** Resolves with what the sign-in did besides letting them in. */
-  signIn(provider: string, idToken: string): Promise<Admission>;
+  /**
+   * Resolves with what the sign-in did besides letting them in.
+   *
+   * `plan` rides the *same request* rather than following it, because
+   * `docs/onboarding.md` refuses the state a second call allows: an account
+   * that exists and has been asked nothing. Omitted on every launch after the
+   * first — a missing plan means "nothing new to say", never "forget what I
+   * told you", and there is a server test for exactly that.
+   */
+  signIn(provider: string, idToken: string, plan?: OnboardingPlan): Promise<Admission>;
   /** A token good to send now, refreshing first if the stored one has expired. */
   accessToken(): Promise<string>;
   /** Ends the session here and, if reachable, everywhere. Never rejects. */
@@ -145,8 +173,8 @@ export function createAuthSession({
   };
 
   return {
-    signIn: async (provider, idToken) => {
-      const admitted = await api.signIn(provider, idToken);
+    signIn: async (provider, idToken, plan) => {
+      const admitted = await api.signIn(provider, idToken, plan);
       await persist(admitted);
 
       // Passed up rather than acted on here. This module owns credentials; a

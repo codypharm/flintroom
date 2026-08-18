@@ -138,3 +138,40 @@ describe('a sign-in that reverses a deletion', () => {
     });
   });
 });
+
+it('posts the onboarding plan with sign-up, in the wire’s own casing', async () => {
+  // One request, because `docs/onboarding.md` refuses a second: "a
+  // partially-created account with no configuration is a state worth not
+  // having". The field names are the server's — `happens_on`, not `happensOn` —
+  // and a silent mismatch would drop the date without failing anything, since
+  // `Answers` treats every field as optional.
+  const { api, calls } = apiReturning(200, issued);
+
+  await api.signIn('google', 'id-token', {
+    situation: 'board_review',
+    happensOn: '2026-09-01',
+    role: 'exec',
+    audience: ['budget', 'rival'],
+  });
+
+  expect(calls[0].body).toEqual({
+    provider: 'google',
+    id_token: 'id-token',
+    onboarding: {
+      situation: 'board_review',
+      happens_on: '2026-09-01',
+      role: 'exec',
+      audience: ['budget', 'rival'],
+    },
+  });
+});
+
+it('sends no onboarding block on an ordinary launch', async () => {
+  // Sign-in runs every time the app opens. An empty block would be read by the
+  // server as answers, blanking the plan somebody built on their first run.
+  const { api, calls } = apiReturning(200, issued);
+
+  await api.signIn('google', 'id-token');
+
+  expect(calls[0].body).not.toHaveProperty('onboarding');
+});

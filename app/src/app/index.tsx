@@ -32,6 +32,16 @@ export default function HomeScreen() {
           The room has never met a phone; this is the door that lets it, until
           sign-in exists and the real interrogation screen replaces it.
         */}
+        {/*
+          The real front door, and the one link here that is not temporary —
+          #70. This is where a first launch will land once `_layout` routes an
+          account-less install to it, which needs sign-in to have run at least
+          once to be worth doing. Until then it is reachable the same way
+          everything else on this screen is.
+        */}
+        <Link href="/onboarding" style={[styles.link, { color: colors.primary }]}>
+          Onboarding
+        </Link>
         <Link href="/room" style={[styles.link, { color: colors.primary }]}>
           Room
         </Link>

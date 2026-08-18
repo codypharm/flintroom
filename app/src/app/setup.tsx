@@ -66,7 +66,21 @@ export default function SetupRoute() {
 
     panels
       .catalogue()
-      .then((fetched) => live && setRoom(fetched))
+      .then((fetched) => {
+        if (!live) return;
+        setRoom(fetched);
+        // **The reveal.** `seated` is the room the survey described, derived on
+        // the server from the answers — so on a first run this screen opens
+        // showing the people somebody placed on their plan rather than an empty
+        // roster. `docs/onboarding.md` promised a "here's your room" moment;
+        // this is it, and it arrives without a screen of its own because the
+        // reveal and setup are one surface in two postures (2026-08-18).
+        //
+        // Only when nothing is seated yet. Coming back from an attach, the
+        // choices already on screen are the user's and must not be overwritten
+        // by what the account defaults to.
+        setSeated((chosen) => (chosen.length === 0 ? fetched.seated : chosen));
+      })
       .catch((error) =>
         live &&
         setRefused(
@@ -174,7 +188,7 @@ export default function SetupRoute() {
   }
 
   return (
-    <SafeAreaView style={styles.screen} edges={['bottom']}>
+    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <PanelSetup
         room={room}
         seated={seated}
@@ -190,7 +204,7 @@ export default function SetupRoute() {
 
 function Ground({ children }: { children: React.ReactNode }) {
   return (
-    <SafeAreaView style={styles.screen} edges={['bottom']}>
+    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <View style={styles.centred}>{children}</View>
     </SafeAreaView>
   );

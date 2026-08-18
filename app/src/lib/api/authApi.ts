@@ -85,10 +85,30 @@ export function createAuthApi({
   };
 
   return {
-    signIn: async (provider, idToken) =>
-      issued(await post('/v1/auth/sessions', { provider, id_token: idToken }), {
-        admitting: true,
-      }),
+    signIn: async (provider, idToken, plan) =>
+      issued(
+        await post('/v1/auth/sessions', {
+          provider,
+          id_token: idToken,
+          // Spread rather than set, so an ordinary launch sends no key at all.
+          // An empty object would be read by the server as answers and would
+          // blank the plan somebody built on their first run.
+          ...(plan
+            ? {
+                onboarding: {
+                  situation: plan.situation,
+                  // The wire's own casing, translated here and nowhere else.
+                  // A silent mismatch would drop the date without failing
+                  // anything, since every field on `Answers` is optional.
+                  happens_on: plan.happensOn,
+                  role: plan.role,
+                  audience: plan.audience,
+                },
+              }
+            : {}),
+        }),
+        { admitting: true }
+      ),
 
     refresh: async (refreshToken) =>
       issued(await post('/v1/auth/sessions/refresh', { refresh_token: refreshToken })),

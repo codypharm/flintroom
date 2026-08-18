@@ -29,6 +29,7 @@ function apiReturning(status: number, body: unknown) {
 
 const CATALOGUE = {
   archetypes: [{ name: 'cfo', title: 'The CFO', blurb: 'Unimpressed.' }],
+  seated: ['cfo', 'champion'],
   seats: 3,
   may_author: false,
   upgrade_seats: 5,
@@ -44,6 +45,7 @@ it('fetches the roster and the caps in one request', async () => {
 
   await expect(api.catalogue()).resolves.toEqual({
     archetypes: [{ name: 'cfo', title: 'The CFO', blurb: 'Unimpressed.' }],
+    seated: ['cfo', 'champion'],
     seats: 3,
     mayAuthor: false,
     upgradeSeats: 5,
@@ -71,4 +73,29 @@ it('sends a chosen rung as the number the contract names', async () => {
   await api.chooseDifficulty(3);
 
   expect(calls[0].url).toBe('https://api.example/v1/me/difficulty');
+});
+
+
+it('carries the seated room back in the order the server put it in', async () => {
+  // The reveal. `docs/onboarding.md` warns that a reveal backed by a survey
+  // which changed nothing is "a promise the first session immediately
+  // contradicts" — so the order matters as much as the membership: the server
+  // seats archetypes in this sequence and chair one really does speak first.
+  const { api } = apiReturning(200, { ...CATALOGUE, seated: ['risk_officer', 'cfo'] });
+
+  await expect(api.catalogue()).resolves.toMatchObject({
+    seated: ['risk_officer', 'cfo'],
+  });
+});
+
+it('reads a server that has not shipped the reveal yet as an empty room', async () => {
+  // Belt and braces against a client newer than the API it is pointed at — a
+  // missing field would otherwise be `undefined` where a screen maps over an
+  // array, which crashes the setup screen rather than degrading it.
+  const withoutSeated = { ...CATALOGUE };
+  delete (withoutSeated as { seated?: string[] }).seated;
+
+  const { api } = apiReturning(200, withoutSeated);
+
+  await expect(api.catalogue()).resolves.toMatchObject({ seated: [] });
 });
