@@ -20,17 +20,18 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.coach import COACH, CoachModel, Grounds, Spoken, held, spoken
+from app.agents.coach import COACH, CoachModel, CoachReply, Grounds, Spoken, held, spoken
 from app.agents.weakness import WeakAnswer
 from app.agents.context import USER
 from app.core.errors import FlintroomError
 from app.core.logging import get_logger
 from app.modules.sessions.debrief import DebriefService
 from app.modules.sessions.models import CoachTurn, SparringAttempt, TranscriptLine
-from app.modules.voice.dictation import Dictation
+from app.modules.voice.dictation import Dictation, Heard
+from app.modules.voice.spend import SpendRecorder
 from app.modules.voice.speech import Speaker
 from app.agents.context import Said
 
@@ -88,12 +89,18 @@ class CoachService:
         coach: CoachModel,
         speaker: Speaker,
         debrief: DebriefService,
+        spend: SpendRecorder | None = None,
     ) -> None:
         self._db = db
         self._dictation = dictation
         self._coach = coach
         self._speaker = speaker
         self._debrief = debrief
+        # Built here rather than injected when absent, because there is nothing
+        # to configure: it takes the same session and writes the same table the
+        # relay already writes. A caller that had to supply one would be a
+        # caller that could forget to.
+        self._spend = spend or SpendRecorder(db)
 
     async def say(
         self, *, session_id: uuid.UUID, clip: bytes, media_type: str
@@ -120,6 +127,8 @@ class CoachService:
         )
 
         await self._keep(session_id, heard.text, said)
+        await self._spent(session_id, heard=heard, reply=reply, said=said)
+
         return CoachedTurn(text=said, speech=await self._voice(said))
 
 
@@ -175,6 +184,7 @@ class CoachService:
             )
         )
         await self._db.commit()
+        await self._spent(session_id, heard=heard, reply=reply, said=said)
 
         return CoachedTurn(text=said, speech=await self._voice(said))
 
@@ -206,6 +216,80 @@ class CoachService:
             .order_by(SparringAttempt.attempt)
         )
         return tuple(row.said for row in rows.scalars())
+
+
+    async def _spent(
+        self, session_id: uuid.UUID, *, heard: Heard, reply: CoachReply, said: str
+    ) -> None:
+        """What this turn cost, on the row §4.3 reconciles against an invoice.
+
+        Three vendors are paid per coaching turn — the transcriber hears the
+        clip, the model answers, the synthesiser speaks — and the phase earns
+        nothing. `docs/ingestion.md`'s framing for extraction applies unchanged:
+        unmetered is not free, and a phase whose cost nobody counted is the one
+        that quietly decides a margin.
+
+        `said` rather than `reply.text`, deliberately: a redirected turn is
+        synthesised as the redirect, so the characters actually sent to the
+        synthesiser are the ones the user heard.
+        """
+        await self._spend.record(
+            session_id=session_id,
+            stt_seconds=int(heard.seconds),
+            llm_input_tokens=reply.usage.input_tokens,
+            llm_output_tokens=reply.usage.output_tokens,
+            tts_characters=len(said),
+        )
+        await self._stayed(session_id)
+
+    async def _stayed(self, session_id: uuid.UUID) -> None:
+        """How long they have been at it, recomputed from the turns.
+
+        No phase span is opened anywhere for coaching, and that is a decision
+        rather than an omission. Turn-based transport left nothing to open a
+        span around: there is no socket, so nothing bills for silence, and a
+        span opened on a debrief read would never be closed — `open_phase`
+        closes the current span only when a *new* phase opens, and after the
+        debrief there is no next phase. The duration would grow without bound,
+        which is worse than missing: a wrong number gets fixed and an unbounded
+        one gets averaged into a price.
+
+        The turn timestamps already answer the question, so they answer it.
+        """
+        await self._spend.spent_coaching(
+            session_id=session_id,
+            # Every kind of coaching turn, which is what the soft cap is about.
+            debrief_seconds=await self._span(session_id, CoachTurn, SparringAttempt),
+            sparring_seconds=await self._span(session_id, SparringAttempt),
+        )
+
+    async def _span(self, session_id: uuid.UUID, *tables) -> int:
+        """Seconds between the first of these and the last, or zero.
+
+        Takes several tables because a coaching engagement is not one of them.
+        `debrief_seconds` spans *both* — a re-try is a coaching turn, and a
+        session that went straight from the ranked list to sparring would
+        otherwise report zero time spent while plainly having spent some. That
+        was the first implementation, and the test that caught it is the one
+        asserting the debrief contains the sparring rather than sitting beside
+        it.
+
+        Zero for a single turn, which is correct rather than a floor: somebody
+        who asked one question and left spent no measurable time in the phase,
+        and rounding that up to "a turn's worth" would invent engagement.
+        """
+        edges = [
+            (await self._db.execute(
+                select(func.min(table.said_at), func.max(table.said_at)).where(
+                    table.session_id == session_id
+                )
+            )).one()
+            for table in tables
+        ]
+        starts = [first for first, _ in edges if first]
+        ends = [last for _, last in edges if last]
+
+        return int((max(ends) - min(starts)).total_seconds()) if starts else 0
 
     async def _grounds(self, session_id: uuid.UUID) -> Grounds:
         """Everything §405 lets the coach have an opinion about.

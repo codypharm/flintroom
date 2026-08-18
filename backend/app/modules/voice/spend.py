@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -120,3 +120,40 @@ class SpendRecorder:
             .where(Session.id == session_id)
         )
         return result.one_or_none()
+
+    async def spent_coaching(
+        self,
+        *,
+        session_id: uuid.UUID,
+        debrief_seconds: int,
+        sparring_seconds: int,
+    ) -> None:
+        """How long they stayed. **Set, never added** — and that is the whole
+        difference from `record` above.
+
+        A room is the sum of its turns, so token counts accumulate. A duration
+        is not a sum: it is the distance between the first coaching turn and the
+        last, recomputed from the turn timestamps every time one lands. Adding
+        it would count the same minutes once per turn and produce a debrief
+        somebody apparently spent an hour in.
+
+        **The two overlap and must never be summed.** With turn-based transport
+        there is no moment where somebody leaves the debrief and enters
+        sparring — a re-try is a turn among turns — so `debrief_seconds` is the
+        whole coaching engagement and `sparring_seconds` is the subset spent
+        re-answering. Adding them double-counts the same minutes and inflates
+        the one figure §4.3 uses to decide whether the soft cap is tight enough.
+
+        No `_owner_of` guard, unlike `record`: this only ever runs after a
+        coaching turn has already been written against a session that
+        `DebriefService` resolved and found settled, so the row and the owner
+        are both established by the time this is reached.
+        """
+        await self._db.execute(
+            update(SessionCost)
+            .where(SessionCost.session_id == session_id)
+            .values(
+                debrief_seconds=debrief_seconds, sparring_seconds=sparring_seconds
+            )
+        )
+        await self._db.commit()

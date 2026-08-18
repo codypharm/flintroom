@@ -164,7 +164,7 @@ Rules that follow from this, enforced in code, not just UI copy:
 - Minutes are **decremented as consumed**, never reserved upfront, and **refunded automatically on technical failure**.
 - **Never interrupt a live session** to show a paywall. If a user runs out mid-interrogation, let the panel finish, then settle and hand off to debrief.
 - Idle/silence detection ends abandoned sessions and refunds automatically.
-- Soft cap (~20 min) on unmetered coaching, with a friendly extend prompt — protects against an idle open session abusing "unlimited."
+- Soft cap (~20 min) on unmetered coaching, with a friendly extend prompt. **The rule stands; its reason changed on 2026-08-18.** It was written as a cost circuit breaker against an idle open session, and turn-based coaching (`docs/debrief-and-sparring.md` decision 5) removed that cost entirely — with no socket there is no stream, and an untouched debrief bills nothing. What the cap protects now is the *promise*: "unlimited coaching" stays credible only if an abandoned tab is not counted as a session. Measured rather than assumed — `session_costs.debrief_seconds` is written from the coaching turns themselves, and §4.3 wants the observed median before the 20 is defended.
 - Per-account daily spend ceiling as a runaway-cost circuit breaker.
 - Top-up minutes never expire; monthly allowance is consumed before top-up balance.
 - Never display a depleting counter ("2 of 5 credits left"). Show remaining minutes plainly, framed generously.
