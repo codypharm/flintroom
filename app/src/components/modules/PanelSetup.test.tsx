@@ -142,7 +142,7 @@ it('refuses to start on a deck that is still being read, and says why', async ()
   // between a screen that waited with them and one that broke.
   const props = await setup({
     seated: ['cfo'],
-    material: { filename: 'Q3 board deck.pdf', state: 'extracting' },
+    material: { id: 'm-1', filename: 'Q3 board deck.pdf', state: 'extracting' },
   });
 
   expect(screen.getByText('Still reading Q3 board deck.pdf.')).toBeTruthy();
@@ -155,7 +155,7 @@ it('refuses to start on a deck that is still being read, and says why', async ()
 it('starts on a deck it has finished reading', async () => {
   const props = await setup({
     seated: ['cfo'],
-    material: { filename: 'Q3 board deck.pdf', state: 'ready' },
+    material: { id: 'm-1', filename: 'Q3 board deck.pdf', state: 'ready' },
   });
 
   await userEvent.press(screen.getByText('Start'));

@@ -1,5 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import type { AttachedMaterial } from '../../lib/api/materialsApi';
 import { color, radius, space, type } from '../../theme/tokens';
 
 /**
@@ -72,24 +73,23 @@ export interface Room {
   hardest: number;
 }
 
-/**
- * The attached deck, and how far ingestion has got with it.
- *
- * One at a time on this screen even though a session may carry several: the
- * shape here follows what the setup flow actually offers today, and widening it
- * to a list before anything attaches two is a guess about a screen nobody has
- * used.
- */
-export interface AttachedMaterial {
-  filename: string;
-  state: 'ready' | 'extracting' | 'failed';
-}
-
 export interface PanelSetupProps {
   room: Room;
   /** Seated archetype names, in seat order. Controlled by the route. */
   seated: string[];
   onSeatedChange: (names: string[]) => void;
+  /**
+   * The attached deck, or none.
+   *
+   * The type comes from the API module rather than being redeclared here.
+   * `materialsApi` owns the lifecycle — it is the thing that collapses five
+   * server states into the three a screen can draw — and a second definition
+   * beside it would be free to disagree about what "extracting" means.
+   *
+   * One at a time even though a session may carry several: that follows what
+   * the setup flow offers today, and widening it before anything attaches two
+   * is a guess about a screen nobody has used.
+   */
   material: AttachedMaterial | null;
   onAttach: () => void;
   onDifficultyChange: (level: number) => void;
