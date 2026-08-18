@@ -1,6 +1,7 @@
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { color, radius, space, type } from '../../theme/tokens';
+import { EmptyTable } from './EmptyTable';
 
 /**
  * The account, asked for once there is something to lose.
@@ -35,17 +36,18 @@ import { color, radius, space, type } from '../../theme/tokens';
  * The heading matches `TablePlan`'s opening question in size, because the plan
  * and this are two states of one screen rather than two screens.
  *
- * **The mark, and not the plan read back.** The seated chairs were drawn here
- * for one build and removed: the architect read them as the panel on sight,
- * which is the exact confusion the seat wording exists to avoid. `plan.ts` is
- * explicit that "whoever controls the budget" becoming a Margin-Obsessed CFO is
- * the server's job and the payoff, so anything here that looks like a cast list
- * spends the reveal early — and it turned out to look like one to the person
- * who wrote the rule.
+ * **The table, empty — third answer to the same question, and the right one.**
+ * The seated chairs were drawn here first and removed: the architect read them
+ * as the panel on sight, which is the exact confusion the seat wording exists
+ * to avoid, and `plan.ts` keeps that translation on the server because it is
+ * the payoff. The app icon went there second, which claimed nothing but also
+ * said nothing — a logo is about the company, and this screen is the last thing
+ * somebody sees before deciding whether the product is worth an account.
  *
- * What sits there instead is the app's own mark, which is the conventional and
- * honest content for the one screen where somebody decides whether to hand this
- * product an account. It claims nothing, and it cannot be misread as a panel.
+ * `EmptyTable` is the geometry from the previous screen with the labels and the
+ * state removed. They were seating people at that exact drawing a moment ago,
+ * so it reads as the table still being there rather than as a picture of one.
+ * The heading says "Keep this room"; this is the room.
  */
 export interface SignInSheetProps {
   /** Whether this device can offer Sign in with Apple at all. */
@@ -55,6 +57,14 @@ export interface SignInSheetProps {
   refusal: string | null;
   onApple: () => void;
   onGoogle: () => void;
+  /**
+   * How many chairs the table has, for the drawing.
+   *
+   * Passed rather than assumed for the same reason `TablePlan` takes it: this
+   * screen runs before there is a token to read the real catalogue with, and
+   * the route is the one place that already holds the free tier's number.
+   */
+  seats: number;
   /**
    * Back to the plan, with every answer still in it.
    *
@@ -72,6 +82,7 @@ export function SignInSheet({
   onApple,
   onGoogle,
   onBack,
+  seats,
 }: SignInSheetProps) {
   return (
     <View style={styles.sheet}>
@@ -92,18 +103,6 @@ export function SignInSheet({
           <Text style={styles.backLabel}>Your plan</Text>
         </Pressable>
 
-        {/* Decorative: the heading directly beneath says the same thing in
-            words, and a screen reader announcing "Flintroom logo" before it
-            would only make somebody hear the name twice. */}
-        <Image
-          source={require('../../../assets/images/mark.png')}
-          style={styles.mark}
-          resizeMode="contain"
-          accessible={false}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
-
         <Text style={styles.title} accessibilityRole="header">
           Keep this room
         </Text>
@@ -118,6 +117,11 @@ export function SignInSheet({
               generously, which is why they are here and first-person. */}
           Sign in to keep this plan. Your first 15 minutes in the room are on us.
         </Text>
+
+        {/* The one thing on this screen that is about the product. Decorative
+            and hidden from assistive technology — it carries nothing the copy
+            above does not already say. */}
+        <EmptyTable seats={seats} />
       </View>
 
       <View style={styles.ways}>
@@ -188,10 +192,6 @@ const styles = StyleSheet.create({
   // whatever the screen has left, which is the point of anchoring rather than
   // centring.
   said: { gap: space.base },
-  // Sized by height, with the width following the glyph's own aspect. The
-  // asset is cropped to the mark, so this is the mark's height rather than a
-  // box it sits somewhere inside.
-  mark: { height: 56, width: 56 * (477 / 552), marginBottom: space.tight },
   ways: { gap: space.snug },
 
   back: {

@@ -23,6 +23,7 @@ async function show(over: Partial<Parameters<typeof SignInSheet>[0]> = {}) {
       onApple={onApple}
       onGoogle={onGoogle}
       onBack={onBack}
+      seats={3}
       {...over}
     />
   );
@@ -148,4 +149,15 @@ it('claims nothing it is not showing', async () => {
 
   expect(screen.getByText(/Sign in to keep this plan/)).toBeTruthy();
   expect(screen.queryByText(/Your panel is ready/)).toBeNull();
+});
+
+it('draws the table without labelling a single seat', async () => {
+  // The drawing that replaced the cast list has to stay a drawing. Every mark
+  // is an outline; filling one would make it a seating plan again by a slower
+  // route, and naming one would put it straight back where it started.
+  await show();
+
+  expect(screen.queryAllByTestId('chair-mark', { includeHiddenElements: true }))
+    .toHaveLength(3);
+  expect(screen.queryByText(/Controls the budget|chair/i)).toBeNull();
 });

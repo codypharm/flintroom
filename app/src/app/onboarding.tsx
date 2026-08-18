@@ -145,6 +145,7 @@ export default function OnboardingRoute() {
           refusal={refusal}
           onApple={() => void enter(apple)}
           onGoogle={() => void enter(google)}
+          seats={FREE_SEATS}
           // Back to the plan with every answer still in it, because the plan
           // lives in this component's state and has been posted nowhere. The
           // sheet refuses this itself while a sign-in is in flight.
