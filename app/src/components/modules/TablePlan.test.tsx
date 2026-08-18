@@ -141,3 +141,37 @@ it('draws the date as a statement when there is no picker to open', async () => 
   expect(screen.queryByLabelText(/Tap to say when/)).toBeNull();
   expect(screen.getByText('Not sure yet')).toBeTruthy();
 });
+
+describe('TablePlan, the date', () => {
+  it('says the date in words, because nobody reads 2026-09-04 at a glance', async () => {
+    await show({ happensOn: '2026-09-04' });
+
+    expect(screen.getByText(/Fri 4 Sep/)).toBeTruthy();
+    expect(screen.queryByText('2026-09-04')).toBeNull();
+  });
+
+  it('lets a date be taken back to not sure yet', async () => {
+    // "Not sure yet" is an answer, so it has to be reachable a second time. The
+    // native pickers on both platforms confirm or cancel and neither can clear,
+    // so the row owns it rather than the picker.
+    const onChange = await show({ happensOn: '2026-09-04' });
+
+    fireEvent.press(screen.getByLabelText('Clear the date'));
+
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ happensOn: null }));
+  });
+
+  it('offers nothing to clear when nothing was set', async () => {
+    await show();
+
+    expect(screen.queryByLabelText('Clear the date')).toBeNull();
+  });
+
+  it('does not let the date be cleared while the plan is being sent', async () => {
+    const onChange = await show({ happensOn: '2026-09-04' }, { busy: true });
+
+    fireEvent.press(screen.getByLabelText('Clear the date'));
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});

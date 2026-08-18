@@ -1,6 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { SEATS, labelFor } from '../../lib/onboarding/plan';
 import { color, radius, space, type } from '../../theme/tokens';
+import { Chair } from './Chair';
 
 /**
  * The account, asked for once there is something to lose.
@@ -34,6 +36,18 @@ import { color, radius, space, type } from '../../theme/tokens';
  *
  * The heading matches `TablePlan`'s opening question in size, because the plan
  * and this are two states of one screen rather than two screens.
+ *
+ * **The table comes with them.** "Your panel is ready" was an assertion on an
+ * otherwise empty screen, and the empty screen was the argument against it. The
+ * chairs they filled are drawn in the same language they filled them in, so the
+ * sentence is shown rather than claimed and the back control has a visible
+ * subject.
+ *
+ * These are the presenter's own words, never the archetypes. `plan.ts` is
+ * explicit that the translation from "whoever controls the budget" to a
+ * Margin-Obsessed CFO happens on the server and is the payoff — showing the
+ * panel here would both spoil the reveal on setup and risk disagreeing with the
+ * room `composition.py` actually builds.
  */
 export interface SignInSheetProps {
   /** Whether this device can offer Sign in with Apple at all. */
@@ -43,6 +57,8 @@ export interface SignInSheetProps {
   refusal: string | null;
   onApple: () => void;
   onGoogle: () => void;
+  /** The seat keys they chose, in the order they chose them. */
+  seated: string[];
   /**
    * Back to the plan, with every answer still in it.
    *
@@ -60,6 +76,7 @@ export function SignInSheet({
   onApple,
   onGoogle,
   onBack,
+  seated,
 }: SignInSheetProps) {
   return (
     <View style={styles.sheet}>
@@ -90,6 +107,32 @@ export function SignInSheet({
           Your panel is ready. Sign in to keep it, and take your first 15 minutes
           in the room.
         </Text>
+
+        {seated.length > 0 && (
+          <View style={styles.table}>
+            {seated.map((key, at) => {
+              const label = labelFor(SEATS, key);
+              // A key the vocabulary no longer carries is a plan made by an
+              // older release. Drawing a blank chair would be worse than
+              // drawing one fewer.
+              if (label === null) return null;
+
+              return (
+                <Chair
+                  key={key}
+                  label={label}
+                  position={at + 1}
+                  unavailable={false}
+                  // Shown, not offered. The plan is one gesture behind, and a
+                  // chair that could be emptied here would be a second place
+                  // to edit the same thing.
+                  readOnly
+                  onPress={() => undefined}
+                />
+              );
+            })}
+          </View>
+        )}
       </View>
 
       <View style={styles.ways}>
@@ -146,6 +189,9 @@ const styles = StyleSheet.create({
   // whatever the screen has left, which is the point of anchoring rather than
   // centring.
   said: { gap: space.base },
+  // The same spine the plan drew, so this reads as the artifact carried
+  // forward rather than as a summary generated from it.
+  table: { marginTop: space.tight },
   ways: { gap: space.snug },
 
   back: {

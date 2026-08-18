@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SignInSheet } from '../components/modules/SignInSheet';
 import { TablePlan, type Plan } from '../components/modules/TablePlan';
+import { WhenPicker } from '../components/modules/WhenPicker';
 import { createAppleProvider, isAppleAvailable } from '../lib/auth/apple';
 import { createGoogleProvider } from '../lib/auth/google';
 import { auth } from '../lib/auth';
@@ -55,6 +56,10 @@ const BLANK: Plan = {
 export default function OnboardingRoute() {
   const [plan, setPlan] = useState<Plan>(BLANK);
   const [asking, setAsking] = useState(false);
+  // The route owns the picker because it is a native host component and this
+  // screen has to stay renderable without one — the same seam the microphone
+  // uses in `debrief/[id].tsx`.
+  const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [appleAvailable, setAppleAvailable] = useState(false);
@@ -109,12 +114,20 @@ export default function OnboardingRoute() {
           plan={plan}
           busy={busy}
           onChange={setPlan}
-          // Null until the native picker lands — see `TablePlan`, and the task
-          // raised for it. The row states what it knows rather than pretending
-          // to open something.
-          onPickDate={null}
+          onPickDate={() => setPicking(true)}
           onContinue={() => setAsking(true)}
         />
+
+        {picking && (
+          <WhenPicker
+            value={plan.happensOn}
+            onPick={(happensOn) => {
+              setPlan({ ...plan, happensOn });
+              setPicking(false);
+            }}
+            onClose={() => setPicking(false)}
+          />
+        )}
       </SafeAreaView>
     );
   }
@@ -128,6 +141,9 @@ export default function OnboardingRoute() {
           refusal={refusal}
           onApple={() => void enter(apple)}
           onGoogle={() => void enter(google)}
+          // Their own answers, shown back. Not the panel — the archetypes are
+          // the server's translation of these and stay unseen until setup.
+          seated={plan.audience}
           // Back to the plan with every answer still in it, because the plan
           // lives in this component's state and has been posted nowhere. The
           // sheet refuses this itself while a sign-in is in flight.

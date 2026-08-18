@@ -24,23 +24,35 @@ export interface ChairProps {
   /** True when the table is full and this chair is empty. */
   unavailable: boolean;
   onPress: () => void;
+  /**
+   * Draw the chair without offering to change it.
+   *
+   * For the sign-in sheet, which shows the table back rather than asking about
+   * it. Not the same as `unavailable`: that dims a chair somebody cannot have,
+   * while these are the chairs they chose and should read at full strength. It
+   * also drops the spoken "tap to take them out", which on that screen would be
+   * an offer nothing honours.
+   */
+  readOnly?: boolean;
 }
 
-export function Chair({ label, position, unavailable, onPress }: ChairProps) {
+export function Chair({ label, position, unavailable, onPress, readOnly }: ChairProps) {
   const taken = position !== null;
 
   return (
     <Pressable
-      accessibilityRole="button"
+      accessibilityRole={readOnly ? 'text' : 'button'}
       accessibilityState={{ selected: taken, disabled: unavailable }}
       accessibilityLabel={
-        taken
-          ? `${label}, in chair ${position}. Tap to take them out.`
-          : unavailable
-            ? `${label}. The table is full.`
-            : `${label}. Tap to seat them.`
+        readOnly
+          ? `${label}, in chair ${position}.`
+          : taken
+            ? `${label}, in chair ${position}. Tap to take them out.`
+            : unavailable
+              ? `${label}. The table is full.`
+              : `${label}. Tap to seat them.`
       }
-      disabled={unavailable}
+      disabled={readOnly || unavailable}
       onPress={onPress}
       style={({ pressed }) => [styles.chair, pressed && styles.pressed]}
     >

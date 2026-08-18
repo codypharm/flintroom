@@ -23,6 +23,7 @@ async function show(over: Partial<Parameters<typeof SignInSheet>[0]> = {}) {
       onApple={onApple}
       onGoogle={onGoogle}
       onBack={onBack}
+      seated={['budget']}
       {...over}
     />
   );
@@ -107,4 +108,26 @@ it('does not let the plan be reopened while sign-in is in flight', async () => {
   fireEvent.press(screen.getByLabelText('Back to your plan'));
 
   expect(onBack).not.toHaveBeenCalled();
+});
+
+it('shows the room they described, so "your panel is ready" is shown and not just claimed', async () => {
+  await show({ seated: ['budget', 'ally'] });
+
+  expect(screen.getByText('Controls the budget')).toBeTruthy();
+  expect(screen.getByText('Already on your side')).toBeTruthy();
+});
+
+it('names nobody as an archetype', async () => {
+  // The seats are the words the presenter chose. Turning them into the panel
+  // here would pre-empt the reveal on setup and, worse, could disagree with
+  // the room `composition.py` actually builds.
+  await show({ seated: ['budget'] });
+
+  expect(screen.queryByText(/CFO|Skeptic|Champion|archetype/i)).toBeNull();
+});
+
+it('says nothing about a table nobody sat at', async () => {
+  await show({ seated: [] });
+
+  expect(screen.queryByLabelText(/in chair/)).toBeNull();
 });

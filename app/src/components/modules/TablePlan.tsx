@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ROLES, SEATS, SITUATIONS, labelFor, seat } from '../../lib/onboarding/plan';
+import { sayWhen } from '../../lib/onboarding/when';
 import { color, radius, space, type } from '../../theme/tokens';
 import { Chair } from './Chair';
 
@@ -131,30 +132,51 @@ export function TablePlan({
         ))}
       </View>
 
-      <Pressable
-        accessibilityRole={onPickDate ? 'button' : 'text'}
-        accessibilityLabel={
-          onPickDate
-            ? plan.happensOn
-              ? `It happens on ${plan.happensOn}. Tap to change.`
-              : 'No date set. Tap to say when it happens.'
-            : `When is it? ${plan.happensOn ?? 'Not sure yet'}`
-        }
-        disabled={busy || onPickDate === null}
-        onPress={onPickDate ?? undefined}
-        style={({ pressed }) => [styles.when, pressed && onPickDate && styles.pressed]}
-      >
-        <Text style={styles.whenLabel}>When is it?</Text>
-        <Text style={styles.whenValue}>
-          {/* "Not sure yet" rather than a placeholder date. A guessed date makes
-              the countdown confidently wrong, which is worse than absent. */}
-          {plan.happensOn ?? 'Not sure yet'}
-        </Text>
-        {/* The affordance appears only when there is something to open. Until
-            the picker lands (#71) this row is a statement, and a chevron on a
-            statement is a lie about what a tap does. */}
-        {onPickDate !== null && <View style={styles.whenChevron} />}
-      </Pressable>
+      <View style={styles.when}>
+        <Pressable
+          accessibilityRole={onPickDate ? 'button' : 'text'}
+          accessibilityLabel={
+            onPickDate
+              ? plan.happensOn
+                ? `It happens on ${sayWhen(plan.happensOn)}. Tap to change.`
+                : 'No date set. Tap to say when it happens.'
+              : `When is it? ${sayWhen(plan.happensOn)}`
+          }
+          disabled={busy || onPickDate === null}
+          onPress={onPickDate ?? undefined}
+          style={({ pressed }) => [styles.whenAsk, pressed && onPickDate && styles.pressed]}
+        >
+          <Text style={styles.whenLabel}>When is it?</Text>
+          <Text style={styles.whenValue}>
+            {/* "Not sure yet" rather than a placeholder date, and said in words
+                rather than as an ISO string. A guessed date makes the countdown
+                confidently wrong, which is worse than absent. */}
+            {sayWhen(plan.happensOn)}
+          </Text>
+          {/* The affordance appears only when there is something to open. With
+              no picker the row is a statement, and a chevron on a statement is
+              a lie about what a tap does. */}
+          {onPickDate !== null && <View style={styles.whenChevron} />}
+        </Pressable>
+
+        {/* Clearing lives on the row rather than in the picker, because neither
+            native picker can do it: Compose's dialog confirms or dismisses, and
+            dismissing is a cancel. "Not sure yet" is an answer, so it has to be
+            reachable a second time. */}
+        {plan.happensOn !== null && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Clear the date"
+            accessibilityState={{ disabled: busy }}
+            disabled={busy}
+            onPress={() => onChange({ ...plan, happensOn: null })}
+            hitSlop={space.tight}
+            style={({ pressed }) => [styles.whenClear, pressed && styles.pressed]}
+          >
+            <Text style={styles.whenClearLabel}>Clear</Text>
+          </Pressable>
+        )}
+      </View>
 
       <Text style={styles.sectionTitle} accessibilityRole="header">
         Who is in that room?
@@ -350,10 +372,25 @@ const styles = StyleSheet.create({
   when: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.base,
     marginTop: space.loose,
     minHeight: 44,
   },
+  // The question takes the width and the clear sits after it, so the value
+  // stays on the right edge the rest of the sheet aligns to until there is
+  // something to clear.
+  whenAsk: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.base,
+    minHeight: 44,
+  },
+  whenClear: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingLeft: space.base,
+  },
+  whenClearLabel: { ...type.labelLg, color: color.primary },
   whenLabel: { ...type.labelLg, color: color.onSurfaceVariant, flex: 1 },
   whenValue: { ...type.bodyLg, color: color.onSurface },
   whenChevron: {
