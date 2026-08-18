@@ -39,6 +39,14 @@ export default function HomeScreen() {
           Echo spike
         </Link>
         {/*
+          A destination rather than an instrument, unlike the two above — but
+          reached from here only until the debrief screen exists to reach it
+          properly, which is where it belongs.
+        */}
+        <Link href="/prep-sheet" style={[styles.link, { color: colors.primary }]}>
+          Prep sheet
+        </Link>
+        {/*
           Also temporary, and it leaves for the same reason. `enterRoom` owns
           when this sheet actually appears — once per account, ahead of the
           microphone prompt — and that needs a signed-in user it does not have
