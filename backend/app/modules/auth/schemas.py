@@ -5,6 +5,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.modules.onboarding.schemas import Answers
+
 
 class Identity(BaseModel):
     """What the API will admit about the caller to the caller.
@@ -28,6 +30,20 @@ class SignInRequest(BaseModel):
 
     provider: str = Field(min_length=1, max_length=32)
     id_token: str = Field(min_length=1, max_length=8192)
+
+    #: The plan they filled in, on the one request that carries it.
+    #:
+    #: `docs/onboarding.md` holds the answers on-device through the survey and
+    #: posts them here rather than afterwards — *"a partially-created account
+    #: with no configuration is a state worth not having"*. A second call could
+    #: fail on its own and leave an account that exists and has been asked
+    #: nothing.
+    #:
+    #: Absent on every launch after the first, which is why it is optional
+    #: rather than defaulted: sign-in runs each time the app opens, and a
+    #: missing block must mean "nothing new to say", never "forget what I told
+    #: you".
+    onboarding: Answers | None = None
 
 
 class RefreshRequest(BaseModel):

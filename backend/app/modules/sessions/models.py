@@ -16,6 +16,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -570,6 +571,37 @@ class UserPreference(Base):
     #: the destructive direction. Deleting a room is its own explicit action.
     records_rooms: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
+    )
+
+    #: What this person is, when they stand up — `docs/onboarding.md` Q3.
+    #:
+    #: Here rather than on `situations` because it is durable: somebody is a
+    #: product manager across every roadmap review they ever rehearse, and
+    #: copying it onto each occasion would be the same fact stored many times,
+    #: free to disagree with itself.
+    #:
+    #: Nullable, and null is not a failure. The survey can be left, and a role
+    #: this build has never heard of is stored as given — `composition.BY_ROLE`
+    #: answers an unknown one by falling through to the shipped default rather
+    #: than refusing, so a newer app cannot cost somebody their room.
+    presenter_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    #: Who is usually on the other side of the table — `docs/onboarding.md` Q4,
+    #: as the chips they placed on the plan.
+    #:
+    #: An ordered array because the plan is a seating chart: chair one was
+    #: chosen first, and `composition.compose` seats them in that order. A set
+    #: would lose that, and a JSON blob would make it unqueryable for no gain
+    #: over a list of short strings.
+    #:
+    #: Standard `ARRAY`, available on RDS and Cloud SQL — CLAUDE.md forbids
+    #: Supabase-only SQL, and this is not it.
+    #:
+    #: Empty by default rather than null. "They placed no chips" and "they never
+    #: saw the question" produce the same room, so a second empty state would be
+    #: a distinction nothing acts on.
+    audience: Mapped[list[str]] = mapped_column(
+        ARRAY(String(32)), nullable=False, default=list, server_default="{}"
     )
 
     updated_at: Mapped[datetime] = mapped_column(

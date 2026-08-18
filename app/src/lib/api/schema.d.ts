@@ -613,6 +613,26 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * Answers
+         * @description The five questions, as answered.
+         *
+         *     Every field is optional, and that is deliberate rather than lax. The survey
+         *     can be abandoned at any point and still produce an account — the room simply
+         *     falls back further down `composition.compose`'s chain. A required field here
+         *     would turn "I skipped a question" into "sign-in failed", at the exact moment
+         *     somebody has spent five screens and has nothing yet to show for it.
+         */
+        Answers: {
+            /** Situation */
+            situation?: string | null;
+            /** Happens On */
+            happens_on?: string | null;
+            /** Role */
+            role?: string | null;
+            /** Audience */
+            audience?: string[];
+        };
+        /**
          * ArchetypeCatalogue
          * @description Everybody available, and how many of them this plan seats.
          *
@@ -629,6 +649,8 @@ export interface components {
             archetypes: components["schemas"]["ArchetypeRead"][];
             /** Seats */
             seats: number;
+            /** Seated */
+            seated?: string[];
             /**
              * May Author
              * @default false
@@ -1135,6 +1157,7 @@ export interface components {
             provider: string;
             /** Id Token */
             id_token: string;
+            onboarding?: components["schemas"]["Answers"] | null;
         };
         /**
          * SignedIn

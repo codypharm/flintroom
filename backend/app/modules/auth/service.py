@@ -15,6 +15,8 @@ from app.core.logging import get_logger
 from app.modules.auth.models import AuthIdentity
 from app.modules.auth.oidc import ProviderIdentity
 from app.modules.billing.deletion import AccountDeletion
+from app.modules.onboarding.schemas import Answers
+from app.modules.onboarding.service import OnboardingService
 from app.modules.billing.models import Account
 from app.modules.billing.service import LedgerService
 from app.modules.billing.tiers import FREE_TIER
@@ -58,7 +60,9 @@ class AuthService:
         self._db = db
         self._verifiers = verifiers
 
-    async def sign_in(self, *, provider: str, id_token: str) -> SignIn:
+    async def sign_in(
+        self, *, provider: str, id_token: str, answers: Answers | None = None
+    ) -> SignIn:
         """Verify a provider token and return the user it belongs to.
 
         **Also calls off a pending deletion**, which is a rule about the
@@ -83,7 +87,7 @@ class AuthService:
             # grant is idempotent, so this costs one indexed read and repairs an
             # account whose creation succeeded while its grant did not.
             await self._ensure_free_minutes(known.user_id)
-            return await self._admit(known.user_id)
+            return await self._admit(known.user_id, answers)
 
         user_id = await self._linked_by_email(identity)
         if user_id is None:
@@ -144,13 +148,15 @@ class AuthService:
                 provider=identity.provider,
             )
             await self._ensure_free_minutes(winner_id)
-            return await self._admit(winner_id)
+            return await self._admit(winner_id, answers)
 
         await self._ensure_free_minutes(user_id)
-        return await self._admit(user_id)
+        return await self._admit(user_id, answers)
 
-    async def _admit(self, user_id: uuid.UUID) -> SignIn:
-        """Let them in, calling off a deletion if one was pending.
+    async def _admit(
+        self, user_id: uuid.UUID, answers: Answers | None = None
+    ) -> SignIn:
+        """Let them in, recording the plan and calling off a pending deletion.
 
         On every return path from `sign_in`, including the one that just
         created the account — which cannot have a deletion pending, and costs
@@ -160,7 +166,16 @@ class AuthService:
 
         No object store is involved and none is needed: this clears a column.
         The purge that touches a bucket is the sweep's, seven days away.
+
+        The survey lands here for the same reason: this is the one point every
+        path passes through, and answers recorded on two branches of three would
+        be answers lost by whichever branch somebody forgot. Only when there are
+        answers — a launch that sends none is not a request to forget the ones
+        already given.
         """
+        if answers is not None:
+            await OnboardingService(self._db).record(user_id=user_id, answers=answers)
+
         cancelled = await AccountDeletion(self._db).cancel(user_id=user_id)
         return SignIn(user_id=user_id, deletion_cancelled=cancelled)
 

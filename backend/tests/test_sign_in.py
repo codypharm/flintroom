@@ -21,7 +21,9 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.core.errors import NotAuthenticated
+from app.modules.auth.models import AuthIdentity
 from app.modules.auth.service import AuthService
+from app.modules.onboarding.service import OnboardingService
 from app.modules.billing.models import Account, LedgerEntry
 from app.modules.billing.schemas import Bucket, EntryReason
 from app.modules.billing.tiers import FREE_TIER_LIFETIME_SECONDS
@@ -353,3 +355,88 @@ async def test_devices_racing_a_first_sign_in_are_granted_once(engine, db, googl
     ).scalar_one()
     assert granted == 1
     assert len(set(results)) == 1
+
+
+async def test_the_plan_posted_at_signup_is_the_room_the_account_gets(
+    client, google, db
+):
+    """The seam onboarding hangs from, end to end over HTTP.
+
+    `docs/onboarding.md` posts the answers *with* sign-up rather than after it —
+    *"a partially-created account with no configuration is a state worth not
+    having"* — so this is the one request that has to carry them. A separate
+    call would allow an account that exists and has been asked nothing, which is
+    a user who described a board review and gets asked about it again on their
+    next launch.
+
+    Asserted through the room rather than through the rows. Storage that round
+    trips is not the promise; the promise is that the reveal shows the people
+    they placed, and only `room_for` answers that.
+    """
+    token = google.token_for(subject="google-plan", email="rae@example.com")
+
+    response = await client.post(
+        "/v1/auth/sessions",
+        json={
+            "provider": "google",
+            "id_token": token,
+            "onboarding": {
+                "situation": "board_review",
+                "happens_on": "2026-09-01",
+                "role": "exec",
+                "audience": ["budget", "rival"],
+            },
+        },
+    )
+
+    assert response.status_code == 200
+
+    user_id = (
+        await db.execute(
+            select(AuthIdentity.user_id).where(AuthIdentity.subject == "google-plan")
+        )
+    ).scalar_one()
+
+    seated = await OnboardingService(db).room_for(user_id=user_id, seats=3)
+
+    assert [archetype.name for archetype in seated] == [
+        "cfo",
+        "internal_blocker",
+        "distracted_executive",
+    ]
+
+
+async def test_a_returning_user_who_sends_nothing_keeps_the_room_they_had(
+    client, google, db
+):
+    """Sign-in runs on every launch; onboarding runs once.
+
+    The answers are optional precisely so the second launch is not a request to
+    forget them. Without this, a client that omits the block — which every
+    launch after the first does — would blank the preferences and hand somebody
+    the default panel in place of the room they built.
+    """
+    token = google.token_for(subject="google-return", email="sam@example.com")
+    plan = {"role": "founder", "audience": ["technical"]}
+
+    await client.post(
+        "/v1/auth/sessions",
+        json={"provider": "google", "id_token": token, "onboarding": plan},
+    )
+    await client.post(
+        "/v1/auth/sessions", json={"provider": "google", "id_token": token}
+    )
+
+    user_id = (
+        await db.execute(
+            select(AuthIdentity.user_id).where(AuthIdentity.subject == "google-return")
+        )
+    ).scalar_one()
+
+    seated = await OnboardingService(db).room_for(user_id=user_id, seats=3)
+
+    assert [archetype.name for archetype in seated] == [
+        "technical_skeptic",
+        "growth_maximalist",
+        "cfo",
+    ]

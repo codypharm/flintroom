@@ -52,6 +52,20 @@ class ArchetypeCatalogue(BaseModel):
     #: How many may be in one room on the caller's plan.
     seats: int
 
+    #: Who is in the chairs already, in seat order — the reveal.
+    #:
+    #: Here rather than at an endpoint of its own for the same reason `seats` is:
+    #: it is read at the same moment by the same screen, and the setup screen's
+    #: first-run posture *is* the "here's your room" moment `docs/onboarding.md`
+    #: promised. A second call for three names would be a round trip for one
+    #: field the screen needs in the same instant.
+    #:
+    #: Derived from the survey on every read rather than frozen at sign-up, so
+    #: the reveal and the room the session builds cannot drift apart across a
+    #: release. Never empty: an account that answered nothing falls through to
+    #: the shipped default panel, so no client needs a branch for it.
+    seated: list[str] = Field(default_factory=list)
+
     #: Whether this plan may write its own archetype (§4.4, Pro upward). Published
     #: even where it is false, because a picker showing a locked "write your own"
     #: is how somebody learns the capability exists.

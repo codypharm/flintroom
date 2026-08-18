@@ -13,10 +13,12 @@ import pytest
 
 from sqlalchemy import select
 
-from app.agents.archetypes import LIBRARY
+from app.agents.archetypes import DEFAULT_PANEL, LIBRARY
 from app.agents.difficulty import GENTLE, RELENTLESS
 from app.modules.billing.models import Account
 from app.modules.billing.tiers import max_panel_size
+from app.modules.onboarding.schemas import Answers
+from app.modules.onboarding.service import OnboardingService
 
 pytestmark = pytest.mark.asyncio
 
@@ -126,3 +128,44 @@ async def test_a_rung_that_is_not_on_the_ladder_is_refused(client, bearer, accou
     )
 
     assert refused.status_code == 422
+
+
+async def test_the_catalogue_says_who_is_already_in_the_chairs(
+    client, bearer, account, db
+):
+    """The reveal, and why it cannot be a screen of its own.
+
+    `docs/onboarding.md` promised a *"here's your room"* moment after the
+    survey. It arrives here rather than at a new endpoint because the reveal and
+    the setup screen are one screen in two postures (decided 2026-08-18): the
+    same request already carries the roster, the seat count and the rung, and a
+    second call for the three names would be a round trip for one field the
+    screen needs at the same instant.
+
+    It also makes the reveal structurally honest. These are the seats the server
+    derived from the answers, not a preview the client assembled — so the room
+    somebody is shown is the room `POST /v1/sessions` will build.
+    """
+    await OnboardingService(db).record(
+        user_id=account.user_id,
+        answers=Answers(role="pm", audience=["budget", "compliance"]),
+    )
+
+    body = (await client.get("/v1/archetypes", headers=bearer(account.user_id))).json()
+
+    assert body["seated"] == ["cfo", "risk_officer", "internal_blocker"]
+
+
+async def test_an_account_that_answered_nothing_still_has_a_room(
+    client, bearer, account
+):
+    """Nobody is shown an empty table.
+
+    Reachable by an account that predates onboarding, and by anybody who
+    abandoned the survey and signed in anyway. `compose` falls through to the
+    shipped default, so the screen never needs a branch for "no answers" — and
+    `DEFAULT_PANEL` is the mixed room `CLAUDE.md` asks for by default.
+    """
+    body = (await client.get("/v1/archetypes", headers=bearer(account.user_id))).json()
+
+    assert body["seated"] == [archetype.name for archetype in DEFAULT_PANEL]

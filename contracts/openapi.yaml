@@ -983,6 +983,47 @@ paths:
       - HTTPBearer: []
 components:
   schemas:
+    Answers:
+      properties:
+        situation:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Situation
+        happens_on:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Happens On
+        role:
+          anyOf:
+          - type: string
+            maxLength: 32
+          - type: 'null'
+          title: Role
+        audience:
+          items:
+            type: string
+          type: array
+          maxItems: 8
+          title: Audience
+      additionalProperties: false
+      type: object
+      title: Answers
+      description: 'The five questions, as answered.
+
+
+        Every field is optional, and that is deliberate rather than lax. The survey
+
+        can be abandoned at any point and still produce an account — the room simply
+
+        falls back further down `composition.compose`''s chain. A required field here
+
+        would turn "I skipped a question" into "sign-in failed", at the exact moment
+
+        somebody has spent five screens and has nothing yet to show for it.'
     ArchetypeCatalogue:
       properties:
         archetypes:
@@ -993,6 +1034,11 @@ components:
         seats:
           type: integer
           title: Seats
+        seated:
+          items:
+            type: string
+          type: array
+          title: Seated
         may_author:
           type: boolean
           title: May Author
@@ -1776,6 +1822,10 @@ components:
           maxLength: 8192
           minLength: 1
           title: Id Token
+        onboarding:
+          anyOf:
+          - $ref: '#/components/schemas/Answers'
+          - type: 'null'
       type: object
       required:
       - provider

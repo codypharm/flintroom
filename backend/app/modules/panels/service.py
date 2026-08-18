@@ -24,6 +24,7 @@ from app.modules.billing.tiers import (
     may_author_archetypes,
     next_tier_above,
 )
+from app.modules.onboarding.service import OnboardingService
 from app.modules.panels.schemas import ArchetypeCatalogue, ArchetypeRead
 
 log = get_logger(__name__, tag="panel")
@@ -56,6 +57,7 @@ class PanelCatalogueService:
         """
         tier = await self._tier_of(user_id)
         above = next_tier_above(tier)
+        seats = max_panel_size(tier)
 
         return ArchetypeCatalogue(
             archetypes=[
@@ -70,7 +72,13 @@ class PanelCatalogueService:
                 for archetype in LIBRARY
             ],
             difficulty=await self._difficulty_of(user_id),
-            seats=max_panel_size(tier),
+            seats=seats,
+            seated=[
+                archetype.name
+                for archetype in await OnboardingService(self._db).room_for(
+                    user_id=user_id, seats=seats
+                )
+            ],
             may_author=may_author_archetypes(tier),
             upgrade_seats=max_panel_size(above) if above else None,
         )

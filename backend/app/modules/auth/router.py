@@ -95,7 +95,9 @@ async def sign_in(
     the same user, so a retry on a flaky connection costs nothing.
     """
     admitted = await auth.sign_in(
-        provider=payload.provider, id_token=payload.id_token
+        provider=payload.provider,
+        id_token=payload.id_token,
+        answers=payload.onboarding,
     )
 
     return SignedIn(
