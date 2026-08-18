@@ -20,12 +20,16 @@ from app.core.logging import get_logger
 from app.modules.auth.dependencies import CallerContext, CurrentUser
 from app.modules.sessions.models import Session
 from app.modules.ingestion.dependencies import ObjectStorageDep
+from app.agents.coach import CoachModel
 from app.agents.weakness import WeaknessReader
+from app.modules.sessions.coaching import CoachService
 from app.modules.sessions.debrief import DebriefService
 from app.modules.sessions.preferences import PreferenceService
 from app.modules.sessions.retention import RecordingRetention
 from app.modules.sessions.service import SessionService
 from app.modules.sessions.settlement import SettlementService
+from app.modules.voice.dictation import Dictation
+from app.modules.voice.speech import Speaker
 
 log = get_logger(__name__, tag="sessions")
 
@@ -156,3 +160,51 @@ async def get_debrief_service(
 
 
 DebriefServiceDep = Annotated[DebriefService, Depends(get_debrief_service)]
+
+
+def get_dictation(request: Request) -> Dictation:
+    """The process-wide transcriber for one-shot clips.
+
+    Missing means the debrief can be read but not spoken to — the ranked list is
+    a different seam and still works — so it fails here, typed and
+    vendor-anonymous, rather than at boot.
+    """
+    dictation = getattr(request.app.state, "dictation", None)
+    if dictation is None:
+        log.error("dictation_unconfigured")
+        raise ProviderUnavailable(reason="dictation_unconfigured")
+    return dictation
+
+
+def get_coach_model(request: Request) -> CoachModel:
+    """The process-wide coach."""
+    coach = getattr(request.app.state, "coach_model", None)
+    if coach is None:
+        log.error("coach_model_unconfigured")
+        raise ProviderUnavailable(reason="coach_unconfigured")
+    return coach
+
+
+def get_speaker(request: Request) -> Speaker:
+    """The process-wide synthesiser, shared with the room."""
+    speaker = getattr(request.app.state, "speaker", None)
+    if speaker is None:
+        log.error("speaker_unconfigured")
+        raise ProviderUnavailable(reason="speech_unconfigured")
+    return speaker
+
+
+async def get_coach_service(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    debrief: DebriefServiceDep,
+    dictation: Annotated[Dictation, Depends(get_dictation)],
+    coach: Annotated[CoachModel, Depends(get_coach_model)],
+    speaker: Annotated[Speaker, Depends(get_speaker)],
+) -> CoachService:
+    """One spoken turn of the debrief, end to end."""
+    return CoachService(
+        db, dictation=dictation, coach=coach, speaker=speaker, debrief=debrief
+    )
+
+
+CoachServiceDep = Annotated[CoachService, Depends(get_coach_service)]

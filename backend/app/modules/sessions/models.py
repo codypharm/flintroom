@@ -611,3 +611,46 @@ class SessionWeakAnswer(Base):
     found_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class CoachTurn(Base):
+    """One line of the coaching conversation. Append-only.
+
+    Separate from `session_transcript_lines`, which is the *room*. Collapsing
+    them would put the coach's words inside the record the coach is grounded in
+    — so its own last turn would become a thing it could cite, and a
+    conversation would slowly become its own evidence.
+
+    Kept rather than held in the request, because §3.5 asks for a conversation:
+    follow-ups, clarifications, the coach being pushed back on. A phone that
+    backgrounds mid-debrief and returns must find the thread where it left it,
+    and a client that carried the history would be free to edit it — which, for
+    a model that reads it as context, is an injection surface rather than a
+    convenience.
+    """
+
+    __tablename__ = "session_coach_turns"
+    __table_args__ = (
+        PrimaryKeyConstraint("session_id", "ordinal", name="pk_session_coach_turns"),
+    )
+
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    #: Where this sits in the conversation, from zero. Order is content: a
+    #: coach's answer read before the question it answers is a different
+    #: conversation.
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    #: `coach` or `user` — the same constant the room uses for the presenter, so
+    #: one person has one name across both records.
+    who: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+
+    said_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

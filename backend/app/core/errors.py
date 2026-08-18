@@ -220,6 +220,24 @@ class SessionNotSettled(Conflict):
     message = "This session is still running."
 
 
+class ClipTooLong(FlintroomError):
+    """The coaching clip is larger than one spoken turn could be.
+
+    413 rather than 422: this is about the size of the request, not about
+    anything in it, and CLAUDE.md's edge-case table maps it that way.
+
+    It exists because the coaching clip is the one upload this API *proxies*.
+    Decks go straight to object storage by presigned URL and never touch the
+    process; a coaching turn cannot, because it is heard once and dropped and
+    presigning it would mean storing somebody's voice and owing a deletion for
+    every sentence. Proxying without a ceiling is a memory-exhaustion endpoint.
+    """
+
+    code = "clip_too_long"
+    status_code = 413
+    message = "That recording is too long — say it in a shorter go."
+
+
 class RoomHasNoQuestions(BusinessRuleViolation):
     """The panel never asked anything, so there is nothing to be grounded in.
 

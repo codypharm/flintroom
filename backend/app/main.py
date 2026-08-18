@@ -18,8 +18,10 @@ from app.core.storage_s3 import build_object_storage
 from app.modules.auth.providers import build_verifiers
 from app.modules.auth.router import router as auth_router
 from app.modules.billing.router import router as billing_router
+from app.agents.coach_models import build_coach_model
 from app.agents.weakness_models import build_weakness_reader
 from app.modules.ingestion.extraction_models import build_extraction_model
+from app.modules.voice.dictations import build_dictation
 from app.modules.ingestion.router import router as materials_router
 from app.modules.panels.router import router as panels_router
 from app.modules.ingestion.runner import ExtractionRunner
@@ -116,6 +118,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.weakness_reader = build_weakness_reader(settings, http=http)
     if app.state.weakness_reader is None:
         log.warning("weakness_reader_unconfigured")
+
+    # The other two thirds of a spoken coaching turn. The third is
+    # `app.state.speaker` above, shared with the room — one synthesiser for the
+    # process, whichever phase is asking it to talk.
+    #
+    # Both absent rather than fatal, and the loss is specific enough to be worth
+    # two lines: without these the debrief can still be *read* — the ranked list
+    # is a different seam and a different call — but not spoken to.
+    app.state.dictation = build_dictation(settings, http=http)
+    if app.state.dictation is None:
+        log.warning("dictation_unconfigured")
+
+    app.state.coach_model = build_coach_model(settings, http=http)
+    if app.state.coach_model is None:
+        log.warning("coach_model_unconfigured")
 
     engine = create_engine(settings.database_url)
     session_factory = create_session_factory(engine)

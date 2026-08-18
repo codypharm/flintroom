@@ -30,7 +30,12 @@ from app.modules.auth.models import (  # noqa: F401  (registers the tables)
 from app.modules.billing.models import Account
 from app.modules.billing.dependencies import get_webhook_secret
 from app.modules.ingestion.dependencies import get_object_storage
-from app.modules.sessions.dependencies import get_weakness_reader
+from app.modules.sessions.dependencies import (
+    get_coach_model,
+    get_dictation,
+    get_speaker,
+    get_weakness_reader,
+)
 from app.modules.ingestion.models import (  # noqa: F401  (registers the tables)
     ExtractionCost,
     Material,
@@ -304,7 +309,10 @@ async def auth(db, google, apple) -> AuthService:
 WEBHOOK_SECRET = "rc-signing-secret-with-no-production-counterpart"
 
 
-def _configured_app(db, google, apple, storage, reader, *, webhook_secret: str | None):
+def _configured_app(
+    db, google, apple, storage, reader, dictation, coach, speaker,
+    *, webhook_secret: str | None,
+):
     """The app with every external edge substituted, and nothing else changed.
 
     The lifespan is deliberately not run: it starts the sweep loops and opens a
@@ -326,17 +334,24 @@ def _configured_app(db, google, apple, storage, reader, *, webhook_secret: str |
     # reads well — that is measured in `scripts/weakness.py`, against a real
     # one, where a mock could not answer the question anyway.
     app.dependency_overrides[get_weakness_reader] = lambda: reader
+    # The three edges of a spoken coaching turn. Scripted rather than real
+    # for the reason the reader is: whether a coach reads well is measured
+    # against a live model in `scripts/coach.py`, and these tests are about
+    # who may speak to it and what comes back on the wire.
+    app.dependency_overrides[get_dictation] = lambda: dictation
+    app.dependency_overrides[get_coach_model] = lambda: coach
+    app.dependency_overrides[get_speaker] = lambda: speaker
     return app
 
 
 @pytest_asyncio.fixture
-async def client(db, google, apple, storage, weakness_reader):
+async def client(db, google, apple, storage, weakness_reader, dictation, coach_model, speaker):
     """The app as a deployment that is configured properly."""
     async with AsyncClient(
         transport=ASGITransport(
             app=_configured_app(
-                db, google, apple, storage, weakness_reader,
-                webhook_secret=WEBHOOK_SECRET,
+                db, google, apple, storage, weakness_reader, dictation,
+                coach_model, speaker, webhook_secret=WEBHOOK_SECRET,
             )
         ),
         base_url="http://test",
@@ -345,7 +360,9 @@ async def client(db, google, apple, storage, weakness_reader):
 
 
 @pytest_asyncio.fixture
-async def client_without_webhook_secret(db, google, apple, storage, weakness_reader):
+async def client_without_webhook_secret(
+    db, google, apple, storage, weakness_reader, dictation, coach_model, speaker
+):
     """The app as a deployment that came up missing one variable.
 
     Worth a whole fixture because the failure is the interesting one: this
@@ -356,7 +373,8 @@ async def client_without_webhook_secret(db, google, apple, storage, weakness_rea
     async with AsyncClient(
         transport=ASGITransport(
             app=_configured_app(
-                db, google, apple, storage, weakness_reader, webhook_secret=None
+                db, google, apple, storage, weakness_reader, dictation,
+                coach_model, speaker, webhook_secret=None
             )
         ),
         base_url="http://test",
@@ -385,3 +403,45 @@ class ScriptedWeaknessReader:
 @pytest.fixture
 def weakness_reader() -> ScriptedWeaknessReader:
     return ScriptedWeaknessReader()
+
+
+@pytest.fixture
+def dictation():
+    """Hears whatever a test says was said, and records having been asked.
+
+    `heard` is what several tests assert on rather than the reply: this is the
+    first vendor on the coaching path, so "was it called at all" is how a
+    refusal is shown to have happened *before* money was spent.
+    """
+    from tests.test_coaching import ScriptedDictation
+
+    return ScriptedDictation()
+
+
+@pytest.fixture
+def coach_model():
+    """A coach whose answer a test sets."""
+    from tests.test_coaching import ScriptedCoach
+
+    coach = ScriptedCoach()
+
+    class Settable:
+        saw_grounds = None
+        saw_exchange = ()
+        reply_with = None
+
+        async def reply(self, *, grounds, exchange):
+            self.saw_grounds = grounds
+            self.saw_exchange = tuple(exchange)
+            return self.reply_with or await coach.reply(
+                grounds=grounds, exchange=exchange
+            )
+
+    return Settable()
+
+
+@pytest.fixture
+def speaker():
+    from tests.test_coaching import ScriptedSpeaker
+
+    return ScriptedSpeaker()

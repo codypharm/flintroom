@@ -308,6 +308,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sessions/{session_id}/debrief/turns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Speak To Coach
+         * @description Say one thing to the coach, and hear one thing back.
+         *
+         *     Push-to-talk rather than a socket. `docs/debrief-and-sparring.md` decision 5:
+         *     hands-free is a property of the *interrogation* — the phone is face-down on a
+         *     desk there and in the user's hand here — so the debrief has no barge-in to
+         *     support and nothing to overlap. A held socket would bill for silence on an
+         *     unmetered phase, which is the failure `IDLE_LIMIT` exists to catch in the
+         *     room.
+         *
+         *     Unmetered, and no ticket. Nothing about this call touches the ledger, which
+         *     is the metering boundary being structural rather than remembered: there is
+         *     no code path from here to a balance.
+         *
+         *     The reply carries text as well as audio. That is the accessibility floor
+         *     `CLAUDE.md` sets — WCAG 2.2 AA plus live captions, as a v1 requirement — and
+         *     a client cannot caption bytes it was handed.
+         */
+        post: operations["sessions_speak_to_coach"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/balance": {
         parameters: {
             query?: never;
@@ -536,6 +571,34 @@ export interface components {
             remaining_minutes: number;
             /** Has Time Remaining */
             has_time_remaining: boolean;
+        };
+        /** Body_sessions_speak_to_coach */
+        Body_sessions_speak_to_coach: {
+            /**
+             * Clip
+             * @description One recorded turn.
+             */
+            clip: string;
+        };
+        /**
+         * CoachTurnRead
+         * @description What the coach said, in both channels at once.
+         *
+         *     Text as well as audio, and the text is not a convenience. `CLAUDE.md` sets
+         *     the accessibility floor at WCAG 2.2 AA **plus live captions**, as a v1
+         *     requirement rather than a later addition — an audio-only reply is unusable
+         *     for part of the audience, and a client cannot caption bytes.
+         *
+         *     `speech` is base64 because this is JSON. The alternative was two round trips
+         *     or a stored object, and a coaching turn is heard once and dropped:
+         *     `docs/session-retention.md` gives the interrogation's audio a per-tier
+         *     window and says nothing about this, because nothing was going to keep it.
+         */
+        CoachTurnRead: {
+            /** Text */
+            text: string;
+            /** Speech */
+            speech: string;
         };
         /**
          * DebriefRead
@@ -1357,6 +1420,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DebriefRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sessions_speak_to_coach: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_sessions_speak_to_coach"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoachTurnRead"];
                 };
             };
             /** @description Validation Error */

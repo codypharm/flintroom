@@ -383,3 +383,25 @@ class DebriefRead(BaseModel):
     """
 
     weak_answers: list[WeakAnswerRead]
+
+
+class CoachTurnRead(BaseModel):
+    """What the coach said, in both channels at once.
+
+    Text as well as audio, and the text is not a convenience. `CLAUDE.md` sets
+    the accessibility floor at WCAG 2.2 AA **plus live captions**, as a v1
+    requirement rather than a later addition — an audio-only reply is unusable
+    for part of the audience, and a client cannot caption bytes.
+
+    `speech` is base64 because this is JSON. The alternative was two round trips
+    or a stored object, and a coaching turn is heard once and dropped:
+    `docs/session-retention.md` gives the interrogation's audio a per-tier
+    window and says nothing about this, because nothing was going to keep it.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    text: str
+
+    #: Base64-encoded audio of `text`, in whatever the synthesiser produces.
+    speech: str

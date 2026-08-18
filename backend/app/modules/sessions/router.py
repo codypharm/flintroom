@@ -3,15 +3,19 @@
 Thin, per `CLAUDE.md`: parse the request, call a service, return a response.
 """
 
-from fastapi import APIRouter, Depends, status
+import base64
+from typing import Annotated
 
-from app.core.errors import RecordingNotAvailable
+from fastapi import APIRouter, Depends, File, UploadFile, status
+
+from app.core.errors import ClipTooLong, RecordingNotAvailable
 from app.core.storage_s3 import DEFAULT_EXPIRY_SECONDS
 from app.modules.auth.dependencies import CurrentUser, rate_limit_user
 from app.modules.ingestion.dependencies import ObjectStorageDep
 from app.modules.voice.recording import recording_key
 from app.modules.auth.rate_limit import SESSION_START_LIMIT
 from app.modules.sessions.dependencies import (
+    CoachServiceDep,
     DebriefServiceDep,
     PreferenceServiceDep,
     RecordingRetentionDep,
@@ -20,6 +24,7 @@ from app.modules.sessions.dependencies import (
     SettlementServiceDep,
 )
 from app.modules.sessions.schemas import (
+    CoachTurnRead,
     DebriefRead,
     RecordingPreference,
     RecordingPreferenceUpdate,
@@ -32,6 +37,15 @@ from app.modules.sessions.schemas import (
     WeakAnswerRead,
 )
 from app.modules.voice.dependencies import VoiceTicketServiceDep
+
+#: The most a single spoken turn may weigh.
+#:
+#: Ten megabytes is roughly five minutes of PCM16 at 16 kHz, and far more of
+#: anything a phone actually records — so it bounds abuse without ever being
+#: reached by somebody answering a question. Generous on purpose: the failure of
+#: a limit set too tight is a user whose longest, most considered answer is the
+#: one that gets refused.
+MAX_CLIP_BYTES = 10 * 1024 * 1024
 
 router = APIRouter(tags=["sessions"])
 
@@ -268,4 +282,53 @@ async def read_debrief(
             )
             for answer in await debrief.weak_answers(session_id=session.id)
         ]
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/debrief/turns",
+    response_model=CoachTurnRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def speak_to_coach(
+    session: OwnedSession,
+    coaching: CoachServiceDep,
+    clip: Annotated[UploadFile, File(description="One recorded turn.")],
+) -> CoachTurnRead:
+    """Say one thing to the coach, and hear one thing back.
+
+    Push-to-talk rather than a socket. `docs/debrief-and-sparring.md` decision 5:
+    hands-free is a property of the *interrogation* — the phone is face-down on a
+    desk there and in the user's hand here — so the debrief has no barge-in to
+    support and nothing to overlap. A held socket would bill for silence on an
+    unmetered phase, which is the failure `IDLE_LIMIT` exists to catch in the
+    room.
+
+    Unmetered, and no ticket. Nothing about this call touches the ledger, which
+    is the metering boundary being structural rather than remembered: there is
+    no code path from here to a balance.
+
+    The reply carries text as well as audio. That is the accessibility floor
+    `CLAUDE.md` sets — WCAG 2.2 AA plus live captions, as a v1 requirement — and
+    a client cannot caption bytes it was handed.
+    """
+    # Read with one byte of headroom so a clip exactly at the ceiling passes and
+    # anything past it is caught here rather than by however much memory the
+    # process had left. `UploadFile` spools to disk above a threshold, so this
+    # bounds what reaches the transcriber rather than what reaches the process —
+    # which is the number that matters, since the vendor is billed by audio.
+    recorded = await clip.read(MAX_CLIP_BYTES + 1)
+    if len(recorded) > MAX_CLIP_BYTES:
+        raise ClipTooLong(
+            session_id=str(session.id), limit_bytes=MAX_CLIP_BYTES
+        )
+
+    turn = await coaching.say(
+        session_id=session.id,
+        clip=recorded,
+        media_type=clip.content_type or "application/octet-stream",
+    )
+
+    return CoachTurnRead(
+        text=turn.text, speech=base64.b64encode(turn.speech).decode()
     )

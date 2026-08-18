@@ -36,6 +36,21 @@ dependencies = [
     # PPTX rendering. Confined to `core/storage_s3.py`, so replacing it — or the
     # storage vendor — touches one module.
     "boto3>=1.35",
+    # Parses one multipart body: the coaching clip. FastAPI's `UploadFile`
+    # refuses to start without it, and there is no smaller way to accept a file
+    # over HTTP.
+    #
+    # Worth justifying against CLAUDE.md, which says uploaded material is
+    # "delivered via presigned URL only, never proxied". That rule is about
+    # decks — tens of megabytes, stored, extracted later — and it keeps them off
+    # the API process entirely. A coaching turn is a few seconds of speech that
+    # is heard, answered and dropped; presigning it would put the user's voice
+    # in object storage and leave us owing a deletion for every sentence they
+    # say, which is worse on privacy and slower on a phone.
+    #
+    # Bounded in the route by MAX_CLIP_BYTES, because "proxied" without a
+    # ceiling is a memory exhaustion endpoint.
+    "python-multipart>=0.0.9",
     # Reading a deck. `docs/ingestion.md` §3.2 wants claims, figures and chart
     # data per slide, and chart values are not in a PDF's text layer — a text-only
     # parser returns a chart's axis labels and none of its numbers. So every page

@@ -492,6 +492,71 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/sessions/{session_id}/debrief/turns:
+    post:
+      tags:
+      - sessions
+      summary: Speak To Coach
+      description: 'Say one thing to the coach, and hear one thing back.
+
+
+        Push-to-talk rather than a socket. `docs/debrief-and-sparring.md` decision
+        5:
+
+        hands-free is a property of the *interrogation* — the phone is face-down on
+        a
+
+        desk there and in the user''s hand here — so the debrief has no barge-in to
+
+        support and nothing to overlap. A held socket would bill for silence on an
+
+        unmetered phase, which is the failure `IDLE_LIMIT` exists to catch in the
+
+        room.
+
+
+        Unmetered, and no ticket. Nothing about this call touches the ledger, which
+
+        is the metering boundary being structural rather than remembered: there is
+
+        no code path from here to a balance.
+
+
+        The reply carries text as well as audio. That is the accessibility floor
+
+        `CLAUDE.md` sets — WCAG 2.2 AA plus live captions, as a v1 requirement — and
+
+        a client cannot caption bytes it was handed.'
+      operationId: sessions_speak_to_coach
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Session Id
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_sessions_speak_to_coach'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoachTurnRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/balance:
     get:
       tags:
@@ -831,6 +896,49 @@ components:
         ordering, an internal rule, and showing three numbers that deplete in turn
 
         is the credits display §4.6 exists to refuse.'
+    Body_sessions_speak_to_coach:
+      properties:
+        clip:
+          type: string
+          contentMediaType: application/octet-stream
+          title: Clip
+          description: One recorded turn.
+      type: object
+      required:
+      - clip
+      title: Body_sessions_speak_to_coach
+    CoachTurnRead:
+      properties:
+        text:
+          type: string
+          title: Text
+        speech:
+          type: string
+          title: Speech
+      type: object
+      required:
+      - text
+      - speech
+      title: CoachTurnRead
+      description: 'What the coach said, in both channels at once.
+
+
+        Text as well as audio, and the text is not a convenience. `CLAUDE.md` sets
+
+        the accessibility floor at WCAG 2.2 AA **plus live captions**, as a v1
+
+        requirement rather than a later addition — an audio-only reply is unusable
+
+        for part of the audience, and a client cannot caption bytes.
+
+
+        `speech` is base64 because this is JSON. The alternative was two round trips
+
+        or a stored object, and a coaching turn is heard once and dropped:
+
+        `docs/session-retention.md` gives the interrogation''s audio a per-tier
+
+        window and says nothing about this, because nothing was going to keep it.'
     DebriefRead:
       properties:
         weak_answers:
