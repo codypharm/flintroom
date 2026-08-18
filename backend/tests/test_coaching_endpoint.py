@@ -140,3 +140,71 @@ async def test_speaking_without_a_credential_transcribes_nothing(
 
     assert response.status_code == 401
     assert dictation.heard == []
+
+
+async def test_the_reply_carries_back_what_the_transcriber_heard(
+    client, db, engine, sessions, settlement, funded_account, bearer,
+    weakness_reader, coach_model, speaker, dictation,
+):
+    """The user's own words, returned to the user who said them.
+
+    Two things need this and neither is cosmetic.
+
+    A dictated turn is the one place in the product where a vendor's mistake is
+    invisible: if the transcriber hears "twelve" for "twelve hundred", the coach
+    answers the sentence it was given and the reply reads as though the coach
+    stopped listening. Showing what was heard is the only way somebody can tell
+    a coaching disagreement from a transcription error.
+
+    The debrief screen also needs it structurally. A re-answer is stored in
+    `SparringAttempt.said` and was never sent anywhere, so a client could show
+    what the room got and what the coach replied, with the answer that changed
+    between them missing from the middle.
+
+    Not a `CLAUDE.md` list-endpoint disclosure: this is one turn, returned to
+    its owner, in the response to their own speech.
+    """
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    weakness_reader.judged = (FOUND,)
+    dictation._text = "We grew off a base of two million."
+
+    response = await client.post(
+        f"/v1/sessions/{session.id}/debrief/turns",
+        headers=bearer(funded_account.user_id),
+        files=CLIP,
+    )
+
+    assert response.status_code == 201
+    assert response.json()["heard"] == "We grew off a base of two million."
+
+
+async def test_a_re_answer_comes_back_beside_what_was_heard(
+    client, db, engine, sessions, settlement, funded_account, bearer,
+    weakness_reader, coach_model, speaker, dictation,
+):
+    """Sparring, where the stored attempt makes the omission plainest.
+
+    `CoachService.spar` already writes `said` to the row and hands the caller
+    only the reply. The sheet that shows a first answer against a second cannot
+    be built from that, and reconstructing it on the client would mean the app
+    transcribing speech the server has already paid to transcribe.
+    """
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    weakness_reader.judged = (FOUND,)
+    dictation._text = "Off a base of two million, at a cost of forty a customer."
+
+    response = await client.post(
+        f"/v1/sessions/{session.id}/debrief/weak-answers/0/attempts",
+        headers=bearer(funded_account.user_id),
+        files=CLIP,
+    )
+
+    assert response.status_code == 201
+    assert (
+        response.json()["heard"]
+        == "Off a base of two million, at a cost of forty a customer."
+    )

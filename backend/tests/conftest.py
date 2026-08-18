@@ -420,14 +420,23 @@ def dictation():
 
 @pytest.fixture
 def coach_model():
-    """A coach whose answer a test sets."""
-    from tests.test_coaching import ScriptedCoach
+    """A coach whose answer a test sets, on both of the calls it answers.
+
+    `spar` is here because a `CoachModel` has two methods and a fixture with one
+    of them silently made the sparring endpoint untestable over HTTP — the
+    failure surfaced as an `AttributeError` from inside the service the first
+    time anything posted an attempt, which was long after sparring shipped.
+    """
+    from tests.test_coaching import ScriptedCoach, SparringCoach
 
     coach = ScriptedCoach()
+    sparring = SparringCoach()
 
     class Settable:
         saw_grounds = None
         saw_exchange = ()
+        saw_weak = None
+        saw_attempts = ()
         reply_with = None
 
         async def reply(self, *, grounds, exchange):
@@ -436,6 +445,14 @@ def coach_model():
             return self.reply_with or await coach.reply(
                 grounds=grounds, exchange=exchange
             )
+
+        async def spar(self, *, grounds, weak, attempts):
+            self.saw_grounds = grounds
+            self.saw_weak = weak
+            self.saw_attempts = tuple(attempts)
+            if self.reply_with:
+                return self.reply_with
+            return await sparring.spar(grounds=grounds, weak=weak, attempts=attempts)
 
     return Settable()
 

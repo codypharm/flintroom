@@ -1,0 +1,163 @@
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+
+import type { WeakAnswer } from '../../lib/api/debriefApi';
+import { panelistName } from '../../lib/panel/vocabulary';
+import { color, radius, space, type } from '../../theme/tokens';
+
+/**
+ * One question, and everything said about it since.
+ *
+ * Two slots, and the second one starts empty. **In the room** is fixed — it is
+ * what happened, and it does not improve. **Now** grows each time the question
+ * is answered again, and it is never marked right: #59 forbids a verdict
+ * outright, because telling somebody a thin answer landed sends them into the
+ * real room believing it.
+ *
+ * The empty slot says "you have not answered this one again yet", which is a
+ * statement about time rather than about quality. An unticked box, a greyed
+ * card, or a progress count would all say the same thing as a score.
+ */
+
+export interface Exchange {
+  /** What the transcriber made of the clip — the presenter's own words. */
+  heard: string;
+  /** What the coach said back. What changed, never whether it was enough. */
+  said: string;
+}
+
+export interface DebriefEntryProps {
+  answer: WeakAnswer;
+  /** Oldest first, so the entry reads down the way the work happened. */
+  attempts: Exchange[];
+  /** True while any capture is running anywhere on the screen. */
+  busy: boolean;
+  onAnswerAgain: () => void;
+}
+
+/**
+ * What sits in the "In the room" slot when nothing was said.
+ *
+ * The distinction is #56's, and it is the one thing on this screen that must
+ * not be got wrong. All three of these are silence in the transcript, and only
+ * one of them is the presenter's doing — `blame` in
+ * `lib/panel/vocabulary.ts` decides which, and nothing here second-guesses it.
+ * Telling somebody they ducked a question a panelist took away from them reads
+ * as the product not having listened.
+ */
+function silence(answer: WeakAnswer): string {
+  if (answer.weakness === 'dismissed') return 'A panelist cut across you.';
+  if (answer.weakness === 'not_reached') return 'The session ran out before this one.';
+  return 'Nothing — it went by.';
+}
+
+export function DebriefEntry({ answer, attempts, busy, onAnswerAgain }: DebriefEntryProps) {
+  const asker = panelistName(answer.askedBy);
+
+  return (
+    <View style={styles.entry} accessibilityLabel={`Question from ${asker}`}>
+      <Text style={styles.asker}>{asker}</Text>
+      <Text style={styles.question}>{answer.question}</Text>
+
+      <Text style={styles.slot}>In the room</Text>
+      <Text style={answer.answer ? styles.said : styles.nothing}>
+        {answer.answer ?? silence(answer)}
+      </Text>
+      {/*
+        Always shown, including where the finding was not the presenter's doing.
+        The coach's sentence describes what happened rather than passing
+        judgement — "another panelist interrupted before you could answer" is
+        the exoneration, not a softened version of an accusation — and
+        withholding it on the room's own findings would leave the quietest
+        entries with the least explanation.
+      */}
+      <Text style={styles.why}>{answer.why}</Text>
+
+      <View style={styles.now}>
+        <Text style={styles.slot}>Now</Text>
+        {attempts.length === 0 ? (
+          <Text style={styles.nothing}>You have not answered this one again yet.</Text>
+        ) : (
+          attempts.map((attempt, index) => (
+            <View key={index} style={index > 0 && styles.later}>
+              <Text style={styles.said}>{attempt.heard}</Text>
+              <Text style={styles.back}>{attempt.said}</Text>
+            </View>
+          ))
+        )}
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ disabled: busy }}
+          disabled={busy}
+          onPress={onAnswerAgain}
+          style={({ pressed }) => [
+            styles.again,
+            pressed && styles.againPressed,
+            // Dimmed rather than removed. A control that vanishes mid-recording
+            // moves the page under somebody who is in the middle of speaking.
+            busy && styles.againBusy,
+          ]}
+        >
+          <Text style={styles.againLabel}>Answer it again</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  entry: {
+    backgroundColor: color.card,
+    borderRadius: radius.container,
+    padding: space.loose,
+    marginTop: space.base,
+  },
+
+  asker: { ...type.labelLg, color: color.primary },
+  question: { ...type.bodyLg, color: color.onSurface, marginTop: space.hair },
+
+  /**
+   * The two slot names. Set small and quiet, because they are furniture: what
+   * the reader is here for is the words underneath them.
+   */
+  slot: {
+    ...type.labelLg,
+    color: color.onSurfaceVariant,
+    marginTop: space.loose,
+  },
+  said: { ...type.bodyMd, color: color.onSurface, marginTop: space.hair },
+  nothing: {
+    ...type.bodyMd,
+    color: color.onSurfaceVariant,
+    marginTop: space.hair,
+  },
+  why: { ...type.bodyMd, color: color.onSurfaceVariant, marginTop: space.snug },
+
+  /**
+   * The second slot is divided from the first by a rule rather than by a card.
+   * Nesting a card inside a card is the lazy container, and these are two parts
+   * of one record rather than two records.
+   */
+  now: {
+    marginTop: space.loose,
+    paddingTop: space.tight,
+    borderTopWidth: 1,
+    borderTopColor: color.hairline,
+  },
+  back: { ...type.bodyMd, color: color.onSurfaceVariant, marginTop: space.snug },
+  later: { marginTop: space.base },
+
+  again: {
+    minHeight: 44,
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: space.loose,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: color.primary,
+    marginTop: space.base,
+  },
+  againPressed: { opacity: 0.6 },
+  againBusy: { opacity: 0.4 },
+  againLabel: { ...type.labelLg, color: color.primary },
+});

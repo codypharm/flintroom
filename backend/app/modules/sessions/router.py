@@ -301,12 +301,16 @@ async def speak_to_coach(
 ) -> CoachTurnRead:
     """Say one thing to the coach, and hear one thing back.
 
-    Push-to-talk rather than a socket. `docs/debrief-and-sparring.md` decision 5:
-    hands-free is a property of the *interrogation* — the phone is face-down on a
-    desk there and in the user's hand here — so the debrief has no barge-in to
-    support and nothing to overlap. A held socket would bill for silence on an
-    unmetered phase, which is the failure `IDLE_LIMIT` exists to catch in the
-    room.
+    One turn per request rather than a socket. `docs/debrief-and-sparring.md`
+    decision 5: hands-free is a property of the *interrogation*, so the debrief
+    has no barge-in to support and nothing to overlap, and a held socket would
+    bill for silence on an unmetered phase — the failure `IDLE_LIMIT` exists to
+    catch in the room.
+
+    Not "push-to-talk", which that decision said and its 2026-08-18 amendment
+    withdrew. The argument was always about transport; how the client starts and
+    stops recording is a separate choice, and the shipped one is tap-to-start,
+    tap-to-stop.
 
     Unmetered, and no ticket. Nothing about this call touches the ledger, which
     is the metering boundary being structural rather than remembered: there is
@@ -334,7 +338,9 @@ async def speak_to_coach(
     )
 
     return CoachTurnRead(
-        text=turn.text, speech=base64.b64encode(turn.speech).decode()
+        text=turn.text,
+        speech=base64.b64encode(turn.speech).decode(),
+        heard=turn.heard,
     )
 
 
@@ -382,5 +388,7 @@ async def spar(
     )
 
     return CoachTurnRead(
-        text=turn.text, speech=base64.b64encode(turn.speech).decode()
+        text=turn.text,
+        speech=base64.b64encode(turn.speech).decode(),
+        heard=turn.heard,
     )

@@ -421,3 +421,20 @@ class CoachTurnRead(BaseModel):
 
     #: Base64-encoded audio of `text`, in whatever the synthesiser produces.
     speech: str
+
+    #: What the transcriber made of the clip — the user's own words, returned
+    #: to the user who said them.
+    #:
+    #: Published because a dictated turn is the one place a vendor's mistake is
+    #: invisible without it. A transcriber that hears "twelve" for "twelve
+    #: hundred" produces a coach reply that reads as though nobody was
+    #: listening, and there is no way to tell that from a disagreement.
+    #:
+    #: It is also the middle of the sparring record. `SparringAttempt.said`
+    #: already stores it, so a client could otherwise show the answer the room
+    #: got and the coach's response to a newer one, with the new answer itself
+    #: missing.
+    #:
+    #: Not the list-endpoint disclosure `CLAUDE.md` forbids: one turn, to its
+    #: owner, in the response to their own speech.
+    heard: str

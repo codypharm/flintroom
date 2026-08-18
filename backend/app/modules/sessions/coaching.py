@@ -72,10 +72,17 @@ class NothingWasSaid(FlintroomError):
 
 @dataclass(frozen=True, slots=True)
 class CoachedTurn:
-    """What the user hears, and what they read while hearing it."""
+    """What the user hears, what they read while hearing it, and what was heard.
+
+    `heard` is the transcriber's reading of their own clip, carried back rather
+    than dropped. It is what makes a vendor mishearing distinguishable from the
+    coach disagreeing, and it is the middle term of a sparring record: the
+    answer the room got, then this one, then what changed.
+    """
 
     text: str
     speech: bytes
+    heard: str
 
 
 class CoachService:
@@ -129,8 +136,9 @@ class CoachService:
         await self._keep(session_id, heard.text, said)
         await self._spent(session_id, heard=heard, reply=reply, said=said)
 
-        return CoachedTurn(text=said, speech=await self._voice(said))
-
+        return CoachedTurn(
+            text=said, speech=await self._voice(said), heard=heard.text
+        )
 
     async def spar(
         self,
@@ -186,7 +194,9 @@ class CoachService:
         await self._db.commit()
         await self._spent(session_id, heard=heard, reply=reply, said=said)
 
-        return CoachedTurn(text=said, speech=await self._voice(said))
+        return CoachedTurn(
+            text=said, speech=await self._voice(said), heard=heard.text
+        )
 
     async def _weak(self, session_id: uuid.UUID, rank: int) -> WeakAnswer:
         """The question at this rank, or a refusal.

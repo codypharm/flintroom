@@ -294,9 +294,27 @@ Two facts point the same way. `PanelModel` already describes the coach as
 *"turn-based and has no room in it at all"*, and `Product.md` §396 says the screen
 is *"glanceable at best during the live phase, and fully attended only in setup,
 debrief, and sparring."* **Hands-free is a property of the interrogation, not of
-the product.** The phone is on the desk for the room and in the hand for the
-debrief, and designing the debrief for a posture it does not have costs a relay,
-an idle detector, and a reaper path for something that is not metered.
+the product**, and designing the debrief for a posture it does not have costs a
+relay, an idle detector, and a reaper path for something that is not metered.
+
+**Amended 2026-08-18, while building the screen (#67).** This decision
+originally added the gloss *"the phone is on the desk for the room and in the
+hand for the debrief"*, and that went further than its evidence. Everything
+argued above is about **transport** — a held socket bills for silence, so the
+turn is an HTTP request. §396 says the screen is *fully attended*, which is
+about gaze, not grip: a phone propped against a laptop is fully attended.
+
+The capture gesture is therefore a separate decision, and it was taken on its
+own merits: **tap to start, tap to stop**, for coaching turns and re-answers
+alike. Sparring is where the difference bites, because it is the one place in
+the product where somebody re-delivers a thirty-second answer they will give
+standing up, and a thumb pinned to a button is not that rehearsal. Tapping costs
+nothing, needs no on-device voice-activity detection, and works held or propped;
+its worst case is a forgotten recording, which `lib/audio/clip.ts` caps below the
+server's own ceiling and reports as a sentence rather than as a failed upload.
+
+Turn-based transport is unaffected either way, which is the point: the socket
+argument never depended on the grip.
 
 Unmetered is not free: a held socket keeps a transcription stream open and bills
 for silence, which is the same failure the room's `IDLE_LIMIT` exists to catch.

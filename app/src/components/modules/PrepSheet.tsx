@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import type { WeakAnswer, WeaknessKind } from '../../lib/api/debriefApi';
+import { howOften, KINDS, panelistName } from '../../lib/panel/vocabulary';
 import { color, radius, space, type } from '../../theme/tokens';
 
 /**
@@ -55,27 +57,15 @@ import { color, radius, space, type } from '../../theme/tokens';
  * to prevent, arriving through a layout instead of through a sentence.
  */
 
-/** The six readings the debrief can return. `Weakness` in `agents/weakness.py`. */
-export type WeaknessKind =
-  | 'unanswered'
-  | 'dismissed'
-  | 'not_reached'
-  | 'contradicted'
-  | 'unsupported'
-  | 'evasive';
-
-export interface WeakAnswer {
-  /** Where the question sits in the transcript. What sparring re-asks. */
-  ordinal: number;
-  question: string;
-  /** An archetype key — `cfo`, `technical_skeptic`, `champion`. */
-  askedBy: string;
-  /** What they said, or null when they said nothing — itself a finding. */
-  answer: string | null;
-  weakness: WeaknessKind;
-  /** The coach's sentence about what was missing. */
-  why: string;
-}
+/**
+ * One finding, and the vocabulary it is drawn from.
+ *
+ * Owned by `debriefApi`, not redeclared here. This screen and the debrief
+ * render the same rows from the same response, and two hand-written copies of
+ * that shape would be free to disagree — silently, because a structural type
+ * matches on fields rather than on identity.
+ */
+export type { WeakAnswer, WeaknessKind };
 
 export interface PrepSheetProps {
   /** Worst first, as `GET /v1/sessions/{id}/debrief` returns them. */
@@ -83,49 +73,6 @@ export interface PrepSheetProps {
   /** Re-answer the weak answer at this rank. Anchored by rank, per #59. */
   onSpar: (rank: number) => void;
   onShare: () => void;
-}
-
-/**
- * What each kind reads as when it is a habit rather than a category.
- *
- * Written as something a person did, not as a taxonomy label: "answered a
- * different question" rather than "evasive". A noun invites a score; a verb
- * invites a change.
- *
- * `blame` is the load-bearing field. It decides which heading a kind sits
- * under, and nothing else in this file is allowed to decide that.
- */
-const KINDS: Record<WeaknessKind, { habit: string; blame: 'them' | 'room' }> = {
-  evasive: { habit: 'Answered a different question', blame: 'them' },
-  unsupported: { habit: 'Claimed it without backing it', blame: 'them' },
-  contradicted: { habit: 'Gave a figure that fought another one', blame: 'them' },
-  unanswered: { habit: 'Let it go by', blame: 'them' },
-  dismissed: { habit: 'A panelist cut across you', blame: 'room' },
-  not_reached: { habit: 'The session ran out', blame: 'room' },
-};
-
-/** Archetype keys are storage; these are what a person is called. */
-const PANEL: Record<string, string> = {
-  cfo: 'The CFO',
-  technical_skeptic: 'The Technical Skeptic',
-  champion: 'The Champion',
-  growth_maximalist: 'The Growth Maximalist',
-  distracted: 'The Distracted Executive',
-  internal_blocker: 'The Internal Blocker',
-  customer_advocate: 'The Customer Advocate',
-  risk_officer: 'The Risk Officer',
-};
-
-/**
- * "Twice", not "2".
- *
- * A numeral in a slot built for a number reads as a metric, and a metric on
- * this screen is the delivery-scorer the wedge refuses (`Product.md` §1). Words
- * count without measuring, and stop counting out loud past three because by
- * then the number is not the point.
- */
-function howOften(n: number): string {
-  return ['', 'once', 'twice', 'three times'][n] ?? 'again and again';
 }
 
 export function PrepSheet({ answers, onSpar, onShare }: PrepSheetProps) {
@@ -277,7 +224,7 @@ function Question({ answer, onSpar }: { answer: WeakAnswer; onSpar: () => void }
         onPress={() => setOpen((was) => !was)}
         style={styles.questionHit}
       >
-        <Text style={styles.asker}>{PANEL[answer.askedBy] ?? answer.askedBy}</Text>
+        <Text style={styles.asker}>{panelistName(answer.askedBy)}</Text>
         <Text style={styles.questionText}>{answer.question}</Text>
       </Pressable>
 

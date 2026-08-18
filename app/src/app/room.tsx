@@ -1,4 +1,4 @@
-import { useTheme } from 'expo-router';
+import { router, useTheme } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -81,6 +81,10 @@ export default function RoomScreen() {
   // a handset.
   const [audio, setAudio] = useState<string | null>(null);
 
+  // Kept so the room can hand off when it ends. §4.1's own sequence — the
+  // panel finishes, the session settles, the debrief opens — and the id is the
+  // only thing the next screen needs.
+  const [settled, setSettled] = useState<string | null>(null);
   const room = useRef<Room | null>(null);
   const context = useRef<AudioContext | null>(null);
   const recorder = useRef<AudioRecorder | null>(null);
@@ -171,6 +175,7 @@ export default function RoomScreen() {
       }
 
       const session = await response.json();
+      setSettled(session.id);
       const socketUrl = `${API_BASE_URL.replace(/^http/, 'ws')}/v1/sessions/${session.id}/stream`;
 
       openedAt.current = Date.now();
@@ -259,6 +264,22 @@ export default function RoomScreen() {
 
         {ending !== null && (
           <Text style={[styles.hint, { color: colors.text }]}>Room ended: {ending}</Text>
+        )}
+
+        {/*
+          The hand-off §4.1 describes, and the only route into the debrief that
+          exists: there is no list of past rooms yet. Offered rather than
+          automatic, because this screen is still an instrument and a
+          measurement run that navigated itself away would lose the numbers on
+          it.
+        */}
+        {phase === 'over' && settled !== null && (
+          <Pressable
+            onPress={() => router.push(`/debrief/${settled}`)}
+            style={[styles.button, { borderColor: colors.primary }]}
+          >
+            <Text style={[styles.buttonText, { color: colors.primary }]}>Open the debrief</Text>
+          </Pressable>
         )}
 
         {error !== null && (
