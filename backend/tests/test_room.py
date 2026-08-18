@@ -18,6 +18,10 @@ import pytest
 
 from app.core.errors import ProviderUnavailable
 from app.modules.sessions.service import SessionService
+from sqlalchemy import update
+
+from app.agents.difficulty import GENTLE, RELENTLESS, pressure_at
+from app.modules.billing.models import Account
 from app.modules.voice.room import build_room
 
 pytestmark = pytest.mark.asyncio
@@ -130,3 +134,42 @@ async def test_a_room_without_a_speaker_is_a_legitimate_deployment(db, funded_ac
     )
 
     assert room.panel
+
+
+async def test_the_room_is_built_at_the_rung_the_account_is_on(db, funded_account):
+    """#55, and the only place the stored number becomes a room.
+
+    Read here rather than at session start because this is where a room is
+    assembled and where `user_id` is already in hand. It is also the moment
+    that matters: a level changed between starting a session and joining it
+    should take effect on the room that actually happens.
+
+    A user's very first room is gentle, from the column default, with no
+    lookup and no first-run branch to be wrong about.
+    """
+    session = await SessionService(db).start(user_id=funded_account.user_id)
+
+    gentle = await build_room(
+        db,
+        session_id=session.id,
+        user_id=funded_account.user_id,
+        transcriber=FakeTranscriber(),
+        model=FakePanelModel(),
+    )
+    assert gentle.pressure == pressure_at(GENTLE)
+
+    await db.execute(
+        update(Account)
+        .where(Account.user_id == funded_account.user_id)
+        .values(difficulty_level=RELENTLESS)
+    )
+    await db.commit()
+
+    hardened = await build_room(
+        db,
+        session_id=session.id,
+        user_id=funded_account.user_id,
+        transcriber=FakeTranscriber(),
+        model=FakePanelModel(),
+    )
+    assert hardened.pressure == pressure_at(RELENTLESS)

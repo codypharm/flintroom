@@ -24,6 +24,7 @@ from contextlib import asynccontextmanager
 from app.agents.archetypes import Archetype
 from app.agents.auditor import Auditor, ClaimReader
 from app.agents.context import Finding, Grounding, Routed, Said, TurnContext, USER
+from app.agents.difficulty import STANDARD_PRESSURE, Pressure
 from app.agents.model import PanelModel
 from app.agents.panel import interrogate, select_speaker
 from app.agents.routing import choose
@@ -97,12 +98,18 @@ class OrchestratedProvider:
         grounding: Grounding | None = None,
         reader: ClaimReader | None = None,
         transcript: TranscriptStore | None = None,
+        pressure: Pressure = STANDARD_PRESSURE,
     ) -> None:
         #: Who is seated, in seat order. Public because a room's roster is a
         #: fact about the room rather than an implementation detail of it — the
         #: factory that assembles one is judged on exactly this, and captions
         #: will eventually need to name whoever is speaking.
         self.panel = panel
+        #: How hard this room pushes — #55's rung, resolved from the account at
+        #: assembly. Public for the reason `panel` is: it is a fact about the
+        #: room rather than an implementation detail, and it is what a caller
+        #: checks to know which room it got.
+        self.pressure = pressure
         self._transcriber = transcriber
         self._model = model
         self._speaker = speaker
@@ -131,6 +138,7 @@ class OrchestratedProvider:
                 model=self._model,
                 speaker=self._speaker,
                 grounding=self._grounding,
+                pressure=self.pressure,
                 # A fresh one per stream, never shared. An `Auditor` accumulates
                 # every figure spoken in a session, so a reused one would open
                 # the next room already holding the last user's numbers — and
@@ -168,9 +176,14 @@ class OrchestratedChannel:
         grounding: Grounding | None = None,
         auditor: Auditor | None = None,
         transcript: TranscriptStore | None = None,
+        pressure: Pressure = STANDARD_PRESSURE,
         heartbeat_seconds: float = HEARTBEAT_SECONDS,
     ) -> None:
         self._panel = panel
+        # Stamped on every `TurnContext` this channel builds. Defaulted to the
+        # room that ships today so the many tests that construct a channel
+        # directly keep describing the room `scripts/rotation.py` measured.
+        self._pressure = pressure
         # Optional, like the speaker and the auditor: a room still runs without
         # somewhere to file its words, and every test that is not about
         # persistence should not have to supply one. Production always does —
@@ -426,6 +439,7 @@ class OrchestratedChannel:
         context = TurnContext(
             said=said,
             grounding=Grounding(claims=self._claims, transcript=tuple(self._transcript)),
+            pressure=self._pressure,
             # This is the whole point of routing early, and until now the prompt
             # was never told. Selection here runs on a prefix of a sentence
             # still being spoken; the rule that presses an unanswered question
@@ -562,6 +576,7 @@ class OrchestratedChannel:
                         grounding=Grounding(
                             claims=self._claims, transcript=tuple(self._transcript)
                         ),
+                        pressure=self._pressure,
                     ),
                 ),
                 "fallback",
@@ -641,6 +656,7 @@ class OrchestratedChannel:
             grounding=Grounding(
                 claims=self._claims, transcript=tuple(self._transcript)
             ),
+            pressure=self._pressure,
             # Already decided, during the sentence that just finished. Without
             # one — an utterance that produced no partial, or a routing call the
             # final overtook — `interrogate` chooses here as it always has.

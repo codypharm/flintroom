@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.archetypes import DEFAULT_PANEL, Archetype, by_name
+from app.agents.difficulty import GENTLE
 from app.agents.panel import assemble
 from app.core.actors import ActorContext
 from app.core.database import db_now
@@ -242,6 +243,24 @@ class SessionService:
         )
         await self._db.commit()
         return session
+
+    async def difficulty_of(self, *, user_id: uuid.UUID) -> int:
+        """The rung this account is on.
+
+        A read rather than a resolve: the number is a stored fact, and the
+        clamping that makes it safe lives in `difficulty.pressure_at` where
+        every reader passes through it. Returning it raw keeps one clamp rather
+        than two that can disagree.
+
+        Defaults to the gentle rung for an account that somehow has no row.
+        That cannot happen on the session path — a session requires an account —
+        and if it ever did, the wrong answer to give a stranger is the hardest
+        room we have.
+        """
+        stored = await self._db.execute(
+            select(Account.difficulty_level).where(Account.user_id == user_id)
+        )
+        return stored.scalar_one_or_none() or GENTLE
 
     async def panel(self, *, session_id: uuid.UUID) -> tuple[Archetype, ...]:
         """Who is in this room, in the order they were seated.

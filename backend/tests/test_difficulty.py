@@ -11,6 +11,9 @@ and the ladder is three guesses rather than one measurement and two steps.
 
 from __future__ import annotations
 
+from sqlalchemy import select
+
+from app.modules.billing.models import Account
 from app.agents.difficulty import (
     DISPUTES_PER_ROOM,
     GENTLE,
@@ -74,3 +77,19 @@ def test_the_gentle_end_is_the_one_that_stops_panelists_talking_over_you():
     """
     assert pressure_at(GENTLE).disputes == 0
     assert pressure_at(STANDARD).disputes > 0
+
+
+async def test_a_brand_new_account_starts_on_the_gentle_rung(db, account):
+    """The case that matters most, answered by a column default.
+
+    `docs/difficulty-calibration.md`: a first session is level 1 *from the
+    default*, with no lookup and no special case. A first-run branch would be
+    one more thing that can be wrong on the one session Open Risk #1 is about,
+    and it would be wrong silently — the room would simply be harder than
+    anybody chose.
+    """
+    stored = await db.execute(
+        select(Account.difficulty_level).where(Account.user_id == account.user_id)
+    )
+
+    assert stored.scalar_one() == GENTLE

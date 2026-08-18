@@ -1,10 +1,20 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, String, func
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    SmallInteger,
+    String,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.agents.difficulty import GENTLE
 from app.core.database import Base
 
 
@@ -55,6 +65,26 @@ class Account(Base):
     #: an opaque key, and the ledger and cost telemetry keep pointing at it.
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+    #: How hard the room pushes this person — #55's rung, 1 to 3.
+    #:
+    #: On `accounts` rather than in a table of its own because it is one number
+    #: per user with no history worth keeping, exactly like the tier beside it.
+    #: The rungs and what they mean live in `agents/difficulty.py`; this column
+    #: knows only that it is a small integer.
+    #:
+    #: **Defaults to the gentle rung**, which is how a first session gets one
+    #: without a lookup or a first-run branch. `docs/difficulty-calibration.md`
+    #: decision 4: a first room that destroys somebody produces churn rather
+    #: than resilience, and the case is far too common to leave to a special
+    #: case that could be wrong silently.
+    #:
+    #: Read through `difficulty.pressure_at`, never directly. That call clamps,
+    #: so a row holding 7 produces a real room rather than ending a metered
+    #: session over bookkeeping.
+    difficulty_level: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=GENTLE, server_default=str(GENTLE)
     )
 
     period_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")

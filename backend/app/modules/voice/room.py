@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.agents.model import PanelModel
 from app.core.errors import ProviderUnavailable
 from app.core.logging import get_logger
+from app.agents.difficulty import pressure_at
 from app.modules.sessions.service import SessionService
 from app.modules.sessions.transcript import SessionTranscript
 from app.modules.voice.grounding import session_grounding
@@ -78,6 +79,15 @@ async def build_room(
         db, user_id=user_id, material_ids=materials
     )
 
+    # Read here rather than at session start, because this is the moment that
+    # decides the room somebody actually gets: a rung changed between starting a
+    # session and joining it should take effect on the room that happens.
+    #
+    # Through `pressure_at`, which clamps. A row holding something off the
+    # ladder produces a real room rather than ending a metered session over
+    # bookkeeping.
+    pressure = pressure_at(await sessions.difficulty_of(user_id=user_id))
+
     # Counts rather than contents. CLAUDE.md forbids transcripts and ingested
     # material in logs, and a claim is ingested material quoted verbatim.
     log.info(
@@ -87,6 +97,10 @@ async def build_room(
         claims=len(grounding.claims),
         speaking=speaker is not None,
         auditing=reader is not None,
+        # Both halves of the rung, so a room whose pressure looks wrong can be
+        # explained from one line rather than by re-deriving the ladder.
+        presses=pressure.presses,
+        disputes=pressure.disputes,
     )
 
     return OrchestratedProvider(
@@ -96,6 +110,7 @@ async def build_room(
         speaker=speaker,
         grounding=grounding,
         reader=reader,
+        pressure=pressure,
         # Built here because this is the only place that knows *which* session a
         # room is, and the store binds that at construction rather than taking it
         # per line — the provenance rule `CLAUDE.md` sets for `LedgerService`.

@@ -11,16 +11,21 @@ Decision 7 settles which rooms earn one at all.
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
-from sqlalchemy import text
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.modules.billing.models import Account
+
 from app.agents.context import USER, Said
+from app.agents.difficulty import GENTLE, RELENTLESS
 from app.agents.model import TurnUsage
 from app.agents.weakness import Judgement, Weakness, WeaknessReading
 from app.core.errors import FlintroomError
 from app.modules.sessions.debrief import DebriefService
-from app.modules.sessions.models import SessionWeakAnswer
+from app.modules.sessions.models import Session, SessionWeakAnswer
 from app.modules.sessions.schemas import EndReason
 from app.modules.sessions.transcript import SessionTranscript
 
@@ -35,6 +40,29 @@ class CountingReader:
     async def rank(self, *, room):
         self.calls += 1
         return WeaknessReading(judged=self._judged, usage=TurnUsage(1200, 300))
+
+
+class Rendezvous(CountingReader):
+    """A reader that will not answer until both callers have asked.
+
+    Without it the race does not happen: `asyncio.gather` starts the first
+    coroutine, and everything before the commit is fast enough that it finishes
+    before the second one checks whether the room has been read. The second then
+    takes the cached path and the claim is never contested — the test passes
+    while proving nothing, which is exactly how the mutation survived.
+
+    The barrier holds both inside the model call, which is where a real pair of
+    devices would be: past the "already read" check, before either has written.
+    """
+
+    def __init__(self, *judged) -> None:
+        super().__init__(*judged)
+        self._both = asyncio.Barrier(2)
+
+    async def rank(self, *, room):
+        reading = await super().rank(room=room)
+        await self._both.wait()
+        return reading
 
 
 async def room_that_happened(
@@ -325,6 +353,13 @@ async def test_the_stored_ranking_is_ordered_by_rank_and_not_by_luck(
                 why=f"finding number {rank}",
             )
         )
+    # Marked read, because a real read is what wrote those rows. Without it the
+    # service correctly treats the room as never opened and hands back the
+    # scripted reader's empty list — which is #57's caching working, not the
+    # ordering under test.
+    await db.execute(
+        update(Session).where(Session.id == session.id).values(debriefed_at=func.now())
+    )
     await db.commit()
 
     # Heap order, not index order — and set AFTER the commit, which is the part
@@ -345,3 +380,173 @@ async def test_the_stored_ranking_is_ordered_by_rank_and_not_by_luck(
         "finding number 1",
         "finding number 2",
     ]
+
+
+async def test_reading_the_room_moves_the_rung_the_next_one_is_on(
+    db, engine, sessions, settlement, funded_account
+):
+    """#55, and the only place the level is ever written by the system.
+
+    Here rather than at settle because this is where the reading exists.
+    `docs/difficulty-calibration.md` decision 7 is explicit that a room nobody
+    debriefed moves nothing: there is no signal, and inventing one would move
+    somebody's level on a reading nobody made.
+
+    One question, none of them fumbled, so the room was handled and the next
+    one is harder.
+    """
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    before = await _level(db, funded_account.user_id)
+
+    await DebriefService(db, reader=CountingReader()).weak_answers(
+        session_id=session.id
+    )
+
+    assert await _level(db, funded_account.user_id) == before + 1
+
+
+async def test_opening_the_debrief_twice_does_not_move_it_twice(
+    db, engine, sessions, settlement, funded_account
+):
+    """The rung follows the reading, and the reading happens once.
+
+    A user working through their weak answers reopens the screen; a second
+    device opens it at the same moment. Neither is a second session and neither
+    is evidence of anything, so a level that climbed on every open would
+    escalate on nothing but attention — and would do it fastest for exactly the
+    people engaging most with the coaching.
+
+    Bound to the write that wins the insert rather than checked separately: the
+    weak answers and the rung are one fact about one reading, and two guards
+    could disagree.
+    """
+    service = DebriefService(db, reader=CountingReader())
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+
+    await service.weak_answers(session_id=session.id)
+    once = await _level(db, funded_account.user_id)
+    await service.weak_answers(session_id=session.id)
+
+    assert await _level(db, funded_account.user_id) == once
+
+
+async def _level(db, user_id) -> int:
+    """Read past the identity map — the service commits, which expires it."""
+    stored = await db.execute(
+        select(Account.difficulty_level).where(Account.user_id == user_id)
+    )
+    return stored.scalar_one()
+
+
+async def test_a_flawless_room_is_also_read_only_once(
+    db, engine, sessions, settlement, funded_account
+):
+    """The case #57's caching misses, and it is the cheapest room to get wrong.
+
+    `_kept` decides "already read" by whether any rows came back, so a room the
+    model found nothing wrong with is indistinguishable from one nobody has
+    read. Every open buys another reasoning-model pass over the whole
+    transcript — the most expensive single call outside the room itself, on the
+    phase §4.1 promises is unmetered.
+
+    The existing tracer scripts a reader that finds one weak answer, so it
+    never touches this path.
+    """
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    reader = CountingReader()
+    service = DebriefService(db, reader=reader)
+
+    await service.weak_answers(session_id=session.id)
+    await service.weak_answers(session_id=session.id)
+
+    assert reader.calls == 1
+
+
+async def test_a_room_they_fumbled_softens_the_next_one(
+    db, engine, sessions, settlement, funded_account
+):
+    """The direction Open Risk #1 is actually about, end to end.
+
+    Also pins the denominator. The room has one panel question and two lines
+    from the presenter; counting every transcript line instead would put one
+    fumbled answer at a third rather than at all of them, land it between both
+    thresholds, and quietly turn calibration into a mechanism that almost never
+    softens anything.
+    """
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    await db.execute(
+        update(Account)
+        .where(Account.user_id == funded_account.user_id)
+        .values(difficulty_level=RELENTLESS)
+    )
+    await db.commit()
+
+    await DebriefService(
+        db,
+        reader=CountingReader(
+            Judgement(
+                ordinal=1,
+                quote="Off what base, and at what cost?",
+                weakness=Weakness.EVASIVE,
+                why="You answered with a feeling about the trend, not a base.",
+            )
+        ),
+    ).weak_answers(session_id=session.id)
+
+    assert await _level(db, funded_account.user_id) == RELENTLESS - 1
+
+
+async def test_two_devices_opening_at_once_read_the_room_once(
+    db, engine, sessions, settlement, funded_account
+):
+    """The claim's whole reason to exist, and the only way to reach it.
+
+    A sequential second open never gets here — `_read_already` sends it
+    straight to the stored list. This is the case that does: two phones on the
+    debrief screen at the same moment, both past that check because neither
+    transaction has committed yet.
+
+    The loser's `UPDATE ... WHERE debriefed_at IS NULL` blocks on the row lock
+    until the winner commits, then re-evaluates the condition and matches
+    nothing. That is what makes it a guard rather than a check, and it is the
+    reason the level cannot move twice for one room: the calibration sits after
+    the claim in the same transaction.
+
+    Two writers rather than twenty, because unlike a lost update this fails at
+    two or not at all.
+    """
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    session_id = session.id
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    # A reader that finds nothing, so the rung moves *up*. A fumbled room would
+    # move it down, and the account is already on the floor — the clamp would
+    # make one move and two moves look identical, which is the whole thing
+    # under test.
+    reader = Rendezvous()
+
+    async def open_debrief():
+        async with factory() as fresh:
+            return await DebriefService(fresh, reader=reader).weak_answers(
+                session_id=session_id
+            )
+
+    both = await asyncio.gather(open_debrief(), open_debrief())
+
+    # Both callers get the same list — the loser hands back the winner's.
+    assert both[0] == both[1]
+    # And the rung moved once, not twice, for one room.
+    assert await _level(db, funded_account.user_id) == GENTLE + 1
+    # Both *did* read the room, and that is accepted rather than prevented: the
+    # wasted model call is the price of not holding a lock across it. What must
+    # not happen twice is the write.
+    assert reader.calls == 2

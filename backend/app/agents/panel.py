@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from app.agents.archetypes import Archetype, by_name
+from app.agents.difficulty import STANDARD_PRESSURE, Pressure
 from app.agents.dispute import contested
 from app.agents.context import (
     USER,
@@ -98,6 +99,7 @@ async def interrogate(
     finding: Finding | None = None,
     routed: Routed | None = None,
     disputes_spent: int = 0,
+    pressure: Pressure = STANDARD_PRESSURE,
 ) -> PanelTurn:
     """Answer one thing the user said, in one archetype's voice.
 
@@ -121,8 +123,17 @@ async def interrogate(
     A finding still outranks it: the Auditor catching a contradiction is a
     better reason to hand somebody the floor than a guess made three seconds ago
     on half a sentence.
+
+    `pressure` is #55's rung — how many times a panelist may press an
+    unanswered question, and how often the room may talk over itself. It is
+    stamped onto the context here because this is where the context is built,
+    and it defaults to the room that ships today so that every caller which has
+    never heard of calibration gets exactly the room `scripts/rotation.py`
+    measured.
     """
-    context = TurnContext(said=said, grounding=grounding or Grounding())
+    context = TurnContext(
+        said=said, grounding=grounding or Grounding(), pressure=pressure
+    )
 
     archetype = _owner(panel, finding.domain) if finding else None
     chosen_by: SelectedBy = "finding"

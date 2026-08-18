@@ -169,6 +169,25 @@ class Session(Base):
     end_reason: Mapped[EndReason | None] = mapped_column(end_reason_column, nullable=True)
 
     #: Set exactly once, when billing closes. Null in every other state.
+    #: When this room's weak answers were read, or null if nobody has opened
+    #: the debrief.
+    #:
+    #: **The "already read" mark, and it has to be a column** rather than the
+    #: presence of `session_weak_answers` rows. A room the model found nothing
+    #: wrong with produces an empty list, which is indistinguishable from one
+    #: nobody has read — so before this existed, a flawless room bought a fresh
+    #: reasoning-model pass over the whole transcript on *every* open, on the
+    #: phase §4.1 promises is unmetered.
+    #:
+    #: Claimed with `UPDATE ... WHERE debriefed_at IS NULL`, so it is also the
+    #: race guard: two devices opening at once both read the room, and the
+    #: second one's update matches no rows and hands back the winner's list.
+    #: That covers the empty case too, which the primary key on
+    #: `(session_id, rank)` could not.
+    debriefed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
