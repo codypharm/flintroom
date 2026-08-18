@@ -23,7 +23,6 @@ async function show(over: Partial<Parameters<typeof SignInSheet>[0]> = {}) {
       onApple={onApple}
       onGoogle={onGoogle}
       onBack={onBack}
-      seats={3}
       {...over}
     />
   );
@@ -151,13 +150,14 @@ it('claims nothing it is not showing', async () => {
   expect(screen.queryByText(/Your panel is ready/)).toBeNull();
 });
 
-it('draws the table without labelling a single seat', async () => {
-  // The drawing that replaced the cast list has to stay a drawing. Every mark
-  // is an outline; filling one would make it a seating plan again by a slower
-  // route, and naming one would put it straight back where it started.
+it('puts nothing in the middle of the screen', async () => {
+  // Three things were tried there and all three were removed: the plan read
+  // back, the app icon, and a drawing of the table. What is left is the heading,
+  // the sentence, and the ways in — and the test exists so the next good idea
+  // has to be argued for rather than slipped in.
   await show();
 
   expect(screen.queryAllByTestId('chair-mark', { includeHiddenElements: true }))
-    .toHaveLength(3);
-  expect(screen.queryByText(/Controls the budget|chair/i)).toBeNull();
+    .toHaveLength(0);
+  expect(screen.queryByRole('image')).toBeNull();
 });

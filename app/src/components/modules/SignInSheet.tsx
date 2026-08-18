@@ -1,7 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { color, radius, space, type } from '../../theme/tokens';
-import { EmptyTable } from './EmptyTable';
 
 /**
  * The account, asked for once there is something to lose.
@@ -36,18 +35,15 @@ import { EmptyTable } from './EmptyTable';
  * The heading matches `TablePlan`'s opening question in size, because the plan
  * and this are two states of one screen rather than two screens.
  *
- * **The table, empty — third answer to the same question, and the right one.**
- * The seated chairs were drawn here first and removed: the architect read them
- * as the panel on sight, which is the exact confusion the seat wording exists
- * to avoid, and `plan.ts` keeps that translation on the server because it is
- * the payoff. The app icon went there second, which claimed nothing but also
- * said nothing — a logo is about the company, and this screen is the last thing
- * somebody sees before deciding whether the product is worth an account.
- *
- * `EmptyTable` is the geometry from the previous screen with the labels and the
- * state removed. They were seating people at that exact drawing a moment ago,
- * so it reads as the table still being there rather than as a picture of one.
- * The heading says "Keep this room"; this is the room.
+ * **Nothing fills the middle, and that is now a decision rather than a gap.**
+ * Three things were tried there and all three were removed by the architect:
+ * the seated chairs read back (taken for the panel on sight, which is what
+ * `plan.ts` keeps on the server), the app icon (about the company, on the one
+ * screen that is about the product), and a drawing of the table. The space is
+ * the answer. This screen is crossed once, in a few seconds, on the way to a
+ * provider sheet — it does not need to hold anybody's attention, and every
+ * attempt to make it try was a thing competing with the only two controls that
+ * matter.
  */
 export interface SignInSheetProps {
   /** Whether this device can offer Sign in with Apple at all. */
@@ -57,14 +53,6 @@ export interface SignInSheetProps {
   refusal: string | null;
   onApple: () => void;
   onGoogle: () => void;
-  /**
-   * How many chairs the table has, for the drawing.
-   *
-   * Passed rather than assumed for the same reason `TablePlan` takes it: this
-   * screen runs before there is a token to read the real catalogue with, and
-   * the route is the one place that already holds the free tier's number.
-   */
-  seats: number;
   /**
    * Back to the plan, with every answer still in it.
    *
@@ -82,7 +70,6 @@ export function SignInSheet({
   onApple,
   onGoogle,
   onBack,
-  seats,
 }: SignInSheetProps) {
   return (
     <View style={styles.sheet}>
@@ -117,11 +104,6 @@ export function SignInSheet({
               generously, which is why they are here and first-person. */}
           Sign in to keep this plan. Your first 15 minutes in the room are on us.
         </Text>
-
-        {/* The one thing on this screen that is about the product. Decorative
-            and hidden from assistive technology — it carries nothing the copy
-            above does not already say. */}
-        <EmptyTable seats={seats} />
       </View>
 
       <View style={styles.ways}>
