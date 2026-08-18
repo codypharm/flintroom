@@ -227,3 +227,35 @@ class CoachModel(Protocol):
         room. It must arrive as `ProviderUnavailable` without naming the vendor.
         """
         ...
+
+    async def spar(
+        self,
+        *,
+        grounds: Grounds,
+        weak: WeakAnswer,
+        attempts: Sequence[str],
+    ) -> CoachReply:
+        """Say what changed between the first answer and this one.
+
+        **Asked what changed, never whether it is good enough.** That is the
+        whole of `docs/debrief-and-sparring.md` decision 4, and the reason is an
+        asymmetry rather than a preference: false praise sends somebody into the
+        real room believing a thin answer landed, so a coach that grades is
+        worse than one that does not.
+
+        A comparison is also the shape a model handles well. #43 measured one
+        catastrophically failing *"was this good enough?"* — 4 of 4 dodges and
+        4 of 4 genuine answers called dodges — and nothing here asks that. Two
+        texts and "what is different" is a question with evidence on both sides.
+
+        `attempts` is every go so far, oldest first, ending with the newest.
+        Whole rather than only the latest, because "you are further from it than
+        you were two tries ago" is a true and useful thing to say, and it cannot
+        be said by something holding one string.
+
+        A separate method rather than a flag on `reply`, matching `PanelModel`'s
+        two calls: the prompts have different jobs and different failure modes,
+        and one method taking a mode would let a caller ask for a coaching turn
+        and receive a comparison.
+        """
+        ...

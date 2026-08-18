@@ -12,6 +12,7 @@ this suite was green through.
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.agents.coach import COACH, Cite, CoachReply, REDIRECT
@@ -21,6 +22,7 @@ from app.agents.weakness import Judgement, Weakness
 from app.core.errors import FlintroomError
 from app.modules.sessions.coaching import CoachService
 from app.modules.sessions.debrief import DebriefService
+from app.modules.sessions.models import SparringAttempt
 from app.modules.sessions.schemas import EndReason
 from app.modules.voice.dictation import Heard
 
@@ -68,6 +70,21 @@ class ScriptedCoach:
     async def reply(self, *, grounds, exchange):
         self.saw_grounds = grounds
         self.saw_exchange = tuple(exchange)
+        return self._reply
+
+
+class SparringCoach(ScriptedCoach):
+    """Records the question and the run of attempts it was shown."""
+
+    def __init__(self, reply: CoachReply | None = None) -> None:
+        super().__init__(reply)
+        self.saw_weak = None
+        self.saw_attempts: tuple = ()
+
+    async def spar(self, *, grounds, weak, attempts):
+        self.saw_grounds = grounds
+        self.saw_weak = weak
+        self.saw_attempts = tuple(attempts)
         return self._reply
 
 
@@ -250,3 +267,131 @@ async def test_a_room_with_no_debrief_yet_is_read_before_it_is_coached(
 
     assert reader.calls == 1
     assert [a.ordinal for a in coach.saw_grounds.weak_answers] == [1]
+
+
+async def test_a_retry_is_shown_every_go_so_far_and_the_answer_that_failed(
+    db, engine, sessions, settlement, funded_account
+):
+    """The loop cannot say what changed without both sides of the change.
+
+    §3.5 says "repeatedly", so the coach needs the whole run rather than the
+    latest string: *"you are further from it than you were two tries ago"* is
+    true, useful, and unsayable by something holding one attempt.
+
+    The original answer goes too. Without it the first retry has nothing to be
+    compared against, and the coach would be reduced to describing an answer
+    rather than a difference — which is the static reading §3.5 refuses.
+    """
+    session = await debriefed(db, engine, sessions, settlement, funded_account, *ROOM)
+    coach = SparringCoach()
+    service = coaching(db, coach=coach, dictation=ScriptedDictation("Two million ARR."))
+
+    await service.spar(
+        session_id=session.id, weak_rank=0, clip=b"one", media_type="audio/wav"
+    )
+    service._dictation = ScriptedDictation("Two million, up from one point four.")
+    await service.spar(
+        session_id=session.id, weak_rank=0, clip=b"two", media_type="audio/wav"
+    )
+
+    assert coach.saw_attempts == (
+        "Two million ARR.",
+        "Two million, up from one point four.",
+    )
+    assert coach.saw_weak.answer == "We are really pleased with the trajectory."
+
+
+async def test_only_a_question_the_room_actually_asked_can_be_sparred(
+    db, engine, sessions, settlement, funded_account
+):
+    """The anchor, and it is a fence rather than a lookup.
+
+    A re-answer is fresh speech about the session — the one shape *"spar me on
+    this instead"* would use to introduce a new pitch. Because the question is a
+    stored rank rather than something the caller describes, there is no argument
+    in which a different subject could be named.
+
+    Refused before the clip is heard, which is the assertion: transcribing first
+    would pay a vendor to produce a string with nowhere to put it.
+    """
+    session = await debriefed(db, engine, sessions, settlement, funded_account, *ROOM)
+    dictation = ScriptedDictation()
+
+    with pytest.raises(FlintroomError) as refused:
+        await coaching(db, dictation=dictation).spar(
+            session_id=session.id, weak_rank=7, clip=b"one", media_type="audio/wav"
+        )
+
+    assert refused.value.status_code == 404
+    assert dictation.heard == []
+
+
+async def test_what_the_user_heard_is_what_the_attempt_records(
+    db, engine, sessions, settlement, funded_account
+):
+    """A redirected retry must not be remembered as the answer it wanted to give.
+
+    Same reasoning as the coaching thread, and it bites harder here: #55 reads
+    these rows to decide how hard the next room should be. An attempt stored
+    with the model's intended text would tell a future calibration that a
+    presenter was coached through something they were actually redirected away
+    from.
+    """
+    session = await debriefed(db, engine, sessions, settlement, funded_account, *ROOM)
+    coach = SparringCoach(
+        CoachReply(text="Your new deck is strong.", cites=(Cite(kind="line", index=99),))
+    )
+
+    turn = await coaching(db, coach=coach).spar(
+        session_id=session.id, weak_rank=0, clip=b"one", media_type="audio/wav"
+    )
+
+    kept = (
+        await db.execute(
+            select(SparringAttempt).where(SparringAttempt.session_id == session.id)
+        )
+    ).scalars().all()
+
+    assert turn.text == REDIRECT
+    assert [row.reply for row in kept] == [REDIRECT]
+
+
+async def test_attempts_come_back_in_the_order_they_were_made(
+    db, engine, sessions, settlement, funded_account
+):
+    """Order is the comparison, and the comparison is the whole feature.
+
+    Attempts read out of order hand the coach the run backwards, so it reports
+    somebody regressing when they improved — the most damaging thing a re-try
+    loop can say, and said with no error anywhere.
+
+    The planner is pushed off the primary key for the reason recorded in
+    `test_debrief.py`: the key is (session_id, weak_rank, attempt), so an index
+    scan returns them sorted whatever the ORDER BY says, and the clause is right
+    and unfalsifiable at the same time. Verified with EXPLAIN when that lesson
+    was first learned; the SET LOCAL must come *after* the commit, because it
+    dies with the transaction that set it.
+    """
+    session = await debriefed(db, engine, sessions, settlement, funded_account, *ROOM)
+
+    for attempt, said in ((2, "third go"), (0, "first go"), (1, "second go")):
+        db.add(
+            SparringAttempt(
+                session_id=session.id,
+                weak_rank=0,
+                attempt=attempt,
+                said=said,
+                reply="noted",
+            )
+        )
+    await db.commit()
+
+    await db.execute(text("SET LOCAL enable_indexscan = off"))
+    await db.execute(text("SET LOCAL enable_bitmapscan = off"))
+
+    coach = SparringCoach()
+    await coaching(db, coach=coach, dictation=ScriptedDictation("fourth go")).spar(
+        session_id=session.id, weak_rank=0, clip=b"x", media_type="audio/wav"
+    )
+
+    assert coach.saw_attempts == ("first go", "second go", "third go", "fourth go")

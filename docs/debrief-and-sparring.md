@@ -255,12 +255,30 @@ Not the model. It is a binary judgement with no forced choice, and here the erro
 is asymmetric in the worst direction: false praise sends somebody into the real
 room believing a thin answer landed.
 
-So the same code check that marked the answer weak runs against the re-answer —
-is the missing figure, name, date or mechanism now present, is the contradiction
-gone. That tells the coach *what to say* (*"you have the number now, but you
-still haven't said what changed"*). **It never announces a verdict**, and the user
-always chooses to go again or move on. No pass, no fail, nobody trapped in a
-loop — which matters directly under Open Risk #1.
+So the coach is asked what **changed** between the two answers, and never
+whether the new one is good enough. It is shown the question, what they said the
+first time, and what they have just said, and it describes the difference:
+*"you have the number now, but you still haven't said what moved it."*
+**It never announces a verdict**, and the user always chooses to go again or move
+on. No pass, no fail, nobody trapped in a loop — which matters directly under
+Open Risk #1.
+
+> **Amended 2026-08-18, during implementation.** This decision originally read
+> *"the same code check that marked the answer weak runs against the
+> re-answer"* — the figure/name/date/mechanism test. **That check no longer
+> exists.** Decision 2 was reversed hours after it was taken: code stopped
+> judging and became an annotator, and the model does the reading. Building
+> sparring on the original wording would have meant reintroducing, for retries
+> only, the exact check withdrawn during #57 for being unable to see a
+> mechanism — one rule for judging an answer and a different one for judging its
+> retry.
+>
+> What survives the reversal is the reason, and it is unchanged: **the model
+> must not declare a verdict**, because false praise sends somebody into the
+> real room believing a thin answer landed. Asking what changed between two
+> texts is a comparison rather than an absolute judgement, which is the shape
+> #43 measured a model handling well — and the shape it measured one handling
+> catastrophically was *"is this good enough?"*
 
 A re-answer is fresh speech, which looks like it defeats decision 3. It does not,
 because **every attempt is anchored to a stored weak-answer id**. That anchor is

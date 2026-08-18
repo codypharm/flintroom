@@ -332,3 +332,51 @@ async def speak_to_coach(
     return CoachTurnRead(
         text=turn.text, speech=base64.b64encode(turn.speech).decode()
     )
+
+
+@router.post(
+    "/sessions/{session_id}/debrief/weak-answers/{rank}/attempts",
+    response_model=CoachTurnRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def spar(
+    session: OwnedSession,
+    rank: int,
+    coaching: CoachServiceDep,
+    clip: Annotated[UploadFile, File(description="One re-answer, spoken.")],
+) -> CoachTurnRead:
+    """Answer one of the room's questions again, and hear what changed.
+
+    §3.5's re-try loop: *"the coach replays a question the user fumbled and has
+    them re-answer on the spot, repeatedly, until the response holds. Teaching,
+    not just scoring."*
+
+    **The question is in the path, not in the body.** That is
+    `docs/debrief-and-sparring.md` decision 4's anchor, and it is required
+    rather than conventional: a re-answer is fresh speech about the session,
+    which is precisely the shape *"spar me on this instead"* would use to
+    smuggle in a new pitch. Addressing a stored rank means there is no argument
+    in which a different subject could be named.
+
+    Nothing here announces a verdict. The coach says what changed between this
+    attempt and the last; the user decides when to stop. Telling somebody a thin
+    answer landed sends them into the real room believing it, which is the one
+    outcome this loop exists to prevent.
+
+    Unmetered, like every coaching turn, and with no path from here to a
+    balance.
+    """
+    recorded = await clip.read(MAX_CLIP_BYTES + 1)
+    if len(recorded) > MAX_CLIP_BYTES:
+        raise ClipTooLong(session_id=str(session.id), limit_bytes=MAX_CLIP_BYTES)
+
+    turn = await coaching.spar(
+        session_id=session.id,
+        weak_rank=rank,
+        clip=recorded,
+        media_type=clip.content_type or "application/octet-stream",
+    )
+
+    return CoachTurnRead(
+        text=turn.text, speech=base64.b64encode(turn.speech).decode()
+    )

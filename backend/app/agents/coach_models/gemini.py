@@ -25,6 +25,7 @@ from typing import Any
 import httpx
 
 from app.agents.coach import COACH, Cite, CoachReply, Grounds, Spoken
+from app.agents.weakness import WeakAnswer
 from app.agents.context import USER
 from app.agents.model import TurnUsage
 from app.core.errors import ProviderUnavailable
@@ -119,14 +120,33 @@ class GeminiCoachModel:
             usage=_usage_of(payload),
         )
 
-    async def _generate(self, prompt: str) -> dict[str, Any]:
+    async def spar(
+        self, *, grounds: Grounds, weak: WeakAnswer, attempts: Sequence[str]
+    ) -> CoachReply:
+        """What changed between the first answer and the newest one."""
+        payload = await self._generate(
+            _retry_prompt(grounds, weak, attempts), instruction=SPARRING
+        )
+        reported = _reported(payload)
+
+        return CoachReply(
+            text=_text_of(reported),
+            cites=_cites(reported),
+            usage=_usage_of(payload),
+        )
+
+    async def _generate(
+        self, prompt: str, *, instruction: str = ""
+    ) -> dict[str, Any]:
         try:
             response = await self._http.post(
                 f"{BASE_URL}/{self._model}:generateContent",
                 headers={API_KEY_HEADER: self._api_key},
                 json={
                     "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                    "systemInstruction": {"parts": [{"text": INSTRUCTION}]},
+                    "systemInstruction": {
+                        "parts": [{"text": instruction or INSTRUCTION}]
+                    },
                     "generationConfig": {
                         "maxOutputTokens": MAX_OUTPUT_TOKENS,
                         "candidateCount": 1,
@@ -326,4 +346,56 @@ Do not answer those from your own knowledge. Their next room is where that gets 
 looked at properly.
 
 Keep it to one or two sentences unless they asked for more.\
+"""
+
+
+def _retry_prompt(
+    grounds: Grounds, weak: WeakAnswer, attempts: Sequence[str]
+) -> str:
+    """The question, the answer that failed it, and every go since."""
+    tries = "\n".join(
+        f"ATTEMPT {number}: {said}" for number, said in enumerate(attempts, start=1)
+    )
+
+    return "\n\n".join(
+        part
+        for part in (
+            _the_room(grounds),
+            (
+                "THE QUESTION THEY ARE RE-ANSWERING\n"
+                f"[{weak.ordinal}] {weak.asked_by}: {weak.question}"
+            ),
+            f"WHAT THEY SAID IN THE ROOM\n{weak.answer or '(they said nothing)'}",
+            f"WHAT WAS THIN ABOUT IT\n{weak.why}",
+            f"THEIR RE-ANSWERS, OLDEST FIRST\n{tries}",
+        )
+        if part
+    )
+
+
+#: The sparring instruction, and the one line in it that matters most is the
+#: refusal to grade. `docs/debrief-and-sparring.md` decision 4: false praise
+#: sends somebody into the real room believing a thin answer landed, and that is
+#: worse than saying nothing at all.
+SPARRING = """\
+You are a speaking coach running a re-try. Your presenter fumbled a question in \
+a rehearsal and is answering it again, out loud, as many times as they want.
+
+Below is the session, the question, what they said the first time, what was thin \
+about it, and every attempt they have made since.
+
+**Say what CHANGED.** Compare their newest attempt to what they said before, and \
+name the difference concretely: what is there now that was not, and what is \
+still missing. "You have the number now, but you still haven't said what moved \
+it."
+
+**Do not grade it.** Never say whether it is good enough, whether it would work, \
+or whether they are ready. They decide when to stop, not you. Telling somebody a \
+thin answer landed sends them into the real room believing it, which is the one \
+outcome this loop exists to prevent.
+
+If the newest attempt is worse than an earlier one, say so plainly. That is a \
+difference too, and it is often the most useful one you have.
+
+Cite the numbered line your comparison rests on. One or two sentences.\
 """

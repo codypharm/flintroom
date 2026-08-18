@@ -654,3 +654,59 @@ class CoachTurn(Base):
     said_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class SparringAttempt(Base):
+    """One re-answer to one question the room found weak. Append-only.
+
+    §3.5's re-try loop: *"the coach replays a question the user fumbled and has
+    them re-answer on the spot, repeatedly, until the response holds. Teaching,
+    not just scoring."*
+
+    Anchored to a weak answer by rank rather than free-floating, and that anchor
+    is the fence rather than bookkeeping. A sparring turn is fresh speech about
+    the session, which is exactly the shape *"spar me on this instead"* would
+    use to smuggle in a new pitch — so what may be sparred is a row that already
+    exists, chosen from the ranked list, and nothing else is addressable.
+
+    Kept because #55 wants it and because the loop is unusable without it: a
+    re-try that forgot the previous attempt cannot tell somebody what changed,
+    which is the only thing it has to say.
+    """
+
+    __tablename__ = "session_sparring_attempts"
+    __table_args__ = (
+        PrimaryKeyConstraint(
+            "session_id", "weak_rank", "attempt", name="pk_session_sparring_attempts"
+        ),
+    )
+
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    #: Which weak answer this is a retry of — its `rank` in the stored list.
+    #:
+    #: Not a foreign key to `session_weak_answers` despite the composite key
+    #: existing there, for the reason the ranked list is not one to the
+    #: transcript: an attempt is a record of what somebody said, and it should
+    #: stay readable if the list it answered is ever recomputed.
+    weak_rank: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    #: Which go this was, from zero. §3.5 says "repeatedly", so the count is
+    #: content — the second attempt at one question is a different fact from the
+    #: first, and #55 reads how many it took.
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    #: What they said this time.
+    said: Mapped[str] = mapped_column(Text, nullable=False)
+
+    #: What the coach said about the difference. Never a verdict — see
+    #: `docs/debrief-and-sparring.md` decision 4.
+    reply: Mapped[str] = mapped_column(Text, nullable=False)
+
+    said_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

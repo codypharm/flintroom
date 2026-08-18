@@ -24,16 +24,32 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.coach import COACH, CoachModel, Grounds, Spoken, held, spoken
+from app.agents.weakness import WeakAnswer
 from app.agents.context import USER
 from app.core.errors import FlintroomError
 from app.core.logging import get_logger
 from app.modules.sessions.debrief import DebriefService
-from app.modules.sessions.models import CoachTurn, TranscriptLine
+from app.modules.sessions.models import CoachTurn, SparringAttempt, TranscriptLine
 from app.modules.voice.dictation import Dictation
 from app.modules.voice.speech import Speaker
 from app.agents.context import Said
 
 log = get_logger(__name__, tag="debrief")
+
+
+class NoSuchWeakAnswer(FlintroomError):
+    """That rank is not in this room's ranked list.
+
+    404 rather than 422: the client asked for something that does not exist, and
+    the likeliest cause is a rank held from a different session.
+
+    Refused before the clip is transcribed. Hearing a re-answer to a question
+    nobody asked would pay a vendor to produce a string with nowhere to put it.
+    """
+
+    code = "no_such_weak_answer"
+    status_code = 404
+    message = "That isn't one of the questions from this session."
 
 
 class NothingWasSaid(FlintroomError):
@@ -105,6 +121,91 @@ class CoachService:
 
         await self._keep(session_id, heard.text, said)
         return CoachedTurn(text=said, speech=await self._voice(said))
+
+
+    async def spar(
+        self,
+        *,
+        session_id: uuid.UUID,
+        weak_rank: int,
+        clip: bytes,
+        media_type: str,
+    ) -> CoachedTurn:
+        """Re-answer one question the room found weak, and hear what changed.
+
+        **The question is chosen by rank, not described.** That is the anchor
+        `docs/debrief-and-sparring.md` decision 4 requires rather than merely
+        prefers: a re-answer is fresh speech, which is exactly the shape *"spar
+        me on this instead"* would use to smuggle in a new pitch. Only a row
+        that already exists is addressable, so there is no argument in which a
+        different subject could be named.
+        """
+        weak = await self._weak(session_id, weak_rank)
+
+        heard = await self._dictation.hear(clip, media_type=media_type)
+        if not heard.text:
+            raise NothingWasSaid(session_id=str(session_id))
+
+        grounds = await self._grounds(session_id)
+        attempts = (*await self._attempts(session_id, weak_rank), heard.text)
+
+        reply = await self._coach.spar(
+            grounds=grounds, weak=weak, attempts=attempts
+        )
+        said = spoken(reply, grounds)
+
+        log.info(
+            "sparring_attempt",
+            session_id=str(session_id),
+            weak_rank=weak_rank,
+            attempt=len(attempts),
+            heard_seconds=heard.seconds,
+            redirected=said != reply.text,
+            input_tokens=reply.usage.input_tokens,
+            output_tokens=reply.usage.output_tokens,
+        )
+
+        self._db.add(
+            SparringAttempt(
+                session_id=session_id,
+                weak_rank=weak_rank,
+                attempt=len(attempts) - 1,
+                said=heard.text,
+                reply=said,
+            )
+        )
+        await self._db.commit()
+
+        return CoachedTurn(text=said, speech=await self._voice(said))
+
+    async def _weak(self, session_id: uuid.UUID, rank: int) -> WeakAnswer:
+        """The question at this rank, or a refusal.
+
+        Read through `DebriefService` rather than off the table, so a room that
+        has never been debriefed is read first and every refusal it makes —
+        still running, no questions, provider broke it — applies here without
+        being restated.
+        """
+        answers = await self._debrief.weak_answers(session_id=session_id)
+
+        if not 0 <= rank < len(answers):
+            raise NoSuchWeakAnswer(session_id=str(session_id), rank=rank)
+
+        return answers[rank]
+
+    async def _attempts(
+        self, session_id: uuid.UUID, weak_rank: int
+    ) -> tuple[str, ...]:
+        """Every go at this question so far, oldest first."""
+        rows = await self._db.execute(
+            select(SparringAttempt)
+            .where(
+                SparringAttempt.session_id == session_id,
+                SparringAttempt.weak_rank == weak_rank,
+            )
+            .order_by(SparringAttempt.attempt)
+        )
+        return tuple(row.said for row in rows.scalars())
 
     async def _grounds(self, session_id: uuid.UUID) -> Grounds:
         """Everything §405 lets the coach have an opinion about.

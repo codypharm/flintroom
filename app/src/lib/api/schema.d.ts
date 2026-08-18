@@ -343,6 +343,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sessions/{session_id}/debrief/weak-answers/{rank}/attempts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Spar
+         * @description Answer one of the room's questions again, and hear what changed.
+         *
+         *     §3.5's re-try loop: *"the coach replays a question the user fumbled and has
+         *     them re-answer on the spot, repeatedly, until the response holds. Teaching,
+         *     not just scoring."*
+         *
+         *     **The question is in the path, not in the body.** That is
+         *     `docs/debrief-and-sparring.md` decision 4's anchor, and it is required
+         *     rather than conventional: a re-answer is fresh speech about the session,
+         *     which is precisely the shape *"spar me on this instead"* would use to
+         *     smuggle in a new pitch. Addressing a stored rank means there is no argument
+         *     in which a different subject could be named.
+         *
+         *     Nothing here announces a verdict. The coach says what changed between this
+         *     attempt and the last; the user decides when to stop. Telling somebody a thin
+         *     answer landed sends them into the real room believing it, which is the one
+         *     outcome this loop exists to prevent.
+         *
+         *     Unmetered, like every coaching turn, and with no path from here to a
+         *     balance.
+         */
+        post: operations["sessions_spar"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/balance": {
         parameters: {
             query?: never;
@@ -571,6 +610,14 @@ export interface components {
             remaining_minutes: number;
             /** Has Time Remaining */
             has_time_remaining: boolean;
+        };
+        /** Body_sessions_spar */
+        Body_sessions_spar: {
+            /**
+             * Clip
+             * @description One re-answer, spoken.
+             */
+            clip: string;
         };
         /** Body_sessions_speak_to_coach */
         Body_sessions_speak_to_coach: {
@@ -1445,6 +1492,42 @@ export interface operations {
         requestBody: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_sessions_speak_to_coach"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoachTurnRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sessions_spar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rank: number;
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_sessions_spar"];
             };
         };
         responses: {
