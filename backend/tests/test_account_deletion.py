@@ -26,9 +26,18 @@ from app.core.errors import DeletionSweepUnconfigured, NotAuthenticated
 from app.modules.billing.models import Account, LedgerEntry
 from app.modules.auth.models import AuthIdentity
 from app.modules.auth.refresh import RefreshTokenService
-from app.modules.billing.deletion import KNOWN_TABLES, AccountDeletion
+from app.modules.billing.deletion import (
+    CASCADING,
+    DESTROYED,
+    KNOWN_TABLES,
+    PURGED,
+    AccountDeletion,
+)
 from app.modules.ingestion.models import Material
-from app.modules.sessions.models import Session, SessionRecording
+from app.modules.onboarding.models import Situation
+from app.modules.onboarding.schemas import Answers
+from app.modules.onboarding.service import OnboardingService
+from app.modules.sessions.models import Session, SessionRecording, UserPreference
 from app.modules.sessions.schemas import EndReason
 from app.modules.voice.recording import recording_key
 from tests.materials import uploaded
@@ -56,6 +65,33 @@ def test_every_table_carrying_a_user_is_accounted_for():
 
     assert carrying <= KNOWN_TABLES, (
         f"these carry user_id and no deletion decision: {carrying - KNOWN_TABLES}"
+    )
+
+
+def test_every_table_we_promise_to_destroy_is_actually_reached():
+    """The second mistake, which the guard above cannot see.
+
+    Deciding a table's fate and *carrying it out* are separate acts, and until
+    this existed only the first was checked. Adding a name to `DESTROYED` turned
+    the guard green whether or not anything ever deleted a row — proven by
+    mutation on 2026-08-18: removing `user_preferences` from the purge left all
+    thirteen tests passing, a full day after it shipped.
+
+    So `DESTROYED` is now required to be exactly what the purge reaches, by
+    deletion or by cascade. A table named here and wired to nothing fails at
+    declaration, the same way an undeclared one already did.
+
+    The first thing this caught was `accounts`, which sat in `DESTROYED` while
+    the purge deliberately keeps its row — see `ANONYMISED_TABLES`, where it now
+    is. The behaviour was right the whole time; the category was a lie, and a
+    lie in the set that answers "what did deleting my account destroy" is worth
+    a failing test.
+    """
+    reached = {model.__tablename__ for model in PURGED} | CASCADING
+
+    assert DESTROYED == reached, (
+        f"promised but unreached: {DESTROYED - reached}; "
+        f"reached but unpromised: {reached - DESTROYED}"
     )
 
 
@@ -143,6 +179,14 @@ async def test_the_sweep_leaves_nothing_of_the_person_and_all_of_the_money(
     # mutation that skipped it passed the first version of this test.
     await _signed_in_with(db, funded_account.user_id)
 
+    # Seeded for exactly the same reason, and after the same mutation survived:
+    # naming a table in `DESTROYED` is what the guard above checks, and deleting
+    # it is not. The two are separate mistakes and only rows catch the second.
+    await OnboardingService(db).record(
+        user_id=funded_account.user_id,
+        answers=Answers(situation="board_review", role="exec", audience=["budget"]),
+    )
+
     deletion = AccountDeletion(db, storage)
     await deletion.request(user_id=funded_account.user_id)
     await _requested_days_ago(db, funded_account.user_id, days=8)
@@ -154,6 +198,10 @@ async def test_the_sweep_leaves_nothing_of_the_person_and_all_of_the_money(
     assert await db.get(Session, session.id) is None
     # The identity: gone, and its absence is what anonymises the rest.
     assert await _identities(db, funded_account.user_id) == 0
+    # The meeting they were preparing for, and the answers that shaped the room.
+    # Their own content, with no accounting obligation holding it back.
+    assert await _situations(db, funded_account.user_id) == 0
+    assert await db.get(UserPreference, funded_account.user_id) is None
     # The money: untouched, still pointing at an account row that now maps to
     # nobody. Destroying it would leave RevenueCat holding purchases this side
     # cannot account for.
@@ -246,6 +294,13 @@ async def _deleted_at(db, user_id):
 
 async def _account_exists(db, user_id) -> bool:
     return await _column(db, user_id, Account.user_id) is not None
+
+
+async def _situations(db, user_id) -> int:
+    rows = await db.execute(
+        select(func.count()).select_from(Situation).where(Situation.user_id == user_id)
+    )
+    return rows.scalar_one()
 
 
 async def _identities(db, user_id) -> int:

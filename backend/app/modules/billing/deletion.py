@@ -38,6 +38,7 @@ from app.modules.auth.models import AuthIdentity, RefreshToken
 # looking, which is the one way it can fail silently.
 from app.modules.billing.models import Account, LedgerEntry
 from app.modules.ingestion.models import ExtractionCost, Material
+from app.modules.onboarding.models import Situation
 from app.modules.sessions.models import Session, SessionRecording, UserPreference
 from app.modules.voice.costs import SessionCost
 from app.modules.voice.recording import recording_key
@@ -70,38 +71,69 @@ WINDOW = timedelta(days=7)
 #: out of it.
 IDENTIFYING = AuthIdentity
 
-#: Every table carrying a `user_id`, and what happens to it.
+#: The models the purge deletes by name, in the order it deletes them.
 #:
-#: `test_account_deletion.py` asserts this covers the schema, so declaring a new
-#: table with a `user_id` and forgetting it here fails the suite rather than
-#: quietly retaining data. Fixing that failure means deciding destroy-or-
-#: anonymise and recording it in `docs/account-deletion.md` — not appending a
-#: name to make the red go away.
-#: Gone when this finishes — which is not the same as deleted by name here.
+#: Declared here rather than inline in `_purge` so the suite can check that
+#: `DESTROYED` below is exactly what this reaches. Before that check existed,
+#: naming a table in `DESTROYED` and deleting nothing passed every test — proven
+#: by mutation on 2026-08-18, a full day after `user_preferences` shipped that
+#: way.
 #:
-#: `material_claims` and `voice_tickets` carry a denormalised `user_id` *and*
-#: cascade from their parent, so they go when `materials` and `sessions` go. The
-#: guard still demands they appear, because "it cascades" is a fact about today's
-#: schema and the guard is there for the day somebody changes it. Do not add an
-#: explicit delete for either: a redundant one would look like the load-bearing
-#: one and would survive the cascade being dropped.
-DESTROYED = frozenset(
-    {
-        "accounts",
-        "auth_identities",
-        "refresh_tokens",
-        "materials",
-        "material_claims",
-        "sessions",
-        "user_preferences",
-        "voice_tickets",
-    }
+#: `AuthIdentity` is last, and not cosmetically: it is the row whose absence
+#: anonymises everything left behind, so it goes once the rest already has
+#: rather than leaving a window where the identity is severed from live data.
+PURGED = (
+    Session,
+    Material,
+    UserPreference,
+    Situation,
+    RefreshToken,
+    AuthIdentity,
 )
 
-#: Kept untouched, and anonymous by consequence rather than by rewriting.
-#: `docs/account-deletion.md` decisions 1–3.
+#: Destroyed by their parent rather than by name.
+#:
+#: Both carry a denormalised `user_id` *and* cascade — `material_claims` from
+#: `materials`, `voice_tickets` from `sessions`. They are listed because "it
+#: cascades" is a fact about today's schema and this is here for the day
+#: somebody changes it. Do not add an explicit delete for either: a redundant
+#: one would look like the load-bearing one and would survive the cascade being
+#: dropped.
+CASCADING = frozenset({"material_claims", "voice_tickets"})
+
+#: Every table whose rows are gone when a purge finishes.
+#:
+#: Required to equal `PURGED` plus `CASCADING` exactly, so a promise made here
+#: and wired to nothing fails at declaration. That is the second of the two
+#: mistakes this module can make; the first is forgetting a table entirely, and
+#: `KNOWN_TABLES` catches that one.
+#:
+#: Fixing either failure means deciding destroy-or-anonymise and recording it in
+#: `docs/account-deletion.md` — never appending a name to make the red go away.
+DESTROYED = frozenset(
+    {model.__tablename__ for model in PURGED} | CASCADING
+)
+
+#: Kept, and anonymous by consequence rather than by rewriting.
+#: `docs/account-deletion.md` decisions 1-3.
+#:
+#: **`accounts` belongs here, and sat in `DESTROYED` until 2026-08-18.** The
+#: purge has always kept its row — it holds tier, period and three balances, and
+#: the ledger, the cost telemetry and the audit trail all point at it — so
+#: filing it under "destroyed" was a lie about the one set that answers "what
+#: did deleting my account destroy". The behaviour never changed; only the
+#: category, which the reachability check found the moment it was written.
+#:
+#: It is the one row here that is *touched*: the purge stamps `deleted_at` on
+#: it. That is a tombstone on a surviving row, not a rewrite of what it holds.
 ANONYMISED_TABLES = frozenset(
-    {"ledger_entries", "session_costs", "extraction_costs", "audit_events"}
+    {
+        "accounts",
+        "ledger_entries",
+        "session_costs",
+        "extraction_costs",
+        "audit_events",
+    }
 )
 
 KNOWN_TABLES = DESTROYED | ANONYMISED_TABLES
@@ -285,14 +317,19 @@ class AccountDeletion:
     async def _purge(self, user_id: uuid.UUID) -> None:
         """Everything, in one transaction.
 
-        Anonymise before destroy, and the order is load-bearing: `accounts` is
-        destroyed, and a ledger row is meaningless once the account it belongs
-        to is gone. Reversing this would leave a window in which a crash had
-        removed the account and left the money rows pointing at nothing.
+        Objects, then rows, then the account's tombstone — and that order is
+        load-bearing. The account row is the last thing touched and the only one
+        that survives; stamping it first would leave a window in which a crash
+        had marked an account deleted while its sessions were still readable.
 
-        The audit row is staged before either, for the same reason a settlement
-        stages before it commits: the proof and the act land together or neither
-        does.
+        **The account is not destroyed**, despite once being filed that way.
+        `ledger_entries`, `session_costs` and `audit_events` all point at it, so
+        it keeps its `user_id` as an opaque key and gains a `deleted_at`. See
+        `ANONYMISED_TABLES`, which is where it belongs and now sits.
+
+        The audit row is staged before any of it, for the same reason a
+        settlement stages before it commits: the proof and the act land together
+        or neither does.
         """
         self._audit.stage(AuditEventType.ACCOUNT_DELETED, user_id=user_id)
 
@@ -308,19 +345,9 @@ class AccountDeletion:
 
         # Content, and the identity that makes any of it a person's. Nine tables
         # cascade from `sessions` and `material_claims` from `materials`, so
-        # naming the parents is enough — see `DESTROYED`.
-        #
-        # `AuthIdentity` last of the destructions is not cosmetic: it is the row
-        # whose absence anonymises everything left behind, so it goes when the
-        # rest has already gone rather than leaving a window where the identity
-        # is severed from data that still exists.
-        for table in (
-            Session,
-            Material,
-            UserPreference,
-            RefreshToken,
-            AuthIdentity,
-        ):
+        # naming the parents is enough — see `CASCADING`. The order within
+        # `PURGED` is deliberate and documented there.
+        for table in PURGED:
             await self._db.execute(delete(table).where(table.user_id == user_id))
 
         # The account row stays. Its `user_id` is now an opaque key, and the

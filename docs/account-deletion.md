@@ -188,3 +188,52 @@ jurisdictional and named in decision 1. Nothing is blocked on it — those rows
 can be dropped on a schedule once somebody decides what the schedule is — but
 `docs/privacy-policy.md` still carries a `[CONFIRM]` on that line and cannot be
 published while it does.
+
+---
+
+## Amended 2026-08-18, when onboarding added a table
+
+`situations` — one row per meeting somebody is preparing for, carrying its kind
+and its date (`docs/onboarding.md` Q1 and Q2) — is **destroyed**, alongside
+sessions and materials. It is the user's own content: no accounting obligation
+attaches to it, and nothing downstream needs it to stay answerable the way the
+ledger does.
+
+Recording it here is not a formality. The guard in `test_account_deletion.py`
+failed the moment the model was declared, which is exactly the behaviour
+decision 1's reasoning promised — *"a table left out is personal data retained
+forever with nothing raising"* — and the fix is a decision written down, never a
+name appended to `DESTROYED` to make the suite green.
+
+The durable half of the same survey needs no new entry: role and audience are
+columns on `user_preferences`, which is already destroyed.
+
+### And a second guard, because the first one only looked halfway
+
+Adding `situations` exposed a hole in the check this document leans on. There
+are **two** mistakes available when a table carrying `user_id` appears, and only
+one was caught:
+
+1. **Forgetting to decide.** `test_every_table_carrying_a_user_is_accounted_for`
+   compares the schema against `KNOWN_TABLES`, so a new table goes red the
+   moment it is declared. This worked exactly as written.
+2. **Deciding, then not carrying it out.** Nothing checked this. Appending a
+   name to `DESTROYED` turned the guard green whether or not a single row was
+   ever deleted — confirmed by mutation: removing `user_preferences` from the
+   purge left all thirteen tests passing, one day after it shipped.
+
+`DESTROYED` is now *derived* rather than declared — it is exactly `PURGED`
+(the models the purge deletes by name) plus `CASCADING` (the two that go with
+their parent). A promise wired to nothing cannot be written down.
+
+**This immediately caught `accounts`,** which had sat in `DESTROYED` since the
+feature shipped while the purge deliberately keeps its row. The behaviour was
+always right and decision 1 argues for it at length; the *category* was wrong,
+and a wrong category in the set that answers "what did deleting my account
+destroy" is worth a failing test. It now sits in `ANONYMISED_TABLES`, whose
+description gained the one nuance that makes it accurate: `accounts` is the only
+row there that is touched at all, gaining a `deleted_at` tombstone while keeping
+everything it holds.
+
+No behaviour changed in this amendment. What changed is that the code can no
+longer claim something it does not do.
