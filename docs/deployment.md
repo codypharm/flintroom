@@ -155,6 +155,27 @@ Alembic reads `DATABASE_URL` from the environment, never from `alembic.ini`
 previously deployed version by rule, so migrate first and deploy second; a
 rolling deploy has both versions live at once regardless.
 
+**When that variable is unset, Alembic does not fail — it migrates
+`flintroom_test`.** `migrations/env.py:54` supplies a default, and the default
+is the test database. So `alembic current` and `alembic upgrade head` both
+succeed, report `(head)`, and leave the database you meant to migrate untouched.
+Nothing in the output distinguishes the two.
+
+Always set it explicitly:
+
+```sh
+export DATABASE_URL=$(grep '^DATABASE_URL' .env | cut -d= -f2-)
+uv run alembic upgrade head
+```
+
+Found on 2026-08-18. `alembic current` reported head while `flintroom_dev` was
+twelve migrations behind at `b8f134e09de3`; the first Google sign-in on Android
+got a verified token, reached the account insert, and died on
+`column "deletion_requested_at" of relation "accounts" does not exist`. The app
+surfaced it as "That did not go through", which is correct behaviour and says
+nothing. Confirm against the schema rather than the version table when a column
+is missing — `alembic_version` is what the tool believes, not what is there.
+
 ## The application role is not a superuser
 
 Every application table has row-level security enabled with a deny-all policy
@@ -415,21 +436,41 @@ pins, and pinning them is the check that stops a genuine Google token minted for
 somebody else's app from signing in here. Both accept a **comma-separated list**,
 and Google needs one.
 
-**Why a list.** Google addresses an ID token to whichever client asked for it,
-and the native SDK asks with a different client on each platform: on Android with
-the **web** client — that is what `webClientId` is, *"the client ID of type WEB
-for your server"* — and on iOS potentially with its own. A single pinned value
-cannot serve both. Whichever platform it is not then fails **every** sign-in,
-and fails it as a bare 401: `sign_in` raises `NotAuthenticated` without saying
-which check failed, deliberately, because saying so enumerates our configuration
-to whoever is probing. Correct posture, and it means nothing on the wire or in
-the app will tell you the audience is wrong.
+**Android's audience is the WEB client — measured, on 2026-08-18.** A real
+sign-in on an emulator produced a token this backend verified against
+`GOOGLE_CLIENT_ID=<web client>` and nothing else. That is what `webClientId`
+means in the native SDK: *"the client ID of type WEB for your server"*. The
+Android OAuth client authorises the app and never appears as an `aud`, so
+listing it widens the pin for nothing.
 
-**Why widening is safe.** Every entry is a client in our own Google project, so a
-token minted for our iOS app is exactly as trustworthy as one minted for our web
-client. A stranger's client ID is still not in the set, which is the entire
-attack the pin exists to stop. It is also Google's own guidance for backend
-verification: compare `aud` against your client IDs, plural.
+**iOS is still unverified.** The iOS SDK may address its token to the iOS client
+rather than the web one, which would need a second entry — hence the list. Do
+not add it pre-emptively. Decode a real iOS token's `aud` and add what is
+actually there; a guess here is indistinguishable from a broken key.
+
+**Identify the Web client by its TYPE, not its label.** Ours was recorded as the
+web client and was actually a native one, and the whole of one session went into
+that. Google's own error is unhelpfully phrased as a server-side complaint —
+`Auth: [GetTokenResponseHandler] Server returned error: You must use a Web client
+as the server client ID` — which reads like the backend is at fault when the
+value is set on the phone. Check a client's type without the console by asking
+the authorization endpoint for an `http` redirect:
+
+```sh
+curl -sL "https://accounts.google.com/o/oauth2/v2/auth?client_id=<id>&redirect_uri=http%3A%2F%2Flocalhost%3A9999&response_type=code&scope=openid" | grep -oE "redirect_uri_mismatch|invalid_request"
+```
+
+A **Web** client answers `redirect_uri_mismatch` — it accepts the form and only
+objects to the unregistered URI. A **native** client answers `invalid_request`;
+it will not take an `http` redirect at all.
+
+**Why widening is safe when it is warranted.** Every entry is a client in our own
+Google project, so a token minted for our iOS app is exactly as trustworthy as
+one minted for our web client. A stranger's client ID is still not in the set,
+which is the entire attack the pin exists to stop. It is also Google's own
+guidance for backend verification: compare `aud` against your client IDs, plural.
+Warranted is the operative word — an entry that can never be an `aud` is not
+defence in depth, just a larger set.
 
 **Apple is different, and the trap is inverted.** A *native* Sign in with Apple
 addresses its token to the app's **bundle identifier** — `com.flintroom.app` —
@@ -442,9 +483,22 @@ the signing SHA-1**, even though that client ID is passed to neither the SDK nor
 this backend. Without it the native flow returns `DEVELOPER_ERROR`, which is
 another message that names nothing.
 
-Found on 2026-08-18, when the configured Google audience turned out to match
-neither the app's web nor its iOS client. Nothing failed: there was no sign-in
-screen yet to fail.
+**Android additionally needs its own OAuth client registered with the signing
+SHA-1**, and the debug fingerprint comes from the keystore Gradle generates
+rather than from `~/.android`:
+
+```sh
+keytool -list -v -keystore app/android/app/debug.keystore -alias androiddebugkey -storepass android
+```
+
+Without that registration the native flow returns `DEVELOPER_ERROR` *before any
+UI appears*. That is also how to tell the two failures apart: if the account
+chooser opens at all, the SHA-1 is fine and the problem is the audience.
+
+Found on 2026-08-18, when the configured Google audience matched neither the
+app's web nor its iOS client. Nothing failed at the time: there was no sign-in
+screen yet to fail. Closed the same day, with a real Android sign-in reaching
+`grant_free +900`.
 
 ## Still open
 
