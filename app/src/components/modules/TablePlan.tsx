@@ -150,9 +150,13 @@ export function TablePlan({
               the countdown confidently wrong, which is worse than absent. */}
           {plan.happensOn ?? 'Not sure yet'}
         </Text>
+        {/* The affordance appears only when there is something to open. Until
+            the picker lands (#71) this row is a statement, and a chevron on a
+            statement is a lie about what a tap does. */}
+        {onPickDate !== null && <View style={styles.whenChevron} />}
       </Pressable>
 
-      <Text style={styles.title} accessibilityRole="header">
+      <Text style={styles.sectionTitle} accessibilityRole="header">
         Who is in that room?
       </Text>
       <Text style={styles.aside}>
@@ -183,7 +187,7 @@ export function TablePlan({
         })}
       </View>
 
-      <Text style={styles.title} accessibilityRole="header">
+      <Text style={styles.sectionTitle} accessibilityRole="header">
         And what are you, in it?
       </Text>
 
@@ -199,7 +203,7 @@ export function TablePlan({
         ))}
       </View>
 
-      <Text style={styles.title} accessibilityRole="header">
+      <Text style={styles.sectionTitle} accessibilityRole="header">
         How hard should they go?
       </Text>
 
@@ -266,16 +270,41 @@ export { labelFor };
 
 const styles = StyleSheet.create({
   sheet: { flex: 1, backgroundColor: color.surface },
-  content: { padding: space.screen, paddingBottom: space.major },
+  content: {
+    paddingHorizontal: space.screen,
+    paddingTop: space.section,
+    paddingBottom: space.major,
+  },
 
-  // More space above a heading than below it, throughout.
+  /**
+   * Two intervals and two heading sizes, which between them are the whole
+   * hierarchy of this sheet.
+   *
+   * Every question used to be `headlineMd` at 32 above and 12 below, four times
+   * over, and a screen where four things are the loudest thing has no loudest
+   * thing — squint at it and you see four identical white slabs in a row. The
+   * first question is the sheet's own title now and carries `headlineLg`; the
+   * three after it step down to `headlineSm` and are separated by `major`
+   * rather than `section`, so a section break (48) is four times the interval
+   * inside a group (12) instead of not quite three.
+   *
+   * `title` has no top margin because it opens the sheet — the content's own
+   * top padding is the space above it, and a margin there would double it.
+   */
   title: {
-    ...type.headlineMd,
+    ...type.headlineLg,
     color: color.onSurface,
-    marginTop: space.section,
+    marginBottom: space.base,
+  },
+  sectionTitle: {
+    ...type.headlineSm,
+    color: color.onSurface,
+    marginTop: space.major,
     marginBottom: space.snug,
   },
-  aside: { ...type.bodyMd, color: color.onSurfaceVariant, marginBottom: space.base },
+  // Tight to the heading it belongs to, because it is part of that sentence
+  // rather than a paragraph under it.
+  aside: { ...type.bodyMd, color: color.onSurfaceVariant, marginBottom: space.tight },
 
   group: {
     backgroundColor: color.card,
@@ -290,32 +319,67 @@ const styles = StyleSheet.create({
     paddingVertical: space.snug,
   },
   choiceLabel: { ...type.bodyLg, color: color.onSurfaceVariant, flex: 1 },
-  choiceChosen: { color: color.onSurface },
+  // Brand colour, not merely darker. The only feedback this sheet gives was a
+  // 10pt dot at the far right of a 390pt row and a shift from warm brown to
+  // near-black in the label — at arm's length on a warm ground, an answered
+  // question and an unanswered one looked the same. Colouring the label is what
+  // makes a mark readable across the whole sheet without adding a counter the
+  // thesis refuses. It also matches the seated chair, whose marker and position
+  // number are already `primary`, so one colour means "chosen" throughout.
+  choiceChosen: { color: color.primary },
   chosenMark: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: color.primary,
     marginLeft: space.base,
   },
 
+  /**
+   * A line, not a card.
+   *
+   * It had the same 28px container, the same white, and the same left inset as
+   * the six-option question above it — which said the two configure the room
+   * equally, when one picks the archetypes and the other is a date that is
+   * currently not even askable. Stacked label over value in a card is the shape
+   * of a form field; label left and value right on one line is the shape of a
+   * fact, which is what this is until #71 lands.
+   *
+   * Half the height it was, and the plan gets its emphasis back.
+   */
   when: {
-    marginTop: space.base,
-    backgroundColor: color.card,
-    borderRadius: radius.container,
-    padding: space.base,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.base,
+    marginTop: space.loose,
     minHeight: 44,
   },
-  whenLabel: { ...type.labelLg, color: color.onSurfaceVariant },
-  whenValue: { ...type.bodyLg, color: color.onSurface, marginTop: space.hair },
+  whenLabel: { ...type.labelLg, color: color.onSurfaceVariant, flex: 1 },
+  whenValue: { ...type.bodyLg, color: color.onSurface },
+  whenChevron: {
+    width: 9,
+    height: 9,
+    borderRightWidth: 2,
+    borderTopWidth: 2,
+    borderColor: color.onSurfaceVariant,
+    transform: [{ rotate: '45deg' }],
+  },
 
   // No card around the table. The spine is the container, and a card would put
   // a box around a drawing whose whole job is to read as one continuous edge.
-  table: { paddingLeft: space.hair },
+  //
+  // Flush left, where it used to sit 4pt in. A rule that stands for the edge of
+  // a table has to be aligned to something, and the only vertical line on this
+  // sheet worth aligning to is the column the headings start on. The chair
+  // labels then land inset from it, which is the ordinary leading-accessory
+  // inset every list with a marker has — deliberate, unlike the 4.
+  table: { paddingLeft: 0 },
 
   go: {
     minHeight: 44,
-    marginTop: space.section,
+    // A section break, like the headings — the action closes the last question
+    // rather than belonging to it.
+    marginTop: space.major,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: color.primary,

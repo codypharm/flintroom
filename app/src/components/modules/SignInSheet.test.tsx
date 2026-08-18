@@ -13,6 +13,7 @@ import { SignInSheet } from './SignInSheet';
 async function show(over: Partial<Parameters<typeof SignInSheet>[0]> = {}) {
   const onApple = jest.fn();
   const onGoogle = jest.fn();
+  const onBack = jest.fn();
 
   await render(
     <SignInSheet
@@ -21,11 +22,12 @@ async function show(over: Partial<Parameters<typeof SignInSheet>[0]> = {}) {
       refusal={null}
       onApple={onApple}
       onGoogle={onGoogle}
+      onBack={onBack}
       {...over}
     />
   );
 
-  return { onApple, onGoogle };
+  return { onApple, onGoogle, onBack };
 }
 
 it('offers both ways in when the device can do both', async () => {
@@ -84,4 +86,25 @@ it('offers the minutes rather than counting them', async () => {
 
   expect(screen.getByText(/first 15 minutes in the room/)).toBeTruthy();
   expect(screen.queryByText(/remaining|left|of 15/i)).toBeNull();
+});
+
+it('lets somebody go back to the plan they just filled in', async () => {
+  // The plan and this sheet are two states of one screen, and until now the
+  // second had no way back to the first — a back gesture left onboarding
+  // entirely, abandoning five answers that were never posted anywhere.
+  const { onBack } = await show();
+
+  fireEvent.press(screen.getByLabelText('Back to your plan'));
+
+  expect(onBack).toHaveBeenCalled();
+});
+
+it('does not let the plan be reopened while sign-in is in flight', async () => {
+  // Going back mid-request would leave a sign-in resolving against a screen
+  // that has moved on, and the plan it posted already left the building.
+  const { onBack } = await show({ busy: true });
+
+  fireEvent.press(screen.getByLabelText('Back to your plan'));
+
+  expect(onBack).not.toHaveBeenCalled();
 });

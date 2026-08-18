@@ -80,7 +80,17 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.6 },
 
-  spine: { width: MARKER, alignItems: 'center', alignSelf: 'stretch' },
+  // `justifyContent` centres the bead on the string. Without it the marker sat
+  // at the top of its row while the label sat in the middle of the same row, so
+  // the rail read as a stem hanging off a pin rather than as a continuous edge
+  // — and the drift got worse the taller the row grew, which is exactly what
+  // the largest Dynamic Type sizes do to it.
+  spine: {
+    width: MARKER,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'stretch',
+  },
   rail: {
     position: 'absolute',
     top: 0,

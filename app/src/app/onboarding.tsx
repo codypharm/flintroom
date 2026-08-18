@@ -121,13 +121,17 @@ export default function OnboardingRoute() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-      <ScrollView contentContainerStyle={styles.centred}>
+      <ScrollView contentContainerStyle={styles.filled}>
         <SignInSheet
           appleAvailable={appleAvailable}
           busy={busy}
           refusal={refusal}
           onApple={() => void enter(apple)}
           onGoogle={() => void enter(google)}
+          // Back to the plan with every answer still in it, because the plan
+          // lives in this component's state and has been posted nowhere. The
+          // sheet refuses this itself while a sign-in is in flight.
+          onBack={() => setAsking(false)}
         />
       </ScrollView>
     </SafeAreaView>
@@ -149,5 +153,7 @@ const RUNGS = 3;
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.surface },
-  centred: { flexGrow: 1, justifyContent: 'center' },
+  // Grows to the full height so the sheet can anchor its two ends, and scrolls
+  // instead when the largest Dynamic Type sizes make it taller than the screen.
+  filled: { flexGrow: 1 },
 });
