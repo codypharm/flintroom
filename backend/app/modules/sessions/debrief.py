@@ -252,3 +252,41 @@ class DebriefService:
             )
             for row in rows.scalars()
         )
+
+    async def pressed(self, *, session_id: uuid.UUID) -> str | None:
+        """How this room compared to the one before it, or nothing.
+
+        The comparison the debrief's one sentence is made of. Reads the rung
+        each room *ran at* rather than the rung the account is on now — by the
+        time anybody opens a debrief the account may have moved, and comparing
+        against a number that has since changed would describe a room nobody
+        was in.
+
+        The previous room is the last one before this that actually happened:
+        settled, and with a rung recorded. Sessions started and never joined
+        have no `difficulty_level` and are skipped, because they are not rooms.
+
+        Null rather than a third word when the rung is unchanged. Nothing
+        happened, and a screen already carrying weak answers and a coach does
+        not need a sentence saying so.
+        """
+        this = await self._db.get(Session, session_id)
+        if this is None or this.difficulty_level is None:
+            return None
+
+        before = await self._db.execute(
+            select(Session.difficulty_level)
+            .where(
+                Session.user_id == this.user_id,
+                Session.difficulty_level.is_not(None),
+                Session.settled_at.is_not(None),
+                Session.settled_at < this.settled_at,
+            )
+            .order_by(Session.settled_at.desc())
+            .limit(1)
+        )
+        last = before.scalar_one_or_none()
+        if last is None or last == this.difficulty_level:
+            return None
+
+        return "harder" if this.difficulty_level > last else "easier"

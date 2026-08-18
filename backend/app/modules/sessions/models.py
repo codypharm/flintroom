@@ -169,6 +169,26 @@ class Session(Base):
     end_reason: Mapped[EndReason | None] = mapped_column(end_reason_column, nullable=True)
 
     #: Set exactly once, when billing closes. Null in every other state.
+    #: How hard this room actually pushed, or null if it was never assembled.
+    #:
+    #: The account carries the rung a user is *on*; this carries the rung a room
+    #: *ran at*. They differ the moment calibration moves one, and without this
+    #: nothing could ever answer "which room did I get" about a session already
+    #: finished.
+    #:
+    #: Its first consumer is the debrief's single sentence — "they pressed
+    #: harder this time than last" is a comparison, and the other side of it has
+    #: to be stored. It also gives #14 something to reconcile cost against:
+    #: until now every settled session looked identical.
+    #:
+    #: **Null rather than defaulted.** A session started and never joined ran at
+    #: no difficulty at all, and writing a plausible rung onto it would be
+    #: recording a room that did not happen — which the comparison above would
+    #: then read as real.
+    difficulty_level: Mapped[int | None] = mapped_column(
+        SmallInteger, nullable=True
+    )
+
     #: When this room's weak answers were read, or null if nobody has opened
     #: the debrief.
     #:

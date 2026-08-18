@@ -568,6 +568,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/difficulty": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Choose Difficulty
+         * @description Set how hard the room will push.
+         *
+         *     On `/me` rather than under the catalogue, because the rung is a fact about
+         *     the account and not about the roster — the read rides the catalogue only
+         *     because that is the request the setup screen already makes, and a write has
+         *     no such screen to share.
+         *
+         *     Returns what was stored rather than 204. The client has just moved a
+         *     control and needs to render its new position from the server's answer,
+         *     which is also how it learns that a rung it asked for was not the rung it
+         *     got — though today it always is, because an invalid one is refused rather
+         *     than clamped.
+         *
+         *     May go down as well as up (`docs/difficulty-calibration.md` decision 5).
+         *     That is safe because level 1 still presses an unanswered question, so this
+         *     control cannot turn the wedge off, and because calibration carries on from
+         *     wherever it is left — it is a starting point, never a floor.
+         */
+        put: operations["panels_choose_difficulty"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -596,6 +632,16 @@ export interface components {
             may_author: boolean;
             /** Upgrade Seats */
             upgrade_seats?: number | null;
+            /**
+             * Difficulty
+             * @default 1
+             */
+            difficulty: number;
+            /**
+             * Hardest
+             * @default 3
+             */
+            hardest: number;
         };
         /**
          * ArchetypeRead
@@ -684,6 +730,8 @@ export interface components {
         DebriefRead: {
             /** Weak Answers */
             weak_answers: components["schemas"]["WeakAnswerRead"][];
+            /** Pressed */
+            pressed?: ("harder" | "easier") | null;
         };
         /**
          * DeletionScheduled
@@ -704,6 +752,20 @@ export interface components {
              * Format: date-time
              */
             purge_at: string;
+        };
+        /**
+         * DifficultyChoice
+         * @description The rung a user picked for themselves.
+         *
+         *     Validated against the ladder rather than clamped. Clamping is right where a
+         *     *stored* number is read back — `difficulty.pressure_at` does it, so a live
+         *     room never ends over bookkeeping — and wrong here: this is a person
+         *     choosing, and quietly handing them level 3 when they asked for 7 is a
+         *     control that lies about what it did.
+         */
+        DifficultyChoice: {
+            /** Difficulty */
+            difficulty: number;
         };
         /**
          * EndReason
@@ -1798,6 +1860,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArchetypeCatalogue"];
+                };
+            };
+        };
+    };
+    panels_choose_difficulty: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DifficultyChoice"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DifficultyChoice"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

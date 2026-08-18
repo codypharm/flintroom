@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.agents.difficulty import GENTLE, RELENTLESS
+
 
 class ArchetypeRead(BaseModel):
     """One panelist, as offered.
@@ -58,3 +60,29 @@ class ArchetypeCatalogue(BaseModel):
     #: Seats on the rung above, or null at the top. A number rather than a verb:
     #: the client renders the prompt, and the API states the fact.
     upgrade_seats: int | None = Field(default=None)
+
+    #: How hard the room will push, 1 to `hardest` — #55's rung.
+    #:
+    #: Here for the same reason `seats` is: it is read at the same moment by the
+    #: same screen, and a picker that knew the roster but not the rung would need
+    #: a second round trip to render one slider.
+    difficulty: int = Field(default=GENTLE)
+
+    #: The top of the ladder, so the client renders the positions that exist
+    #: rather than a count of its own. A hardcoded three in the app is the same
+    #: failure a hardcoded archetype library would be: two lists free to
+    #: disagree, with an app release between them.
+    hardest: int = Field(default=RELENTLESS)
+
+
+class DifficultyChoice(BaseModel):
+    """The rung a user picked for themselves.
+
+    Validated against the ladder rather than clamped. Clamping is right where a
+    *stored* number is read back — `difficulty.pressure_at` does it, so a live
+    room never ends over bookkeeping — and wrong here: this is a person
+    choosing, and quietly handing them level 3 when they asked for 7 is a
+    control that lies about what it did.
+    """
+
+    difficulty: int = Field(ge=GENTLE, le=RELENTLESS)

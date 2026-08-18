@@ -11,7 +11,7 @@ from datetime import timedelta
 from collections.abc import Sequence
 from typing import NoReturn
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -261,6 +261,22 @@ class SessionService:
             select(Account.difficulty_level).where(Account.user_id == user_id)
         )
         return stored.scalar_one_or_none() or GENTLE
+
+    async def ran_at(self, *, session_id: uuid.UUID, level: int) -> None:
+        """Record the rung a room was assembled at.
+
+        Idempotent by being a plain assignment: a socket that drops and
+        reconnects rebuilds the room, and writing the same rung again is not an
+        event. If the account's rung moved in between — the user changed it, or
+        a debrief calibrated — the reconnected room genuinely is the new one and
+        the record should say so.
+        """
+        await self._db.execute(
+            update(Session)
+            .where(Session.id == session_id)
+            .values(difficulty_level=level)
+        )
+        await self._db.commit()
 
     async def panel(self, *, session_id: uuid.UUID) -> tuple[Archetype, ...]:
         """Who is in this room, in the order they were seated.

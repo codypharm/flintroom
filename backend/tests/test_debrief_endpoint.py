@@ -13,14 +13,18 @@ from types import SimpleNamespace
 
 import pytest
 
+from sqlalchemy import update
+
 from app.agents.context import USER, Said
+from app.agents.difficulty import GENTLE, RELENTLESS, STANDARD
+from app.modules.sessions.models import Session
 from app.core.errors import ProviderUnavailable
 from app.modules.sessions.dependencies import get_weakness_reader
 from app.agents.weakness import Judgement, Weakness
 from app.modules.sessions.schemas import EndReason
 
 from tests.conftest import create_funded_account
-from tests.test_debrief import room_that_happened
+from tests.test_debrief import ROOM, room_that_happened
 
 ROOM = (
     Said(speaker=USER, text="We grew forty percent last quarter."),
@@ -175,3 +179,97 @@ def test_a_deployment_without_a_model_says_so_rather_than_crashing():
 
     assert refused.value.status_code == 502
     assert "gemini" not in str(refused.value.context).lower()
+
+
+async def test_the_debrief_says_how_this_room_compared_to_the_last(
+    client, db, engine, sessions, settlement, funded_account, bearer, weakness_reader
+):
+    """#55 decision 5, and it is the half the decision called load-bearing.
+
+    Resilience nobody noticed they built is worth nothing — §434 routes the user
+    into rebuilding the answer, and a room that quietly got harder is a room
+    they cannot credit themselves for having handled.
+
+    A direction, never a number. The client writes the sentence; the API states
+    the fact. A level on this screen would turn the debrief into a score, which
+    is the drift toward the delivery-metrics product the wedge exists to refuse.
+    """
+    first = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    await _ran_at(db, first.id, GENTLE)
+    second = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    await _ran_at(db, second.id, RELENTLESS)
+
+    body = (
+        await client.get(
+            f"/v1/sessions/{second.id}/debrief", headers=bearer(funded_account.user_id)
+        )
+    ).json()
+
+    assert body["pressed"] == "harder"
+
+
+async def test_a_first_room_has_nothing_to_compare_itself_to(
+    client, db, engine, sessions, settlement, funded_account, bearer, weakness_reader
+):
+    """Null, and the client says nothing at all.
+
+    "The room pressed as hard as last time" is a sentence about a session that
+    does not exist, on the screen a first-time user reaches after the single
+    most demanding thing this product does to them.
+    """
+    only = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    await _ran_at(db, only.id, GENTLE)
+
+    body = (
+        await client.get(
+            f"/v1/sessions/{only.id}/debrief", headers=bearer(funded_account.user_id)
+        )
+    ).json()
+
+    assert body["pressed"] is None
+
+
+async def _ran_at(db, session_id, level: int) -> None:
+    """The rung the room was assembled at, as `build_room` would have written it."""
+    await db.execute(
+        update(Session).where(Session.id == session_id).values(difficulty_level=level)
+    )
+    await db.commit()
+
+
+async def test_a_room_at_the_same_rung_says_nothing(
+    client, db, engine, sessions, settlement, funded_account, bearer, weakness_reader
+):
+    """Null rather than a third word, and the third word would be a lie.
+
+    Without this the comparison falls through to its own else and reports
+    "easier" for a room that pushed exactly as hard — a sentence contradicting
+    what the person just sat through, on the screen where the product is asking
+    them to trust its reading of the room.
+
+    Nothing changed, so nothing is said. The debrief screen is already carrying
+    weak answers and a coach; a line announcing that the difficulty held steady
+    is noise at best.
+    """
+    first = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    await _ran_at(db, first.id, STANDARD)
+    second = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    await _ran_at(db, second.id, STANDARD)
+
+    body = (
+        await client.get(
+            f"/v1/sessions/{second.id}/debrief", headers=bearer(funded_account.user_id)
+        )
+    ).json()
+
+    assert body["pressed"] is None

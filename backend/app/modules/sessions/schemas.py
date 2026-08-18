@@ -6,6 +6,7 @@ The state machine is specified in `docs/minutes-ledger-and-sessions.md` Part 2.
 import uuid
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -383,6 +384,21 @@ class DebriefRead(BaseModel):
     """
 
     weak_answers: list[WeakAnswerRead]
+
+    #: How this room compared to the one before it — `"harder"`, `"easier"`, or
+    #: null when there is nothing to compare against.
+    #:
+    #: **A direction, never a level.** `docs/difficulty-calibration.md` decision
+    #: 5: the client writes the sentence and the API states the fact. Publishing
+    #: a number would put a score on the debrief screen, which is the drift
+    #: toward the delivery-metrics product §1 exists to refuse — and a number is
+    #: also the thing somebody would try to farm.
+    #:
+    #: Null on a first room, and the client says nothing rather than saying "the
+    #: same as last time" about a session that does not exist. Null too when the
+    #: room ran at the same rung: nothing changed, so there is nothing to
+    #: mention on a screen already carrying weak answers and a coach.
+    pressed: Literal["harder", "easier"] | None = None
 
 
 class CoachTurnRead(BaseModel):

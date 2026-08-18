@@ -66,6 +66,14 @@ MATERIAL_REGISTER_LIMIT = 60
 #: retrying a failed request twice is the whole of the honest traffic.
 ACCOUNT_DELETION_LIMIT = 5
 
+#: Difficulty changes per minute per account.
+#:
+#: Generous, because this is a slider and a slider is dragged: somebody trying
+#: all three rungs before starting a room is ordinary use, not abuse. It is
+#: limited at all only because it is an authenticated write, and every one of
+#: those has a bound — what this stops is a loop, not a person.
+DIFFICULTY_LIMIT = 30
+
 #: How long a finished window is kept before deletion.
 #:
 #: Not zero, and not "anything not current". A pass that deleted every window

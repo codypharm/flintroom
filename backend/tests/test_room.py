@@ -18,10 +18,11 @@ import pytest
 
 from app.core.errors import ProviderUnavailable
 from app.modules.sessions.service import SessionService
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from app.agents.difficulty import GENTLE, RELENTLESS, pressure_at
 from app.modules.billing.models import Account
+from app.modules.sessions.models import Session
 from app.modules.voice.room import build_room
 
 pytestmark = pytest.mark.asyncio
@@ -173,3 +174,45 @@ async def test_the_room_is_built_at_the_rung_the_account_is_on(db, funded_accoun
         model=FakePanelModel(),
     )
     assert hardened.pressure == pressure_at(RELENTLESS)
+
+
+async def test_the_room_records_the_rung_it_actually_ran_at(db, funded_account):
+    """What room did this person get? Nothing could answer that until now.
+
+    Written where the rung is resolved, so the record and the room cannot
+    disagree. Its first consumer is the debrief's one sentence — "they pressed
+    harder this time than last" is a comparison, and a comparison needs the
+    other side stored — but the column earns its place beyond that: #14 has to
+    reconcile cost against what actually happened, and until this existed every
+    settled session looked identical.
+
+    Null until a room is assembled, not defaulted to a rung. A session that was
+    started and never joined ran at no difficulty at all, and recording a
+    plausible one would be inventing a room that did not happen.
+    """
+    session = await SessionService(db).start(user_id=funded_account.user_id)
+    assert await _rung_on(db, session.id) is None
+
+    await db.execute(
+        update(Account)
+        .where(Account.user_id == funded_account.user_id)
+        .values(difficulty_level=RELENTLESS)
+    )
+    await db.commit()
+
+    await build_room(
+        db,
+        session_id=session.id,
+        user_id=funded_account.user_id,
+        transcriber=FakeTranscriber(),
+        model=FakePanelModel(),
+    )
+
+    assert await _rung_on(db, session.id) == RELENTLESS
+
+
+async def _rung_on(db, session_id):
+    stored = await db.execute(
+        select(Session.difficulty_level).where(Session.id == session_id)
+    )
+    return stored.scalar_one()

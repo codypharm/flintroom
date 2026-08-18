@@ -86,7 +86,17 @@ async def build_room(
     # Through `pressure_at`, which clamps. A row holding something off the
     # ladder produces a real room rather than ending a metered session over
     # bookkeeping.
-    pressure = pressure_at(await sessions.difficulty_of(user_id=user_id))
+    level = await sessions.difficulty_of(user_id=user_id)
+    pressure = pressure_at(level)
+
+    # Recorded on the session, not only used. The account carries the rung a
+    # user is on and this carries the rung a room ran at; they diverge the
+    # moment calibration moves one, and the debrief's comparison needs the
+    # older side of it to still exist.
+    #
+    # Written here rather than at start because a session that is started and
+    # never joined never had a difficulty — there was no room.
+    await sessions.ran_at(session_id=session_id, level=level)
 
     # Counts rather than contents. CLAUDE.md forbids transcripts and ingested
     # material in logs, and a claim is ingested material quoted verbatim.

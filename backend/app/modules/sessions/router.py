@@ -281,7 +281,11 @@ async def read_debrief(
                 why=answer.why,
             )
             for answer in await debrief.weak_answers(session_id=session.id)
-        ]
+        ],
+        # Read after the weak answers, not before, and the order is the whole
+        # of it: reading them is what moves the rung, so a comparison taken
+        # first would describe the world one calibration out of date.
+        pressed=await debrief.pressed(session_id=session.id),
     )
 
 

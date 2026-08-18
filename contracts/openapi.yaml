@@ -919,6 +919,63 @@ paths:
                 $ref: '#/components/schemas/ArchetypeCatalogue'
       security:
       - HTTPBearer: []
+  /v1/me/difficulty:
+    put:
+      tags:
+      - panels
+      summary: Choose Difficulty
+      description: 'Set how hard the room will push.
+
+
+        On `/me` rather than under the catalogue, because the rung is a fact about
+
+        the account and not about the roster — the read rides the catalogue only
+
+        because that is the request the setup screen already makes, and a write has
+
+        no such screen to share.
+
+
+        Returns what was stored rather than 204. The client has just moved a
+
+        control and needs to render its new position from the server''s answer,
+
+        which is also how it learns that a rung it asked for was not the rung it
+
+        got — though today it always is, because an invalid one is refused rather
+
+        than clamped.
+
+
+        May go down as well as up (`docs/difficulty-calibration.md` decision 5).
+
+        That is safe because level 1 still presses an unanswered question, so this
+
+        control cannot turn the wedge off, and because calibration carries on from
+
+        wherever it is left — it is a starting point, never a floor.'
+      operationId: panels_choose_difficulty
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DifficultyChoice'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DifficultyChoice'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
 components:
   schemas:
     ArchetypeCatalogue:
@@ -940,6 +997,14 @@ components:
           - type: integer
           - type: 'null'
           title: Upgrade Seats
+        difficulty:
+          type: integer
+          title: Difficulty
+          default: 1
+        hardest:
+          type: integer
+          title: Hardest
+          default: 3
       type: object
       required:
       - archetypes
@@ -1080,6 +1145,14 @@ components:
             $ref: '#/components/schemas/WeakAnswerRead'
           type: array
           title: Weak Answers
+        pressed:
+          anyOf:
+          - type: string
+            enum:
+            - harder
+            - easier
+          - type: 'null'
+          title: Pressed
       type: object
       required:
       - weak_answers
@@ -1127,6 +1200,30 @@ components:
         the caller already knows whose account this is — they authenticated as
 
         them.'
+    DifficultyChoice:
+      properties:
+        difficulty:
+          type: integer
+          maximum: 3.0
+          minimum: 1.0
+          title: Difficulty
+      type: object
+      required:
+      - difficulty
+      title: DifficultyChoice
+      description: 'The rung a user picked for themselves.
+
+
+        Validated against the ladder rather than clamped. Clamping is right where
+        a
+
+        *stored* number is read back — `difficulty.pressure_at` does it, so a live
+
+        room never ends over bookkeeping — and wrong here: this is a person
+
+        choosing, and quietly handing them level 3 when they asked for 7 is a
+
+        control that lies about what it did.'
     EndReason:
       type: string
       enum:

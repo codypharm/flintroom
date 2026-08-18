@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.archetypes import LIBRARY
+from app.agents.difficulty import GENTLE, LADDER
+from app.agents.difficulty import pressure_at as _pressure_at
 from app.core.errors import AccountNotFound
+from app.core.logging import get_logger
 from app.modules.billing.models import Account
 from app.modules.billing.tiers import (
     max_panel_size,
@@ -22,6 +25,18 @@ from app.modules.billing.tiers import (
     next_tier_above,
 )
 from app.modules.panels.schemas import ArchetypeCatalogue, ArchetypeRead
+
+log = get_logger(__name__, tag="panel")
+
+
+def _rung_of(level: int) -> int:
+    """A stored level, brought onto the ladder.
+
+    Expressed through `pressure_at` rather than by repeating the clamp, so
+    there is one arithmetic for what a rung is. The index falls out of the
+    resulting pair being the one the ladder holds.
+    """
+    return LADDER.index(_pressure_at(level)) + 1
 
 
 class PanelCatalogueService:
@@ -54,6 +69,7 @@ class PanelCatalogueService:
                 )
                 for archetype in LIBRARY
             ],
+            difficulty=await self._difficulty_of(user_id),
             seats=max_panel_size(tier),
             may_author=may_author_archetypes(tier),
             upgrade_seats=max_panel_size(above) if above else None,
@@ -66,3 +82,37 @@ class PanelCatalogueService:
         if tier is None:
             raise AccountNotFound(user_id=str(user_id))
         return tier
+
+    async def _difficulty_of(self, user_id: uuid.UUID) -> int:
+        """The rung this account is on, clamped onto the ladder.
+
+        Clamped on the way out even though `choose` refuses anything off it:
+        the column could hold a rung a later release removed, and a picker that
+        crashed on it would take the whole setup screen with it.
+        """
+        stored = await self._db.execute(
+            select(Account.difficulty_level).where(Account.user_id == user_id)
+        )
+        return _rung_of(stored.scalar_one_or_none() or GENTLE)
+
+    async def choose(self, *, user_id: uuid.UUID, difficulty: int) -> int:
+        """Set the rung, because the user asked for it.
+
+        `docs/difficulty-calibration.md` decisions 5 and 6: they may move it in
+        either direction, and calibration carries on from wherever they leave
+        it. Not a floor — an exec who asked for the hardest room and was
+        destroyed by it must still be softened next time, which is the one
+        mechanism built to prevent that churn.
+
+        Safe downward only because of where the floor is. Level 1 still presses
+        an unanswered question, so somebody who drags this to the bottom gets a
+        gentler room and cannot turn the wedge off.
+        """
+        await self._db.execute(
+            update(Account)
+            .where(Account.user_id == user_id)
+            .values(difficulty_level=difficulty)
+        )
+        await self._db.commit()
+        log.info("difficulty_chosen", user_id=str(user_id), level=difficulty)
+        return difficulty
