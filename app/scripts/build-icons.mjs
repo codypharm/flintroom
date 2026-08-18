@@ -248,4 +248,15 @@ encode(`${OUT}/android-icon-monochrome.png`, compose({ size: 1024, factor: fit, 
 encode(`${OUT}/splash-icon.png`, compose({ size: 1024, factor: 1 }));
 
 encode(`${OUT}/favicon.png`, compose({ size: 48, factor: 1, bg: SURFACE }));
+
+// The mark for use inside the app, cropped to itself rather than centred on a
+// square. Every output above is an icon, and an icon is a square with the
+// padding an OS expects; a component laying this out wants the glyph's own
+// aspect and nothing else, so that a height in points is the height of the
+// mark and not of the transparent air around it.
+const inApp = { w: markW, h: markH, px: Buffer.alloc(markW * markH * 4) };
+for (let y = 0; y < markH; y++)
+  cut.px.copy(inApp.px, y * markW * 4, ((y + y0) * src.w + x0) * 4, ((y + y0) * src.w + x1 + 1) * 4);
+encode(`${OUT}/mark.png`, resample(inApp, 512, Math.round((512 * markH) / markW)));
+console.log(`mark.png at 512x${Math.round((512 * markH) / markW)}`);
 console.log('written');

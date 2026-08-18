@@ -1,8 +1,6 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { SEATS, labelFor } from '../../lib/onboarding/plan';
 import { color, radius, space, type } from '../../theme/tokens';
-import { Chair } from './Chair';
 
 /**
  * The account, asked for once there is something to lose.
@@ -37,17 +35,17 @@ import { Chair } from './Chair';
  * The heading matches `TablePlan`'s opening question in size, because the plan
  * and this are two states of one screen rather than two screens.
  *
- * **The table comes with them.** "Your panel is ready" was an assertion on an
- * otherwise empty screen, and the empty screen was the argument against it. The
- * chairs they filled are drawn in the same language they filled them in, so the
- * sentence is shown rather than claimed and the back control has a visible
- * subject.
+ * **The mark, and not the plan read back.** The seated chairs were drawn here
+ * for one build and removed: the architect read them as the panel on sight,
+ * which is the exact confusion the seat wording exists to avoid. `plan.ts` is
+ * explicit that "whoever controls the budget" becoming a Margin-Obsessed CFO is
+ * the server's job and the payoff, so anything here that looks like a cast list
+ * spends the reveal early — and it turned out to look like one to the person
+ * who wrote the rule.
  *
- * These are the presenter's own words, never the archetypes. `plan.ts` is
- * explicit that the translation from "whoever controls the budget" to a
- * Margin-Obsessed CFO happens on the server and is the payoff — showing the
- * panel here would both spoil the reveal on setup and risk disagreeing with the
- * room `composition.py` actually builds.
+ * What sits there instead is the app's own mark, which is the conventional and
+ * honest content for the one screen where somebody decides whether to hand this
+ * product an account. It claims nothing, and it cannot be misread as a panel.
  */
 export interface SignInSheetProps {
   /** Whether this device can offer Sign in with Apple at all. */
@@ -57,8 +55,6 @@ export interface SignInSheetProps {
   refusal: string | null;
   onApple: () => void;
   onGoogle: () => void;
-  /** The seat keys they chose, in the order they chose them. */
-  seated: string[];
   /**
    * Back to the plan, with every answer still in it.
    *
@@ -76,7 +72,6 @@ export function SignInSheet({
   onApple,
   onGoogle,
   onBack,
-  seated,
 }: SignInSheetProps) {
   return (
     <View style={styles.sheet}>
@@ -97,50 +92,32 @@ export function SignInSheet({
           <Text style={styles.backLabel}>Your plan</Text>
         </Pressable>
 
+        {/* Decorative: the heading directly beneath says the same thing in
+            words, and a screen reader announcing "Flintroom logo" before it
+            would only make somebody hear the name twice. */}
+        <Image
+          source={require('../../../assets/images/mark.png')}
+          style={styles.mark}
+          resizeMode="contain"
+          accessible={false}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+        />
+
         <Text style={styles.title} accessibilityRole="header">
           Keep this room
         </Text>
         <Text style={styles.body}>
-          {/* Names what signing in *does*, and names it against what is on the
-              screen. This used to open "Your panel is ready" — an assertion
-              about a thing the screen was not showing, in a word nothing around
-              it used: the heading says room, the rows below say chairs, and
-              Panel is the archetypes the server casts from these answers. With
-              the table drawn right beneath it, the sentence can point at it.
+          {/* Names what signing in *does*, and claims nothing the screen is not
+              showing. It opened "Your panel is ready" for a while, which was an
+              assertion about an unseen thing in a word nothing around it used —
+              the heading says room, and Panel is what the server casts from
+              these answers.
 
-              §4.6 wants the minutes stated as the largest honest unit and
-              given generously, which is why they are still here and still
-              first-person. */}
-          {seated.length > 0
-            ? 'Sign in to keep these chairs. Your first 15 minutes in the room are on us.'
-            : 'Sign in to keep this plan. Your first 15 minutes in the room are on us.'}
+              §4.6 wants the minutes stated as the largest honest unit and given
+              generously, which is why they are here and first-person. */}
+          Sign in to keep this plan. Your first 15 minutes in the room are on us.
         </Text>
-
-        {seated.length > 0 && (
-          <View style={styles.table}>
-            {seated.map((key, at) => {
-              const label = labelFor(SEATS, key);
-              // A key the vocabulary no longer carries is a plan made by an
-              // older release. Drawing a blank chair would be worse than
-              // drawing one fewer.
-              if (label === null) return null;
-
-              return (
-                <Chair
-                  key={key}
-                  label={label}
-                  position={at + 1}
-                  unavailable={false}
-                  // Shown, not offered. The plan is one gesture behind, and a
-                  // chair that could be emptied here would be a second place
-                  // to edit the same thing.
-                  readOnly
-                  onPress={() => undefined}
-                />
-              );
-            })}
-          </View>
-        )}
       </View>
 
       <View style={styles.ways}>
@@ -211,9 +188,10 @@ const styles = StyleSheet.create({
   // whatever the screen has left, which is the point of anchoring rather than
   // centring.
   said: { gap: space.base },
-  // The same spine the plan drew, so this reads as the artifact carried
-  // forward rather than as a summary generated from it.
-  table: { marginTop: space.tight },
+  // Sized by height, with the width following the glyph's own aspect. The
+  // asset is cropped to the mark, so this is the mark's height rather than a
+  // box it sits somewhere inside.
+  mark: { height: 56, width: 56 * (477 / 552), marginBottom: space.tight },
   ways: { gap: space.snug },
 
   back: {

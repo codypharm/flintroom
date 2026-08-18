@@ -24,38 +24,26 @@ export interface ChairProps {
   /** True when the table is full and this chair is empty. */
   unavailable: boolean;
   onPress: () => void;
-  /**
-   * Draw the chair without offering to change it.
-   *
-   * For the sign-in sheet, which shows the table back rather than asking about
-   * it. Not the same as `unavailable`: that dims a chair somebody cannot have,
-   * while these are the chairs they chose and should read at full strength. It
-   * also drops the spoken "tap to take them out", which on that screen would be
-   * an offer nothing honours.
-   */
-  readOnly?: boolean;
 }
 
-export function Chair({ label, position, unavailable, onPress, readOnly }: ChairProps) {
+export function Chair({ label, position, unavailable, onPress }: ChairProps) {
   const taken = position !== null;
 
   return (
     <Pressable
-      accessibilityRole={readOnly ? 'text' : 'button'}
+      accessibilityRole="button"
       accessibilityState={{ selected: taken, disabled: unavailable }}
       accessibilityLabel={
-        readOnly
-          ? `${label}, in chair ${position}.`
-          : taken
-            // "Tap to take them out" is idiomatic twice over — out of the chair,
-          // or out altogether — and a spoken label is read without the visual
-          // context that disambiguates it.
+        // "Tap to take them out" was here and is idiomatic twice over — out of
+        // the chair, or out altogether — and a spoken label is read without the
+        // visual context that disambiguates it.
+        taken
           ? `${label}, in chair ${position}. Tap to empty this chair.`
-            : unavailable
-              ? `${label}. The table is full.`
-              : `${label}. Tap to seat them.`
+          : unavailable
+            ? `${label}. The table is full.`
+            : `${label}. Tap to seat them.`
       }
-      disabled={readOnly || unavailable}
+      disabled={unavailable}
       onPress={onPress}
       style={({ pressed }) => [styles.chair, pressed && styles.pressed]}
     >

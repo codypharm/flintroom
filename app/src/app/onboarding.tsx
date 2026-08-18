@@ -145,9 +145,6 @@ export default function OnboardingRoute() {
           refusal={refusal}
           onApple={() => void enter(apple)}
           onGoogle={() => void enter(google)}
-          // Their own answers, shown back. Not the panel — the archetypes are
-          // the server's translation of these and stay unseen until setup.
-          seated={plan.audience}
           // Back to the plan with every answer still in it, because the plan
           // lives in this component's state and has been posted nowhere. The
           // sheet refuses this itself while a sign-in is in flight.

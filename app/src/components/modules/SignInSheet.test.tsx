@@ -23,7 +23,6 @@ async function show(over: Partial<Parameters<typeof SignInSheet>[0]> = {}) {
       onApple={onApple}
       onGoogle={onGoogle}
       onBack={onBack}
-      seated={['budget']}
       {...over}
     />
   );
@@ -110,28 +109,6 @@ it('does not let the plan be reopened while sign-in is in flight', async () => {
   expect(onBack).not.toHaveBeenCalled();
 });
 
-it('shows the room they described, so "your panel is ready" is shown and not just claimed', async () => {
-  await show({ seated: ['budget', 'ally'] });
-
-  expect(screen.getByText('Controls the budget')).toBeTruthy();
-  expect(screen.getByText('Already on your side')).toBeTruthy();
-});
-
-it('names nobody as an archetype', async () => {
-  // The seats are the words the presenter chose. Turning them into the panel
-  // here would pre-empt the reveal on setup and, worse, could disagree with
-  // the room `composition.py` actually builds.
-  await show({ seated: ['budget'] });
-
-  expect(screen.queryByText(/CFO|Skeptic|Champion|archetype/i)).toBeNull();
-});
-
-it('says nothing about a table nobody sat at', async () => {
-  await show({ seated: [] });
-
-  expect(screen.queryByLabelText(/in chair/)).toBeNull();
-});
-
 it('says something while a sign-in is in flight', async () => {
   // The only sign a tap had registered was the button dimming. Between the
   // provider sheet closing and the route replacing, this screen sits on a
@@ -155,19 +132,20 @@ it('says nothing about waiting when nothing is in flight', async () => {
   expect(screen.queryByText(/Signing you in/)).toBeNull();
 });
 
-it('points at the chairs it is showing rather than asserting a panel', async () => {
-  // "Your panel is ready" claimed a thing the screen was not showing, in a
-  // word nothing else on it used — the heading says room, the rows are chairs,
-  // and Panel is reserved for the archetypes the server casts.
-  await show({ seated: ['budget', 'ally'] });
+it('reads the plan back to nobody', async () => {
+  // The seated chairs were drawn here for one build. They were removed because
+  // the first person to see them read them as the panel — which is precisely
+  // what `plan.ts` keeps on the server, and what the reveal on setup is for.
+  // Anything resembling a cast list on this screen spends that early.
+  await show();
 
-  expect(screen.queryByText(/Your panel is ready/)).toBeNull();
-  expect(screen.getByText(/chairs/i)).toBeTruthy();
+  expect(screen.queryByText(/Controls the budget|chairs|panel/i)).toBeNull();
+  expect(screen.queryByLabelText(/in chair/)).toBeNull();
 });
 
-it('does not promise filled chairs to somebody who filled none', async () => {
-  await show({ seated: [] });
+it('claims nothing it is not showing', async () => {
+  await show();
 
-  expect(screen.queryByText(/chairs/i)).toBeNull();
-  expect(screen.getByText(/15 minutes/)).toBeTruthy();
+  expect(screen.getByText(/Sign in to keep this plan/)).toBeTruthy();
+  expect(screen.queryByText(/Your panel is ready/)).toBeNull();
 });
