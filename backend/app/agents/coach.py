@@ -27,12 +27,16 @@ said, and `coach_models/` says it.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, Protocol, runtime_checkable
 
 from app.agents.context import Said
+from app.core.logging import get_logger
 from app.agents.model import TurnUsage
 from app.agents.weakness import WeakAnswer
+
+log = get_logger(__name__, tag="debrief")
 
 
 #: What the coach says instead, when a turn is grounded in nothing.
@@ -50,6 +54,27 @@ REDIRECT = (
     "That's what the room is for — I can only work from the session we just "
     "had. Start a new room and I'll have something real to take apart."
 )
+
+
+#: Who said a line of the coaching conversation. The user is `USER`, the same
+#: constant the room uses, so a transcript line and a coaching turn agree about
+#: whose voice is whose.
+COACH = "coach"
+
+
+@dataclass(frozen=True, slots=True)
+class Spoken:
+    """One line of the coaching conversation — not of the room.
+
+    Deliberately not `Said`. A coaching turn has no `disputed` and no
+    `chosen_by`; those describe how a panelist came to speak, and nobody chose
+    the coach. Reusing the type would carry two fields that are meaningless here
+    and, worse, would make it easy to hand a coaching turn to something
+    expecting the room.
+    """
+
+    who: str
+    text: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,22 +136,54 @@ class CoachReply:
 def spoken(reply: CoachReply, grounds: Grounds) -> str:
     """What the user actually hears.
 
-    **Every citation must hold, not merely one.** A check satisfied by any single
-    valid citation is trivially defeated: name a real line, then say anything.
-    That is the shape a model would land on without meaning to — the first half
-    of a sentence is about the room and the second half is about the industry —
-    and it is exactly the drift the fence exists to catch.
+    **A turn survives if anything it cites is real.** Invalid citations are
+    dropped; a turn left with none becomes the redirect.
+
+    This was the opposite rule for about an hour, and the reversal was measured
+    rather than argued. All-must-hold defends against a turn whose first half is
+    about the room and whose second half is about the industry — a real shape,
+    and the one the fence was written for. What `scripts/coach.py` actually
+    observed was different: asked *"did I dodge the time-to-value one?"*, the
+    model cited lines 5 and 6, which are exactly right, and then added
+    `claim 2` against a session holding one claim. The strict rule threw away a
+    correct, kind, useful answer over a hallucinated index on the end — roughly
+    one grounded question in five.
+
+    The attack still cannot get through, and that is what made the trade safe.
+    A genuine general pitch review has *nothing* in this session to point at, so
+    every citation fails and the turn is redirected regardless. Surviving
+    requires at least one real anchor in this room, which is what "grounded in
+    the session" meant in the first place.
 
     An uncited turn is not an error and is not logged as one. The most likely
-    cause is a user asking a reasonable question about something this session
-    never contained, and the honest response is the redirect rather than a
-    failure.
+    cause is somebody asking a reasonable question about something this session
+    never contained, and the redirect is the honest answer rather than a failure.
     """
-    if not reply.cites:
-        return REDIRECT
-    if not all(_is_real(cite, grounds) for cite in reply.cites):
+    if not held(reply, grounds):
         return REDIRECT
     return reply.text
+
+
+def held(reply: CoachReply, grounds: Grounds) -> tuple[Cite, ...]:
+    """The citations that are really in this session.
+
+    Separate from `spoken` because they are two questions with two callers: the
+    user hears text, and anything storing or auditing a coaching turn wants to
+    know what it was anchored to. Deriving one from the other later would mean
+    checking the same citations twice and being free to disagree.
+
+    A drop is counted rather than passed. The count is the signal that matters —
+    a rising rate means the prompt or the numbering has drifted, and the symptom
+    at the user's end is a coach that redirects more often for no visible reason.
+    Never the citation itself: an index is meaningless without the line it points
+    at, and the line is transcript text.
+    """
+    real = tuple(cite for cite in reply.cites if _is_real(cite, grounds))
+
+    if dropped := len(reply.cites) - len(real):
+        log.info("coach_citations_dropped", dropped=dropped, kept=len(real))
+
+    return real
 
 
 def _is_real(cite: Cite, grounds: Grounds) -> bool:
@@ -142,3 +199,31 @@ def _is_real(cite: Cite, grounds: Grounds) -> bool:
     if cite.kind == "claim":
         return 0 <= cite.index < len(grounds.claims)
     return False
+
+
+#: Checkable at runtime, like every other seam here.
+@runtime_checkable
+class CoachModel(Protocol):
+    """Whatever holds the coaching conversation."""
+
+    async def reply(
+        self, *, grounds: Grounds, exchange: Sequence[Spoken]
+    ) -> CoachReply:
+        """Answer the last thing the user said.
+
+        Sees `grounds` and nothing else about the world. That is the fence's
+        first half: the model is not asked to avoid discussing fresh material,
+        it is handed a session and asked to talk about it. `spoken` is the
+        second half, and the half that holds when the first is jailbroken.
+
+        `exchange` is the coaching conversation so far, ending with the user's
+        new turn. Whole rather than summarised, because §3.5 wants follow-ups
+        and clarifications — a coach that cannot see what it said two turns ago
+        cannot be pushed back on, and answering the same question twice is how a
+        conversation stops being one.
+
+        **May raise, and the caller must survive it.** Nothing is live and
+        nothing is metered, so a failure costs a retry rather than silence in a
+        room. It must arrive as `ProviderUnavailable` without naming the vendor.
+        """
+        ...

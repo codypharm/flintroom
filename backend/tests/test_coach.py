@@ -22,6 +22,7 @@ from app.agents.coach import (
     Cite,
     CoachReply,
     Grounds,
+    held,
     spoken,
 )
 from app.agents.context import USER, Said
@@ -112,16 +113,40 @@ def test_a_turn_may_cite_the_material_the_session_was_grounded_in():
     assert spoken(reply, GROUNDS) == reply.text
 
 
-def test_one_good_citation_is_not_a_licence_for_the_rest():
-    """The obvious way around a bound that checks "at least one".
+def test_a_stray_citation_does_not_cost_a_good_turn():
+    """Reversed on measurement, and the measurement is why this test exists.
 
-    A model can name a real line and then say whatever it likes, and a check
-    satisfied by any single valid citation would wave that through. Every
-    citation has to hold, or the turn does not.
+    This asserted the opposite for about an hour: every citation had to hold,
+    against the shape where a turn names a real line and then talks about the
+    industry. `scripts/coach.py` then showed what actually happens. Asked *"did
+    I dodge the time-to-value one?"*, the model cited lines 5 and 6 — exactly
+    right — and added `claim 2` to a session with one claim. The strict rule
+    discarded a correct answer over a hallucinated index, in roughly one
+    grounded question in five.
+
+    The attack it defended against still cannot land, which is what made the
+    trade safe rather than a retreat: see the test below.
     """
     reply = CoachReply(
-        text="You dodged the base question — and separately, your pricing is wrong.",
+        text="You didn't dodge it — the CFO cut across you before you could answer.",
         cites=(Cite(kind="line", index=1), Cite(kind="claim", index=42)),
+    )
+
+    assert spoken(reply, GROUNDS) == reply.text
+    assert held(reply, GROUNDS) == (Cite(kind="line", index=1),)
+
+
+def test_a_turn_with_nothing_real_behind_it_is_still_refused():
+    """What the relaxed rule still catches, and why relaxing it was safe.
+
+    A general pitch review has nothing in *this* session to point at. Every
+    index it invents fails, none survive, and the turn becomes the redirect —
+    which is what "grounded in the session" meant before the rule was written
+    and after it was loosened.
+    """
+    reply = CoachReply(
+        text="Your positioning would land better with a sharper wedge.",
+        cites=(Cite(kind="line", index=71), Cite(kind="claim", index=42)),
     )
 
     assert spoken(reply, GROUNDS) == REDIRECT

@@ -289,6 +289,21 @@ class Settings(BaseSettings):
     #: here. Set alongside `debrief_provider`; the two move together.
     debrief_model: str = "gemini-3.7-flash"
 
+    #: Which model holds the coaching conversation — and **not** the same one
+    #: that reads the room, deliberately.
+    #:
+    #: `debrief_model` thinks, because finding a fluent wrong answer in a whole
+    #: transcript is what thinking is for. This is the opposite job: a turn in a
+    #: conversation, where a considered paragraph is worse than one sharp
+    #: sentence — the result `scripts/panel_spike.py` already measured for the
+    #: panel, arriving again for the same reason.
+    #:
+    #: There is a clock here too, gentler than the room's. Nobody is being
+    #: interrogated, but a coach that takes four seconds to answer a follow-up
+    #: stops being a conversation and starts being a form, which is §3.5's
+    #: "static dashboard" arriving through latency rather than layout.
+    coach_model: str = "gemini-3.5-flash"
+
     #: How many model calls one deck may have in flight at once.
     #:
     #: A setting rather than a constant because the right value depends on a
