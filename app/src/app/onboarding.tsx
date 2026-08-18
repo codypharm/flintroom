@@ -8,6 +8,7 @@ import { TablePlan, type Plan } from '../components/modules/TablePlan';
 import { WhenPicker } from '../components/modules/WhenPicker';
 import { createAppleProvider, isAppleAvailable } from '../lib/auth/apple';
 import { createGoogleProvider } from '../lib/auth/google';
+import { refusalFor } from '../lib/auth/refusal';
 import { auth } from '../lib/auth';
 import { CancelledByUser, type IdentityProvider } from '../lib/auth/provider';
 import { color } from '../theme/tokens';
@@ -99,7 +100,10 @@ export default function OnboardingRoute() {
         return;
       }
 
-      setRefusal('That did not go through. Try again in a moment.');
+      // One sentence per cause, decided in `refusal.ts` and tested there. The
+      // string this replaced was said to every failure alike, which sent
+      // somebody whose account had been refused off to check their signal.
+      setRefusal(refusalFor(error));
     } finally {
       setBusy(false);
     }

@@ -101,11 +101,19 @@ export function SignInSheet({
           Keep this room
         </Text>
         <Text style={styles.body}>
-          {/* Names what signing in *does*, not what it is. The room they just
-              built is the thing at stake, and the minutes are the offer — §4.6
-              wants the largest honest unit, stated generously. */}
-          Your panel is ready. Sign in to keep it, and take your first 15 minutes
-          in the room.
+          {/* Names what signing in *does*, and names it against what is on the
+              screen. This used to open "Your panel is ready" — an assertion
+              about a thing the screen was not showing, in a word nothing around
+              it used: the heading says room, the rows below say chairs, and
+              Panel is the archetypes the server casts from these answers. With
+              the table drawn right beneath it, the sentence can point at it.
+
+              §4.6 wants the minutes stated as the largest honest unit and
+              given generously, which is why they are still here and still
+              first-person. */}
+          {seated.length > 0
+            ? 'Sign in to keep these chairs. Your first 15 minutes in the room are on us.'
+            : 'Sign in to keep this plan. Your first 15 minutes in the room are on us.'}
         </Text>
 
         {seated.length > 0 && (
@@ -136,6 +144,20 @@ export function SignInSheet({
       </View>
 
       <View style={styles.ways}>
+        {/* A tap used to produce one visible effect: the button faded to 40%.
+            Between the provider's sheet closing and the route replacing, this
+            screen sits on a round trip to our server and said nothing about it.
+
+            Polite rather than an alert, and deliberately: `alert` interrupts
+            whatever a screen reader is saying, which is right for a refusal
+            and wrong for a wait. The two never appear together — starting a
+            sign-in clears the last refusal. */}
+        {busy && (
+          <Text style={styles.waiting} accessibilityLiveRegion="polite">
+            Signing you in…
+          </Text>
+        )}
+
         {refusal !== null && (
           <Text style={styles.refusal} accessibilityRole="alert">
             {refusal}
@@ -234,4 +256,7 @@ const styles = StyleSheet.create({
   // control pushes nothing and is read after the second tap. Above, it lands
   // between the reason and the retry.
   refusal: { ...type.bodyMd, color: color.danger },
+  // Not `danger`. Waiting is not a failure, and colouring it as one is how an
+  // interface teaches people to distrust its own red.
+  waiting: { ...type.bodyMd, color: color.onSurfaceVariant },
 });

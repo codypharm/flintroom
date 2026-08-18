@@ -131,3 +131,43 @@ it('says nothing about a table nobody sat at', async () => {
 
   expect(screen.queryByLabelText(/in chair/)).toBeNull();
 });
+
+it('says something while a sign-in is in flight', async () => {
+  // The only sign a tap had registered was the button dimming. Between the
+  // provider sheet closing and the route replacing, this screen sits on a
+  // round trip to our server saying nothing at all.
+  await show({ busy: true });
+
+  expect(screen.getByText(/Signing you in/)).toBeTruthy();
+});
+
+it('does not announce progress as an error', async () => {
+  // `alert` is for the refusal. A live region announces the wait without
+  // interrupting, which is the difference between "hold on" and "it failed".
+  await show({ busy: true });
+
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it('says nothing about waiting when nothing is in flight', async () => {
+  await show();
+
+  expect(screen.queryByText(/Signing you in/)).toBeNull();
+});
+
+it('points at the chairs it is showing rather than asserting a panel', async () => {
+  // "Your panel is ready" claimed a thing the screen was not showing, in a
+  // word nothing else on it used — the heading says room, the rows are chairs,
+  // and Panel is reserved for the archetypes the server casts.
+  await show({ seated: ['budget', 'ally'] });
+
+  expect(screen.queryByText(/Your panel is ready/)).toBeNull();
+  expect(screen.getByText(/chairs/i)).toBeTruthy();
+});
+
+it('does not promise filled chairs to somebody who filled none', async () => {
+  await show({ seated: [] });
+
+  expect(screen.queryByText(/chairs/i)).toBeNull();
+  expect(screen.getByText(/15 minutes/)).toBeTruthy();
+});

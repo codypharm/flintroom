@@ -47,7 +47,10 @@ export function Chair({ label, position, unavailable, onPress, readOnly }: Chair
         readOnly
           ? `${label}, in chair ${position}.`
           : taken
-            ? `${label}, in chair ${position}. Tap to take them out.`
+            // "Tap to take them out" is idiomatic twice over — out of the chair,
+          // or out altogether — and a spoken label is read without the visual
+          // context that disambiguates it.
+          ? `${label}, in chair ${position}. Tap to empty this chair.`
             : unavailable
               ? `${label}. The table is full.`
               : `${label}. Tap to seat them.`

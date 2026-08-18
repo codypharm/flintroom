@@ -96,7 +96,12 @@ export interface TablePlanProps {
 const PRESSURE = [
   'Let me finish a thought',
   'Push me, but fairly',
-  'Give me nothing',
+  // "Give me nothing" was here and reads two ways: give me no quarter, or give
+  // me nothing to work with. In context most people land on the first, but this
+  // is the rung that decides how hard a first room hits somebody — `Product.md`
+  // §8 risk 1 — and a misread there is the one that produces churn rather than
+  // resilience. Same instruction, one reading.
+  "Don't let up",
 ];
 
 export function TablePlan({
