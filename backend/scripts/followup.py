@@ -24,8 +24,21 @@ discriminates is asking for something checkable — whether the reply contains a
 figure, a name, a date or a mechanism — which is the same extract-then-decide
 split `docs/auditor-grounding.md` is built on.
 
-Costs one selection call per scenario. Nothing here is deterministic; treat a
-single scenario flipping as noise and the ratio across eight as the signal.
+**Two phases since #55.** The first is the original: can a panelist press at
+all, and only when it should. The second is new and is the only live evidence
+that the difficulty ladder does anything — a room where the asker has *already*
+pressed once, run at each rung. That is the sole condition under which the cap
+binds, so the original eight scenarios cannot see it: the asker has spoken once
+and is never marked `PRESSED_OUT` at any rung.
+
+The dispute budget, the ladder's other dial, needs no instrument here. It is
+enforced in `dispute.contested`, which is code deciding an occasion with no
+model in the loop, and `tests/test_dispute.py` covers it deterministically.
+Inventing a live measurement for a branch would be theatre.
+
+Costs one selection call per scenario, plus one per already-pressed scenario per
+rung. Nothing here is deterministic; treat a single scenario flipping as noise
+and the ratio across eight as the signal.
 """
 
 from __future__ import annotations
@@ -39,6 +52,7 @@ import httpx
 
 from app.agents.archetypes import by_name
 from app.agents.context import USER, Grounding, Said, TurnContext
+from app.agents.difficulty import GENTLE, RELENTLESS, STANDARD, pressure_at
 from app.agents.panel_models.gemini import GeminiPanelModel
 
 PANEL = tuple(by_name(name) for name in ("cfo", "technical_skeptic", "champion"))
@@ -138,6 +152,78 @@ def context_for(scenario: Scenario) -> TurnContext:
     )
 
 
+def pressed_once(scenario: Scenario) -> TurnContext:
+    """The same room, one turn later, with the asker already pressing.
+
+    The presenter dodged, the asker pressed, and the presenter dodged again.
+    This is the only shape in which the cap is reachable: `_silence_of` marks a
+    panelist `PRESSED_OUT` once it holds the last `presses + 1` panel turns, so
+    at one press this asker is out and at two it is not.
+
+    Built from `context_for` rather than beside it, so the two corpora cannot
+    drift into describing different rooms.
+    """
+    warm = context_for(scenario)
+    return TurnContext(
+        said="Honestly it moves around a lot depending on the quarter.",
+        grounding=Grounding(
+            transcript=(
+                *warm.grounding.transcript,
+                Said(speaker=USER, text=scenario.reply),
+                Said(speaker=scenario.asker, text="That is not a number. What is it?"),
+            )
+        ),
+    )
+
+
+async def cap_holds(model: GeminiPanelModel) -> None:
+    """Does the rung actually change who may keep the floor?
+
+    Only the dodged scenarios: an asker pressing a real answer is the monopoly
+    the first phase already measures, and mixing the two here would report a cap
+    working when what moved was the discrimination.
+
+    What to expect. At `GENTLE` and `STANDARD` the asker is marked out and
+    should almost never take the floor a third time — the cap is a hard
+    prohibition in the instruction, so this is close to the strongest rule in
+    the prompt. At `RELENTLESS` it is unmarked and free to press again, which
+    does *not* mean it will: rule 2 still requires the reply to contain nothing
+    checkable, and the other two panelists are still candidates. A rate that
+    rises is the finding; a rate that reaches 4/4 is not required and would be
+    slightly suspicious.
+    """
+    dodges = [scenario for scenario in SCENARIOS if scenario.dodged]
+
+    for level, name in ((GENTLE, "gentle"), (STANDARD, "standard"), (RELENTLESS, "relentless")):
+        pressure = pressure_at(level)
+        again = 0
+        picks = []
+        for scenario in dodges:
+            context = pressed_once(scenario)
+            reply = await model.select(
+                candidates=PANEL,
+                context=TurnContext(
+                    said=context.said,
+                    grounding=context.grounding,
+                    pressure=pressure,
+                ),
+            )
+            held = reply.text == scenario.asker
+            again += held
+            # The asker is printed too, because the CFO is over-picked
+            # regardless (#43) — so "the asker took the floor" and "the model
+            # reached for the CFO again" are the same string on a CFO scenario,
+            # and the two mean opposite things about the cap.
+            picks.append(
+                f"{scenario.asker[:2]}->{'PRESS' if held else reply.text[:2]}"
+            )
+
+        print(
+            f"{name:>10}  presses={pressure.presses}  "
+            f"pressed-again {again}/{len(dodges)}   {' '.join(picks)}"
+        )
+
+
 async def main() -> None:
     async with httpx.AsyncClient(timeout=90) as http:
         model = GeminiPanelModel(api_key=os.environ["GEMINI_API_KEY"], http=http)
@@ -160,8 +246,10 @@ async def main() -> None:
         print(
             f"pressed-dodge {pressed['dodge']}/{total['dodge']}   "
             f"pressed-answer {pressed['answer']}/{total['answer']}\n"
-            f"{' '.join(picks)}"
+            f"{' '.join(picks)}\n"
         )
+
+        await cap_holds(model)
 
 
 if __name__ == "__main__":

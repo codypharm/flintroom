@@ -221,3 +221,55 @@ Risk #1 describes.
 - **A first session is level 1**, from the column default, with no lookup and no
   special case.
 - **Nothing about this reaches the live interrogation screen.**
+
+---
+
+## Measured, 2026-08-18
+
+`scripts/followup.py` gained a second phase for this: a room where the asker has
+*already* pressed once, run at each rung. That is the only shape in which the cap
+binds — the original eight scenarios put the asker one turn in, where no rung
+marks it out — so nothing before this could have seen the ladder work or fail.
+
+Three runs per row, medians. The dispute budget needs no live figure: it is
+enforced in `dispute.contested`, code deciding an occasion with no model in the
+loop, and `tests/test_dispute.py` covers it deterministically.
+
+| Rung | presses | pressed-again |
+| --- | --- | --- |
+| gentle | 1 | 2/4 |
+| standard | 1 | 2/4 |
+| relentless | 2 | **3/4** |
+
+**The ladder moves the room, and the residual 2/4 is not the ladder.** Printing
+the asker beside each pick made it plain: at gentle and standard the only
+panelist that presses again is the CFO, on every run, in both CFO scenarios. The
+Technical Skeptic and the Champion respect the marking every time. At relentless
+those two start pressing as well, which is the whole of the difference between
+the rows.
+
+So the cap holds for two archetypes out of three and is ignored for the one #43
+already identified as over-picked — *"Panel selection over-picks the CFO whatever
+it is shown."* That bias is now overriding an explicit hard prohibition rather
+than merely a preference, which is a stronger statement than #43 made. Raised
+separately; the ladder is not the place to fix it.
+
+### Two things the measurement caught in the prompt
+
+**Dropping one word cost the follow-up rule.** The first rewrite said *"does not
+take the floor again"* where the original said *"never takes the floor a third
+time"*. `pressed-dodge` fell from 4/4 to 3/4 and `pressed-answer` rose to 3/4 —
+which is the failure `scripts/followup.py`'s own docstring names: *"High on both
+is the failure mode, not a pass."* Restoring **never** restored 4/4.
+
+**Order inside the rule mattered more than wording.** With the prohibition
+stated after the instruction to press, `pressed-answer` sat at 3/4 across three
+runs against a documented 1-2/4. Moving it to the front of rule 2 — prohibition
+first, then the conditions for pressing — returned it to 1-2/4 *and* separated
+the rungs, which it had not done before. Both effects from one reordering, on a
+rule whose content did not change.
+
+`scripts/rotation.py` was re-run to confirm the reorder cost nothing at the other
+end: `distinct=3` at every prefix length across two runs, the CFO between 1 and 4
+of 8, and the Champion heard in every column. That is the trade
+`docs/panel-orchestration.md` insists on seeing both sides of.
