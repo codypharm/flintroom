@@ -329,9 +329,9 @@ _SELECTION_INSTRUCTION = (
     "not an evasion, and the two look identical. Otherwise, if the "
     "presenter's reply contains no figure, no name, no date and no mechanism "
     "that answers it — only reassurance, restatement or a change of subject — "
-    "that panelist takes the floor again and presses. A panelist marked 'spoke "
-    "the last two turns' has already pressed once and never takes the floor a "
-    "third time, however badly the presenter answered. If the reply contains a "
+    "that panelist takes the floor again and presses. A panelist marked 'has "
+    "pressed as far as they may' does not take the floor again, however badly "
+    "the presenter answered. If the reply contains a "
     "specific of any kind, it was answered: pick somebody else even if the "
     "answer was weak.\n"
     "3. Otherwise pick whoever the answer just touched, or whoever would "
@@ -348,6 +348,11 @@ def _selection_prompt(candidates: Sequence[Archetype], context) -> str:
     for. The roster is sent as written, which is what makes a custom archetype
     work with nothing registered anywhere — its persona is just more text.
 
+    The cap comes off the room's own rung (#55). Nothing about the instruction
+    changes between rungs — only whether a given panelist is stamped as having
+    pressed as far as it may — which is what keeps every rung the same prompt
+    and `scripts/rotation.py`'s figures comparable across all three.
+
     The silence is counted here rather than left in the transcript for the model
     to derive. Measured, a model asked to do that arithmetic mid-room gets it
     wrong in the direction that matters: it picked the same panelist three turns
@@ -355,7 +360,7 @@ def _selection_prompt(candidates: Sequence[Archetype], context) -> str:
     """
     roster = "\n".join(
         f"- {archetype.name}: {archetype.title}. {archetype.attack_strategy}"
-        f" [{_silence_of(archetype, context)}]"
+        f" [{_silence_of(archetype, context, presses=context.pressure.presses)}]"
         for archetype in candidates
     )
     # Both sides, in order. A list of the panel's questions with no answers
@@ -397,7 +402,22 @@ def _bare_name(answered: str) -> str:
     return stripped.split()[0].lower() if stripped.split() else ""
 
 
-def _silence_of(archetype: Archetype, context) -> str:
+#: The marking that means "this one has followed up as often as it may".
+#:
+#: **A phrase rather than a count, and #55 is why.** Rule 2 used to say *"spoke
+#: the last two turns ... never takes the floor a third time"*, which puts one
+#: press inside prose that was tuned as prose. Templating the ladder's number
+#: into it would make every rung a different prompt, and every figure
+#: `scripts/rotation.py` has ever produced would describe none of them.
+#:
+#: So the words are fixed and code decides when to stamp them — the same
+#: division `_silence_of` already argues for counting silence at all: *"Counting
+#: is what code is for."* The rung changes when the marking appears, never what
+#: it says.
+PRESSED_OUT = "has pressed as far as they may"
+
+
+def _silence_of(archetype: Archetype, context, *, presses: int = 1) -> str:
     """How long this panelist has been off the floor, in turns.
 
     Words rather than a number, because the ordering in `_SELECTION_INSTRUCTION`
@@ -417,9 +437,14 @@ def _silence_of(archetype: Archetype, context) -> str:
     # Checked before the distance scan, because both would answer for the same
     # archetype and the cap is the stronger statement — "spoke last turn" invites
     # a press and this forbids one.
-    recent = [line.speaker for line in spoken[-2:]]
-    if len(recent) == 2 and recent[0] == recent[1] == archetype.name:
-        return "spoke the last two turns"
+    #
+    # `presses + 1` turns, not `presses`: the first is the question and the
+    # rest are the follow-ups, so one press is two consecutive turns. Off by one
+    # here and the gentle rung forbids the opening question itself.
+    held = presses + 1
+    recent = [line.speaker for line in spoken[-held:]]
+    if len(recent) == held and set(recent) == {archetype.name}:
+        return PRESSED_OUT
 
     for distance, line in enumerate(reversed(spoken)):
         if line.speaker == archetype.name:

@@ -35,15 +35,7 @@ from collections.abc import Sequence
 
 from app.agents.archetypes import Archetype
 from app.agents.context import USER, Said, TurnContext
-
-#: How many turns in one room may open by disputing a colleague.
-#:
-#: A room is capped at twelve minutes and runs perhaps eight to fifteen turns,
-#: so two is a seasoning rather than a texture. The number is a judgement and
-#: deliberately a small one: the failure it guards against — a room that argues
-#: with itself while the presenter waits — is worse than the failure of it never
-#: happening, because only one of those stops the product interrogating.
-DISPUTES_PER_ROOM = 2
+from app.agents.difficulty import DISPUTES_PER_ROOM
 
 
 def contested(
@@ -59,7 +51,9 @@ def contested(
     refuse:
 
     1. **The cap.** Enforced first because it is the cheapest and because it is
-       the one a model would not enforce itself.
+       the one a model would not enforce itself. Read from the room's own rung
+       (#55) rather than from the module constant: a first session gets zero, so
+       nobody is talked over on the one room that has to sell the product.
     2. **Ground of its own.** An archetype with no `domains` has no priority to
        assert — the Distracted Executive's complaint is that you are not making
        the point clearly, which is not a subject. Nothing was added for this; it
@@ -80,7 +74,7 @@ def contested(
     having no position at all, which is the opposite of what a fixed persona and
     attack strategy are for.
     """
-    if spent >= DISPUTES_PER_ROOM or not archetype.domains:
+    if spent >= context.pressure.disputes or not archetype.domains:
         return None
 
     spoken = [line for line in context.grounding.transcript if line.speaker != USER]

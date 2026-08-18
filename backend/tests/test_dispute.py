@@ -23,7 +23,10 @@ a rule applies: it says yes, every time.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from app.agents.archetypes import Archetype, DEFAULT_PANEL, by_name
+from app.agents.difficulty import GENTLE, pressure_at
 from app.agents.context import USER, Grounding, Said, TurnContext
 import pytest
 
@@ -196,3 +199,24 @@ async def test_a_room_that_has_had_its_disagreements_gets_no_more():
 
     assert model.disputed == [None]
     assert turn.disputed is False
+
+
+def test_the_gentle_rung_lets_nobody_be_talked_over():
+    """#55's floor, and the reason the floor softens *this* rather than the press.
+
+    A first session is level 1, and being cut across by a colleague is the
+    mildly dismissive turn #54 introduced — measured, a panelist says "Data
+    ownership is irrelevant without margin" and moves the room onto its own
+    question. That is fair to somebody on their fourth session and it is
+    `Product.md` §434's humiliation on their first: *"Hostility is the product;
+    humiliation is the churn."*
+
+    Read from the room's own rung rather than the module constant, which is the
+    whole change: the cap is a property of who is being interrogated, not of the
+    build.
+    """
+    said = room((USER, "Margin held."), ("cfo", "Where does that come from?"))
+    gentle = replace(said, pressure=pressure_at(GENTLE))
+
+    assert contested(SKEPTIC, DEFAULT_PANEL, said, spent=0) is not None
+    assert contested(SKEPTIC, DEFAULT_PANEL, gentle, spent=0) is None

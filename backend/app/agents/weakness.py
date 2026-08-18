@@ -533,3 +533,25 @@ Do not blame the presenter for a question a note says they were never given the 
 chance to answer. It still belongs on the list — they will face it again — but \
 say what actually happened.\
 """
+
+
+#: The weaknesses the presenter owns, as opposed to the ones the room caused.
+#:
+#: #56's split, and `PrepSheet.tsx` renders the same one as its `blame` field —
+#: "On you" against "Not on you". It lives here rather than in either consumer
+#: because it is a fact about the vocabulary above: `dismissed` means a
+#: panelist cut across them and `not_reached` means the clock ran out, and
+#: neither is evidence about the person.
+#:
+#: Counting the other two would undo #56 through arithmetic rather than through
+#: layout. A user whose questions a colleague waved away would be told, on the
+#: prep sheet, that it was not their fault — and then handed a gentler room next
+#: time as though it had been.
+PRESENTER_AT_FAULT: frozenset[Weakness] = frozenset(
+    {
+        Weakness.UNANSWERED,
+        Weakness.CONTRADICTED,
+        Weakness.UNSUPPORTED,
+        Weakness.EVASIVE,
+    }
+)

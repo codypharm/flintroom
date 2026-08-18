@@ -22,7 +22,11 @@ from app.agents.archetypes import DEFAULT_PANEL, Archetype, by_name
 from app.core.errors import ProviderUnavailable
 from app.agents.panel import Finding, Grounding, Said, TurnContext
 from app.agents.panel_models import build_panel_model
+from dataclasses import replace
+
+from app.agents.difficulty import RELENTLESS, pressure_at
 from app.agents.panel_models.gemini import (
+    PRESSED_OUT,
     _SELECTION_INSTRUCTION,
     GeminiPanelModel,
     _composition_prompt,
@@ -390,8 +394,14 @@ def test_a_panelist_who_has_already_pressed_is_marked_as_having_done_so():
     Two panel turns, not two lines. The presenter answers in between — that is
     what a follow-up *is* — so a rule counting raw transcript entries would never
     see a panelist twice in a row and the cap would never fire.
+
+    The marking stopped counting turns and started naming the rule when #55 made
+    the cap movable. What this test always cared about is that the state is
+    marked *at all* and distinguishably from "spoke last turn"; which words carry
+    it is the prompt's business, and `PRESSED_OUT` is where they live so that
+    both sides move together.
     """
-    assert _silence_of(by_name("cfo"), _PRESSED) == "spoke the last two turns"
+    assert _silence_of(by_name("cfo"), _PRESSED) == PRESSED_OUT
     # The panelist before them is unaffected: the cap binds the presser alone,
     # and blanketing everyone who spoke recently would empty the room.
     assert _silence_of(by_name("champion"), _PRESSED) == "silent for 2 turns"
@@ -642,3 +652,59 @@ def test_an_ordinary_turn_is_told_nothing_about_disputing():
     prompt = _composition_prompt(CONTEXT, None, by_name("cfo"), dispute=None)
 
     assert "matters more" not in prompt
+
+
+def test_the_cap_marking_moves_with_the_rung_the_room_is_on():
+    """#55, and the reason the marking stopped carrying a number.
+
+    Rule 2 used to say *"spoke the last two turns ... never takes the floor a
+    third time"*, which hard-codes one press into prose that was tuned as prose.
+    Templating a figure into it would put the ladder inside the one text
+    `scripts/rotation.py` measures, where every rung becomes a different prompt
+    and none of the existing figures describe any of them.
+
+    So the phrase is fixed and code decides when to stamp it — which is what
+    `_silence_of` already argues for counting silence rather than leaving the
+    arithmetic to the model. At `presses=1` the CFO's second consecutive turn is
+    the end of it; at `presses=2` the same room still has a press left.
+    """
+    assert _silence_of(by_name("cfo"), _PRESSED, presses=1) == PRESSED_OUT
+    assert _silence_of(by_name("cfo"), _PRESSED, presses=2) != PRESSED_OUT
+
+
+def test_the_relentless_rung_still_stops_somewhere():
+    """A cap that never fires is the bug the cap was added to fix.
+
+    Uncapped, a vague presenter — which is every presenter worth rehearsing —
+    pushed the busiest archetype from 4 of 8 turns to 5.5. The top rung buys one
+    more press, not an open floor.
+    """
+    thrice = TurnContext(
+        said="We have got much smarter about that.",
+        grounding=Grounding(
+            transcript=(
+                *_PRESSED.grounding.transcript,
+                Said(speaker="user", text="It varies by channel, honestly."),
+                Said(speaker="cfo", text="Then give me the worst channel."),
+            )
+        ),
+    )
+
+    assert _silence_of(by_name("cfo"), thrice, presses=2) == PRESSED_OUT
+
+
+def test_the_roster_is_stamped_at_the_rung_the_room_is_actually_on():
+    """The wiring, and the failure it closes is completely silent.
+
+    `_silence_of` taking a cap and `_selection_prompt` calling it with the
+    default are two facts nothing else connects. Left unwired, every rung
+    produces an identical roster: the ladder appears to exist, every test of
+    the ladder passes, and every room in production is level 2 forever.
+
+    Asserted on the roster text rather than through a helper, because a correct
+    cap computed and then not sent is invisible from inside.
+    """
+    relentless = replace(_PRESSED, pressure=pressure_at(RELENTLESS))
+
+    assert PRESSED_OUT in _selection_prompt(DEFAULT_PANEL, _PRESSED)
+    assert PRESSED_OUT not in _selection_prompt(DEFAULT_PANEL, relentless)

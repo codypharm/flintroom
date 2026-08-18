@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from app.agents.archetypes import Archetype
+from app.agents.difficulty import STANDARD_PRESSURE, Pressure
 from app.agents.model import TurnUsage
 
 
@@ -134,6 +135,19 @@ class TurnContext:
 
     said: str
     grounding: Grounding
+
+    #: How hard this room pushes — #55's rung, as two integers.
+    #:
+    #: Here rather than as a parameter on `select` for the reason this class
+    #: exists at all: both steps read one view and must never disagree about
+    #: what moment they are in. It also keeps the change off `PanelModel`, so
+    #: neither adapter had to learn that calibration exists.
+    #:
+    #: **Defaults to the room that ships today**, which is what makes "level 2
+    #: is byte-identical to what was measured" true by construction. Every
+    #: caller that never heard of calibration — the spikes, the older tests,
+    #: `scripts/rotation.py` — gets exactly the room those figures describe.
+    pressure: Pressure = STANDARD_PRESSURE
 
     #: Whether `said` is a prefix of a sentence still being spoken.
     #:
