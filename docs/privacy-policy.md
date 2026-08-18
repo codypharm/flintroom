@@ -52,7 +52,8 @@ language, and does not build a profile of you from anywhere outside the app.
 | **Transcript of a room** | As long as you have an account |
 | **Attached material** | The source file: minutes. The extracted claims and thumbnail: until you delete them |
 | **Account and usage records** | As long as you have an account |
-| **Billing and money records** | [CONFIRM] — retained beyond account deletion where tax or accounting law requires it. The period depends on jurisdiction and needs an answer before publication |
+| **Billing and money records** | [CONFIRM] — kept after account deletion, no longer linked to you, where tax or accounting law requires it. The period depends on jurisdiction and needs an answer before publication |
+| **A deleted account** | Seven days before the purge runs; signing in during them cancels it |
 
 A session that fails technically is refunded and **retains no audio at all**.
 
@@ -76,9 +77,19 @@ under a disclosure you accepted — removing them is a separate, deliberate act.
 
 **Delete attached material.** Any time, in Settings.
 
-**Delete your account.** [CONFIRM] — **not yet built.** Apple has required
-in-app account deletion since 2022, and this policy cannot be published claiming
-a control that does not exist. See the open task.
+**Delete your account.** In Settings, and it takes seven days.
+
+Asking schedules the deletion and signs you out everywhere. For the next seven
+days the account is hidden rather than gone, and **signing in during that time
+cancels the deletion** — we say so plainly when it happens, rather than quietly
+restoring an account you meant to lose. After seven days a scheduled process
+destroys your rooms, their transcripts and recordings, the material you
+attached, your settings, and the record linking this account to your Apple or
+Google sign-in.
+
+What survives is your billing history, stripped of any link to you: once the
+sign-in record is destroyed, the account identifier maps to nobody, and what
+remains is a row of numbers we are required to keep (see below).
 
 You are told that rooms are saved, and for how long, before your first
 interrogation begins — on a sheet you have to pass through, ahead of the
@@ -94,8 +105,8 @@ necessarily pass through them.
 | Provider | What reaches them |
 | --- | --- |
 | **ElevenLabs** | Your speech, to turn into text; the panel's lines, to turn into speech |
-| **Google (Gemini)** | The transcript of the room in progress, to decide who speaks and what they ask |
-| **Anthropic (Claude)** | The contents of material you attach, once, to extract its claims |
+| **Google (Gemini)** | The transcript of the room in progress, to decide who speaks and what they ask; the contents of material you attach, once, to extract its claims; the transcript again afterwards, to work out which answers were weak and to hold the debrief |
+| **Anthropic (Claude)** | Nothing today. Configured as the alternative for the two model tasks above, and this row becomes accurate the moment it is selected |
 | **Supabase** | Hosts the database. Flintroom is the only thing that reads it; the app holds no database credentials |
 | **Cloudflare R2** | Stores recordings and thumbnails |
 | **RevenueCat** | Subscriptions and purchases [CONFIRM — not yet integrated] |

@@ -41,6 +41,25 @@ export interface IssuedTokens {
   refreshToken: string;
   /** Seconds, as the wire carries it. */
   expiresIn: number;
+
+  /**
+   * Whether this sign-in called off a scheduled account deletion.
+   *
+   * `docs/account-deletion.md` decision 5, and the caller owes the user a
+   * sentence when it is true — an account that quietly un-deletes itself is
+   * worse than one that stayed deleted, because they never learn their data is
+   * still there. `CANCELLED_ON_SIGN_IN` in `lib/account/deletion.ts` is the
+   * sentence.
+   *
+   * Always false from a refresh, which is not somebody coming back.
+   */
+  deletionCancelled: boolean;
+}
+
+/** What a completed sign-in has to say for itself. */
+export interface Admission {
+  /** True when this sign-in reversed a pending deletion. Say so. */
+  deletionCancelled: boolean;
 }
 
 export interface AuthApi {
@@ -51,7 +70,8 @@ export interface AuthApi {
 }
 
 export interface AuthSession {
-  signIn(provider: string, idToken: string): Promise<void>;
+  /** Resolves with what the sign-in did besides letting them in. */
+  signIn(provider: string, idToken: string): Promise<Admission>;
   /** A token good to send now, refreshing first if the stored one has expired. */
   accessToken(): Promise<string>;
   /** Ends the session here and, if reachable, everywhere. Never rejects. */
@@ -126,7 +146,13 @@ export function createAuthSession({
 
   return {
     signIn: async (provider, idToken) => {
-      await persist(await api.signIn(provider, idToken));
+      const admitted = await api.signIn(provider, idToken);
+      await persist(admitted);
+
+      // Passed up rather than acted on here. This module owns credentials; a
+      // sentence on a screen is not its business, and one told from inside
+      // could not be tested without a renderer.
+      return { deletionCancelled: admitted.deletionCancelled };
     },
 
     signOut: async () => {

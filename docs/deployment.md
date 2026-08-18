@@ -118,6 +118,36 @@ stay generous enough never to be the thing doing the work. If rooms are
 disappearing at Pro's window plus the margin rather than at Pro's window, the
 sweep is dead and the backstop is covering for it.
 
+**Alert on the absence of `account_deletions_swept`, and rank it above all
+three.**
+
+Account deletion rides the same loop as a sixth sweep and logs one line per
+pass, empty ones included. Every other silence here costs money, time, or a
+retention promise. This one means **people who asked to be forgotten have not
+been**, on a timetable the app told them in writing — and unlike a retained
+recording, nobody outside can observe it, because the account already looks
+deleted to the person who asked.
+
+`purged=N` is how many accounts the pass destroyed. Zero is the ordinary
+reading and is not a problem; it is the *line* that has to be there.
+
+Two more, in the same area:
+
+- `account_purge_failed` — one account could not be purged, almost always
+  because the object store refused a key. The purge is all-or-nothing, so
+  nothing was destroyed and the account is met again next pass. A one-off is
+  self-healing; the same `user_id` repeating means a deletion is stuck, and the
+  seven days the user was promised are passing.
+- `DeletionSweepUnconfigured` in a `sweep_failed` traceback — the loop was
+  handed no object store. The sweep refuses rather than running the half it
+  can, because the rows it would destroy are the only ones that know an object
+  exists. Same startup cause as `object_storage_unconfigured` above, and the
+  same thing to check first.
+
+There is no bucket-lifecycle backstop for this one and there cannot be: what
+runs late here is not the removal of an object on a schedule, it is a decision
+about which objects to remove at all.
+
 ## Migrations run before the new version serves
 
 Alembic reads `DATABASE_URL` from the environment, never from `alembic.ini`

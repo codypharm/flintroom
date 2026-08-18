@@ -51,6 +51,11 @@ describe('signing in', () => {
       accessToken: 'access-1',
       refreshToken: 'refresh-1',
       expiresIn: 900,
+      // Always present, never optional. A caller reading an absent field as
+      // "nothing happened" and one reading it as "unknown" would both be
+      // guessing, on the one signal that decides whether the user is told
+      // their deletion was reversed.
+      deletionCancelled: false,
     });
 
     expect(calls).toEqual([
@@ -93,5 +98,43 @@ describe('refreshing', () => {
     const { api } = apiReturning(502, { code: 'provider_unavailable' });
 
     await expect(api.refresh('refresh-old')).rejects.not.toBeInstanceOf(SignedOut);
+  });
+});
+
+describe('a sign-in that reverses a deletion', () => {
+  it('carries the fact through rather than dropping it at the boundary', async () => {
+    // `docs/account-deletion.md` decision 5 makes signing in *do* something —
+    // it calls off a scheduled deletion — and the message is the load-bearing
+    // half of that decision. An account that quietly un-deletes itself is
+    // worse than one that stayed deleted, because the user never learns their
+    // data is still there.
+    //
+    // This layer cannot say the sentence and should not know it. What it must
+    // not do is discard the only signal that the sentence is owed, which is
+    // exactly the kind of loss a translation layer makes silently.
+    const { api } = apiReturning(200, { ...issued, deletion_cancelled: true });
+
+    await expect(api.signIn('google', 'google-id-token')).resolves.toMatchObject({
+      deletionCancelled: true,
+    });
+  });
+
+  it('is false on the ordinary sign-in, which is almost all of them', async () => {
+    const { api } = apiReturning(200, issued);
+
+    await expect(api.signIn('google', 'google-id-token')).resolves.toMatchObject({
+      deletionCancelled: false,
+    });
+  });
+
+  it('is never claimed by a refresh', async () => {
+    // Rotating a token is not somebody coming back, so a refresh reporting a
+    // cancellation would be announcing an event that did not happen — on a
+    // path that runs unattended, minutes after the sign-in that did.
+    const { api } = apiReturning(200, { ...issued, deletion_cancelled: true });
+
+    await expect(api.refresh('refresh-1')).resolves.toMatchObject({
+      deletionCancelled: false,
+    });
   });
 });

@@ -65,6 +65,10 @@ class FakeAuthApi {
       accessToken: `access-${this.issued}`,
       refreshToken: `refresh-${this.issued}`,
       expiresIn: 900,
+      // The ordinary case, and the only one this file cares about: nobody in
+      // here had a deletion pending. What a sign-in does with the flag is
+      // `authApi`'s translation and `lib/account/deletion.ts`'s sentence.
+      deletionCancelled: false,
     };
   }
 }

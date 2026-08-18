@@ -21,7 +21,29 @@ export interface paths {
         get: operations["auth_read_current_identity"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Current Account
+         * @description Ask for this account to be destroyed.
+         *
+         *     Apple has required this since 2022 for any app supporting account creation,
+         *     so it is a store blocker rather than a courtesy — and `docs/privacy-policy.md`
+         *     cannot be published while it claims a control that does not exist.
+         *
+         *     `DELETE /me` rather than a POST to a sub-resource, because the account is
+         *     the thing being deleted and it is the resource this token already
+         *     identifies. Nothing is read from the request: no body, no path parameter,
+         *     nothing a caller could point at somebody else's account.
+         *
+         *     **202, not 204.** The window means nothing has been destroyed yet, and a
+         *     204 would say otherwise on the one endpoint where overstating what happened
+         *     is worst. The body carries the date so the app can say how long the user
+         *     has to change their mind.
+         *
+         *     Repeating it is not an error. A retry returns the same date rather than a
+         *     409 — the app would otherwise have to render "already scheduled" as a
+         *     failure, on the screen where a confusing answer costs the most trust.
+         */
+        delete: operations["auth_delete_current_account"];
         options?: never;
         head?: never;
         patch?: never;
@@ -664,6 +686,26 @@ export interface components {
             weak_answers: components["schemas"]["WeakAnswerRead"][];
         };
         /**
+         * DeletionScheduled
+         * @description When an account that asked to be deleted actually goes.
+         *
+         *     The date rather than a bare acknowledgement, because the window is
+         *     recoverable and a user who is not told when it closes cannot use it. It is
+         *     also what makes the repeat request legible: asking twice returns the same
+         *     moment, which is the wire-level expression of a window that does not move.
+         *
+         *     Nothing else is returned. `CLAUDE.md` wants minimum necessary fields, and
+         *     the caller already knows whose account this is — they authenticated as
+         *     them.
+         */
+        DeletionScheduled: {
+            /**
+             * Purge At
+             * Format: date-time
+             */
+            purge_at: string;
+        };
+        /**
          * EndReason
          * @description Why a session stopped.
          *
@@ -1046,6 +1088,11 @@ export interface components {
             token_type: string;
             /** Expires In */
             expires_in: number;
+            /**
+             * Deletion Cancelled
+             * @default false
+             */
+            deletion_cancelled: boolean;
         };
         /**
          * TierUpload
@@ -1120,6 +1167,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Identity"];
+                };
+            };
+        };
+    };
+    auth_delete_current_account: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletionScheduled"];
                 };
             };
         };

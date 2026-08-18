@@ -30,6 +30,8 @@ interface SignedInBody {
   access_token: string;
   refresh_token: string;
   expires_in: number;
+  /** Absent from a refresh, and defaulted below rather than assumed. */
+  deletion_cancelled?: boolean;
 }
 
 export function createAuthApi({
@@ -62,19 +64,31 @@ export function createAuthApi({
     throw new Error(`POST ${path} failed with ${response.status}`);
   };
 
-  const issued = async (response: Response): Promise<IssuedTokens> => {
+  const issued = async (
+    response: Response,
+    { admitting = false }: { admitting?: boolean } = {}
+  ): Promise<IssuedTokens> => {
     const body = (await response.json()) as SignedInBody;
 
     return {
       accessToken: body.access_token,
       refreshToken: body.refresh_token,
       expiresIn: body.expires_in,
+      // Only a sign-in may report this. Rotating a token is not somebody
+      // coming back, so a refresh that carried a cancellation would announce
+      // an event that did not happen — on a path that runs unattended, minutes
+      // after the sign-in that did. Read from the flag rather than from the
+      // body's shape, so a server that starts sending the field on refresh
+      // cannot change what the app says.
+      deletionCancelled: admitting && body.deletion_cancelled === true,
     };
   };
 
   return {
     signIn: async (provider, idToken) =>
-      issued(await post('/v1/auth/sessions', { provider, id_token: idToken })),
+      issued(await post('/v1/auth/sessions', { provider, id_token: idToken }), {
+        admitting: true,
+      }),
 
     refresh: async (refreshToken) =>
       issued(await post('/v1/auth/sessions/refresh', { refresh_token: refreshToken })),

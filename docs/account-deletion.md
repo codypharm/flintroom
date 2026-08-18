@@ -153,3 +153,38 @@ silent.
 - **Tokens revoked at request time**, not at purge. Signing out is part of the
   request; leaving a refresh token alive for seven days would let a stolen one
   cancel the deletion.
+
+---
+
+## Built, 2026-08-18
+
+All six properties above hold, and `docs/privacy-policy.md` no longer carries a
+`[CONFIRM]` on this control. Where it lives: `billing/deletion.py`,
+`DELETE /v1/me` in `auth/router.py`, the sixth sweep in `sessions/runner.py`,
+and `lib/account/deletion.ts` on the phone.
+
+Three things the build settled that the decisions above did not anticipate.
+
+**The tombstone was impossible and unnecessary** — corrected in decision 1
+above rather than quietly changed, because the replacement is better than the
+original would have been if it had worked.
+
+**A sweep with no object store refuses outright.** This is stricter than the
+retention sweep, which is simply skipped, and the asymmetry is the point:
+retention leaves a row carrying `deleted_at`, so a skipped pass stays visible,
+while a purge destroys the only rows that know an object exists. There is no
+backstop that can recover from that, so `DeletionSweepUnconfigured` is raised
+before anything is destroyed.
+
+**One account that cannot be erased must not jam the queue.** The purge is
+all-or-nothing per account — a store that raises rolls the transaction back and
+the rows survive alongside the objects — but the *sweep* catches per account
+and carries on, so a permanently unhappy key stops one deletion rather than
+every deletion in the system. `account_purge_failed` names the account; a
+repeat of the same `user_id` is a deletion stuck inside its seven days.
+
+**Still open:** the retention period for anonymised financial records, which is
+jurisdictional and named in decision 1. Nothing is blocked on it — those rows
+can be dropped on a schedule once somebody decides what the schedule is — but
+`docs/privacy-policy.md` still carries a `[CONFIRM]` on that line and cannot be
+published while it does.
