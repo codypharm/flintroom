@@ -55,7 +55,7 @@ def verifier(provider_key) -> OidcVerifier:
     return OidcVerifier(
         provider="google",
         issuers=(GOOGLE_ISSUER,),
-        audience=GOOGLE_AUDIENCE,
+        audience=(GOOGLE_AUDIENCE,),
         keys=StubKeys(provider_key),
     )
 
@@ -182,3 +182,53 @@ async def test_an_unverified_email_is_reported_as_unverified(verifier, provider_
     identity = await verifier.verify(id_token(provider_key, email_verified=False))
 
     assert identity.email_verified is False
+
+
+async def test_a_token_for_any_client_we_own_is_accepted(provider_key):
+    """One project, three client IDs, and only one `aud` per token.
+
+    Google mints an ID token addressed to whichever client asked for it. The
+    native SDK on Android asks with the *web* client — that is what
+    `webClientId` is, "the client ID of type WEB for your server" — while iOS
+    can mint against its own. Pinning a single value therefore cannot work on
+    both platforms at once, and the failure is a 401 that names nothing.
+
+    So the check is a set, exactly as `issuers` already is. This is Google's own
+    guidance for backend verification — compare `aud` against your client IDs,
+    plural — and it weakens nothing: every value here is a client in our project,
+    so a token minted for our iOS app is precisely as trustworthy as one minted
+    for our web client. The attack the test below describes is still refused,
+    because a stranger's client ID is still not in the set.
+    """
+    verifier = OidcVerifier(
+        provider="google",
+        issuers=(GOOGLE_ISSUER,),
+        audience=(GOOGLE_AUDIENCE, "our-ios.apps.googleusercontent.com"),
+        keys=StubKeys(provider_key),
+    )
+
+    identity = await verifier.verify(
+        id_token(provider_key, audience="our-ios.apps.googleusercontent.com")
+    )
+
+    assert identity.subject == "google-subject-1"
+
+
+async def test_a_stranger_is_still_refused_when_several_clients_are_ours(provider_key):
+    """The widening must not become an opening.
+
+    The whole value of the audience check is that it is a closed set. Accepting
+    more than one of our own clients is safe; accepting anything that parses is
+    the vulnerability the single-value check existed to prevent.
+    """
+    verifier = OidcVerifier(
+        provider="google",
+        issuers=(GOOGLE_ISSUER,),
+        audience=(GOOGLE_AUDIENCE, "our-ios.apps.googleusercontent.com"),
+        keys=StubKeys(provider_key),
+    )
+
+    with pytest.raises(NotAuthenticated):
+        await verifier.verify(
+            id_token(provider_key, audience="someone-elses.apps.googleusercontent.com")
+        )

@@ -148,3 +148,39 @@ def test_the_converter_path_has_one_default_in_two_places():
         Settings.model_fields["libreoffice_binary"].default
         == DEFAULT_LIBREOFFICE_BINARY
     )
+
+
+def test_one_backend_serves_every_client_of_one_project(environment):
+    """Three clients, one token, one `aud` — so the pin has to be a set.
+
+    Google addresses an ID token to whichever client asked for it, and the
+    native SDK asks with a different client on each platform. A single pinned
+    value cannot serve both, and the resulting 401 names nothing: `sign_in`
+    refuses to say which check failed, deliberately, because saying so
+    enumerates our configuration.
+
+    Comma-separated rather than JSON because this is written by hand in a
+    `.env`, and `GOOGLE_CLIENT_ID=["a","b"]` is a shape every deployment note
+    would have to explain.
+    """
+    environment(GOOGLE_CLIENT_ID="web.example, ios.example")
+
+    assert Settings(_env_file=None).google_audiences == ("web.example", "ios.example")
+
+
+def test_a_blank_entry_never_becomes_an_audience(environment):
+    """A trailing comma is the normal shape of a hand-edited file.
+
+    An empty string surviving into the tuple would be an audience matching a
+    token that carries no `aud` at all — the one value the pin exists to refuse.
+    """
+    environment(GOOGLE_CLIENT_ID="web.example,, ")
+
+    assert Settings(_env_file=None).google_audiences == ("web.example",)
+
+
+def test_a_single_client_still_works_unchanged(environment):
+    """Every deployment today holds one value, and must keep working."""
+    environment(APPLE_CLIENT_ID="com.flintroom.app")
+
+    assert Settings(_env_file=None).apple_audiences == ("com.flintroom.app",)

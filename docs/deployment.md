@@ -408,6 +408,44 @@ replaces the root handlers and belongs to the lifespan rather than to anything
 that runs on import. `uvicorn app.main:app` therefore fails with *Attribute
 "app" not found*, which reads like a missing file rather than a missing flag.
 
+## One project has several client IDs, and a token carries one
+
+`GOOGLE_CLIENT_ID` and `APPLE_CLIENT_ID` are the `aud` values `OidcVerifier`
+pins, and pinning them is the check that stops a genuine Google token minted for
+somebody else's app from signing in here. Both accept a **comma-separated list**,
+and Google needs one.
+
+**Why a list.** Google addresses an ID token to whichever client asked for it,
+and the native SDK asks with a different client on each platform: on Android with
+the **web** client — that is what `webClientId` is, *"the client ID of type WEB
+for your server"* — and on iOS potentially with its own. A single pinned value
+cannot serve both. Whichever platform it is not then fails **every** sign-in,
+and fails it as a bare 401: `sign_in` raises `NotAuthenticated` without saying
+which check failed, deliberately, because saying so enumerates our configuration
+to whoever is probing. Correct posture, and it means nothing on the wire or in
+the app will tell you the audience is wrong.
+
+**Why widening is safe.** Every entry is a client in our own Google project, so a
+token minted for our iOS app is exactly as trustworthy as one minted for our web
+client. A stranger's client ID is still not in the set, which is the entire
+attack the pin exists to stop. It is also Google's own guidance for backend
+verification: compare `aud` against your client IDs, plural.
+
+**Apple is different, and the trap is inverted.** A *native* Sign in with Apple
+addresses its token to the app's **bundle identifier** — `com.flintroom.app` —
+not to a Services ID. Services IDs belong to the web flow, which this product
+does not have. Set `APPLE_CLIENT_ID` to a Services ID and every Apple sign-in
+fails audience verification with an error indistinguishable from a broken key.
+
+**Android additionally needs its own OAuth client registered in Google Cloud with
+the signing SHA-1**, even though that client ID is passed to neither the SDK nor
+this backend. Without it the native flow returns `DEVELOPER_ERROR`, which is
+another message that names nothing.
+
+Found on 2026-08-18, when the configured Google audience turned out to match
+neither the app's web nor its iOS client. Nothing failed: there was no sign-in
+screen yet to fail.
+
 ## Still open
 
 - **Recording retention is undocumented and unimplemented.** App Store review

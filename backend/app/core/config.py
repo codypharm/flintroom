@@ -17,6 +17,17 @@ from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _client_ids(given: str) -> tuple[str, ...]:
+    """Split a comma-separated list of client IDs, dropping blanks.
+
+    Trailing commas and stray spaces are the normal shape of a hand-edited
+    `.env`. An empty entry surviving into the tuple would be an audience that
+    matches a token carrying no `aud` at all, which is the one value the pin
+    exists to refuse.
+    """
+    return tuple(entry.strip() for entry in given.split(",") if entry.strip())
+
+
 class ConfigurationError(RuntimeError):
     """Configuration that cannot be used, described without being quoted.
 
@@ -73,8 +84,48 @@ class Settings(BaseSettings):
     #: `aud` values `OidcVerifier` pins, and pinning them is what stops a
     #: genuine Google token minted for somebody else's app signing in here.
     #: Required, because a blank audience is a verifier that checks nothing.
+    #:
+    #: **A comma-separated list, because one project has several clients and a
+    #: token carries exactly one `aud`.** Google mints the token against
+    #: whichever client asked: the native SDK on Android asks with the *web*
+    #: client — that is what `webClientId` is, "the client ID of type WEB for
+    #: your server" — while iOS can ask with its own. A single pinned value
+    #: therefore cannot serve both platforms, and the failure is a 401 that
+    #: names nothing, because `sign_in` deliberately refuses to say which check
+    #: failed.
+    #:
+    #: Widening the set does not weaken it. Every value here is a client in our
+    #: own project, so a token minted for our iOS app is exactly as trustworthy
+    #: as one minted for our web client — and a stranger's client ID is still
+    #: not in the set, which is the whole attack the pin exists to stop. It is
+    #: also Google's own guidance for backend verification: compare `aud`
+    #: against your client IDs, plural.
+    #:
+    #: A single value still parses to a one-item tuple, so an existing
+    #: deployment needs no change to keep working.
+    #: Held as the raw string and split by the properties below, rather than
+    #: typed as a tuple. `pydantic-settings` JSON-decodes an environment value
+    #: whose field is a complex type, so a tuple field would demand
+    #: `GOOGLE_CLIENT_ID=["a","b"]` in a `.env` file — a shape nobody writes by
+    #: hand and every deployment guide would have to explain.
     google_client_id: str = Field(min_length=1)
     apple_client_id: str = Field(min_length=1)
+
+    @property
+    def google_audiences(self) -> tuple[str, ...]:
+        """Every Google client whose tokens we accept."""
+        return _client_ids(self.google_client_id)
+
+    @property
+    def apple_audiences(self) -> tuple[str, ...]:
+        """Every Apple client whose tokens we accept.
+
+        Usually one — a native iOS sign-in is addressed to the app's *bundle
+        identifier*, not to a Services ID, and Services IDs are for the web
+        flow this product does not have. The list exists so adding one later
+        is configuration rather than a code change.
+        """
+        return _client_ids(self.apple_client_id)
 
     #: The voice vendor, for both halves of a room: Scribe hears it and their
     #: text-to-speech answers in eight cast voices. One key, two adapters —

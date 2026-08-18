@@ -56,7 +56,7 @@ class OidcVerifier:
         *,
         provider: str,
         issuers: tuple[str, ...],
-        audience: str,
+        audience: tuple[str, ...],
         keys: SigningKeys,
     ) -> None:
         self._provider = provider
@@ -80,7 +80,10 @@ class OidcVerifier:
                 id_token,
                 key,
                 algorithms=ALGORITHMS,
-                audience=self._audience,
+                # A list, not a value: PyJWT accepts a token whose `aud`
+                # matches any entry, which is what lets one backend serve
+                # the web, iOS and Android clients of one project.
+                audience=list(self._audience),
                 issuer=list(self._issuers),
                 options={"require": ["iss", "aud", "sub", "exp"]},
             )

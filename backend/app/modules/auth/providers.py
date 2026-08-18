@@ -49,7 +49,10 @@ def build_verifiers(
     JWKS on every single sign-in — which is both the latency the cache exists to
     avoid and the provider hammering `REFRESH_COOLDOWN` exists to prevent.
     """
-    audiences = {GOOGLE.name: settings.google_client_id, APPLE.name: settings.apple_client_id}
+    audiences = {
+        GOOGLE.name: settings.google_audiences,
+        APPLE.name: settings.apple_audiences,
+    }
 
     return {
         config.name: OidcVerifier(
