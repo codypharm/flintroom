@@ -1,14 +1,20 @@
-import { Link, router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Progress } from '../../components/modules/Progress';
+import { createBalanceApi, type Held } from '../../lib/api/balanceApi';
 import { createProgressApi, type Progress as Read } from '../../lib/api/progressApi';
 import { API_BASE_URL, auth } from '../../lib/auth';
 import { color, radius, space, type } from '../../theme/tokens';
 
 const progress = createProgressApi({
+  baseUrl: API_BASE_URL,
+  accessToken: () => auth.accessToken(),
+});
+
+const balance = createBalanceApi({
   baseUrl: API_BASE_URL,
   accessToken: () => auth.accessToken(),
 });
@@ -37,6 +43,7 @@ const progress = createProgressApi({
  */
 export default function HomeScreen() {
   const [read, setRead] = useState<Read | null>(null);
+  const [held, setHeld] = useState<Held | null>(null);
 
   /**
    * Re-read on every visit, not once on mount.
@@ -59,6 +66,16 @@ export default function HomeScreen() {
         .read()
         .then((theirs) => {
           if (live) setRead(theirs);
+        })
+        .catch(() => undefined);
+
+      // Re-read on every visit for a reason of its own: minutes are spent in
+      // the room, so the walk that changes this number is exactly the one that
+      // leaves this screen and comes back.
+      balance
+        .read()
+        .then((left) => {
+          if (live) setHeld(left);
         })
         .catch(() => undefined);
 
@@ -100,32 +117,25 @@ export default function HomeScreen() {
         </Pressable>
 
         {/*
-          The instruments, kept and demoted rather than deleted.
+          Under the control it governs, and phrased as what is there.
 
-          `/echo-spike` measures acoustic echo on a device and `/disclosure`
-          shows a sheet that only appears once per account in the real flow —
-          both are the only way to reach those on a phone, and #78 is still
-          open. `/onboarding` is a real destination that the app does not yet
-          route to on a first launch.
+          §4.6 forbids a depleting counter and requires minutes "framed
+          generously" — so this says what is available, never what is left, what
+          is remaining, or how much of an allowance has gone. `TablePlan` set the
+          register already: "Signing in gives you 15 minutes in the room, on us."
 
-          Under a heading that says what they are, so nobody mistakes an
-          instrument for a feature.
+          Silent until it is known. A zero drawn while the request is still in
+          flight is a lie about somebody's money, and it sits directly under the
+          button they are about to press.
         */}
-        <View style={styles.bench}>
-          <Text style={styles.benchHeading}>On the bench</Text>
-          <Link href="/onboarding" style={styles.link}>
-            Onboarding
-          </Link>
-          <Link href="/echo-spike" style={styles.link}>
-            Echo spike
-          </Link>
-          <Link href="/disclosure" style={styles.link}>
-            Recording disclosure
-          </Link>
-          <Link href="/prep-sheet" style={styles.link}>
-            Prep sheet
-          </Link>
-        </View>
+        {held && (
+          <Text style={styles.held}>
+            {held.any
+              ? `${held.minutes} minutes of interrogation available.`
+              : 'No interrogation time available right now.'}
+          </Text>
+        )}
+
       </ScrollView>
     </SafeAreaView>
   );
@@ -157,15 +167,10 @@ const styles = StyleSheet.create({
   startLabel: { ...type.headlineSm, color: color.surface },
   pressed: { opacity: 0.6 },
 
-  bench: { marginTop: space.major },
-  benchHeading: {
-    ...type.labelLg,
-    color: color.onSurfaceVariant,
-    marginBottom: space.tight,
-  },
-  link: {
+  held: {
     ...type.bodyMd,
-    color: color.primary,
-    paddingVertical: space.tight,
+    color: color.onSurfaceVariant,
+    marginTop: space.snug,
   },
+
 });
