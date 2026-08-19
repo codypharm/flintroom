@@ -73,9 +73,19 @@ export function Tray({ speaking, label, develop }: TrayProps) {
   );
 }
 
+/**
+ * A seat's height, fixed rather than shared out.
+ *
+ * `flex: 1` gave each tray a third of the far field, and on a phone that is a
+ * slab the size of a card. Three of them read as empty containers rather than
+ * as people across a table — the far field is meant to be glanced at, and
+ * nothing that large is ever glanced at.
+ */
+const SEAT = 56;
+
 const styles = StyleSheet.create({
   tray: {
-    flex: 1,
+    height: SEAT,
     borderRadius: radius.control,
   },
 });

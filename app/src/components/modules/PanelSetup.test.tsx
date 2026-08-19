@@ -54,7 +54,7 @@ it('seats somebody, and says which chair they took', async () => {
   // because a selected row needs decorating.
   const props = await setup({ seated: ['champion'] });
 
-  expect(screen.getByLabelText('The Champion, seated first')).toBeTruthy();
+  expect(screen.getByLabelText('The Champion, in chair 1')).toBeTruthy();
 
   await userEvent.press(screen.getByText('The CFO'));
 
@@ -83,7 +83,7 @@ it('stops seating at the plan’s cap, and says what the next one seats', async 
   // somebody and a rehearsal.
   const props = await setup({ seated: ['cfo', 'champion', 'technical_skeptic'] });
 
-  expect(screen.getByText('Three of three seated. Pro seats five.')).toBeTruthy();
+  expect(screen.getByText('Three of three seated. Tap someone to swap them out. Pro seats five.')).toBeTruthy();
 
   await userEvent.press(screen.getByText('The Risk Officer'));
   expect(props.onSeatedChange).not.toHaveBeenCalled();
@@ -175,4 +175,18 @@ it('will not start an empty room', async () => {
   await userEvent.press(screen.getByText('Start'));
 
   expect(props.onStart).not.toHaveBeenCalled();
+});
+
+it('offers the way out only once the room is full', async () => {
+  // A full room dims every unseated archetype, and dimmed reads as locked. The
+  // swap was always allowed — `closed` is `full && !isSeated`, so a seated one
+  // is still pressable — but nothing said so, and somebody on a device
+  // concluded the panel could not be changed at all. Said only when it is
+  // needed: on a half-empty room it would be an instruction for a problem
+  // nobody has.
+  await setup({ seated: ['cfo'] });
+  expect(screen.queryByText(/Tap someone to swap them out/)).toBeNull();
+
+  await setup({ seated: ['cfo', 'technical_skeptic', 'champion'] });
+  expect(screen.getByText(/Tap someone to swap them out/)).toBeTruthy();
 });

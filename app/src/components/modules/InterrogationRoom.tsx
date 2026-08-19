@@ -266,12 +266,17 @@ const styles = StyleSheet.create({
   // 55/45, the surface brief's split, and it is about distance rather than
   // proportion: on a phone lying flat the top of the screen is further from the
   // eye, so the room goes up there and the words come down here.
+  // The room sits at the top of the far field rather than filling it. Given
+  // the whole 55% the trays stretched into three tall slabs — on a device they
+  // read as empty cards waiting for content, which is the opposite of
+  // peripheral. Seats are small and the air around them is the room.
   far: {
     flex: 55,
     gap: space.snug,
     paddingHorizontal: space.screen,
     paddingTop: space.loose,
     paddingBottom: space.base,
+    justifyContent: 'flex-start',
   },
   near: {
     flex: 45,
@@ -284,7 +289,11 @@ const styles = StyleSheet.create({
   // The screen's only real content, and sized for a glance from arm's length
   // rather than for a paragraph.
   line: { ...type.headlineMd, color: color.onRoom },
-  waiting: { ...type.bodyLg, color: color.roomTray },
+  // Full strength, not dimmed. Shipped at `roomTray` it measured 1.73:1
+  // against the ground — a surface colour used as text — and it was wrong
+  // twice over: before the first line arrives this sentence is not secondary
+  // to anything, it is the whole screen.
+  waiting: { ...type.bodyLg, color: color.onRoom },
 
   // The one enamel-white object, at the nearest edge, findable by position
   // without looking.

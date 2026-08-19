@@ -1,7 +1,9 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { AttachedMaterial, MaterialLimits } from '../../lib/api/materialsApi';
+import { portraitOf } from '../../lib/archetypes/portraits';
 import { color, radius, space, type } from '../../theme/tokens';
+import { ArchetypeCard, AuthorCard } from './ArchetypeCard';
 import { DeckAttach } from './DeckAttach';
 
 /**
@@ -131,12 +133,6 @@ function counted(n: number): string {
   return COUNTED[n] ?? String(n);
 }
 
-/** "first", "second" — the chair, said the way somebody would say it. */
-const CHAIRS = ['first', 'second', 'third', 'fourth', 'fifth'] as const;
-
-function chair(index: number): string {
-  return CHAIRS[index] ?? `${index + 1}th`;
-}
 
 export function PanelSetup({
   room,
@@ -158,78 +154,53 @@ export function PanelSetup({
         Who is in the room
       </Text>
 
-      <View style={styles.group}>
-        {room.archetypes.map((archetype, index) => {
+      {/*
+        A horizontal rail of cards rather than a vertical list of text rows.
+        The rows were measured on a device with three of three seated and read
+        as *status*: the architect concluded the panel could not be changed at
+        all. It always could — taking somebody out is how you make room — but a
+        row of text announces nothing, while a card with a face and a badge is
+        obviously a thing you pick.
+
+        Horizontal because eight full-width cards would push the deck and the
+        difficulty dial off the bottom of a screen that has to be taken in at
+        once before anybody presses Start.
+      */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.rail}
+        // The rail is a list of buttons; the gesture belongs to the cards.
+        accessibilityRole="list"
+      >
+        {room.archetypes.map((archetype) => {
           const seat = seated.indexOf(archetype.name);
           const isSeated = seat >= 0;
-          // A full room still lets go of somebody, or the cap is a trap: the
-          // only way out would be starting over.
-          const closed = full && !isSeated;
 
           return (
-            <View key={archetype.name}>
-              {index > 0 && <View style={styles.hairline} />}
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ selected: isSeated, disabled: closed }}
-                disabled={closed}
-                accessibilityLabel={
+            <ArchetypeCard
+              key={archetype.name}
+              title={archetype.title}
+              blurb={archetype.blurb}
+              seat={isSeated ? seat + 1 : null}
+              // A full room closes the *unseated* cards only. Closing the
+              // seated ones too would make the cap a trap with no way out but
+              // starting over.
+              closed={full && !isSeated}
+              portrait={portraitOf(archetype.name)}
+              onPress={() =>
+                onSeatedChange(
                   isSeated
-                    ? `${archetype.title}, seated ${chair(seat)}`
-                    : `${archetype.title}, not seated`
-                }
-                onPress={() =>
-                  onSeatedChange(
-                    isSeated
-                      ? seated.filter((name) => name !== archetype.name)
-                      : [...seated, archetype.name]
-                  )
-                }
-                style={({ pressed }) => [
-                  styles.row,
-                  pressed && styles.pressed,
-                  closed && styles.closed,
-                ]}
-              >
-                <View style={styles.rowText}>
-                  <Text style={styles.rowTitle}>{archetype.title}</Text>
-                  <Text style={styles.rowDetail}>{archetype.blurb}</Text>
-                </View>
-                {isSeated && <Text style={styles.seat}>{chair(seat)}</Text>}
-              </Pressable>
-            </View>
+                    ? seated.filter((name) => name !== archetype.name)
+                    : [...seated, archetype.name]
+                )
+              }
+            />
           );
         })}
 
-        <View style={styles.hairline} />
-
-        {/*
-          Shown even where the plan cannot use it. `may_author` is published
-          false rather than omitted precisely so a picker can say the capability
-          exists — hiding it is how nobody ever learns it is there. A fact and a
-          plan name, never a locked door with a price on it: §4.5 keeps the
-          upsell out of the way of a rehearsal.
-        */}
-        <View style={styles.row}>
-          <View style={styles.rowText}>
-            <Text style={styles.rowTitle}>Write your own</Text>
-            <Text style={styles.rowDetail}>
-              Somebody this product has never met, described in your words.
-            </Text>
-          </View>
-          {/*
-            Deliberately NOT dimmed. A row at 40% opacity is nearly a hidden
-            row, and the entire reason `may_author` is published false rather
-            than omitted is so somebody learns the capability exists. "On Pro"
-            carries the state; fading the text would carry it twice and cost
-            the legibility that was the point.
-
-            Not pressable either, at either value: authoring has no endpoint
-            (#65), and a control that opens nothing is worse than a statement.
-          */}
-          <Text style={styles.aside}>{room.mayAuthor ? 'Yours' : 'On Pro'}</Text>
-        </View>
-      </View>
+        <AuthorCard yours={room.mayAuthor} />
+      </ScrollView>
 
       {/* Belongs to the roster above it, so it sits on the same left edge
           rather than centred under a left-aligned card. */}
@@ -339,9 +310,16 @@ function seatsLine(room: Room, taken: number): string {
     (first) => first.toUpperCase()
   );
 
-  return room.upgradeSeats === null
-    ? `${held}.`
-    : `${held}. Pro seats ${counted(room.upgradeSeats)}.`;
+  const tier =
+    room.upgradeSeats === null ? '' : ` Pro seats ${counted(room.upgradeSeats)}.`;
+
+  // The way out, said only when it is needed. A full room dims every
+  // alternative, which reads as permanently locked rather than as "free a seat
+  // first" — and the swap was always allowed. Measured on a device: three of
+  // three seated, and no way to tell the roster was still a control.
+  const swap = taken >= room.seats ? ' Tap someone to swap them out.' : '';
+
+  return `${held}.${swap}${tier}`;
 }
 
 /**
@@ -433,7 +411,19 @@ const styles = StyleSheet.create({
    * contrast floor, but somebody has to be able to read *which* archetype they
    * cannot seat, or the cap reads as the list being broken.
    */
-  closed: { opacity: 0.55 },
+  // Not lower. A full room dims five rows at once, and at the depth this was
+  // they read as permanently unavailable rather than as waiting for a seat —
+  // which is how somebody concludes the panel cannot be changed at all.
+  closed: { opacity: 0.72 },
+
+  // Breaks the screen margin on purpose: a rail that stopped at the gutter
+  // reads as a finished row, and nothing about it invites a swipe. Running the
+  // last card off the edge is what says there is more.
+  rail: {
+    gap: space.snug,
+    paddingHorizontal: space.screen,
+    paddingBottom: space.hair,
+  },
 
   rungs: {
     flexDirection: 'row',
