@@ -13,6 +13,7 @@ import {
 import { createPanelsApi, type Catalogue } from '../../lib/api/panelsApi';
 import { createBalanceApi, type Held } from '../../lib/api/balanceApi';
 import { API_BASE_URL, auth } from '../../lib/auth';
+import { TimeInTheRoom } from '../../components/ui/TimeInTheRoom';
 import { SignedOut } from '../../lib/auth/session';
 import { color, space, type } from '../../theme/tokens';
 
@@ -388,17 +389,7 @@ function Standing({ held }: { held: Held | null }) {
 
   return (
     <View style={styles.standing}>
-      {held && (
-        <Text style={styles.held}>
-          {/* §4.6: framed generously, as what is there rather than what is
-              left. `TablePlan` set the register — "15 minutes in the room, on
-              us" — and a screen that said "remaining" would be the depleting
-              counter that section forbids, one word at a time. */}
-          {held.any
-            ? `${held.minutes} minutes of interrogation available.`
-            : 'No interrogation time available right now.'}
-        </Text>
-      )}
+      <TimeInTheRoom minutes={held.minutes} any={held.any} />
     </View>
   );
 }
@@ -423,6 +414,5 @@ const styles = StyleSheet.create({
 
   refused: { ...type.bodyMd, color: color.onSurfaceVariant, textAlign: 'center' },
 
-  standing: { gap: space.snug, marginBottom: space.section },
-  held: { ...type.bodyMd, color: color.onSurfaceVariant },
+  standing: { marginBottom: space.section },
 });
