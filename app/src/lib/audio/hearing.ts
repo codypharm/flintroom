@@ -61,13 +61,40 @@ export const CLEARLY_SPEECH_DBFS = -30;
 export const NOTHING_DBFS = -70;
 
 /**
+ * How long one reading covers, in milliseconds.
+ *
+ * **Derived, because guessing it is what broke this.** `uplink.FRAME_SAMPLES`
+ * is 320 at 16 kHz, so the recorder delivers a buffer every 20ms — and every
+ * window here was originally sized in the belief that it delivered one every
+ * 100ms. The result was a classifier judging four hundred milliseconds of room
+ * fifty times a second, which on a device read as the warning "jerking".
+ *
+ * Stated here rather than imported so `audio/` does not depend on `voice/`,
+ * and asserted against the real frame in `hearing.test.ts`.
+ */
+export const BUFFER_MS = 20;
+
+/**
  * How many readings make a window worth judging.
  *
- * At the room's 100ms buffers, twenty is two seconds — long enough to contain
- * both a syllable and the gaps around it, which is exactly what the floor
- * estimate needs.
+ * Half a second — long enough to contain both a syllable and the gaps around
+ * it, which is exactly what the floor estimate needs. Below that the quiet
+ * quarter is as likely to be the middle of a word as the room.
  */
-const ENOUGH = 8;
+export const ENOUGH = 25;
+
+/**
+ * How much of the recent past the indicator judges.
+ *
+ * Two seconds, which holds the pauses inside a sentence without lagging so far
+ * behind that somebody who has stopped talking is still shown as heard.
+ *
+ * Lives here rather than in the screen because it is a property of the
+ * classifier — the window and the thresholds were tuned against each other,
+ * and a caller free to pass a different one can silently make `hearing` mean
+ * something else.
+ */
+export const HEARD_WINDOW = 100;
 
 export function hearing(recentDbfs: readonly number[]): Hearing {
   if (recentDbfs.length < ENOUGH) {
@@ -128,3 +155,49 @@ export function loudness(recentDbfs: readonly number[]): number {
 
 /** The rise, in dB, that fills the indicator. Roughly a raised speaking voice. */
 const FULL_BAR_DB = 22;
+
+/**
+ * How many consecutive readings a change must survive before it is shown.
+ *
+ * **A window length alone cannot fix this.** However long the window, a signal
+ * sitting exactly on `FAINT_OVER_FLOOR_DB` crosses it constantly, and the one
+ * state this classifier drives is a line of text that interrupts somebody
+ * mid-sentence. A warning that appears and disappears is worse than no warning:
+ * it teaches people to ignore the one that matters, which is the same failure
+ * the absolute-band version already committed once.
+ *
+ * Forty readings is 0.8s at `BUFFER_MS`. Long enough that nothing flickers,
+ * short enough that somebody who has genuinely drifted out of range is told
+ * about it while it is still useful to them.
+ */
+export const STEADY_READINGS = 40;
+
+export interface Steadied {
+  /** What the room is currently saying. */
+  shown: Hearing;
+  /** How many readings in a row have disagreed with it. */
+  agreeing: number;
+}
+
+/**
+ * What to show, given what is shown and what was just read.
+ *
+ * Symmetric on purpose. A warning that vanishes on one loud buffer flickers
+ * exactly as badly as one that appears on one quiet one, so a change out of the
+ * warning has to hold for as long as a change into it.
+ *
+ * Pure and counter-based rather than timed, so the screen holds no clock and a
+ * test needs no fake one — and so the hysteresis is measured in the same units
+ * as everything else here.
+ */
+export function steadied(state: Steadied, reading: Hearing): Steadied {
+  if (reading === state.shown) {
+    return { shown: state.shown, agreeing: 0 };
+  }
+
+  const agreeing = state.agreeing + 1;
+
+  return agreeing >= STEADY_READINGS
+    ? { shown: reading, agreeing: 0 }
+    : { shown: state.shown, agreeing };
+}

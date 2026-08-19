@@ -12,7 +12,14 @@ import {
   InterrogationRoom,
   type Seat,
 } from '../components/modules/InterrogationRoom';
-import { hearing, loudness, type Hearing } from '../lib/audio/hearing';
+import {
+  HEARD_WINDOW,
+  hearing,
+  loudness,
+  steadied,
+  type Hearing,
+  type Steadied,
+} from '../lib/audio/hearing';
 import { ensureMicrophone } from '../lib/audio/permission';
 import { createAccountApi } from '../lib/api/accountApi';
 import { RecordingDisclosure } from '../components/modules/RecordingDisclosure';
@@ -72,15 +79,6 @@ const SHORTEST_WINDOW = 30;
 const KEEP_AWAKE = 'flintroom-interrogation';
 
 /**
- * How much of the recent past the floor indicator judges.
- *
- * Twenty buffers at 100ms is two seconds, which is long enough to contain the
- * pauses inside a sentence and short enough that the indicator still tracks
- * somebody starting and stopping.
- */
-const HEARD_WINDOW = 20;
-
-/**
  * The beat between the room ending and the debrief opening.
  *
  * Not dead time: the last thing the panel said stays on screen while the light
@@ -120,6 +118,16 @@ export default function InterrogationScreen() {
   const recorder = useRef<AudioRecorder | null>(null);
   const session = useRef<string | null>(null);
   const levels = useRef<number[]>([]);
+  /**
+   * What the indicator is saying, and how hard the room is arguing with it.
+   *
+   * A ref rather than state because it changes fifty times a second and only
+   * occasionally means anything — `steadied` is what turns that into the handful
+   * of transitions worth re-rendering for. Reported from a device as the warning
+   * "jerking", which is what a boundary signal looks like when every reading is
+   * allowed to change the screen.
+   */
+  const heardSteadily = useRef<Steadied>({ shown: 'silent', agreeing: 0 });
   const opened = useRef(0);
   /** Guards the hand-off: a close and an End both arrive, and only one may navigate. */
   const leaving = useRef(false);
@@ -277,13 +285,32 @@ export default function InterrogationScreen() {
             setSpeaking(said.speaker);
             setFloor('panel');
           },
+          // Both halves have happened: the room sent its last frame and the
+          // phone has played it. `joinRoom` is what waits for the second —
+          // acting on the first alone put the speaker down while their voice
+          // was still coming out of the loudspeaker.
           onTurnFinished: () => {
+            setSpeaking(null);
+            setFloor('yours');
+          },
+          // Cut off mid-question. No `turn_finished` follows a barge-in, so
+          // without this the interrupted panelist stays lit for the rest of
+          // the room.
+          onDiscardPlayback: () => {
             setSpeaking(null);
             setFloor('yours');
           },
           onLevel: (dbfs) => {
             levels.current = [...levels.current, dbfs].slice(-HEARD_WINDOW);
-            setHeard(hearing(levels.current));
+            // The bar tracks every buffer — it is an amplitude and lagging it
+            // would make it feel disconnected from the voice. The *warning*
+            // does not: it interrupts somebody mid-sentence, so it may only
+            // change once the room has said the same thing for a while.
+            heardSteadily.current = steadied(
+              heardSteadily.current,
+              hearing(levels.current)
+            );
+            setHeard(heardSteadily.current.shown);
             setVolume(loudness(levels.current));
           },
           onEnding: finish,

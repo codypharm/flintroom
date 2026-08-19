@@ -54,11 +54,23 @@ let order: string[] = [];
 
 class FakeQueueSource {
   readonly enqueued: unknown[] = [];
+  readonly dequeued: string[] = [];
+
+  onBufferEnded:
+    | ((event: { bufferId: string; isLastBufferInQueue: boolean }) => void)
+    | null = null;
 
   connect(): void {}
   enqueueBuffer(buffer: unknown): string {
     this.enqueued.push(buffer);
     return '1';
+  }
+  dequeueBuffer(bufferId: string): void {
+    this.dequeued.push(bufferId);
+  }
+  /** The loudspeaker actually going quiet — the last buffer played out. */
+  drain(): void {
+    this.onBufferEnded?.({ bufferId: '1', isLastBufferInQueue: true });
   }
   clearBuffers(): void {
     order.push('playback.discard');
@@ -209,5 +221,98 @@ describe('when the room ends', () => {
     await Promise.resolve();
 
     expect(order).toEqual(['uplink.stop', 'playback.stop', 'ending']);
+  });
+});
+
+describe('handing the floor back', () => {
+  /**
+   * Reported from a device: the speaking panelist "quickly takes the person out
+   * of focus even when they are still speaking".
+   *
+   * Two signals arrive and neither is the answer on its own. `turn_finished`
+   * says the server sent its last frame — but synthesis runs ahead of playback,
+   * which is what makes barge-in possible, so seconds of the panelist's voice
+   * are still queued on the phone. An empty queue says nothing is left to play
+   * — but that is also what a network stall looks like mid-sentence, which
+   * would invite the presenter to talk over the end of a question.
+   *
+   * Together they are exact, and this is the only place both can be seen.
+   */
+  async function speaking() {
+    const floor: string[] = [];
+    const context = new FakeContext();
+    const recorder = new FakeRecorder();
+
+    const joining = joinRoom({
+      url: 'wss://api.example/v1/sessions/room-1/stream',
+      ticket: 'tk_abc',
+      context: context as never,
+      recorder: recorder as never,
+      onTurnFinished: () => floor.push('yours'),
+      onDiscardPlayback: () => floor.push('interrupted'),
+      socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
+    });
+
+    const socket = FakeSocket.last!;
+    socket.onopen?.();
+    const room = await joining;
+
+    // A panelist speaks: one frame of their voice arrives and is queued.
+    socket.receive(toPcm16(new Float32Array([0.1, 0.2])));
+
+    return { room, socket, floor, source: () => context.source! };
+  }
+
+  it('waits for the audio to finish, not just for the server to stop sending', () => {
+    // THE BUG. Acting here put the speaker down mid-sentence.
+    return speaking().then(({ socket, floor }) => {
+      socket.receive(JSON.stringify({ type: 'turn_finished' }));
+
+      expect(floor).toEqual([]);
+    });
+  });
+
+  it('hands it over once the last frame has actually played', () => {
+    return speaking().then(({ socket, floor, source }) => {
+      socket.receive(JSON.stringify({ type: 'turn_finished' }));
+      source().drain();
+
+      expect(floor).toEqual(['yours']);
+    });
+  });
+
+  it('does not hand it over on a stall the server has not finished', () => {
+    // The queue draining mid-utterance is the network, not the end of a turn.
+    return speaking().then(({ socket, floor, source }) => {
+      source().drain();
+
+      expect(floor).toEqual([]);
+
+      socket.receive(JSON.stringify({ type: 'turn_finished' }));
+      expect(floor).toEqual(['yours']);
+    });
+  });
+
+  it('hands it over exactly once', () => {
+    // Both signals can arrive more than once — a stalled queue drains, refills
+    // and drains again. The floor may only be given back for one of them.
+    return speaking().then(({ socket, floor, source }) => {
+      socket.receive(JSON.stringify({ type: 'turn_finished' }));
+      source().drain();
+      source().drain();
+
+      expect(floor).toEqual(['yours']);
+    });
+  });
+
+  it('puts an interrupted panelist down even though no turn finishes', () => {
+    // A cancelled turn deliberately never announces the floor — the person
+    // holding it is already talking. Without this the panelist stays lit for
+    // the rest of the room.
+    return speaking().then(({ socket, floor }) => {
+      socket.receive(JSON.stringify({ type: 'discard_playback' }));
+
+      expect(floor).toEqual(['interrupted']);
+    });
   });
 });

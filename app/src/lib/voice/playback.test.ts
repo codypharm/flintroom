@@ -70,6 +70,11 @@ class FakeQueueSource {
   finish(bufferId: string): void {
     this.onBufferEnded?.({ bufferId, isLastBufferInQueue: false });
   }
+
+  /** The same, for the last buffer there is — the room going quiet. */
+  drain(bufferId: string): void {
+    this.onBufferEnded?.({ bufferId, isLastBufferInQueue: true });
+  }
   cleared = 0;
   connectedTo: unknown = null;
 
@@ -293,5 +298,72 @@ describe('holding buffers', () => {
     source.finish('1');
 
     expect(source.dequeued).toEqual(['1']);
+  });
+});
+
+describe('reporting that the room has gone quiet', () => {
+  /**
+   * Reported from a device: the speaking panelist "quickly takes the person out
+   * of focus even when they are still speaking".
+   *
+   * `turn_finished` says the *server* has sent its last frame, not that the
+   * phone has played it. Synthesis runs ahead of playback by design — that is
+   * what makes barge-in possible at all — so the caption's speaker was being
+   * released while their voice was still coming out of the loudspeaker.
+   *
+   * The queue node already knows. It has always reported `isLastBufferInQueue`
+   * and this module has always thrown it away.
+   */
+  function drainable() {
+    const context = new FakeContext(16000);
+    const drained: number[] = [];
+    const playback = createPlayback({
+      context: context as never,
+      onDrained: () => drained.push(1),
+    });
+
+    return { playback, drained, source: () => context.sources[0] };
+  }
+
+  it('says when the last buffer has actually finished playing', () => {
+    const { playback, drained, source } = drainable();
+
+    playback.enqueue(frame([0.1, 0.2]));
+    source().drain('1');
+
+    expect(drained).toEqual([1]);
+  });
+
+  it('says nothing for a buffer with more behind it', () => {
+    // Mid-utterance: a panelist is still talking and the screen must not move.
+    const { playback, drained, source } = drainable();
+
+    playback.enqueue(frame([0.1]));
+    playback.enqueue(frame([0.2]));
+    source().finish('1');
+
+    expect(drained).toEqual([]);
+  });
+
+  it('still releases the buffer it reports on', () => {
+    // The leak this callback sits beside: the node holds every buffer it has
+    // played until told otherwise, and rooms died after about three replies.
+    // Reporting must not quietly replace the release.
+    const { playback, source } = drainable();
+
+    playback.enqueue(frame([0.1]));
+    source().drain('1');
+
+    expect(source().dequeued).toEqual(['1']);
+  });
+
+  it('works for a room that never asked to be told', () => {
+    // `onDrained` is optional, like every other callback on this seam.
+    const context = new FakeContext(16000);
+    const playback = createPlayback({ context: context as never });
+
+    playback.enqueue(frame([0.1]));
+
+    expect(() => context.sources[0].drain('1')).not.toThrow();
   });
 });

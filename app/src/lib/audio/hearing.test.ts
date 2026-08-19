@@ -1,4 +1,14 @@
-import { CLEARLY_SPEECH_DBFS, hearing, loudness } from './hearing';
+import {
+  BUFFER_MS,
+  CLEARLY_SPEECH_DBFS,
+  ENOUGH,
+  HEARD_WINDOW,
+  STEADY_READINGS,
+  hearing,
+  loudness,
+  steadied,
+  type Steadied,
+} from './hearing';
 
 /**
  * What the floor indicator is allowed to claim.
@@ -10,13 +20,17 @@ import { CLEARLY_SPEECH_DBFS, hearing, loudness } from './hearing';
  * own noise is not a quiet voice.
  */
 
-/** A window of readings all at one level. */
-function steady(dbfs: number, samples = 20): number[] {
+/** A window of readings all at one level.
+ *
+ * A *full* window by default. The recorder delivers a buffer every 20ms and the
+ * screen keeps `HEARD_WINDOW` of them, so anything shorter is a room that has
+ * only just opened — which `hearing` deliberately refuses to judge. */
+function steady(dbfs: number, samples = HEARD_WINDOW): number[] {
   return Array.from({ length: samples }, () => dbfs);
 }
 
 /** A quiet room with a voice in it: gaps at the floor, syllables above it. */
-function speech(floor: number, over: number, samples = 20): number[] {
+function speech(floor: number, over: number, samples = HEARD_WINDOW): number[] {
   return Array.from({ length: samples }, (_, index) =>
     index % 3 === 0 ? floor : floor + over
   );
@@ -87,4 +101,73 @@ it('never reports more than a full bar', () => {
   // Past a full bar there is nothing left to show, and an unclamped value would
   // drive a bar out of its own container.
   expect(loudness([...steady(-60, 12), -5])).toBe(1);
+});
+
+/**
+ * The warning has to hold still.
+ *
+ * Reported from a device: "the text that says it cannot hear me keeps
+ * jerking". Two causes, and the first is arithmetic. The window was written
+ * believing the recorder delivered 100ms buffers; it delivers 20ms ones
+ * (`uplink.FRAME_SAMPLES` is 320 at 16 kHz), so what was meant to be two
+ * seconds of evidence was four hundred milliseconds of it, re-judged fifty
+ * times a second.
+ *
+ * The second is that no window length fixes a signal sitting exactly on the
+ * boundary. A warning that appears and disappears is worse than no warning, so
+ * a change has to survive before it is shown.
+ */
+
+it('needs a change to hold before it will say it', () => {
+  // One faint reading in a room that has been heard is a syllable boundary, not
+  // a problem worth interrupting somebody about.
+  let state: Steadied = { shown: 'hearing', agreeing: 0 };
+
+  state = steadied(state, 'faint');
+
+  expect(state.shown).toBe('hearing');
+});
+
+it('says it once the change has really held', () => {
+  let state: Steadied = { shown: 'hearing', agreeing: 0 };
+
+  for (let reading = 0; reading < STEADY_READINGS; reading += 1) {
+    state = steadied(state, 'faint');
+  }
+
+  expect(state.shown).toBe('faint');
+});
+
+it('forgets a change that does not last', () => {
+  // THE FLICKER. Alternating readings must accumulate nothing at all, or the
+  // warning arrives on the first run of luck rather than on a real condition.
+  let state: Steadied = { shown: 'hearing', agreeing: 0 };
+
+  for (let reading = 0; reading < STEADY_READINGS * 4; reading += 1) {
+    state = steadied(state, reading % 2 === 0 ? 'faint' : 'hearing');
+  }
+
+  expect(state.shown).toBe('hearing');
+});
+
+it('holds the warning up until it is properly over', () => {
+  // Symmetric, deliberately. A warning that vanishes the instant one loud
+  // buffer lands flickers exactly as badly as one that appears that way.
+  let state: Steadied = { shown: 'faint', agreeing: 0 };
+
+  state = steadied(state, 'hearing');
+  expect(state.shown).toBe('faint');
+
+  for (let reading = 0; reading < STEADY_READINGS; reading += 1) {
+    state = steadied(state, 'hearing');
+  }
+  expect(state.shown).toBe('hearing');
+});
+
+it('judges two seconds of the room, not two hundred milliseconds of it', () => {
+  // The arithmetic bug, stated as a property so it cannot come back: the
+  // window is a duration, and it has to be derived from the buffer the
+  // recorder actually delivers rather than from the one somebody remembered.
+  expect(HEARD_WINDOW * BUFFER_MS).toBeGreaterThanOrEqual(1500);
+  expect(ENOUGH * BUFFER_MS).toBeGreaterThanOrEqual(400);
 });

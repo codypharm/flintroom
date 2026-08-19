@@ -42,6 +42,16 @@ export interface RoomOptions {
    */
   onTurnFinished?: () => void;
   /**
+   * A panelist was cut off — the presenter took the floor by talking over them.
+   *
+   * Separate from `onTurnFinished`, and the room deliberately never sends both
+   * for one turn: a cancelled turn does not announce the floor, because the
+   * person now holding it is already speaking. But something still has to put
+   * the interrupted panelist down, or they stay lit on screen having been
+   * silenced — which reads as a room that has lost track of who is talking.
+   */
+  onDiscardPlayback?: () => void;
+  /**
    * How loud each captured buffer was, in dBFS.
    *
    * From the uplink, which already holds it. The screen turns a window of
@@ -60,7 +70,40 @@ export interface Room {
 }
 
 export async function joinRoom(options: RoomOptions): Promise<Room> {
-  const playback = createPlayback({ context: options.context });
+  /**
+   * The floor comes back when **both** halves say so, and neither is enough.
+   *
+   * `turn_finished` means the server sent its last frame. Synthesis runs ahead
+   * of playback — that is what makes barge-in possible — so acting on it alone
+   * took the speaking panelist off the screen while their voice was still
+   * coming out of the phone. Reported from a device as losing focus "even when
+   * they are still speaking".
+   *
+   * An empty playback queue alone is no better, and `connection.ts` already
+   * says why: it is indistinguishable from the network stalling mid-sentence,
+   * which would invite the presenter to talk over the end of a question.
+   *
+   * Together they are exact. Nothing more is coming, and nothing is left to
+   * play.
+   */
+  let sent = false;
+  let quiet = true;
+
+  const handOver = () => {
+    if (!sent || !quiet) {
+      return;
+    }
+    sent = false;
+    options.onTurnFinished?.();
+  };
+
+  const playback = createPlayback({
+    context: options.context,
+    onDrained: () => {
+      quiet = true;
+      handOver();
+    },
+  });
 
   // Declared before the connection so the handlers below can close over it,
   // and assigned after, because it needs somewhere to send.
@@ -94,10 +137,28 @@ export async function joinRoom(options: RoomOptions): Promise<Room> {
     url: options.url,
     ticket: options.ticket,
     socketFactory: options.socketFactory,
-    onAudio: (pcm) => playback.enqueue(pcm),
+    onAudio: (pcm) => {
+      // A frame arriving is the room no longer being quiet. Set here rather
+      // than on the caption, because a caption goes out ahead of its audio and
+      // a turn whose synthesis fails would otherwise leave the floor held by
+      // somebody who never spoke.
+      quiet = false;
+      playback.enqueue(pcm);
+    },
     onTranscript: options.onTranscript,
-    onTurnFinished: options.onTurnFinished,
-    onDiscardPlayback: () => playback.discard(),
+    onTurnFinished: () => {
+      sent = true;
+      handOver();
+    },
+    onDiscardPlayback: () => {
+      // Barge-in. The queue is emptied without any buffer reaching its end, so
+      // no drain will ever be reported for what was dropped — and the floor is
+      // the presenter's already, by the act of interrupting.
+      quiet = true;
+      sent = false;
+      playback.discard();
+      options.onDiscardPlayback?.();
+    },
     onEnding: teardown,
   });
 

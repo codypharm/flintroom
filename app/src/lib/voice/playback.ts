@@ -52,7 +52,24 @@ export interface Playback {
   stop(): void;
 }
 
-export function createPlayback({ context }: { context: PlaybackContext }): Playback {
+export interface PlaybackOptions {
+  context: PlaybackContext;
+  /**
+   * The queue has emptied — the loudspeaker has actually gone quiet.
+   *
+   * **Not the same thing as the turn being over, and the difference was
+   * visible on a device.** `turn_finished` says the server sent its last frame;
+   * synthesis runs ahead of playback by design, which is what makes barge-in
+   * possible, so the panelist was released from the screen while their voice
+   * was still coming out of the phone.
+   *
+   * Nor is this on its own enough to hand the floor back: an empty queue is
+   * also what a network stall looks like. `joinRoom` waits for both.
+   */
+  onDrained?: () => void;
+}
+
+export function createPlayback({ context, onDrained }: PlaybackOptions): Playback {
   const source = context.createBufferQueueSource();
   source.connect(context.destination);
 
@@ -74,7 +91,15 @@ export function createPlayback({ context }: { context: PlaybackContext }): Playb
   // this client that counts up and never comes down. Rooms died after about
   // three replies with the phone closing the socket, which is what that looks
   // like from the far end.
-  source.onBufferEnded = ({ bufferId }) => source.dequeueBuffer(bufferId);
+  source.onBufferEnded = ({ bufferId, isLastBufferInQueue }) => {
+    source.dequeueBuffer(bufferId);
+    // Released first, and reported second. The release is what keeps a room
+    // alive past three replies; a listener that threw would otherwise take it
+    // down with it.
+    if (isLastBufferInQueue) {
+      onDrained?.();
+    }
+  };
 
   source.start(0, 0);
 
