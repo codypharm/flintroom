@@ -60,6 +60,21 @@ class ClientChannel(Protocol):
         """The panel is done; the floor is the presenter's again."""
         ...
 
+    async def attending(self, state: str) -> None:
+        """What the room is doing while the floor is the presenter's.
+
+        `listening`, `heard` or `working` — see `events.Attention`. Only the
+        server can answer it, because a final arriving is invisible to the
+        phone, so a device left to infer it would be timing a network and would
+        be wrong in exactly the case that matters.
+
+        **This method was added to the implementation and not to this protocol,
+        and nothing noticed.** The relay called it, every test passed, and a
+        type checker found it an hour later — which is the whole argument for
+        having one pointed at this file.
+        """
+        ...
+
     async def discard_playback(self) -> None:
         """Drop whatever is buffered and unplayed.
 

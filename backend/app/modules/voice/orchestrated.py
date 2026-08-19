@@ -554,7 +554,7 @@ class OrchestratedChannel:
             # Unconditional, and that is the safety net. See `_attend`.
             await self._attend(out, always=True)
 
-    async def _listen(self, out: asyncio.Queue[VoiceEvent | None]) -> None:
+    async def _listen(self, out: asyncio.Queue[VoiceEvent | BaseException | None]) -> None:
         """Read transcription forever; start, and stop, turns as it goes."""
         try:
             async for result in self._transcription.results():
@@ -865,7 +865,7 @@ class OrchestratedChannel:
         self,
         speaking: asyncio.Task | None,
         said: str,
-        out: asyncio.Queue[VoiceEvent | None],
+        out: asyncio.Queue[VoiceEvent | BaseException | None],
         routed: Routed | None,
         finding: Finding | None,
         thin_opening: bool = False,
