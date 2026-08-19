@@ -158,6 +158,26 @@ class Settings(BaseSettings):
     #: which fails audibly rather than silently.
     elevenlabs_default_voice_id: str | None = None
 
+    #: What the panel is synthesised with while somebody is waiting on it.
+    #:
+    #: Flash v2.5, measured at 0.887s to first byte. The turn already costs
+    #: 1.38s and the transcriber's silence threshold adds 0.7s before that, so
+    #: a listener waits ~2.1s against the ~1.5s at which `CLAUDE.md` says the
+    #: illusion breaks. There is nothing here to spend.
+    speech_model: str = "eleven_flash_v2_5"
+
+    #: What the room uses for lines nobody is waiting on.
+    #:
+    #: Eleven v3, measured 2026-08-19: it **performs** audio tags where Flash
+    #: reads them aloud, and costs 1.280s to first byte and exactly twice as
+    #: many credits per character (`docs/voice-cost.md`). Both prices are real,
+    #: and the latency one is only survivable where there is no listener on the
+    #: clock — the opening line, spoken before anybody has said anything, and
+    #: the debrief coach, which is turn-based and unmetered.
+    #:
+    #: Set to the same value as `speech_model` to turn the split off entirely.
+    expressive_speech_model: str = "eleven_v3"
+
     #: How long the user must be quiet before the engine calls their turn over.
     #:
     #: **Settable because it cannot be measured.** It sits directly inside

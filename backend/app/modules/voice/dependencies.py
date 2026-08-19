@@ -52,6 +52,10 @@ class RoomParts:
     transcriber: Transcriber | None
     model: PanelModel | None
     speaker: Speaker | None
+    #: The opener's voice. Optional and separate: `OrchestratedChannel` falls
+    #: back to `speaker`, so a deployment with one synthesiser still opens out
+    #: loud — it just does so without the expressiveness.
+    opener_speaker: Speaker | None = None
 
     #: Stateless and process-wide, unlike the `Auditor` built around it — that
     #: accumulates one session's figures and is made per stream in
@@ -66,6 +70,7 @@ def get_room_parts(websocket: WebSocket) -> RoomParts:
         transcriber=getattr(state, "transcriber", None),
         model=getattr(state, "panel_model", None),
         speaker=getattr(state, "speaker", None),
+        opener_speaker=getattr(state, "expressive_speaker", None),
         reader=getattr(state, "claim_reader", None),
     )
 

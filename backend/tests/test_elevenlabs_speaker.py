@@ -19,12 +19,13 @@ import pytest
 
 from app.core.config import Settings
 from app.core.errors import ProviderUnavailable
-from app.modules.voice.speakers import build_speaker
+from app.modules.voice.speakers import build_expressive_speaker, build_speaker
 from app.agents.voices import Voice
 from app.modules.voice.speakers.elevenlabs import (
     AUDIO_FORMAT,
     ELEVENLABS_VOICES,
     DEFAULT_SPEECH_MODEL,
+    TAG_PERFORMING_MODELS,
     ElevenLabsSpeaker,
 )
 
@@ -296,3 +297,47 @@ async def test_a_panelist_never_arrives_half_a_sample_out_of_step():
 
     # Nothing lost but a trailing half-sample, if the vendor ended mid-sample.
     assert heard == body[: len(body) - len(body) % 2]
+
+
+async def test_the_room_has_two_voices_and_they_are_not_the_same_model():
+    """#34. One is on the latency budget; the other is not.
+
+    Measured 2026-08-19 (`docs/voice-cost.md`): Eleven v3 performs audio tags
+    where Flash reads them aloud, and costs 0.39s more to first byte and
+    exactly twice the credits per character. A listener is already waiting
+    ~2.1s against the ~1.5s at which `CLAUDE.md` says the illusion breaks, so
+    the expensive model can only go where nobody is waiting — the opening line
+    and the debrief coach.
+
+    Asserted through the factories rather than by reading the constants,
+    because the failure worth catching is a deployment that quietly wires both
+    to the same object and loses the distinction without anything raising.
+    """
+    settings = Settings(
+        _env_file=None, **BASE_ENVIRONMENT, ELEVENLABS_API_KEY="secret"
+    )
+    http = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200))
+    )
+
+    quick = build_speaker(settings, http)
+    unhurried = build_expressive_speaker(settings, http)
+
+    assert quick is not None and unhurried is not None
+    assert quick._model != unhurried._model
+    assert unhurried._model in TAG_PERFORMING_MODELS
+    # The tag stripper is what makes the split safe in the other direction: a
+    # line written for the expressive voice must not be read aloud verbatim if
+    # it is ever spoken by the quick one.
+    assert quick._model not in TAG_PERFORMING_MODELS
+
+
+async def test_neither_voice_exists_without_a_key():
+    """Both degrade together, and the room already knows how to be silent."""
+    settings = Settings(_env_file=None, **BASE_ENVIRONMENT)
+    http = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200))
+    )
+
+    assert build_speaker(settings, http) is None
+    assert build_expressive_speaker(settings, http) is None

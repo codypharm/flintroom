@@ -186,8 +186,21 @@ def get_coach_model(request: Request) -> CoachModel:
 
 
 def get_speaker(request: Request) -> Speaker:
-    """The process-wide synthesiser, shared with the room."""
-    speaker = getattr(request.app.state, "speaker", None)
+    """The voice the coach speaks in.
+
+    **The expressive one, and this is where it is cheapest.** #34 measured the
+    slower model at 0.39s to first byte and twice the credits per character —
+    the first price is what keeps it off interrogation turns, and the debrief
+    does not pay it: `docs/debrief-and-sparring.md` decision 5 makes coaching
+    turn-based HTTP rather than a live socket, so nobody is sitting in a room
+    waiting on it.
+
+    Falls back to the room's own synthesiser when no expressive one is
+    configured, so a deployment with one voice still coaches.
+    """
+    speaker = getattr(request.app.state, "expressive_speaker", None) or getattr(
+        request.app.state, "speaker", None
+    )
     if speaker is None:
         log.error("speaker_unconfigured")
         raise ProviderUnavailable(reason="speech_unconfigured")

@@ -97,6 +97,7 @@ class OrchestratedProvider:
         transcriber: Transcriber,
         model: PanelModel,
         speaker: Speaker | None = None,
+        opener_speaker: Speaker | None = None,
         grounding: Grounding | None = None,
         reader: ClaimReader | None = None,
         transcript: TranscriptStore | None = None,
@@ -115,6 +116,7 @@ class OrchestratedProvider:
         self._transcriber = transcriber
         self._model = model
         self._speaker = speaker
+        self._opener_speaker = opener_speaker
         self._grounding = grounding
         # The reader is process-wide and stateless; the `Auditor` built around
         # it is neither, so it is made per stream in `open()` rather than here.
@@ -139,6 +141,7 @@ class OrchestratedProvider:
                 transcription=transcription,
                 model=self._model,
                 speaker=self._speaker,
+                opener_speaker=self._opener_speaker,
                 grounding=self._grounding,
                 pressure=self.pressure,
                 # A fresh one per stream, never shared. An `Auditor` accumulates
@@ -182,6 +185,7 @@ class OrchestratedChannel:
         heartbeat_seconds: float = HEARTBEAT_SECONDS,
         floor: OpeningFloor | None = None,
         choose: Chooser | None = None,
+        opener_speaker: Speaker | None = None,
     ) -> None:
         self._panel = panel
         # Stamped on every `TurnContext` this channel builds. Defaulted to the
@@ -210,6 +214,12 @@ class OrchestratedChannel:
         # development configuration; a panel that cannot be tested without one
         # is not.
         self._speaker = speaker
+        # The opener's voice, and the only line in the room allowed to be slow.
+        # #34: v3 performs audio tags and costs 0.39s to first byte — which an
+        # interrogation turn cannot afford and a line spoken into silence can.
+        # Falls back to the ordinary speaker, so losing it costs the opener its
+        # texture rather than its existence.
+        self._opener_speaker = opener_speaker or speaker
         # The claims stay fixed for the room; only the transcript grows. Both are
         # rebuilt into a fresh `Grounding` each turn because it is frozen, which
         # is what stops a turn in flight seeing a reference set that moved under
@@ -394,8 +404,8 @@ class OrchestratedChannel:
             return
 
         await out.put(AgentTranscript(line, speaker=who.name))
-        if self._speaker is not None:
-            async for pcm in self._speaker.speak(text=line, voice=who.voice):
+        if self._opener_speaker is not None:
+            async for pcm in self._opener_speaker.speak(text=line, voice=who.voice):
                 await out.put(AgentAudio(pcm))
         await out.put(AgentFinished())
 

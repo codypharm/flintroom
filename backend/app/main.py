@@ -29,7 +29,7 @@ from app.modules.sessions.router import router as sessions_router
 from app.modules.sessions.runner import SessionFactory, SweepRunner
 from app.agents.claim_readers import build_claim_reader
 from app.agents.panel_models import build_panel_model
-from app.modules.voice.speakers import build_speaker
+from app.modules.voice.speakers import build_expressive_speaker, build_speaker
 from app.modules.voice.transcribers import build_transcriber
 from app.modules.voice.router import router as voice_router
 
@@ -89,6 +89,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.speaker = build_speaker(settings, http)
     if app.state.speaker is None:
         log.warning("speaker_unconfigured")
+    # The slow voice, for lines nobody is waiting on — the opening line and the
+    # debrief coach. Built beside the quick one rather than instead of it; see
+    # `build_expressive_speaker` and `docs/voice-cost.md` for what it costs.
+    app.state.expressive_speaker = build_expressive_speaker(settings, http)
 
     # Same trade as the provider above: a deployment with no bucket takes only
     # ingestion down, and refusing to boot over it would stop auth, balances and

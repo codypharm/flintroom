@@ -92,6 +92,7 @@ async def stream_session(
             transcriber=parts.transcriber,
             model=parts.model,
             speaker=parts.speaker,
+            opener_speaker=parts.opener_speaker,
             reader=parts.reader,
             # The factory, not `db`. The room's transcript is written from a task
             # running beside the relay's loop, and one `AsyncSession` cannot be

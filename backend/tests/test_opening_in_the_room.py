@@ -347,3 +347,60 @@ async def test_a_presenter_who_never_stops_is_eventually_interrogated():
     await room_until_composed(channel, model)
 
     assert model.composed_for, "the cap never fired"
+
+
+async def test_the_opener_is_spoken_by_the_unhurried_voice():
+    """#34. The room's two voices, and which line gets which.
+
+    Eleven v3 performs audio tags and is 0.39s slower to its first byte
+    (docs/voice-cost.md). An interrogation turn cannot afford that — the
+    listener is already waiting ~2.1s against a ~1.5s threshold — but the
+    opener is spoken into silence, before anybody has said a word, so there is
+    nobody to keep waiting. It is the one line in the room where expressiveness
+    is free in the currency that matters.
+    """
+    quick = FakeSpeaker()
+    unhurried = FakeSpeaker()
+    model = ScriptedPanelModel(line="And against what revenue?")
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=held_open([Transcription(text=opening(12), final=True)]),
+        model=model,
+        speaker=quick,
+        opener_speaker=unhurried,
+        grounding=Grounding(),
+        floor=held(substance=10),
+    )
+
+    await room_until_composed(channel, model)
+
+    spoken_openers = [line for line, _ in unhurried.spoke]
+    assert len(spoken_openers) == 1
+    assert any(spoken_openers[0] in one.openers for one in DEFAULT_PANEL)
+
+    # And the challenge went the fast way, which is the half that protects the
+    # room. A regression that sent turns to the expressive voice would sound
+    # better and fail the thing the product is.
+    assert [line for line, _ in quick.spoke] == ["And against what revenue?"]
+
+
+async def test_the_room_still_opens_when_there_is_only_one_voice():
+    """A deployment configured with a single synthesiser still opens out loud.
+
+    The expressive speaker is optional in the way every other provider here is:
+    losing it should cost the opener its texture, never its existence.
+    """
+    only = FakeSpeaker()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=FakeTranscription([]),
+        model=ScriptedPanelModel(),
+        speaker=only,
+        grounding=Grounding(),
+        floor=held(),
+    )
+
+    events = await events_of(channel)
+    captions = [event for event in events if isinstance(event, AgentTranscript)]
+
+    assert only.spoke and only.spoke[0][0] == captions[0].text

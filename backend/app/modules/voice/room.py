@@ -40,6 +40,7 @@ async def build_room(
     transcriber: Transcriber | None,
     model: PanelModel | None,
     speaker: Speaker | None = None,
+    opener_speaker: Speaker | None = None,
     reader: ClaimReader | None = None,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> OrchestratedProvider:
@@ -118,6 +119,7 @@ async def build_room(
         transcriber=transcriber,
         model=model,
         speaker=speaker,
+        opener_speaker=opener_speaker,
         grounding=grounding,
         reader=reader,
         pressure=pressure,

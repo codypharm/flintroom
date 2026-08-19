@@ -122,8 +122,24 @@ synthesised and only one of them is racing a listener:
 | The opening line (#79) | No — nobody has spoken yet | v3 is free here |
 | Debrief coach | No — turn-based and unmetered | v3 costs only money |
 
-Undecided at time of writing; the numbers are here so the decision is made
-against them rather than against taste.
+**Adopted in that shape by the architect, 2026-08-19.** `speech_model` stays
+Flash and `expressive_speech_model` is v3; `build_speaker` and
+`build_expressive_speaker` are two instances of one adapter sharing one HTTP
+client, chosen at construction rather than per call so that nothing can put the
+slow model on the latency budget by accident. Setting both settings to the same
+value turns the split off.
+
+What that costs in practice is small: one opener of a dozen words per room, plus
+the debrief, against 371 characters of panel speech per interrogation *minute*.
+The 2x lands almost entirely on lines that are not billed by the minute at all.
+
+Not taken, and worth saying so: the opener copy carries **no** audio tags. The
+lines are hand-written and were approved without them, and `test_openers.py`
+still forbids a bracket — because an opener falls back to Flash when no
+expressive speaker is configured, and Flash would read the bracket aloud. The
+coach's prompt is likewise unchanged; it gets the better model's delivery
+without being told it may perform. Both are follow-ons, and both are tone
+decisions rather than plumbing.
 
 ## Still open
 
