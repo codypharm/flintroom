@@ -478,6 +478,68 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/sessions/{session_id}/transcript:
+    get:
+      tags:
+      - sessions
+      summary: Read Transcript
+      description: 'Every line of one room, in the order it happened.
+
+
+        The Library''s other half. A transcript has been kept for the life of the
+
+        account since it was first persisted — `docs/session-retention.md` gives it
+
+        a longer window than the audio because text is tens of kilobytes and does
+
+        not compound — and nothing has ever served it to whoever said it.
+
+
+        **`OwnedSession` before the body runs, and here that is the whole design.**
+
+        A transcript is the most private thing this product holds. `CLAUDE.md` keeps
+
+        one out of *list* responses, which is exactly the carve-out this fits: a
+
+        single room, named in the path, read by its owner. Nothing here widens what
+
+        is kept, how long it is kept, or who may read it.
+
+
+        Unbounded and unpaginated on purpose. `SESSION_LIMIT` caps a room at twelve
+
+        minutes, so a transcript is bounded by the product rather than by hope — a
+
+        page parameter would be machinery for a case the meter already prevents.
+
+
+        Empty is a real answer, not a refusal. A room can end before the panel gets
+
+        a question out, and 404 there would say the room does not exist.'
+      operationId: sessions_read_transcript
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Session Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TranscriptRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/sessions/{session_id}/debrief:
     get:
       tags:
@@ -1958,6 +2020,68 @@ components:
       - max_pages_per_material
       title: TierUpload
       description: What a tier accepts, for a client drawing an upgrade prompt.
+    TranscriptLineRead:
+      properties:
+        ordinal:
+          type: integer
+          title: Ordinal
+        speaker:
+          type: string
+          title: Speaker
+        text:
+          type: string
+          title: Text
+        said_at:
+          type: string
+          format: date-time
+          title: Said At
+      type: object
+      required:
+      - ordinal
+      - speaker
+      - text
+      - said_at
+      title: TranscriptLineRead
+      description: 'One line of one room, as it was said.
+
+
+        `speaker` is `user` or an archetype''s `name` — the same identity used in
+
+        logs, in routing and in the room''s own transcript. Never a rendered title:
+
+        the client already resolves archetype names against the catalogue it reads
+
+        to offer the picker, and a second spelling of "The CFO" on the wire is how
+
+        two surfaces come to disagree about what somebody is called.'
+    TranscriptRead:
+      properties:
+        lines:
+          items:
+            $ref: '#/components/schemas/TranscriptLineRead'
+          type: array
+          title: Lines
+      type: object
+      required:
+      - lines
+      title: TranscriptRead
+      description: 'A room, read back.
+
+
+        An object around the list rather than a bare array, for the reason
+
+        `DebriefRead` gives: a transcript will grow a companion — time offsets when
+
+        #69 lands, a recording''s state — and a client that unpacked a top-level
+
+        array would have to change shape when it does.
+
+
+        An empty list is a real answer rather than a refusal. A room can end before
+
+        the panel gets a question out, and a 404 there would say the room does not
+
+        exist, which is a different and wrong statement.'
     ValidationError:
       properties:
         loc:

@@ -34,6 +34,8 @@ from app.modules.sessions.schemas import (
     SessionRead,
     SessionStart,
     SessionStarted,
+    TranscriptLineRead,
+    TranscriptRead,
     WeakAnswerRead,
 )
 from app.modules.voice.dependencies import VoiceTicketServiceDep
@@ -243,6 +245,39 @@ async def _read(session, sessions: SessionServiceDep) -> SessionRead:
             "recording": await sessions.recording(session_id=session.id),
             "archetypes": [archetype.name for archetype in panel],
         }
+    )
+
+
+@router.get("/sessions/{session_id}/transcript", response_model=TranscriptRead)
+async def read_transcript(
+    session: OwnedSession,
+    sessions: SessionServiceDep,
+) -> TranscriptRead:
+    """Every line of one room, in the order it happened.
+
+    The Library's other half. A transcript has been kept for the life of the
+    account since it was first persisted — `docs/session-retention.md` gives it
+    a longer window than the audio because text is tens of kilobytes and does
+    not compound — and nothing has ever served it to whoever said it.
+
+    **`OwnedSession` before the body runs, and here that is the whole design.**
+    A transcript is the most private thing this product holds. `CLAUDE.md` keeps
+    one out of *list* responses, which is exactly the carve-out this fits: a
+    single room, named in the path, read by its owner. Nothing here widens what
+    is kept, how long it is kept, or who may read it.
+
+    Unbounded and unpaginated on purpose. `SESSION_LIMIT` caps a room at twelve
+    minutes, so a transcript is bounded by the product rather than by hope — a
+    page parameter would be machinery for a case the meter already prevents.
+
+    Empty is a real answer, not a refusal. A room can end before the panel gets
+    a question out, and 404 there would say the room does not exist.
+    """
+    return TranscriptRead(
+        lines=[
+            TranscriptLineRead.model_validate(line)
+            for line in await sessions.transcript(session_id=session.id)
+        ]
     )
 
 

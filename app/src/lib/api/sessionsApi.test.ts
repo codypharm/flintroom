@@ -250,3 +250,45 @@ describe('the rooms already run', () => {
     await expect(sessions.list()).rejects.toBeInstanceOf(SignedOut);
   });
 });
+
+describe('reading a room back', () => {
+  /**
+   * The Library's other half — the architect's "view the detail of discussion".
+   * The transcript has been kept for the life of the account since it was first
+   * persisted and nothing served it to whoever said it until now.
+   */
+  it('carries the room in the order it happened', async () => {
+    // By ordinal, which is content rather than presentation: lines are written
+    // as they are said, so two can share a clock reading, and the same lines
+    // rearranged describe a room that did not happen.
+    const { fetcher, sessions } = api({
+      json: async () => ({
+        lines: [
+          { ordinal: 0, speaker: 'user', text: 'We grew forty percent.', said_at: '2026-08-20T09:12:04Z' },
+          { ordinal: 1, speaker: 'cfo', text: 'Off what base?', said_at: '2026-08-20T09:12:19Z' },
+        ],
+      }),
+    });
+
+    const said = await sessions.transcript('session-9');
+
+    expect(fetcher.mock.calls[0][0]).toBe(
+      'https://flintroom.test/v1/sessions/session-9/transcript'
+    );
+    expect(said.map((line) => line.speaker)).toEqual(['user', 'cfo']);
+    expect(said[0].saidAt).toBe('2026-08-20T09:12:04Z');
+  });
+
+  it('treats a room where nobody said anything as empty, not as broken', async () => {
+    // Ordinary and common: a room can end before the panel gets a question out.
+    const { sessions } = api({ json: async () => ({ lines: [] }) });
+
+    await expect(sessions.transcript('session-1')).resolves.toEqual([]);
+  });
+
+  it('reports a signed-out session rather than an empty room', async () => {
+    const { sessions } = api({ ok: false, status: 401 });
+
+    await expect(sessions.transcript('session-9')).rejects.toBeInstanceOf(SignedOut);
+  });
+});

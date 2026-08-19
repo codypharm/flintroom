@@ -123,7 +123,11 @@ export default function LibraryRoute() {
         // and a clock in state would redraw the whole list every second to say
         // the same thing.
         now={new Date()}
-        onOpen={(id) => router.push(`/debrief/${id}`)}
+        // Into the room itself, not straight to the debrief. The Library's
+        // job is "view the detail of discussion or play it and listen to it" —
+        // the findings are one tap further on, from a screen where you have
+        // just re-read the answer they are about.
+        onOpen={(id) => router.push(`/rooms/${id}`)}
         onRunAgain={runAgain}
         onStart={() => router.push('/setup')}
       />

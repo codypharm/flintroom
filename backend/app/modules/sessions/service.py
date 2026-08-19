@@ -40,6 +40,7 @@ from app.modules.sessions.models import (
     SessionMaterial,
     SessionPanelist,
     SessionPhaseSpan,
+    TranscriptLine,
 )
 from app.modules.billing.models import Account
 from app.modules.billing.tiers import FREE_TIER, RECORDING_RETENTION_DAYS
@@ -312,6 +313,27 @@ class SessionService:
             )
 
         return tuple(archetype for archetype in seated if archetype is not None)
+
+    async def transcript(self, *, session_id: uuid.UUID) -> list[TranscriptLine]:
+        """Every line of one room, in the order it happened.
+
+        By `ordinal` rather than by `said_at`, and the difference is not
+        cosmetic: lines are written as they are said, so two can share a clock
+        reading, and `TranscriptLine.ordinal` exists precisely because "whatever
+        order the rows come out" is not an order. The same lines rearranged
+        describe a room that did not happen.
+
+        Rows rather than a shaped read model. The debrief already reads these
+        through `SessionTranscript` for grounding and the router needs them for a
+        response; a second query shaped for one caller would be a second place
+        for the ordering rule to be got wrong.
+        """
+        rows = await self._db.scalars(
+            select(TranscriptLine)
+            .where(TranscriptLine.session_id == session_id)
+            .order_by(TranscriptLine.ordinal)
+        )
+        return list(rows)
 
     async def materials(self, *, session_id: uuid.UUID) -> list[uuid.UUID]:
         """What this room was grounded in, in the order it was attached.

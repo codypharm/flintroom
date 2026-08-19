@@ -417,6 +417,51 @@ class DebriefRead(BaseModel):
     opening: CoachTurnRead | None = None
 
 
+class TranscriptLineRead(BaseModel):
+    """One line of one room, as it was said.
+
+    `speaker` is `user` or an archetype's `name` — the same identity used in
+    logs, in routing and in the room's own transcript. Never a rendered title:
+    the client already resolves archetype names against the catalogue it reads
+    to offer the picker, and a second spelling of "The CFO" on the wire is how
+    two surfaces come to disagree about what somebody is called.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    #: Where this line falls in the room, from zero. The order is content —
+    #: two lines can share a clock reading, so this is what "after" means here.
+    ordinal: int
+    speaker: str
+    text: str
+
+    #: When the line was **written**, which is not when the audio was heard.
+    #:
+    #: Published because it orients a reader — a room reads differently when you
+    #: can see where the long silence was — and withheld from any claim it
+    #: cannot support. Lines are written as they are said, so it is close; but
+    #: "close" is the difference between a reading aid and a playback offset,
+    #: and #69 exists because no true offset is recorded anywhere. Nothing
+    #: should seek audio with this.
+    said_at: datetime
+
+
+class TranscriptRead(BaseModel):
+    """A room, read back.
+
+    An object around the list rather than a bare array, for the reason
+    `DebriefRead` gives: a transcript will grow a companion — time offsets when
+    #69 lands, a recording's state — and a client that unpacked a top-level
+    array would have to change shape when it does.
+
+    An empty list is a real answer rather than a refusal. A room can end before
+    the panel gets a question out, and a 404 there would say the room does not
+    exist, which is a different and wrong statement.
+    """
+
+    lines: list[TranscriptLineRead]
+
+
 class CoachTurnRead(BaseModel):
     """What the coach said, in both channels at once.
 

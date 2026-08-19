@@ -73,6 +73,24 @@ export interface PastRoom {
   recording: RoomRecording;
 }
 
+/** One line of one room, as it was said. */
+export interface SaidLine {
+  /** Where it falls in the room, from zero. The order is content, not display. */
+  ordinal: number;
+  /** `user`, or an archetype's name. Resolved against the catalogue for display. */
+  speaker: string;
+  text: string;
+  /**
+   * When the line was **written**, which is not when the audio was heard.
+   *
+   * Enough to orient a reader — a room reads differently when you can see where
+   * the long silence was — and not enough to seek audio with. Lines are written
+   * as they are said, so it is close, and "close" is exactly the difference #69
+   * exists about.
+   */
+  saidAt: string;
+}
+
 export interface StartRoom {
   /** Archetype names, as the catalogue spells them. Empty seats the default panel. */
   archetypes: string[];
@@ -92,6 +110,13 @@ export interface SessionsApi {
    * responses — only whether each room can still be heard, and until when.
    */
   list(): Promise<PastRoom[]>;
+  /**
+   * Every line of one room, in the order it happened.
+   *
+   * An empty array is a real answer: a room can end before the panel gets a
+   * question out, and that is the commonest shape in a fresh account.
+   */
+  transcript(sessionId: string): Promise<SaidLine[]>;
   /**
    * The End button, as an intent the server honours.
    *
@@ -177,6 +202,19 @@ export function createSessionsApi({
       return rooms.map(asPastRoom);
     },
 
+    transcript: async (sessionId) => {
+      const body = (await (
+        await send(`/v1/sessions/${sessionId}/transcript`, { method: 'GET' })
+      ).json()) as { lines: SaidLineBody[] };
+
+      return body.lines.map((line) => ({
+        ordinal: line.ordinal,
+        speaker: line.speaker,
+        text: line.text,
+        saidAt: line.said_at,
+      }));
+    },
+
     end: async (sessionId) => {
       // Nothing is thrown for a refusal, and that is the decision rather than
       // laziness. This is called on the way out of a room that is already over
@@ -190,6 +228,13 @@ export function createSessionsApi({
   };
 }
 
+
+interface SaidLineBody {
+  ordinal: number;
+  speaker: string;
+  text: string;
+  said_at: string;
+}
 
 /** The wire's spelling, before the app renames it. */
 interface PastRoomBody {

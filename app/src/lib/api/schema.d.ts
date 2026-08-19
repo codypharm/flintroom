@@ -293,6 +293,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sessions/{session_id}/transcript": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Transcript
+         * @description Every line of one room, in the order it happened.
+         *
+         *     The Library's other half. A transcript has been kept for the life of the
+         *     account since it was first persisted — `docs/session-retention.md` gives it
+         *     a longer window than the audio because text is tens of kilobytes and does
+         *     not compound — and nothing has ever served it to whoever said it.
+         *
+         *     **`OwnedSession` before the body runs, and here that is the whole design.**
+         *     A transcript is the most private thing this product holds. `CLAUDE.md` keeps
+         *     one out of *list* responses, which is exactly the carve-out this fits: a
+         *     single room, named in the path, read by its owner. Nothing here widens what
+         *     is kept, how long it is kept, or who may read it.
+         *
+         *     Unbounded and unpaginated on purpose. `SESSION_LIMIT` caps a room at twelve
+         *     minutes, so a transcript is bounded by the product rather than by hope — a
+         *     page parameter would be machinery for a case the meter already prevents.
+         *
+         *     Empty is a real answer, not a refusal. A room can end before the panel gets
+         *     a question out, and 404 there would say the room does not exist.
+         */
+        get: operations["sessions_read_transcript"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sessions/{session_id}/debrief": {
         parameters: {
             query?: never;
@@ -1236,6 +1274,46 @@ export interface components {
             /** Max Pages Per Material */
             max_pages_per_material: number;
         };
+        /**
+         * TranscriptLineRead
+         * @description One line of one room, as it was said.
+         *
+         *     `speaker` is `user` or an archetype's `name` — the same identity used in
+         *     logs, in routing and in the room's own transcript. Never a rendered title:
+         *     the client already resolves archetype names against the catalogue it reads
+         *     to offer the picker, and a second spelling of "The CFO" on the wire is how
+         *     two surfaces come to disagree about what somebody is called.
+         */
+        TranscriptLineRead: {
+            /** Ordinal */
+            ordinal: number;
+            /** Speaker */
+            speaker: string;
+            /** Text */
+            text: string;
+            /**
+             * Said At
+             * Format: date-time
+             */
+            said_at: string;
+        };
+        /**
+         * TranscriptRead
+         * @description A room, read back.
+         *
+         *     An object around the list rather than a bare array, for the reason
+         *     `DebriefRead` gives: a transcript will grow a companion — time offsets when
+         *     #69 lands, a recording's state — and a client that unpacked a top-level
+         *     array would have to change shape when it does.
+         *
+         *     An empty list is a real answer rather than a refusal. A room can end before
+         *     the panel gets a question out, and a 404 there would say the room does not
+         *     exist, which is a different and wrong statement.
+         */
+        TranscriptRead: {
+            /** Lines */
+            lines: components["schemas"]["TranscriptLineRead"][];
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -1633,6 +1711,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sessions_read_transcript: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptRead"];
                 };
             };
             /** @description Validation Error */
