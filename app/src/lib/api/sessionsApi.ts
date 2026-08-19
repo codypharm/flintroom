@@ -33,6 +33,46 @@ export interface StartedRoom {
   archetypes: string[];
 }
 
+/**
+ * Whether a room can still be heard, and until when.
+ *
+ * Three states rather than a nullable URL, because two of them are ordinary and
+ * mean different things to whoever is reading the screen: a retention window
+ * arriving exactly on schedule is not the same as saving having been switched
+ * off, and saying the first when the second is true reads as data loss.
+ */
+export interface RoomRecording {
+  state: 'available' | 'expired' | 'not_recorded';
+  /** ISO 8601, or null when there is nothing to expire. */
+  expiresAt: string | null;
+}
+
+/** A room that has already happened. */
+export interface PastRoom {
+  id: string;
+  state: string;
+  startedAt: string;
+  /**
+   * How it ended, or null while it is still running.
+   *
+   * Read with care on a screen. Every room in the dev database settled as
+   * `client_disconnect` (#82) because the End tap loses a race with the socket
+   * closing — so a reason must not be drawn as an accusation or as an error
+   * until that is fixed.
+   */
+  endReason: string | null;
+  settledAt: string | null;
+  /** Who was seated, in the order they spoke. Enough to seat the room again. */
+  archetypes: string[];
+  /**
+   * What it was grounded in. Enough to ground the room again — the source
+   * document is deleted once extraction succeeds, but the claims it produced
+   * are what a room actually reads.
+   */
+  materialIds: string[];
+  recording: RoomRecording;
+}
+
 export interface StartRoom {
   /** Archetype names, as the catalogue spells them. Empty seats the default panel. */
   archetypes: string[];
@@ -41,6 +81,17 @@ export interface StartRoom {
 
 export interface SessionsApi {
   start(room: StartRoom): Promise<StartedRoom>;
+  /**
+   * Every room this account has run, newest first.
+   *
+   * Never takes a user id. The server scopes it to the credential, and a
+   * parameter here would imply an authorisation check that a caller could
+   * forget to make.
+   *
+   * Carries no transcript and no audio — `CLAUDE.md` keeps both out of list
+   * responses — only whether each room can still be heard, and until when.
+   */
+  list(): Promise<PastRoom[]>;
   /**
    * The End button, as an intent the server honours.
    *
@@ -118,6 +169,14 @@ export function createSessionsApi({
       };
     },
 
+    list: async () => {
+      const rooms = (await (
+        await send('/v1/sessions', { method: 'GET' })
+      ).json()) as PastRoomBody[];
+
+      return rooms.map(asPastRoom);
+    },
+
     end: async (sessionId) => {
       // Nothing is thrown for a refusal, and that is the decision rather than
       // laziness. This is called on the way out of a room that is already over
@@ -127,6 +186,44 @@ export function createSessionsApi({
       // could change is the recorded reason, and stranding somebody on a dark
       // screen over that would be the worse outcome.
       await send(`/v1/sessions/${sessionId}/end`, { method: 'POST' });
+    },
+  };
+}
+
+
+/** The wire's spelling, before the app renames it. */
+interface PastRoomBody {
+  id: string;
+  state: string;
+  started_at: string;
+  end_reason?: string | null;
+  settled_at?: string | null;
+  archetypes?: string[];
+  material_ids?: string[];
+  recording?: { state: string; expires_at?: string | null };
+}
+
+/**
+ * One row, with every optional field given a real value.
+ *
+ * The server omits rather than nulls: a room that ended before the panel spoke
+ * has no archetypes key at all, and one started with saving off has no
+ * recording. Both are ordinary — the commonest row in a fresh account is a room
+ * that failed to provision — so a screen that assumed the fields were present
+ * would crash on exactly the rooms most likely to be there.
+ */
+function asPastRoom(room: PastRoomBody): PastRoom {
+  return {
+    id: room.id,
+    state: room.state,
+    startedAt: room.started_at,
+    endReason: room.end_reason ?? null,
+    settledAt: room.settled_at ?? null,
+    archetypes: room.archetypes ?? [],
+    materialIds: room.material_ids ?? [],
+    recording: {
+      state: (room.recording?.state ?? 'not_recorded') as RoomRecording['state'],
+      expiresAt: room.recording?.expires_at ?? null,
     },
   };
 }

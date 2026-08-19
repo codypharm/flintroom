@@ -1,11 +1,11 @@
 import { Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { SettingsScreen, type Holdings } from '../components/modules/SettingsScreen';
-import { confirmDeletion } from '../lib/account/deletion';
-import { createAccountApi } from '../lib/api/accountApi';
-import { API_BASE_URL, auth } from '../lib/auth';
-import { color } from '../theme/tokens';
+import { SettingsScreen, type Holdings } from '../../components/modules/SettingsScreen';
+import { confirmDeletion } from '../../lib/account/deletion';
+import { createAccountApi } from '../../lib/api/accountApi';
+import { API_BASE_URL, auth } from '../../lib/auth';
+import { color } from '../../theme/tokens';
 
 /**
  * Settings, on the state an account has before it has done anything.

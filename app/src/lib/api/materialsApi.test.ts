@@ -85,3 +85,40 @@ it('collapses the five server states into the three a screen can draw', async ()
 
   await expect(api.state('m-1')).resolves.toBe('ready');
 });
+
+describe('a material a past room was grounded in', () => {
+  /**
+   * Running a room again means running it against the same material, and a past
+   * room carries only ids. `state()` already fetches this exact resource and
+   * throws away everything but the state — including the filename, which is the
+   * only thing that tells somebody the right deck is attached.
+   */
+  it('reads back enough to show it as attached', async () => {
+    const { api } = apiOver(() =>
+      ok({
+        id: 'm-7',
+        state: 'ready',
+        filename: 'Q3 board readout.pdf',
+        content_type: 'application/pdf',
+        byte_size: 214_000,
+      })
+    );
+
+    expect(await api.read('m-7')).toEqual({
+      id: 'm-7',
+      filename: 'Q3 board readout.pdf',
+      state: 'ready',
+    });
+  });
+
+  it('reports a material that is gone rather than inventing one', async () => {
+    // Reachable and ordinary: a deck can be deleted from Settings after the
+    // room that used it. Re-running should then offer the panel without the
+    // material, not a room grounded in nothing while claiming otherwise.
+    const { api } = apiOver(
+      () => ({ ok: false, status: 404, json: async () => ({}) }) as Response
+    );
+
+    await expect(api.read('m-7')).rejects.toThrow();
+  });
+});

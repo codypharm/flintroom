@@ -59,7 +59,11 @@ export default function SetupRoute() {
   // Set once by onboarding, and never by a link, a back gesture or a fresh
   // launch. A string because route params are strings; the comparison is
   // explicit so a truthy `'0'` cannot creep in later.
-  const { reveal } = useLocalSearchParams<{ reveal?: string }>();
+  const { reveal, archetypes: again, material: sameDeck } = useLocalSearchParams<{
+    reveal?: string;
+    archetypes?: string;
+    material?: string;
+  }>();
   const revealing = reveal === '1';
   const [room, setRoom] = useState<Catalogue | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
@@ -68,6 +72,48 @@ export default function SetupRoute() {
   const [material, setMaterial] = useState<AttachedMaterial | null>(null);
   const [limits, setLimits] = useState<MaterialLimits | null>(null);
   const polling = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /**
+   * Run this room again — seated and grounded as it was.
+   *
+   * From the Library, which carries a past room's archetype names and material
+   * id as params. Through this screen rather than straight into a room, because
+   * everything a room needs before it opens lives here: the recording
+   * disclosure, the microphone request, and every refusal a start can return. A
+   * second path that minted a room directly would be a second place for all
+   * three to be forgotten, and the first thing forgotten would be the
+   * disclosure.
+   *
+   * Seeded rather than locked. The panel arrives assembled and every control
+   * still works — somebody re-running a room usually wants it as it was, and
+   * occasionally wants it as it was plus one more voice.
+   */
+  useEffect(() => {
+    if (again) {
+      setSeated(again.split(',').filter(Boolean));
+    }
+  }, [again]);
+
+  useEffect(() => {
+    let live = true;
+
+    if (!sameDeck) return;
+
+    materials
+      .read(sameDeck)
+      .then((deck) => {
+        if (live) setMaterial(deck);
+      })
+      // Silently, and this is the one place that is right. A deck deleted from
+      // Settings after the room that used it is ordinary, and the recovery is
+      // already on screen: attach one, or run the panel without it. A refusal
+      // here would explain a failure the user has no reason to care about.
+      .catch(() => undefined);
+
+    return () => {
+      live = false;
+    };
+  }, [sameDeck]);
 
   useEffect(() => {
     let live = true;

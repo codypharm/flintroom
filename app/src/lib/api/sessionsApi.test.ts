@@ -156,3 +156,97 @@ describe('a room the server will not open', () => {
     ).rejects.toThrow();
   });
 });
+
+describe('the rooms already run', () => {
+  /**
+   * The Library, and the two things it is for: reading a room back, and
+   * running it again.
+   *
+   * `GET /v1/sessions` has existed since the endpoints were built and nothing
+   * has ever called it. It is the only place a client can learn that a past
+   * room existed, which seating it had, and whether it can still be heard.
+   */
+  const ROOM = {
+    id: 'session-9',
+    user_id: 'user-1',
+    state: 'settled',
+    started_at: '2026-08-19T20:39:35Z',
+    end_reason: 'user_ended',
+    settled_at: '2026-08-19T20:51:02Z',
+    material_ids: ['m-7'],
+    archetypes: ['cfo', 'technical_skeptic'],
+    recording: { state: 'available', expires_at: '2026-09-18T20:51:02Z' },
+  };
+
+  it('lists this account’s rooms, newest first, without asking whose', async () => {
+    // Never a user id in the query. A list endpoint that took one would be an
+    // authorisation check waiting to be forgotten — the server scopes it to
+    // the credential, and the client must not imply otherwise.
+    const { fetcher, sessions } = api({ json: async () => [ROOM] });
+
+    const rooms = await sessions.list();
+
+    expect(fetcher.mock.calls[0][0]).toBe('https://flintroom.test/v1/sessions');
+    expect(rooms).toHaveLength(1);
+    expect(rooms[0].id).toBe('session-9');
+  });
+
+  it('carries what a room needs to be run again', async () => {
+    // The whole reason re-running needs no new endpoint. Seating and grounding
+    // are both here, so "run this again" is a `start` with the values already
+    // in hand — and the source document being long deleted does not matter,
+    // because the extracted claims are what a room is grounded in.
+    const { sessions } = await api({ json: async () => [ROOM] });
+
+    const [room] = await sessions.list();
+
+    expect(room.archetypes).toEqual(['cfo', 'technical_skeptic']);
+    expect(room.materialIds).toEqual(['m-7']);
+  });
+
+  it('says whether a room can still be heard, and until when', async () => {
+    // Three states rather than a nullable URL, because two of them are
+    // ordinary and mean different things: a retention window arriving on
+    // schedule is not the same as saving having been switched off, and telling
+    // somebody the first when the second is true reads as data loss.
+    const { sessions } = api({ json: async () => [ROOM] });
+
+    const [room] = await sessions.list();
+
+    expect(room.recording).toEqual({
+      state: 'available',
+      expiresAt: '2026-09-18T20:51:02Z',
+    });
+  });
+
+  it('survives a room that was never recorded and never settled', async () => {
+    // Both are ordinary. A room can end before the panel says anything, and
+    // saving can be off — neither is missing data, and a client that assumed
+    // the fields were there would crash the Library on the most common row.
+    const { sessions } = api({
+      json: async () => [
+        {
+          id: 'session-1',
+          user_id: 'user-1',
+          state: 'failed',
+          started_at: '2026-08-19T19:02:27Z',
+        },
+      ],
+    });
+
+    const [room] = await sessions.list();
+
+    expect(room.settledAt).toBeNull();
+    expect(room.archetypes).toEqual([]);
+    expect(room.materialIds).toEqual([]);
+    expect(room.recording.state).toBe('not_recorded');
+  });
+
+  it('reports a signed-out session as such rather than as an empty library', async () => {
+    // An empty array and a signed-out account look identical on the screen,
+    // and only one of them is a reason to send somebody to sign in again.
+    const { sessions } = api({ ok: false, status: 401 });
+
+    await expect(sessions.list()).rejects.toBeInstanceOf(SignedOut);
+  });
+});

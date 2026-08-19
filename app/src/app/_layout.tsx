@@ -6,12 +6,19 @@ import { useColorScheme } from 'react-native';
 import { FONTS } from '../theme/fonts';
 
 /**
- * A stack, not a tab bar.
+ * A stack around a tab bar.
  *
- * The template ships tabs, but the first slice is three screens that follow one
- * another — sign in, home, room — and none of them is a peer destination. A tab
- * bar is also a design decision, and design for this product goes through the
- * `impeccable` pass against `design-guide/`, not through a scaffold default.
+ * It was a stack alone until the Library existed, and the reasoning holds up:
+ * the first slice was three screens that followed one another — sign in, home,
+ * room — and none of them was a peer destination. A tab bar was also a design
+ * decision, and design here goes through the `impeccable` pass against
+ * `design-guide/` rather than through a scaffold default.
+ *
+ * What earned one is a *history*. `(tabs)` holds Home, Library and Settings —
+ * three places you can be — and everything else stays on this stack, because
+ * everything else is a step in a flow: setup, the room, the debrief, the prep
+ * sheet, onboarding. A tab bar under a live interrogation would offer to
+ * navigate away from a metered room.
  *
  * Dark Mode is wired from the start because it is a first-class appearance per
  * `CLAUDE.md`, and because the interrogation screen is committed to a dark

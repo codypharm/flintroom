@@ -51,6 +51,20 @@ export interface MaterialLimits {
 export interface MaterialsApi {
   attach(file: PickedFile, read: (uri: string) => Promise<Blob>): Promise<AttachedMaterial>;
   state(id: string): Promise<AttachedState>;
+  /**
+   * A material this account already owns, enough of it to draw as attached.
+   *
+   * Exists for re-running a past room, which carries material *ids* and nothing
+   * else. `state` fetches the same resource and keeps only the state, so the
+   * filename — the one thing that tells somebody the right deck is attached —
+   * was being thrown away.
+   *
+   * Raises rather than returning null when it is gone, which is ordinary: a
+   * deck can be deleted from Settings after the room that used it, and a
+   * re-run should then offer the panel without the material rather than a room
+   * grounded in nothing while claiming otherwise.
+   */
+  read(id: string): Promise<AttachedMaterial>;
   limits(): Promise<MaterialLimits>;
   /**
    * Destroy a material and everything extracted from it.
@@ -182,6 +196,18 @@ export function createMaterialsApi({
       if (response.status === 401) throw new SignedOut('refused by DELETE /v1/materials');
 
       throw new Error(`DELETE /v1/materials failed with ${response.status}`);
+    },
+
+    read: async (id) => {
+      const response = await send(`/v1/materials/${id}`);
+
+      if (!response.ok) {
+        throw new Error(`material ${id} could not be read: ${response.status}`);
+      }
+
+      const body = (await response.json()) as { id: string; filename: string; state: string };
+
+      return { id: body.id, filename: body.filename, state: drawable(body.state) };
     },
 
     state: async (id) => {
