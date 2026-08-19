@@ -102,6 +102,23 @@ working, because nothing is remembering that it was.
 A client that does not recognise a value must keep showing the last one it
 understood. More values are expected — the idle warning is queued behind this.
 
+The fifth thing that looks like silence — the room being about to end — is
+**not** an `attending` value and deliberately so. It is spoken: a seated
+panelist asks whether anybody is there at sixty seconds, against an
+`IDLE_LIMIT` of ninety. The phone is face-up on a desk and the person this
+exists for has turned away, left, or is holding a dead microphone, so a visual
+warning would arrive at the moment attention is lowest aimed at somebody who by
+definition stopped looking.
+
+It needs no new message: the line goes out as an ordinary `transcript` plus
+audio plus `turn_finished`, because a panelist really did speak. The caption is
+its own visual rendering, for free, and the two can never disagree.
+
+It changes nothing about the clock. Asking does not reset the idle timer or
+extend the limit — panel speech never counts as activity, precisely so a room
+talking to an empty chair still ends. A warning that bought time would be a
+second clock, and a silent room could then run forever.
+
 `turn_finished` says the panel has stopped and is waiting. **It is carried
 rather than inferred, and that is the whole reason it exists.** Nothing else
 marks where an utterance ends: the caption arrives *before* its audio, and

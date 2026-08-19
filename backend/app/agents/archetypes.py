@@ -116,6 +116,23 @@ class Archetype(BaseModel):
     #: What they carry is *manner* — which is the whole job.
     openers: tuple[str, ...] = Field(default=())
 
+    #: How this panelist asks whether anybody is still there.
+    #:
+    #: #24. The room ends at ninety seconds of silence and refunds; this is what
+    #: it says at sixty, so nobody is surprised by it. Spoken rather than shown
+    #: because the phone is face-up on a desk and the person it exists for has
+    #: stopped looking at it.
+    #:
+    #: Hand-written like `openers`, and more strictly: shorter, because it is
+    #: heard by somebody who may have walked out of the room, and identical
+    #: every time so it is recognisable rather than parsed. A composed line
+    #: would be a model call made about nothing at all.
+    #:
+    #: In character, because every voice in this room belongs to somebody at the
+    #: table. It is the one moment the panel is not interrogating, and the
+    #: manner is what keeps it from sounding like a system prompt.
+    nudges: tuple[str, ...] = Field(default=())
+
 
 #: Every archetype the product ships with.
 #:
@@ -153,6 +170,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "soften anything with a preamble."
         ),
         voice=Voice.MEASURED,
+        nudges=(
+            'Are you still with us?',
+            'We are waiting.',
+            'Anything?',
+        ),
         openers=(
             "Let's hear it.",
             "Begin when you're ready. I'll hold my questions.",
@@ -181,6 +203,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "concrete noun rather than trailing off."
         ),
         voice=Voice.PRECISE,
+        nudges=(
+            'Still there?',
+            'Take your time — but say something.',
+            'Have we lost you?',
+        ),
         openers=(
             "Whenever you're ready. I'll listen first.",
             'Take us through it.',
@@ -211,6 +238,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "sentence always turns."
         ),
         voice=Voice.ASSURED,
+        nudges=(
+            'Still with me?',
+            'Take a breath, then go on.',
+            'You have not lost us.',
+        ),
         openers=(
             "Take your time. Tell us what you've got.",
             "We're listening. Make your case.",
@@ -240,6 +272,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "arriving faster than it should."
         ),
         voice=Voice.EAGER,
+        nudges=(
+            'You still there?',
+            "Don't leave us hanging.",
+            'Come on, talk to me.',
+        ),
         openers=(
             "Right, let's go. What have you got?",
             'Straight in, then. Tell us.',
@@ -273,6 +310,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "a word spent on politeness."
         ),
         voice=Voice.BRISK,
+        nudges=(
+            'Hello?',
+            'Are we doing this?',
+            'I have not got all day.',
+        ),
         openers=(
             "Go ahead. I've got a few minutes.",
             "Right, let's do this. Keep it moving.",
@@ -303,6 +345,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "never hurried, and never actually agrees."
         ),
         voice=Voice.SMOOTH,
+        nudges=(
+            'Everything all right?',
+            'Do go on, when you can.',
+            'Are you still there?',
+        ),
         openers=(
             "Please, carry on. I'm sure it's all been thought through.",
             "Whenever suits you. I'll follow along.",
@@ -333,6 +380,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "abstraction at all."
         ),
         voice=Voice.WARM,
+        nudges=(
+            'Still with us? No rush.',
+            'Whenever you are ready.',
+            'Take a moment.',
+        ),
         openers=(
             "Over to you. I'll be thinking about who this affects.",
             "Take it away. I'm all ears.",
@@ -363,6 +415,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "emphasis, no hedging, no hurry."
         ),
         voice=Voice.DRY,
+        nudges=(
+            'Still present?',
+            'The clock is running.',
+            'Anybody there?',
+        ),
         openers=(
             'Proceed.',
             "When you're ready. I'll be taking notes.",

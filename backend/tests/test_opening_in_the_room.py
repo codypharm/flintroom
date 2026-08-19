@@ -19,6 +19,7 @@ import pytest
 from app.agents.archetypes import DEFAULT_PANEL
 from app.agents.context import USER, Grounding
 from app.agents.opening import OpeningFloor
+from app.agents.silence import Silence
 from app.modules.voice.events import (
     AgentAudio,
     AgentFinished,
@@ -532,3 +533,76 @@ async def test_the_heartbeat_carries_the_state_even_when_it_has_not_changed():
 
     assert len(beats) >= 2
     assert len(states) >= len(beats), "the heartbeat stopped carrying the state"
+
+
+async def test_the_room_asks_out_loud_before_it_gives_up_on_them():
+    """#24, the fifth thing that looks like silence.
+
+    The room ends at ninety seconds without user speech and refunds. Until now
+    nothing said so, and #24 recorded the accepted cost: "a user who steps away
+    is not warned... the cost is surprise, not money". This removes the
+    surprise.
+
+    Spoken, because the person it exists for cannot see the screen — they have
+    turned away, or left, or are holding a dead microphone.
+    """
+    speaker = FakeSpeaker()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=held_open([]),
+        model=ScriptedPanelModel(),
+        speaker=speaker,
+        opener_speaker=speaker,
+        grounding=Grounding(),
+        floor=held(),
+        heartbeat_seconds=0.02,
+    )
+    # Sixty seconds is the shipped threshold; this room is asked to treat any
+    # quiet as long enough, so the test is about the behaviour and not the clock.
+    channel._silence = Silence()  # noqa: SLF001
+    channel._heard_at = -1e9  # noqa: SLF001
+
+    collecting = asyncio.create_task(events_of(channel))
+    await asyncio.sleep(0.1)
+    channel._transcription.release.set()  # noqa: SLF001
+    events = await collecting
+
+    asked = [
+        event.text
+        for event in events
+        if isinstance(event, AgentTranscript)
+        and any(event.text in one.nudges for one in DEFAULT_PANEL)
+    ]
+
+    assert len(asked) == 1, f"expected exactly one, got {asked}"
+
+
+async def test_it_asks_once_however_long_the_quiet_runs():
+    """A room that asks twice has stopped being a room and become a smoke alarm."""
+    speaker = FakeSpeaker()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=held_open([]),
+        model=ScriptedPanelModel(),
+        speaker=speaker,
+        opener_speaker=speaker,
+        grounding=Grounding(),
+        floor=held(),
+        heartbeat_seconds=0.02,
+    )
+    channel._heard_at = -1e9  # noqa: SLF001
+
+    collecting = asyncio.create_task(events_of(channel))
+    # Many beats, each of which would ask again if nothing remembered.
+    await asyncio.sleep(0.25)
+    channel._transcription.release.set()  # noqa: SLF001
+    events = await collecting
+
+    asked = [
+        event
+        for event in events
+        if isinstance(event, AgentTranscript)
+        and any(event.text in one.nudges for one in DEFAULT_PANEL)
+    ]
+
+    assert len(asked) == 1

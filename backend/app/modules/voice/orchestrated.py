@@ -28,6 +28,7 @@ from app.agents.difficulty import STANDARD_PRESSURE, Pressure
 from app.agents.model import PanelModel
 from app.agents.opening import Chooser, NoOneToOpen, OpeningFloor, opener_from
 from app.agents.panel import interrogate, select_speaker
+from app.agents.silence import Silence, nudge_from
 from app.agents.routing import choose
 from app.core.logging import get_logger
 from app.modules.voice.events import (
@@ -269,6 +270,12 @@ class OrchestratedChannel:
         # itself. Never read as the truth — `_attention` is the truth, and this
         # only decides whether saying it again is worth a message.
         self._attended: Attention | None = None
+        # #24. Whether this stretch of quiet has earned its one question, and
+        # whether it got it. Changes nothing about the clock — see `Silence`.
+        self._silence = Silence()
+        # When the room last heard them, on the same monotonic clock the floor
+        # uses. Set at the open so a presenter who never speaks is still asked.
+        self._heard_at = time.monotonic()
 
     async def _keep(self, line: Said) -> None:
         """File one line where it will outlive the room, if anywhere.
@@ -492,6 +499,62 @@ class OrchestratedChannel:
         )
         await self._attend(out)
 
+    async def _ask_if_anybody_is_there(
+        self, out: asyncio.Queue[VoiceEvent | BaseException | None]
+    ) -> None:
+        """Say something once the quiet has run long enough. #24.
+
+        **Spoken, because the person this is for cannot see the screen.** They
+        have turned away to find a figure, or left the room, or are holding a
+        dead microphone. `docs/voice-stream-protocol.md` records the rest of the
+        reasoning; the short version is that a visual warning arrives at the
+        moment attention is lowest, aimed at somebody who by definition stopped
+        looking.
+
+        **It changes nothing.** No clock is reset and no limit is extended: the
+        room still ends at `IDLE_LIMIT` and still refunds in full. A warning
+        that bought time would be a second clock, and a silent room could then
+        run forever on somebody's invoice.
+
+        Nothing is said while a panelist is already speaking. A room that
+        interrupted its own question to ask whether anybody was listening would
+        be answering itself, which is the shape of every bug this file has had.
+        """
+        if self._speaking is not None and not self._speaking.done():
+            return
+        if not self._silence.worth_asking(
+            quiet_for=time.monotonic() - self._heard_at
+        ):
+            return
+
+        try:
+            who, line = (
+                nudge_from(self._panel, choose=self._choose)
+                if self._choose is not None
+                else nudge_from(self._panel)
+            )
+        except NoOneToOpen:
+            log.warning("nobody_could_ask")
+            self._silence.asked()
+            return
+
+        self._silence.asked()
+        log.info("asked_if_anybody_is_there", archetype=who.name)
+
+        # The same three events an ordinary turn uses, so the relay, the mixer,
+        # the recording and the phone all treat it as what it is: a panelist
+        # speaking. The caption is its own visual rendering, for free — no
+        # second vocabulary, and the two can never disagree.
+        #
+        # Not filed in the transcript. It is not a challenge, the debrief must
+        # not rank it, and `weakness._opening_statement` counts the presenter's
+        # opening from the first panel line — which this would silently move.
+        await out.put(AgentTranscript(line, speaker=who.name))
+        if self._opener_speaker is not None:
+            async for pcm in self._opener_speaker.speak(text=line, voice=who.voice):
+                await out.put(AgentAudio(pcm))
+        await out.put(AgentFinished())
+
     def _attention(self) -> Attention:
         """What the room is doing with the floor, worked out rather than recalled.
 
@@ -553,6 +616,10 @@ class OrchestratedChannel:
             await out.put(Heartbeat())
             # Unconditional, and that is the safety net. See `_attend`.
             await self._attend(out, always=True)
+            # On the beat that already exists rather than on a timer of its
+            # own. Ten seconds of resolution is ample for a sixty-second
+            # threshold, and a second clock is a second thing to get wrong.
+            await self._ask_if_anybody_is_there(out)
 
     async def _listen(self, out: asyncio.Queue[VoiceEvent | BaseException | None]) -> None:
         """Read transcription forever; start, and stop, turns as it goes."""
@@ -591,6 +658,10 @@ class OrchestratedChannel:
                     # thought for eighty seconds and then answered would be
                     # reaped while the panel was replying to them.
                     await out.put(UserSpoke())
+                    # They are here. The next stretch of quiet starts fresh, so
+                    # somebody who steps away twice in one room is asked twice.
+                    self._heard_at = time.monotonic()
+                    self._silence.heard()
                     # Recorded here rather than inside the turn, because the turn
                     # can be cancelled and this must not be. A user who keeps
                     # talking through the panel's answer has still said the thing
