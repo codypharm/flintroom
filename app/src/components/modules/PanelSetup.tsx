@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { AttachedMaterial, MaterialLimits } from '../../lib/api/materialsApi';
@@ -146,13 +147,57 @@ export function PanelSetup({
   onStart,
 }: PanelSetupProps) {
   const full = seated.length >= room.seats;
+
+  // Three numbers rather than a ref and a measure call: the rail reports all of
+  // them itself, and a layout read would be a second source that can disagree
+  // with what is on screen.
+  const [viewport, setViewport] = useState(0);
+  const [reach, setReach] = useState(0);
+  const [at, setAt] = useState(0);
+  // A card's width of slack, so the pointer does not flicker off one pixel
+  // before the last card is actually reached.
+  const more = reach - viewport - at > 24 ? 'right' : at > 24 ? 'left' : null;
   const held = holdingUpStart(seated, material);
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title} accessibilityRole="header">
-        Who is in the room
+        Set the room
       </Text>
+
+      <Text style={styles.field} accessibilityRole="header">
+        What they can attack
+      </Text>
+
+      <DeckAttach
+        material={material}
+        limits={limits}
+        onAttach={onAttach}
+        onRemove={onRemoveMaterial}
+      />
+
+      {/*
+        Second, and heavier than the two around it. The deck goes first because
+        extraction is asynchronous and slow — `setup.tsx` polls while the server
+        reads the file — so starting it before these decisions overlaps the wait
+        with them instead of leaving it in front of Start. That is a sequencing
+        decision and not a hierarchy one: the panel is still the thing this
+        screen is for, and it keeps the only heading between the title and the
+        summary.
+
+        The count sits opposite the heading, because a rail of eight cards
+        showing two and a sliver has no other way to say there is more. A white
+        card peeking past a warm off-white margin is invisible; a number is not,
+        and a screen reader gets it too.
+      */}
+      <View style={styles.fieldRow}>
+        <Text style={styles.groupTitle} accessibilityRole="header">
+          Who is in the room
+        </Text>
+        <Text style={styles.fieldAside}>
+          {`${counted(room.archetypes.length)} to choose from`}
+        </Text>
+      </View>
 
       {/*
         A horizontal rail of cards rather than a vertical list of text rows.
@@ -166,12 +211,17 @@ export function PanelSetup({
         difficulty dial off the bottom of a screen that has to be taken in at
         once before anybody presses Start.
       */}
+      <View>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.rail}
         // The rail is a list of buttons; the gesture belongs to the cards.
         accessibilityRole="list"
+        scrollEventThrottle={32}
+        onLayout={(event) => setViewport(event.nativeEvent.layout.width)}
+        onContentSizeChange={(width) => setReach(width)}
+        onScroll={(event) => setAt(event.nativeEvent.contentOffset.x)}
       >
         {room.archetypes.map((archetype) => {
           const seat = seated.indexOf(archetype.name);
@@ -202,20 +252,21 @@ export function PanelSetup({
         <AuthorCard yours={room.mayAuthor} />
       </ScrollView>
 
+      {/*
+        Which way there is more, over the edge it is on. A count says the list
+        continues; this says where — and on a rail whose next card is white
+        against a warm off-white margin, "where" is the part the eye cannot
+        work out for itself.
+
+        It flips rather than doubling: two arrows at once is a scrollbar drawn
+        by hand, and at the far right the only useful direction is back.
+      */}
+      <RailEnd more={more} />
+      </View>
+
       {/* Belongs to the roster above it, so it sits on the same left edge
           rather than centred under a left-aligned card. */}
       <Text style={styles.groupNote}>{seatsLine(room, seated.length)}</Text>
-
-      <Text style={styles.field} accessibilityRole="header">
-        What they can attack
-      </Text>
-
-      <DeckAttach
-        material={material}
-        limits={limits}
-        onAttach={onAttach}
-        onRemove={onRemoveMaterial}
-      />
 
       <Text style={styles.field} accessibilityRole="header">
         How hard they push
@@ -306,6 +357,35 @@ export function PanelSetup({
 
       {held !== null && <Text style={styles.footnote}>{held}</Text>}
     </ScrollView>
+  );
+}
+
+/**
+ * Which way the rail continues, over the edge it continues past.
+ *
+ * Drawn from two borders on a rotated square rather than set as a character:
+ * a chevron from a font is a font dependency for a shape, and it inherits
+ * whatever that face does at small sizes on a device nobody tested.
+ *
+ * Hidden from a screen reader, and that is not an omission. Swiping a rail is
+ * not how anybody reaches these cards with VoiceOver on — the cards are
+ * focusable and the rotor walks them regardless of what is on screen — so an
+ * announced arrow would be describing a gesture that reader does not need.
+ * The count beside the heading is the spoken form of the same fact.
+ */
+function RailEnd({ more }: { more: 'left' | 'right' | null }) {
+  if (more === null) {
+    return null;
+  }
+
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[styles.railEnd, more === 'left' ? styles.railEndLeft : styles.railEndRight]}
+    >
+      <View style={[styles.chevron, more === 'left' && styles.chevronBack]} />
+    </View>
   );
 }
 
@@ -412,6 +492,39 @@ const styles = StyleSheet.create({
     marginBottom: space.base,
   },
 
+  /**
+   * The panel's heading and its count, on one baseline.
+   *
+   * `flex-end` rather than centre: the two are different sizes, and aligning
+   * their boxes would leave the small one floating above the heading's
+   * baseline instead of sitting on it.
+   */
+  fieldRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginTop: space.section,
+    marginBottom: space.snug,
+  },
+
+  /**
+   * The one heading between the title and the summary.
+   *
+   * The deck and the dial are labels; this is not. Sequence puts the deck
+   * first because extraction is slow, and nothing about that makes attaching a
+   * file the point of the screen.
+   */
+  groupTitle: { ...type.headlineSm, color: color.onSurface },
+
+  /**
+   * How many there are to pick from.
+   *
+   * The rail shows two cards and a sliver, and the sliver is a white card
+   * against a warm off-white margin — present, and invisible. This is the
+   * only thing on the screen that says the list continues.
+   */
+  fieldAside: { ...type.bodySm, color: color.onSurfaceVariant },
+
   field: {
     ...type.labelLg,
     color: color.onSurfaceVariant,
@@ -464,6 +577,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.screen,
     paddingBottom: space.hair,
   },
+
+  /**
+   * The pointer's disc, floated over the rail's edge.
+   *
+   * Centred on the portrait rather than on the card, so it sits against the
+   * face it is pointing past instead of halfway down a blurb.
+   */
+  railEnd: {
+    position: 'absolute',
+    top: 52,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: color.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  railEndRight: { right: space.hair },
+  railEndLeft: { left: space.hair },
+
+  chevron: {
+    width: 8,
+    height: 8,
+    borderRightWidth: 2,
+    borderTopWidth: 2,
+    borderColor: color.onSurfaceVariant,
+    transform: [{ rotate: '45deg' }],
+    // The glyph's mass sits left of centre once rotated; this puts the point
+    // on the disc's centre rather than the bounding box.
+    marginRight: 3,
+  },
+  chevronBack: { transform: [{ rotate: '225deg' }], marginRight: 0, marginLeft: 3 },
 
   rungs: {
     flexDirection: 'row',

@@ -232,3 +232,30 @@ it('shows why it cannot start instead of the room, when it cannot start', async 
 
   expect(screen.queryByText(/They push/)).toBeNull();
 });
+
+it('says how many archetypes there are, because the rail cannot', async () => {
+  // The rail shows two cards and a sliver of a third, and that sliver is a
+  // white card against a warm off-white margin — present on screen and
+  // invisible to a person. Measured on a device: no way to tell the list
+  // continued. A number is legible, and a screen reader gets it too.
+  await setup();
+
+  expect(screen.getByText('four to choose from')).toBeTruthy();
+});
+
+it('puts the deck before the panel, so extraction runs while they decide', async () => {
+  // Sequence, not hierarchy. Extraction is asynchronous and `setup.tsx` polls
+  // while the server reads the file, so attaching first overlaps that wait
+  // with the decisions somebody is making anyway instead of leaving it
+  // standing in front of Start.
+  await setup();
+
+  const order = screen
+    .getAllByRole('header')
+    .map((node) => node.props.children)
+    .filter((child) => typeof child === 'string');
+
+  expect(order.indexOf('What they can attack')).toBeLessThan(
+    order.indexOf('Who is in the room')
+  );
+});

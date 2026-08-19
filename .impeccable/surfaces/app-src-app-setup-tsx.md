@@ -32,6 +32,38 @@ Two structural changes followed, and everything else on this surface is downstre
 - **Photoreal portraits**, chosen over illustration by the architect. Generated people, never a real likeness — which is what makes them permissible under the locked archetype decision. The set is spread across age, gender and ethnicity on purpose: eight lookalike executives would be the product asserting what a CFO looks like.
 - **"Tap someone to swap them out"** appears only when the room is full, because that is the only time the way out is not obvious.
 
+## Order
+
+**Deck, then panel, then pressure.** The sequence is not a hierarchy claim — it
+is latency. Extraction is asynchronous and `setup.tsx` polls while the server
+reads the file, so attaching first overlaps that wait with the decisions
+somebody is making anyway instead of leaving it standing in front of Start.
+
+The panel keeps the only heading between the title and the summary, because
+sequence changed and what the screen is *for* did not. The deck and the dial
+are labels; the panel is a heading.
+
+The title moved to "Set the room" as a consequence: a screen that opens on the
+deck cannot be titled with the panel's question, and "Who is in the room" is
+better used where it belongs, over the rail.
+
+## Telling the rail it continues
+
+Two devices, because one is visual and one is spoken.
+
+- **A count beside the heading** — "eight to choose from". This is the form a
+  screen reader gets, and the reason it exists at all: swiping is not how
+  anybody reaches these cards with VoiceOver on.
+- **A directional pointer over the edge**, drawn from two borders on a rotated
+  square. It points right while the rail continues right, and flips to the left
+  edge pointing back once the end is reached. It never shows both: two arrows
+  at once is a hand-drawn scrollbar, and at the far right the only useful
+  direction is back.
+
+The peek alone was not enough and that is measurable rather than aesthetic: the
+next card is white against a warm off-white margin, so the sliver is present on
+screen and invisible to a person.
+
 ## Anti-goals
 
 No depleting counter — §4.6, and the reference mockup's "Tokens: 8" is exactly the thing. No investor-URL or profile field: that is the removed social-profile scraping, and it does not return. No pitch-only copy. No numerals for seat counts in prose — a digit on this screen reads as a score.
