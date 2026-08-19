@@ -133,9 +133,6 @@ function Bench() {
       <Link href="/disclosure" style={bench.link}>
         Recording disclosure
       </Link>
-      <Link href="/prep-sheet" style={bench.link}>
-        Prep sheet
-      </Link>
     </View>
   );
 }

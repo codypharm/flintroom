@@ -30,6 +30,7 @@ async function show(answers: WeakAnswer[], props = {}) {
       answers={answers}
       onSpar={jest.fn()}
       onShare={jest.fn()}
+      back={{ where: 'What the room found', onPress: jest.fn() }}
       {...props}
     />
   );

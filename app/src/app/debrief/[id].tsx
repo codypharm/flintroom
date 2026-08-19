@@ -362,7 +362,7 @@ export default function DebriefRoute() {
         // is over, and offering to return to it would be offering a dead
         // screen. Reached from a past room, back is a real place.
         back={from === 'room' ? { where: 'This room', onPress: () => router.back() } : null}
-        onPrepSheet={() => router.push('/prep-sheet')}
+        onPrepSheet={() => router.push(`/prep-sheet/${id}`)}
       />
     </SafeAreaView>
   );
