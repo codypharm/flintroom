@@ -29,6 +29,7 @@ import { createPanelsApi } from '../lib/api/panelsApi';
 import { createSessionsApi, type StartedRoom } from '../lib/api/sessionsApi';
 import { API_BASE_URL, auth } from '../lib/auth';
 import { joinRoom, type Room } from '../lib/voice/room';
+import { Refused } from '../lib/api/refused';
 import type { Attending, Ending } from '../lib/voice/connection';
 import type { PanelLine } from '../lib/voice/connection';
 import { color, space, type } from '../theme/tokens';
@@ -462,6 +463,14 @@ export default function InterrogationScreen() {
  * assume otherwise.
  */
 function refusalFor(thrown: unknown): string {
+  // The server's own diagnosis first, because it is the only one that knows
+  // WHY. A device reported "the room would not open, nothing was charged" while
+  // the API was saying `no_minutes_remaining` — the catch-all below, standing in
+  // for an answer somebody could have acted on.
+  if (thrown instanceof Refused) {
+    return REFUSED[thrown.code] ?? thrown.message;
+  }
+
   const why = thrown instanceof Error ? thrown.message : '';
 
   if (why === 'denied') {
@@ -474,6 +483,32 @@ function refusalFor(thrown: unknown): string {
 
   return 'The room would not open. Nothing was charged.';
 }
+
+/**
+ * Why the server would not open a room, in the presenter's terms.
+ *
+ * Copy here rather than on the server, the rule `Product.md` §9 sets: the API
+ * states the fact, the client writes the sentence. The server's own message is
+ * still the fallback for a code this build predates, so a refusal added later
+ * says something true rather than nothing — the same shape `debrief/refusals.ts`
+ * already uses.
+ */
+const REFUSED: Record<string, string> = {
+  // **§4.6 governs this sentence.** Never a depleting counter, and framed
+  // generously — so it says what is true (the minutes are spent) and what is
+  // still theirs (everything already recorded), and it does not scold. The room
+  // costs money to hold; running out is the product working, not a failure.
+  //
+  // It cannot yet offer a way to buy more: RevenueCat is unwired (#32). Saying
+  // so plainly beats a button that does nothing, and beats implying they did
+  // something wrong.
+  no_minutes_remaining:
+    'You have used your interrogation minutes. Your rooms and debriefs are all still here.',
+  // One live room at a time, which is a real constraint rather than a fault —
+  // and the recovery is to finish or leave the other one.
+  active_session_exists:
+    'A room is already open on this account. Finish that one, then start another.',
+};
 
 /** Route params arrive as strings; an absent one is an empty list, not `['']`. */
 function split(csv: string | undefined): string[] {

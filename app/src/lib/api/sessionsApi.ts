@@ -1,4 +1,5 @@
 import { SignedOut } from '../auth/session';
+import { refusalIn } from './refused';
 
 /**
  * The door into a metered room, and the way out of one.
@@ -96,7 +97,16 @@ export function createSessionsApi({
       });
 
       if (!response.ok) {
-        throw new Error(`${'/v1/sessions'} failed with ${response.status}`);
+        // The server's own diagnosis, kept. It refuses a start for reasons the
+        // presenter can act on — out of minutes, a room already running, a
+        // panel their plan does not seat — and throwing the body away left the
+        // screen with nothing to say but its catch-all. Reported from a device
+        // as "the room would not open, nothing was charged" when the server had
+        // said exactly which of those it was.
+        throw (
+          (await refusalIn(response)) ??
+          new Error(`${'/v1/sessions'} failed with ${response.status}`)
+        );
       }
 
       const body = (await response.json()) as StartedBody;

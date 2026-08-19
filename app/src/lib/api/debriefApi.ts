@@ -1,4 +1,5 @@
 import { SignedOut } from '../auth/session';
+import { Refused } from './refused';
 
 /**
  * The unmetered half of the product, over HTTP.
@@ -87,16 +88,10 @@ export interface Playback {
  * code this app has never heard of, so a server that grows a new refusal says
  * something true here instead of nothing.
  */
-export class Refused extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-    readonly status: number
-  ) {
-    super(message);
-    this.name = 'Refused';
-  }
-}
+// Re-exported rather than redefined. It moved to `refused.ts` when the sessions
+// client needed it as well, and two classes named `Refused` would be two things
+// `instanceof` disagrees about.
+export { Refused } from './refused';
 
 export interface DebriefApi {
   read(sessionId: string): Promise<Debrief>;

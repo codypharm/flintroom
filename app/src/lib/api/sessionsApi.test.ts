@@ -95,3 +95,50 @@ it('reports a signed-out session as such, rather than as a dead room', async () 
     SignedOut
   );
 });
+
+describe('a room the server will not open', () => {
+  /**
+   * Reported from a device as "the room would not open, nothing was charged".
+   *
+   * The server had said exactly what was wrong — `no_minutes_remaining`, "You
+   * are out of interrogation minutes" — and this client threw the body away
+   * unread, raising a bare Error with a status code in it. The screen then had
+   * nothing to say but its catch-all.
+   *
+   * A refusal somebody can act on is worth more than any amount of graceful
+   * failure, and the server had already done the work.
+   */
+  it('carries the code the server refused with', async () => {
+    const { sessions } = api({
+      ok: false,
+      status: 422,
+      json: async () => ({
+        error: {
+          code: 'no_minutes_remaining',
+          message: 'You are out of interrogation minutes.',
+        },
+      }),
+    });
+
+    await expect(
+      sessions.start({ archetypes: ['cfo'], materialIds: [] })
+    ).rejects.toMatchObject({ code: 'no_minutes_remaining' });
+  });
+
+  it('still fails loudly when the body explains nothing', async () => {
+    // A gateway, a proxy, anything between the phone and the API. There is no
+    // code to carry, and inventing one would send the screen down a path the
+    // server never asked for.
+    const { sessions } = api({
+      ok: false,
+      status: 502,
+      json: async () => {
+        throw new Error('not json');
+      },
+    });
+
+    await expect(
+      sessions.start({ archetypes: ['cfo'], materialIds: [] })
+    ).rejects.toThrow();
+  });
+});
