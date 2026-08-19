@@ -68,6 +68,11 @@ def contested(
        things, and a panelist told to find a difference anyway produces theatre.
        This is the gate against a room that argues on schedule.
 
+    5. **A position of its own.** An archetype that has not spoken in this room
+       yet has no stated priority to rank above anybody else's, and telling it
+       to assert one produces the non-sequitur #81 recorded. Its first turn is
+       where it says what it cares about; disagreeing comes after.
+
     Only the immediately previous panel line is eligible. A panelist reaching
     back three turns to reopen something is not disagreement, it is a room that
     cannot move on — and a panelist disputing what *it* said earlier reads as
@@ -92,6 +97,27 @@ def contested(
         return None
 
     if set(speaker.domains) & set(archetype.domains):
+        return None
+
+    # 5. **A position of its own, already stated.** #81: the Technical Skeptic's
+    #    first line in a room was a dispute — "the arithmetic matters less than
+    #    what happens when the connection drops" — in a conversation with no
+    #    technology in it, and she then invented some. Every gate above passed,
+    #    and the fourth is why: non-overlapping domains was treated as evidence
+    #    that a disagreement was legitimate. It is the opposite. Two archetypes
+    #    with nothing in common are the *most* likely to produce a non-sequitur.
+    #
+    #    You cannot claim your priority matters more before you have said what
+    #    it is. Having spoken is what turns a difference of domain into a
+    #    difference of position.
+    #
+    #    **Checked against selection's own judgement rather than a second weak
+    #    signal.** A panelist who has already had a turn was chosen by the
+    #    routing model at least once, so the room has established they have
+    #    ground here. The alternative was matching `domains` against what was
+    #    said, and that is the 53%-accurate keyword routing #43 measured and
+    #    rejected — reusing it as a refusal is the same signal in a new hat.
+    if not any(line.speaker == archetype.name for line in spoken):
         return None
 
     return last

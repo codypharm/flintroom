@@ -407,7 +407,12 @@ async def test_a_disputing_line_is_recorded_as_one():
     channel = OrchestratedChannel(
         panel=DEFAULT_PANEL,
         transcription=transcription,
-        model=TakingTurns("champion", "cfo"),
+        # Three turns, not two. #81 added a gate: a panelist cannot claim its
+        # priority outranks a colleague's before it has stated one, so the CFO
+        # has to have spoken before it can dispute. The champion's domains
+        # ("proof", "references") do not overlap the CFO's, which is what makes
+        # the third turn eligible.
+        model=TakingTurns("cfo", "champion", "cfo"),
         grounding=Grounding(),
         transcript=transcript,
         floor=mid_room(),
@@ -418,7 +423,11 @@ async def test_a_disputing_line_is_recorded_as_one():
     # One utterance at a time, each answered before the next arrives. Two finals
     # fed together is barge-in: the second cancels the turn answering the first,
     # and there is never a colleague's line to take issue with.
-    for said in ("Sponsorship is locked in.", "We rebuilt onboarding last quarter."):
+    for said in (
+        "Sponsorship is locked in.",
+        "We rebuilt onboarding last quarter.",
+        "Two customers have signed since.",
+    ):
         transcript.panel_spoke.clear()
         transcription.feed(Transcription(text=said, final=True))
         await asyncio.wait_for(transcript.panel_spoke.wait(), timeout=1)
@@ -428,6 +437,9 @@ async def test_a_disputing_line_is_recorded_as_one():
 
     panel = [line for line in transcript.lines if line.speaker != USER]
     assert [(line.speaker, line.disputed) for line in panel] == [
+        ("cfo", False),
+        # Not the champion's turn: it has not spoken yet, so it has no stated
+        # priority to rank above the CFO's (#81).
         ("champion", False),
         ("cfo", True),
     ]

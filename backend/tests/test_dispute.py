@@ -75,7 +75,13 @@ def test_a_panelist_disputes_somebody_who_cares_about_other_things():
     the fault line that emerges came from what was actually said rather than
     from a script.
     """
-    said = room((USER, "Margin held."), ("cfo", "Where does that come from?"))
+    said = room(
+        # She has already had a turn, which is what earns her a position to
+        # assert — see `test_nobody_disputes_before_they_have_said_anything`.
+        ("technical_skeptic", "What breaks at ten times the load?"),
+        (USER, "Margin held."),
+        ("cfo", "Where does that come from?"),
+    )
 
     assert contested(SKEPTIC, DEFAULT_PANEL, said, spent=0) == Said(
         speaker="cfo", text="Where does that come from?"
@@ -129,7 +135,12 @@ def test_the_room_stops_disagreeing_once_it_has_had_its_share():
     yes on 4 of 4 dodges and 4 of 4 genuine answers. A bound that lives in the
     instruction is a bound that is not there.
     """
-    said = room((USER, "Margin held."), ("cfo", "Where does that come from?"))
+    said = room(
+        # She has spoken, which is what earns a position to assert (#81).
+        ("technical_skeptic", "What breaks at scale?"),
+        (USER, "Margin held."),
+        ("cfo", "Where does that come from?"),
+    )
 
     assert contested(SKEPTIC, DEFAULT_PANEL, said, spent=DISPUTES_PER_ROOM) is None
 
@@ -164,6 +175,8 @@ async def test_the_turn_carries_the_line_it_is_taking_issue_with():
         model=model,
         grounding=Grounding(
             transcript=(
+                # She has spoken, which is what earns a position to assert (#81).
+                Said(speaker="technical_skeptic", text="What breaks at scale?"),
                 Said(speaker=USER, text="Margin held."),
                 Said(speaker="cfo", text="Where does that come from?"),
             )
@@ -215,8 +228,57 @@ def test_the_gentle_rung_lets_nobody_be_talked_over():
     whole change: the cap is a property of who is being interrogated, not of the
     build.
     """
-    said = room((USER, "Margin held."), ("cfo", "Where does that come from?"))
+    said = room(
+        # She has spoken, which is what earns a position to assert (#81).
+        ("technical_skeptic", "What breaks at scale?"),
+        (USER, "Margin held."),
+        ("cfo", "Where does that come from?"),
+    )
     gentle = replace(said, pressure=pressure_at(GENTLE))
 
     assert contested(SKEPTIC, DEFAULT_PANEL, said, spent=0) is not None
     assert contested(SKEPTIC, DEFAULT_PANEL, gentle, spent=0) is None
+
+
+def test_nobody_disputes_before_they_have_said_anything():
+    """#81. You cannot claim your priority matters more before you have stated it.
+
+    Room dda2fc9c: the Technical Skeptic's FIRST line in the room was a dispute
+    — "The arithmetic matters less than what happens when the connection
+    drops" — in a conversation with no technology in it at all. She then
+    invented some.
+
+    The four gates all passed, and the fourth is why: non-overlapping domains
+    was treated as evidence a disagreement was legitimate. It is the opposite.
+    Two archetypes with nothing in common are the MOST likely to produce a
+    non-sequitur.
+
+    **This gate uses selection's own judgement rather than a second weak
+    signal.** A panelist who has already spoken was chosen by the routing model
+    at least once, so they have established ground in this room. Matching
+    domains against speech was the alternative, and it is the 53%-accurate
+    keyword routing #43 measured and rejected — reusing it as a refusal is the
+    same signal wearing a different hat.
+    """
+    said = room((USER, "Margin held."), ("cfo", "Where does that come from?"))
+
+    assert contested(SKEPTIC, DEFAULT_PANEL, said, spent=0) is None
+
+
+def test_a_panelist_who_has_taken_a_position_may_say_it_matters_more():
+    """The other side of it, and what keeps #54 alive.
+
+    Once somebody has had a turn they have a stated priority, and asserting it
+    outranks a colleague's is the disagreement the room is for. This is the
+    ordinary case; the one above is the theatrical one.
+    """
+    said = room(
+        (USER, "Margin held."),
+        ("technical_skeptic", "What breaks at ten times the load?"),
+        (USER, "Nothing so far."),
+        ("cfo", "Where does that margin come from?"),
+    )
+
+    assert contested(SKEPTIC, DEFAULT_PANEL, said, spent=0) == Said(
+        speaker="cfo", text="Where does that margin come from?"
+    )

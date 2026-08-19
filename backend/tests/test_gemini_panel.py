@@ -25,7 +25,9 @@ from app.agents.panel_models import build_panel_model
 from dataclasses import replace
 
 from app.agents.difficulty import RELENTLESS, pressure_at
+from app.agents.archetypes import by_name
 from app.agents.panel_models.gemini import (
+    _persona_of,
     PRESSED_OUT,
     _SELECTION_INSTRUCTION,
     GeminiPanelModel,
@@ -708,3 +710,42 @@ def test_the_roster_is_stamped_at_the_rung_the_room_is_actually_on():
 
     assert PRESSED_OUT in _selection_prompt(DEFAULT_PANEL, _PRESSED)
     assert PRESSED_OUT not in _selection_prompt(DEFAULT_PANEL, relentless)
+
+
+def test_the_composer_is_forbidden_from_inventing_a_business():
+    """#81, and the other half of #45.
+
+    The number rule has held since #45 — a room cannot invent your margin. It
+    says nothing about nouns, so a room could invent your entire architecture,
+    and did: "how the data pipeline handles a sudden schema change" and "what
+    happens when the connection drops", in two separate rooms, about businesses
+    that had mentioned neither.
+
+    **The rule cannot be "only name what they named".** A hostile board asks
+    hypotheticals — "what breaks at ten times the volume" is fair against any
+    company, described or not — and half the value of the room would go with
+    them. The line is PRESUPPOSITION: a hypothetical asks about a future they
+    can argue with; an invented fact tells them about a present they never
+    described.
+    """
+    persona = _persona_of(by_name("technical_skeptic"))
+
+    assert "NEVER ASSERT A FACT ABOUT THEIR BUSINESS THEY DID NOT GIVE YOU" in persona
+    # The escape hatch has to be in the same breath as the prohibition, or a
+    # model applies the prohibition to everything — which is what #43 measured
+    # a rule doing when it was handed one without a boundary.
+    assert "hypothetical" in persona
+    # The tell, named concretely. Measured against the live model: the abstract
+    # version ("do not assert a fact") still produced "the architecture" and
+    # "your deployment decisions"; naming the definite article as the symptom
+    # moved it to "how it fails under load", which presupposes nothing.
+    assert "the tell is the word THE" in persona
+    assert "'do you have' before 'how does your'" in persona
+
+
+def test_the_number_rule_did_not_move():
+    """Both rules, side by side. Neither is a replacement for the other."""
+    persona = _persona_of(by_name("cfo"))
+
+    assert "NEVER STATE A NUMBER THEY DID NOT GIVE YOU" in persona
+    assert "NEVER ASSERT A FACT ABOUT THEIR BUSINESS THEY DID NOT GIVE YOU" in persona
