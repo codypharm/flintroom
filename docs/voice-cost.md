@@ -69,6 +69,62 @@ not for money. Do not re-open it as a cost measure. If cost genuinely has to
 come down, change the plan or the synthesis vendor; the seam in
 `voice/speakers/` exists for exactly that.
 
+## Eleven v3 — measured 2026-08-19
+
+The architect moved to a paid plan and asked for expressive panel speech (#34).
+Both halves were measured against the live account rather than read from
+documentation, because the documentation is ambiguous on the first one and
+silent on the second.
+
+**v3 performs audio tags; Flash reads them aloud.** Settled by synthesising the
+same tagged line on each model and feeding the audio back through Scribe, which
+is a check rather than an impression — a spoken tag lands in the transcript:
+
+| Model | Heard back |
+| --- | --- |
+| `eleven_v3` | "Scale is irrelevant if the unit economics stay negative. What does each customer cost?" |
+| `eleven_flash_v2_5` | "**Skeptical.** Scale is irrelevant if the unit economics stay negative. **Pause.** What does each customer cost?" |
+
+So `TAG_PERFORMING_MODELS` was right about both, and `eleven_v3_conversational`
+— which the vendor's model page names as the tag-supporting model — is **not
+required**. It is also not available: the account returns
+`model_access_denied` for it, which is an account-level refusal rather than a
+key-scope one (the same key gets `missing_permissions` for `/v1/models`).
+
+**Two prices, and neither is small.**
+
+| | Flash v2.5 | Eleven v3 |
+| --- | --- | --- |
+| First byte | 0.887s | **1.280s** |
+| Whole take, 6.4s of audio | 1.449s | 3.200s |
+| `character-cost`, same 19-character line | 5 | **10** |
+
+The `character-cost` response header is a better source than the quota error
+above, and it says v3 is **exactly twice** Flash per character.
+
+That lands on the 88% line. Panel speech is ~$0.04 of a ~$0.046/min room, so
+doubling it takes the room to **~$0.086/min** — still inside the $0.12/min
+every §4.4 margin assumes, but consuming 72% of it where today's room consumes
+38%. In credits: **~372 per interrogation minute**, halving any plan's capacity.
+The Free plan's 54 minutes becomes about 27.
+
+The latency is the sharper cost. `docs/panel-orchestration.md` measures the turn
+at 1.38s from the final transcript, and `SILENCE_THRESHOLD_SECS` adds 0.7s
+before that, so a listener already waits ~2.1s against the ~1.5s at which
+`CLAUDE.md` says the illusion breaks. v3 makes that ~2.5s.
+
+**Not adopted wholesale, for that reason.** The room has three places speech is
+synthesised and only one of them is racing a listener:
+
+| Where | Waiting for a reply? | Model |
+| --- | --- | --- |
+| Interrogation turns | Yes — this is the budget | Flash |
+| The opening line (#79) | No — nobody has spoken yet | v3 is free here |
+| Debrief coach | No — turn-based and unmetered | v3 costs only money |
+
+Undecided at time of writing; the numbers are here so the decision is made
+against them rather than against taste.
+
 ## Still open
 
 - **No invoice has been compared to anything.** §4.3's acceptance criterion is
