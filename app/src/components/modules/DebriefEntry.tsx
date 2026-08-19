@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { WeakAnswer } from '../../lib/api/debriefApi';
 import { panelistName } from '../../lib/panel/vocabulary';
 import { color, radius, space, type } from '../../theme/tokens';
+import { Replay } from './Replay';
 
 /**
  * One question, and everything said about it since.
@@ -23,6 +24,15 @@ export interface Exchange {
   heard: string;
   /** What the coach said back. What changed, never whether it was enough. */
   said: string;
+  /**
+   * The same words as audio, base64 — the field the client used to drop.
+   *
+   * Carried on the exchange rather than played and forgotten, because a reply
+   * autoplays once and the room it is about is being read on a phone that may
+   * be somewhere sound is not welcome. The caption is always there; this is
+   * what makes hearing it again possible without saying anything.
+   */
+  speech: string;
 }
 
 export interface DebriefEntryProps {
@@ -32,6 +42,8 @@ export interface DebriefEntryProps {
   /** True while any capture is running anywhere on the screen. */
   busy: boolean;
   onAnswerAgain: () => void;
+  /** Say one of the coach's replies again. */
+  onReplay: (speech: string) => void;
 }
 
 /**
@@ -50,7 +62,13 @@ function silence(answer: WeakAnswer): string {
   return 'Nothing — it went by.';
 }
 
-export function DebriefEntry({ answer, attempts, busy, onAnswerAgain }: DebriefEntryProps) {
+export function DebriefEntry({
+  answer,
+  attempts,
+  busy,
+  onAnswerAgain,
+  onReplay,
+}: DebriefEntryProps) {
   const asker = panelistName(answer.askedBy);
 
   return (
@@ -81,6 +99,7 @@ export function DebriefEntry({ answer, attempts, busy, onAnswerAgain }: DebriefE
             <View key={index} style={index > 0 && styles.later}>
               <Text style={styles.said}>{attempt.heard}</Text>
               <Text style={styles.back}>{attempt.said}</Text>
+              <Replay speech={attempt.speech} onReplay={onReplay} />
             </View>
           ))
         )}

@@ -32,6 +32,15 @@ const ANSWERS = [
   },
 ];
 
+/**
+ * Stand-in for the base64 PCM the server sends with every coaching reply.
+ *
+ * Non-empty on purpose: `Replay` draws nothing for a turn whose audio never
+ * arrived, so a fixture with an empty string would quietly test the screen
+ * without the control on it.
+ */
+const SPOKEN = 'QUJD';
+
 async function setup(overrides: Partial<DebriefProps> = {}) {
   const props: DebriefProps = {
     answers: ANSWERS,
@@ -42,6 +51,7 @@ async function setup(overrides: Partial<DebriefProps> = {}) {
     refusal: null,
     onTalk: jest.fn(),
     onStop: jest.fn(),
+    onReplay: jest.fn(),
     onPrepSheet: jest.fn(),
     ...overrides,
   };
@@ -125,6 +135,7 @@ it('fills a question in with what was heard and what the coach said back', async
     attempts: {
       0: [
         {
+          speech: SPOKEN,
           heard: 'Acquisition is twelve hundred, and we recover it in about seven months.',
           said: 'That is the arithmetic the CFO was after. Say the seven before they ask.',
         },
@@ -145,7 +156,7 @@ it('never says whether a re-answer was good enough', async () => {
   // which is the single outcome this loop exists to prevent. The user decides
   // when to stop.
   await setup({
-    attempts: { 0: [{ heard: 'Seven months.', said: 'That is the figure.' }] },
+    attempts: { 0: [{ speech: SPOKEN, heard: 'Seven months.', said: 'That is the figure.' }] },
   });
 
   expect(screen.queryByText(/better|worse|correct|improved|good/i)).toBeNull();
@@ -178,6 +189,7 @@ it('shows a coaching turn that belonged to no question at the foot', async () =>
   await setup({
     thread: [
       {
+        speech: SPOKEN,
         heard: 'Which of these should I fix first?',
         said: 'The payback figure. It is the one two of them will both come back to.',
       },
@@ -234,7 +246,7 @@ it('never mentions minutes, cost, or an upgrade', async () => {
   // `CLAUDE.md` forbids a paywall or a depleting counter here. The retired
   // mockup for this screen carried a token count and a running timer; both
   // would read as a meter on the one phase that has none.
-  await setup({ attempts: { 0: [{ heard: 'Seven months.', said: 'That is it.' }] } });
+  await setup({ attempts: { 0: [{ speech: SPOKEN, heard: 'Seven months.', said: 'That is it.' }] } });
 
   expect(screen.queryByText(/minute|credit|token|upgrade|remaining|left/i)).toBeNull();
 });
@@ -246,4 +258,32 @@ it('says a clean room went well instead of drawing an empty list', async () => {
 
   expect(screen.getByText('Nothing came loose')).toBeTruthy();
   expect(screen.getByText('Talk to me')).toBeTruthy();
+});
+
+it('offers a way back to a reply that was missed', async () => {
+  // The other half of autoplay. A reply speaks itself once, on a phone that
+  // may be somewhere sound is not welcome — so the caption carries it and this
+  // is how it is heard rather than only read.
+  const onReplay = jest.fn();
+  await setup({
+    onReplay,
+    thread: [
+      { speech: SPOKEN, heard: 'Which first?', said: 'The payback figure.' },
+    ],
+  });
+
+  await userEvent.press(screen.getByLabelText('Hear that again'));
+
+  expect(onReplay).toHaveBeenCalledWith(SPOKEN);
+});
+
+it('offers nothing to replay on a turn whose audio never arrived', async () => {
+  // Reachable only when synthesis already failed upstream. A control that
+  // plays silence is worse than no control: it reads as the phone being broken
+  // rather than as the reply having come back written only.
+  await setup({
+    thread: [{ speech: '', heard: 'Which first?', said: 'The payback figure.' }],
+  });
+
+  expect(screen.queryByLabelText('Hear that again')).toBeNull();
 });

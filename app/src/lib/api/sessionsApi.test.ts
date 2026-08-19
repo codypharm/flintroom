@@ -83,7 +83,21 @@ it('treats a session already settled as ended, not as a failure', async () => {
   // The socket closing and the End button race by design: the room can settle
   // underneath this call. Both outcomes are the same to the presenter, who is
   // already on their way to the debrief.
-  const { sessions } = api({ ok: false, status: 409 });
+  //
+  // **422, and the status matters.** This asserted 409 and passed for the wrong
+  // reason — `end` swallows every refusal, so any status would have. 409 on
+  // this endpoint is not a thing the server does: `active_session_exists` is
+  // the *start* path's conflict, and an already-settled room is
+  // `invalid_state_transition`, a business rule violation. Observed on a
+  // device: every one of four rooms settled itself as `client_disconnect`
+  // before the End tap landed, and the server answered 422 each time.
+  const { sessions } = api({
+    ok: false,
+    status: 422,
+    json: async () => ({
+      error: { code: 'invalid_state_transition', message: 'That session cannot move to that state.' },
+    }),
+  });
 
   await expect(sessions.end('session-1')).resolves.toBeUndefined();
 });

@@ -4,6 +4,7 @@ import type { Pressed, WeakAnswer } from '../../lib/api/debriefApi';
 import { panelistName } from '../../lib/panel/vocabulary';
 import { color, radius, space, type } from '../../theme/tokens';
 import { DebriefEntry, type Exchange } from './DebriefEntry';
+import { Replay } from './Replay';
 import { TalkControl, type Listening } from './TalkControl';
 
 /**
@@ -71,6 +72,13 @@ export interface DebriefProps {
   /** Start listening. A rank sends the clip to that question; null to the coach. */
   onTalk: (at: number | null) => void;
   onStop: () => void;
+  /**
+   * Say one of the coach's replies again.
+   *
+   * Every reply speaks itself once as it arrives. This is the way back to one
+   * that was missed — see `Replay`, which carries the reasoning.
+   */
+  onReplay: (speech: string) => void;
   onPrepSheet: () => void;
 }
 
@@ -98,6 +106,7 @@ export function Debrief({
   refusal,
   onTalk,
   onStop,
+  onReplay,
   onPrepSheet,
 }: DebriefProps) {
   // One capture at a time. Two would race, and the loser's clip would arrive
@@ -139,6 +148,7 @@ export function Debrief({
             // position of somebody who is in the middle of talking.
             busy={busy}
             onAnswerAgain={() => onTalk(rank)}
+            onReplay={onReplay}
           />
         ))}
 
@@ -149,6 +159,7 @@ export function Debrief({
               <View key={index} style={styles.turn}>
                 <Text style={styles.heard}>{exchange.heard}</Text>
                 <Text style={styles.said}>{exchange.said}</Text>
+                <Replay speech={exchange.speech} onReplay={onReplay} />
               </View>
             ))}
           </View>

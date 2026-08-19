@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { AudioManager, AudioRecorder } from 'react-native-audio-api';
+import { AudioContext, AudioManager, AudioRecorder } from 'react-native-audio-api';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -14,6 +14,7 @@ import { collectClip, type Clip } from '../../lib/audio/clip';
 import { API_BASE_URL, auth } from '../../lib/auth';
 import { SignedOut } from '../../lib/auth/session';
 import { refusedRoom, refusedTurn, type RoomRefusal } from '../../lib/debrief/refusals';
+import { createCoachVoice, type CoachVoice } from '../../lib/debrief/voice';
 import { color, radius, space, type } from '../../theme/tokens';
 
 /**
@@ -58,6 +59,8 @@ export default function DebriefRoute() {
   const [turnRefusal, setTurnRefusal] = useState<string | null>(null);
 
   const recorder = useRef<AudioRecorder | null>(null);
+  const voice = useRef<CoachVoice | null>(null);
+  const speaker = useRef<AudioContext | null>(null);
   const clip = useRef<Clip | null>(null);
   const target = useRef<number | null>(null);
 
@@ -112,6 +115,41 @@ export default function DebriefRoute() {
 
   useEffect(() => release, [release]);
 
+  /**
+   * The coach, out loud — made on first use and kept for the route's life.
+   *
+   * Lazy rather than made on mount, because a context is a native object and
+   * this screen is reachable on a room where nothing is ever said to the coach.
+   * Resumed explicitly: a suspended context renders silence *without
+   * complaining*, which is indistinguishable from a coach that never spoke —
+   * the same trap `interrogation.tsx` records for the room.
+   */
+  const speak = useCallback(async (speech: string) => {
+    if (!voice.current) {
+      const context = new AudioContext();
+      speaker.current = context;
+      voice.current = createCoachVoice({ context });
+    }
+
+    if (speaker.current && speaker.current.state !== 'running') {
+      await speaker.current.resume();
+    }
+
+    voice.current.play(speech);
+  }, []);
+
+  // The route is popped and the coach must not follow. `stop` rather than
+  // `silence`: nothing after this screen should hear it.
+  useEffect(
+    () => () => {
+      voice.current?.stop();
+      voice.current = null;
+      void speaker.current?.close();
+      speaker.current = null;
+    },
+    []
+  );
+
   const finish = useCallback(async () => {
     const gathering = clip.current;
     const at = target.current;
@@ -128,7 +166,11 @@ export default function DebriefRoute() {
           ? await debriefs.say(id, spoken)
           : await debriefs.spar(id, at, spoken);
 
-      const exchange: Exchange = { heard: turn.heard, said: turn.text };
+      const exchange: Exchange = {
+        heard: turn.heard,
+        said: turn.text,
+        speech: turn.speech,
+      };
 
       if (at === null) {
         setThread((so_far) => [...so_far, exchange]);
@@ -138,6 +180,12 @@ export default function DebriefRoute() {
           [at]: [...(so_far[at] ?? []), exchange],
         }));
       }
+
+      // Spoken without being asked, which is what makes this a conversation
+      // rather than a chat log — you do not tap a button to hear somebody
+      // answer you. Drawn first, so the caption is on screen before the voice
+      // starts and stays there for anybody who cannot hear it.
+      void speak(turn.speech);
     } catch (error) {
       if (error instanceof SignedOut) {
         router.replace('/');
@@ -147,11 +195,17 @@ export default function DebriefRoute() {
     } finally {
       setListening({ state: 'idle' });
     }
-  }, [id, release]);
+  }, [id, release, speak]);
 
   const start = useCallback(
     async (at: number | null) => {
       setTurnRefusal(null);
+      // Before the microphone, not after. The coach comes out of the same phone
+      // that is about to record, so a reply still playing would be captured,
+      // transcribed, and sent back as though the presenter had said it — the
+      // coach answering itself on a screen whose whole grounding rule is that a
+      // turn is about the room.
+      voice.current?.silence();
 
       try {
         const permission = await AudioManager.requestRecordingPermissions();
@@ -249,6 +303,7 @@ export default function DebriefRoute() {
         refusal={turnRefusal}
         onTalk={(at) => void start(at)}
         onStop={() => void finish()}
+        onReplay={(speech) => void speak(speech)}
         onPrepSheet={() => router.push('/prep-sheet')}
       />
     </SafeAreaView>
