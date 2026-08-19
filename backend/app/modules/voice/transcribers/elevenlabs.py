@@ -67,6 +67,33 @@ DEFAULT_ENDPOINT = "wss://api.elevenlabs.io/v1/speech-to-text/realtime"
 #: nothing in our own diff to explain it.
 DEFAULT_TRANSCRIPTION_MODEL = "scribe_v2_realtime"
 
+#: What language the room is held in, as the engine's own code.
+#:
+#: **Left unset, this engine auto-detects — and inventing a language is how it
+#: fails.** `session_started` echoes `language_code: None` when no hint is
+#: given, and on degraded audio the detector locks onto the wrong language and
+#: then produces *fluent* text in it. That is far worse than returning nothing:
+#: a confident wrong transcript is indistinguishable downstream from a real
+#: one, so the panel answers it, the Auditor reads it, and the debrief is
+#: grounded in it.
+#:
+#: Measured on a live room (92a8ef91, 2026-08-19). An English presenter over a
+#: Bluetooth headset produced nine transcript lines of **Ukrainian**, opening
+#: with "Алло!" — the same token a probe had got out of half a second of
+#: digital silence earlier that day. The panel answered it faithfully and the
+#: CFO said "Speak English." It was reported as the model hallucinating;
+#: nothing in `app/agents/` was involved.
+#:
+#: **Only `language_code` is honoured.** `language` is accepted on the
+#: handshake and silently ignored, which is the worst of both — it looks set
+#: and is not.
+#:
+#: A setting rather than a constant because `Product.md` scopes v1 to English
+#: and a deployment that outgrows that should not need a code change. Genuinely
+#: multilingual rooms need this per session rather than per process, which is a
+#: product decision and not this file's to make.
+DEFAULT_LANGUAGE = "en"
+
 #: How long the user must be quiet before the engine calls their turn over.
 #:
 #: **This sits directly inside the perceived latency budget and was not in the
@@ -223,12 +250,14 @@ class ElevenLabsTranscriber:
         *,
         api_key: str,
         model: str = DEFAULT_TRANSCRIPTION_MODEL,
+        language: str = DEFAULT_LANGUAGE,
         silence_threshold_secs: float = SILENCE_THRESHOLD_SECS,
         endpoint: str = DEFAULT_ENDPOINT,
         connect: Any = None,
     ) -> None:
         self._api_key = api_key
         self._model = model
+        self._language = language
         self._silence_threshold_secs = silence_threshold_secs
         self._endpoint = endpoint
         self._connect = connect or websockets.connect
@@ -246,6 +275,7 @@ class ElevenLabsTranscriber:
             "transcriber_ready",
             provider=PROVIDER,
             model=self._model,
+            language=self._language,
             silence_threshold_secs=self._silence_threshold_secs,
         )
 
@@ -262,6 +292,10 @@ class ElevenLabsTranscriber:
             {
                 "model_id": self._model,
                 "audio_format": AUDIO_FORMAT,
+                # Never omitted. See `DEFAULT_LANGUAGE` — an unhinted engine
+                # detects, and a wrong detection is answered rather than
+                # noticed.
+                "language_code": self._language,
                 "commit_strategy": "vad",
                 "vad_silence_threshold_secs": self._silence_threshold_secs,
             }

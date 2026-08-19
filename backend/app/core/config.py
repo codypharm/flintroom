@@ -198,6 +198,15 @@ class Settings(BaseSettings):
     #: against — `voice/transcribers/elevenlabs.SILENCE_THRESHOLD_SECS`.
     vad_silence_threshold_secs: float | None = None
 
+    #: What language the room is held in, as the transcriber's own code.
+    #:
+    #: Unset here means the adapter's measured default (`en`) rather than a
+    #: second copy of it — the same shape `vad_silence_threshold_secs` uses, and
+    #: for the same reason: one value, kept next to the vendor it was measured
+    #: against. What it must never mean is *unset on the wire*; see
+    #: `DEFAULT_LANGUAGE` for the Ukrainian transcript that produced this.
+    transcription_language: str | None = None
+
     #: What RevenueCat signs its callbacks with, from the webhook integration's
     #: HMAC settings.
     #:

@@ -29,6 +29,7 @@ from app.modules.voice.transcribers import build_transcriber
 from app.modules.voice.transcription import Transcriber, TranscriptionStream
 from app.modules.voice.transcribers.elevenlabs import (
     AUDIO_FORMAT,
+    DEFAULT_LANGUAGE,
     DEFAULT_TRANSCRIPTION_MODEL,
     SAMPLE_RATE,
     SILENCE_THRESHOLD_SECS,
@@ -371,3 +372,55 @@ def test_a_deployment_without_credentials_gets_no_transcriber_rather_than_a_brok
     """
     assert build_transcriber(_settings(elevenlabs_api_key=None)) is None
     assert isinstance(build_transcriber(_settings(elevenlabs_api_key="k")), Transcriber)
+
+
+async def test_the_engine_is_told_what_language_the_room_is_in():
+    """THE BUG, and it was mistaken for the panel hallucinating.
+
+    Dialled without a hint, `session_started` echoes `language_code: None` —
+    the engine auto-detects. On degraded audio it locks onto the wrong language
+    and then invents fluent text in it, which is far worse than returning
+    nothing: a confident wrong transcript is indistinguishable downstream from
+    a real one.
+
+    Measured on a live room (92a8ef91, 2026-08-19). An English presenter over a
+    Bluetooth headset produced nine lines of **Ukrainian**, opening with
+    "Алло!" — the same token a probe got out of half a second of digital
+    silence earlier the same day. The panel then answered it faithfully, and
+    the CFO said "Speak English." Nothing in `app/agents/` was at fault.
+
+    `language` is silently ignored; only `language_code` is honoured. Asserted
+    on the dialled URL because that is the only place the difference exists.
+    """
+    socket = FakeSocket()
+
+    @asynccontextmanager
+    async def connects(url, **kwargs):
+        connects.url = url
+        yield socket
+
+    transcriber = ElevenLabsTranscriber(api_key="k", connect=connects)
+    async with transcriber.open():
+        pass
+
+    assert f"language_code={DEFAULT_LANGUAGE}" in connects.url
+
+
+async def test_the_language_is_configurable_because_not_every_room_is_english():
+    """Pinned, but not hardcoded.
+
+    `Product.md` scopes v1 to English, which is what makes a default honest —
+    and a deployment that outgrows that must not need a code change to say so.
+    """
+    socket = FakeSocket()
+
+    @asynccontextmanager
+    async def connects(url, **kwargs):
+        connects.url = url
+        yield socket
+
+    transcriber = ElevenLabsTranscriber(api_key="k", language="fr", connect=connects)
+    async with transcriber.open():
+        pass
+
+    assert "language_code=fr" in connects.url

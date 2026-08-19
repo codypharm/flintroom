@@ -34,4 +34,11 @@ def build_transcriber(settings: Settings) -> Transcriber | None:
         if settings.vad_silence_threshold_secs is not None
         else {}
     )
-    return ElevenLabsTranscriber(api_key=settings.elevenlabs_api_key, **threshold)
+    language = (
+        {"language": settings.transcription_language}
+        if settings.transcription_language
+        else {}
+    )
+    return ElevenLabsTranscriber(
+        api_key=settings.elevenlabs_api_key, **threshold, **language
+    )
