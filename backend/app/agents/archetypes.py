@@ -193,10 +193,13 @@ LIBRARY: tuple[Archetype, ...] = (
         ),
         attack_strategy=(
             "Attack feasibility and defensibility. What actually works today "
-            "versus what is planned, what happens under load, what a competitor "
-            "with more engineers could rebuild in a quarter."
+            "versus what is planned, what breaks when the volume multiplies, "
+            "which single point of failure nobody has named, and what a "
+            "better-resourced rival could copy in a quarter. Go at whatever "
+            "machinery they have described — a deployment, a supply chain, a "
+            "team's process — on its own terms rather than assuming software."
         ),
-        domains=("technology", "architecture", "security", "defensibility"),
+        domains=("feasibility", "capacity", "resilience", "defensibility"),
         cadence=(
             "Complete, carefully built sentences that arrive somewhere "
             "specific. One qualifying clause, never two. Ends on the "

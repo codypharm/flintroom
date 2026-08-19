@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import pytest
 
-from app.agents.archetypes import DEFAULT_PANEL, LIBRARY
+from app.agents.archetypes import DEFAULT_PANEL, LIBRARY, by_name
+from app.agents.routing import _domain_hits
+from app.agents.vocabulary import DOMAIN_TERMS, terms_for
 from app.agents.panel import assemble
 from app.core.errors import ArchetypeNotFound, PanelTooLarge
 from app.modules.billing.tiers import (
@@ -169,3 +171,94 @@ def test_the_size_check_answers_before_the_names_do():
     """
     with pytest.raises(PanelTooLarge):
         assemble(tier="free", chosen=["nobody"] * 6)
+
+
+def test_every_domain_is_reachable_without_software_words():
+    """The rule this file's own LIBRARY docstring states, made checkable.
+
+    *"personas describe a stance, and never an industry. 'Attacks the numbers'
+    works in a board room, a client meeting and a sprint review; 'asks about
+    your cap table' works in one."*
+
+    Seven of the eight obeyed it. The Technical Skeptic did not — her domains
+    were `technology`, `architecture`, `security`, reachable only by software
+    words, and her strategy named "a competitor with more ENGINEERS". Seated
+    against a medical supply business she had nothing legitimate to ask, so she
+    reached for the nearest technical noun and invented one (#81).
+
+    **The fix is not to take the software words away.** She has to stay sharp
+    on a deployment when the subject IS a deployment. What she cannot be is
+    reachable ONLY that way — so every domain must also answer to words a
+    business with no software in it would use.
+    """
+    SOFTWARE = {
+        "server", "servers", "database", "api", "code", "deployment", "cloud",
+        "latency", "stack", "engineering", "infrastructure", "architecture",
+        "uptime", "outage", "release", "soc", "penetration", "vulnerability",
+        "technology", "tech", "security", "breach",
+    }
+
+    for archetype in LIBRARY:
+        for domain in archetype.domains:
+            terms = set(terms_for(domain))
+            assert terms - SOFTWARE, (
+                f"{archetype.name}'s domain {domain!r} can only be reached by "
+                f"software words: {sorted(terms)}"
+            )
+
+
+def test_the_skeptic_is_reachable_by_a_business_with_no_software_in_it():
+    """A medical supply business has everything she is for.
+
+    Does this actually work, what breaks when volume triples, what could a
+    better-resourced rival copy in a quarter — all of it applies to a cold
+    chain. She simply could not say any of it while she was defined in servers.
+    """
+    supply = (
+        "We ship refrigerated vaccines to forty clinics. Two suppliers, one "
+        "warehouse, and delivery takes about a day."
+    )
+
+    assert _domain_hits(by_name("technical_skeptic"), supply) > 0
+
+
+def test_the_skeptic_is_still_sharpest_when_the_subject_is_software():
+    """And the other half, which is the reason not to simply de-technicalise her.
+
+    Generalising her must not cost the case she was built for. Against a
+    deployment she should still be the most obviously relevant person at the
+    table.
+    """
+    build = (
+        "We deploy twice a week. The API sits behind a load balancer and the "
+        "database is replicated across two regions."
+    )
+    skeptic = _domain_hits(by_name("technical_skeptic"), build)
+
+    assert skeptic > 0
+    assert skeptic >= max(
+        _domain_hits(one, build) for one in LIBRARY if one.name != "technical_skeptic"
+    )
+
+
+def test_no_word_signals_two_domains_at_once():
+    """A word in two lists is routed by whichever key comes first in a dict.
+
+    That is not a decision anybody made, and it is invisible: routing keeps
+    working, it simply picks a different panelist than the table appears to say.
+    `capacity` was the first collision — generalising the Technical Skeptic gave
+    her a domain whose canonical name the Internal Blocker already listed under
+    `resourcing`, and she silently took every "we are at capacity" with her.
+
+    Resolved in the table rather than by ordering: she keeps the word, the
+    Blocker keeps `bandwidth`. This is what stops the next one being silent.
+    """
+    owner: dict[str, str] = {}
+
+    for domain, terms in DOMAIN_TERMS.items():
+        for term in terms:
+            assert term not in owner, (
+                f"{term!r} signals both {owner[term]!r} and {domain!r} — "
+                f"routing picks one by dict order rather than by decision"
+            )
+            owner[term] = domain

@@ -42,11 +42,39 @@ DOMAIN_TERMS: dict[str, tuple[str, ...]] = {
     "valuation": ("valuation", "raise", "raising", "round", "dilution", "equity"),
     "runway": ("runway", "months", "breakeven", "profitable", "cash"),
     "headcount": ("headcount", "hiring", "hire", "team", "people", "staff", "engineers"),
-    # The Technical Skeptic
-    "technology": ("technology", "tech", "stack", "build", "built", "engineering"),
-    "architecture": ("architecture", "infrastructure", "scale", "scaling", "latency"),
-    "security": ("security", "secure", "soc", "penetration", "breach", "vulnerability"),
-    "defensibility": ("defensibility", "moat", "patent", "proprietary", "replicate"),
+    # The Technical Skeptic.
+    #
+    # **Two vocabularies per domain, deliberately.** She was written owning
+    # `technology`, `architecture` and `security`, which meant she could only be
+    # reached by software words — and seated against a medical supply business
+    # she had nothing legitimate to ask, so she invented something (#81). The
+    # LIBRARY docstring's own rule is that a persona is a stance and never an
+    # industry.
+    #
+    # The fix is not to take the software away. Her whole value against a
+    # deployment is knowing what a deployment is. So each domain answers to the
+    # general word AND the specific one: "supplier" and "database" are both
+    # single points of failure, and she is the person who asks what happens when
+    # either goes down.
+    "feasibility": (
+        "feasibility", "works", "working", "prototype", "pilot", "manual",
+        "automated", "process", "build", "built", "engineering", "technology",
+        "tech", "stack", "code",
+    ),
+    "capacity": (
+        "capacity", "volume", "throughput", "load", "peak", "demand", "surge",
+        "scale", "scaling", "latency", "servers", "infrastructure",
+        "architecture",
+    ),
+    "resilience": (
+        "resilience", "fails", "failure", "outage", "downtime", "backup",
+        "redundancy", "spoilage", "shortage", "supplier", "suppliers",
+        "security", "breach", "soc", "vulnerability",
+    ),
+    "defensibility": (
+        "defensibility", "moat", "patent", "proprietary", "replicate", "copy",
+        "copied", "barrier", "exclusive",
+    ),
     # The Champion
     "proof": ("proof", "evidence", "data", "results", "benchmark", "study"),
     "references": ("reference", "references", "testimonial", "case", "logo", "logos"),
@@ -59,7 +87,14 @@ DOMAIN_TERMS: dict[str, tuple[str, ...]] = {
         "alternative", "rivals",
     ),
     # The Internal Blocker
-    "resourcing": ("resourcing", "resources", "budget", "capacity", "bandwidth"),
+    # `capacity` is deliberately absent, and it used to be here. Generalising
+    # the Technical Skeptic gave her a `capacity` domain, and a word in two
+    # lists is resolved by whichever key this dict happens to reach first —
+    # which is not a decision anybody made. Split on which question the word
+    # actually asks: "we are at capacity" is most often about what an operation
+    # can take, and she is the one who asks what happens when it is exceeded.
+    # The Blocker keeps `bandwidth`, which is the word a team uses about itself.
+    "resourcing": ("resourcing", "resources", "budget", "bandwidth"),
     "dependencies": ("dependencies", "dependency", "blocked", "waiting", "prerequisite"),
     "ownership": ("ownership", "owns", "owner", "responsible", "accountable"),
     # The Customer Advocate
@@ -71,7 +106,13 @@ DOMAIN_TERMS: dict[str, tuple[str, ...]] = {
     "compliance": ("compliance", "compliant", "regulation", "regulatory", "audit"),
     "legal": ("legal", "liability", "contract", "indemnity", "terms"),
     "privacy": ("privacy", "gdpr", "consent", "pii", "personal"),
-    "data": ("retention", "residency", "encryption", "storage"),
+    # `retention` is deliberately absent, and it used to be here — where it
+    # never once fired, because the Customer Advocate lists the same word and
+    # gets there first. The collision test found it. Removing it rather than
+    # moving it: a presenter who says "retention" in a rehearsal means churn
+    # almost every time, and the Risk Officer's sense needs the two-word phrase
+    # "data retention" that this table is single-word by design.
+    "data": ("residency", "encryption", "storage"),
 }
 
 

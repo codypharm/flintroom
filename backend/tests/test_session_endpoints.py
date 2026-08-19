@@ -161,16 +161,23 @@ async def test_hammering_start_is_refused(client, funded_account, bearer):
     a retry loop is a cost incident rather than a nuisance. The refusals in
     between are counted too — a limiter that only counted the rooms that opened
     would never fire here, because after the first one every attempt is a 409.
+
+    Twice the budget, and the 429 is looked for anywhere rather than at the end.
+    The limiter's window is fixed and floored off the database clock, so a loop
+    of exactly `limit + 1` attempts that happens to straddle a minute boundary
+    starts counting again from one and the last attempt comes back 409 — which
+    is what this asserted, and it failed once in a full-suite run for exactly
+    that reason. Twice the budget cannot be split so that neither half fills.
     """
     headers = bearer(funded_account.user_id)
 
     statuses = [
         (await client.post("/v1/sessions", headers=headers)).status_code
-        for _ in range(SESSION_START_LIMIT + 1)
+        for _ in range(SESSION_START_LIMIT * 2 + 1)
     ]
 
     assert statuses[0] == 201
-    assert statuses[-1] == 429
+    assert 429 in statuses
 
 
 async def test_one_user_hammering_start_does_not_lock_out_another(

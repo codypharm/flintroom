@@ -305,19 +305,26 @@ def test_a_metric_no_archetype_owns_still_produces_a_catch():
     Dropping it instead would mean the Auditor silently ignores every figure
     outside the eight archetypes' vocabulary, which is most figures in most
     industries.
+
+    The example used to be *"widget throughput"*, and it stopped being unowned
+    when the Technical Skeptic was generalised off software (#81): `throughput`
+    is now one of `capacity`'s words, and she is exactly the right person to ask
+    why it more than doubled. That is the table working, not this test breaking
+    — so the example moved to a figure the vocabulary genuinely has no word for,
+    which is the case this is about.
     """
     auditor = Auditor()
 
-    auditor.hear(said("widget throughput", 400, at=60, unit=Unit.COUNT))
-    caught = auditor.hear(said("widget throughput", 900, at=300, unit=Unit.COUNT))
+    auditor.hear(said("pallets shipped", 400, at=60, unit=Unit.COUNT))
+    caught = auditor.hear(said("pallets shipped", 900, at=300, unit=Unit.COUNT))
 
     assert caught is not None
     assert "400" in caught.summary and "900" in caught.summary
     # Labelled with what was actually said, rather than blanked. No archetype
     # will match it and none should — but a finding nobody owns still appears in
-    # logs and in the debrief, and "widget throughput" says which figure moved
+    # logs and in the debrief, and "pallets shipped" says which figure moved
     # where an empty domain says nothing at all.
-    assert caught.domain == "widget throughput"
+    assert caught.domain == "pallets shipped"
 
 
 async def test_the_reader_is_told_which_metrics_are_already_in_play():
