@@ -49,9 +49,11 @@ async function setup(overrides: Partial<DebriefProps> = {}) {
     attempts: {},
     listening: { state: 'idle' },
     refusal: null,
+    opening: null,
     onTalk: jest.fn(),
     onStop: jest.fn(),
     onReplay: jest.fn(),
+    onReplayOpening: jest.fn(),
     onPrepSheet: jest.fn(),
     ...overrides,
   };
@@ -286,4 +288,64 @@ it('offers nothing to replay on a turn whose audio never arrived', async () => {
   });
 
   expect(screen.queryByLabelText('Hear that again')).toBeNull();
+});
+
+it('leads with the coach rather than with the list', async () => {
+  // Reported from a device as "there is no verdict from the session". The
+  // sheet had six findings on it and nothing that said how the room went — you
+  // walked out of an interrogation and arrived at a form.
+  //
+  // Above the findings because it is what orders them: it says where the room
+  // got past you and which one to start with, and reading that after the list
+  // would be reading the index after the book.
+  await setup({
+    opening: {
+      speech: SPOKEN,
+      heard: '',
+      said: 'They got past you on payback twice. Everything else held. Start there.',
+    },
+  });
+
+  expect(
+    screen.getByText('They got past you on payback twice. Everything else held. Start there.')
+  ).toBeTruthy();
+});
+
+it('offers the opening again even when its audio is not in hand', async () => {
+  // The greeting is spoken once, for the arrival — a phone that backgrounded
+  // and resumed has the words without the voice, because synthesising per read
+  // would cost a room's worth of money every time somebody glanced at it.
+  //
+  // So this control is drawn regardless of what the screen is holding, and the
+  // route decides whether the tap costs a synthesis or replays what it has.
+  const onReplayOpening = jest.fn();
+  await setup({
+    onReplayOpening,
+    opening: { speech: '', heard: '', said: 'They got past you on payback.' },
+  });
+
+  await userEvent.press(screen.getByLabelText('Hear that again'));
+
+  expect(onReplayOpening).toHaveBeenCalled();
+});
+
+it('puts no grade on the room, however the coach opens', async () => {
+  // `design-guide/coaching_debrief/` opens with a B+ in a circle over "Solid
+  // Delivery, Minor Gaps" and bullets about pacing and opening hooks. That is
+  // the delivery scorer §1 exists to refuse, wearing this product's colours.
+  // The opening is a verdict in every sense that helps and none that scores,
+  // and there is no field anywhere on this screen that could carry a mark.
+  await setup({
+    opening: { speech: SPOKEN, heard: '', said: 'They got past you on payback.' },
+  });
+
+  // A letter grade is a text node that is ONLY a letter — matching a bare `B`
+  // anywhere would catch every word beginning with one, which is how a
+  // prohibition test starts failing for reasons that have nothing to do with
+  // the prohibition.
+  expect(screen.queryByText(/^[A-F][+-]?$/)).toBeNull();
+  // And the other shapes a score arrives in.
+  expect(screen.queryByText(/\d+\s*\/\s*(10|100|5)/)).toBeNull();
+  expect(screen.queryByText(/\d+\s*%/)).toBeNull();
+  expect(screen.queryByText(/score/i)).toBeNull();
 });

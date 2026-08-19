@@ -21,15 +21,23 @@ import { color, space, type } from '../../theme/tokens';
  */
 
 export interface ReplayProps {
-  /** Base64 PCM16, straight from the turn that produced it. */
-  speech: string;
-  onReplay: (speech: string) => void;
+  onReplay: () => void;
+  /**
+   * Whether there is anything to play.
+   *
+   * The control knows nothing about where the audio comes from, and the two
+   * callers differ: a coaching turn holds its own base64 and has none if
+   * synthesis failed, while the opening always *can* be played because the
+   * server will speak the stored words again on request. So the caller decides
+   * and this only draws.
+   */
+  available?: boolean;
 }
 
-export function Replay({ speech, onReplay }: ReplayProps) {
+export function Replay({ onReplay, available = true }: ReplayProps) {
   // A turn whose audio never arrived still has its caption, and offering to
   // play nothing would be a control that does nothing when pressed.
-  if (speech.length === 0) {
+  if (!available) {
     return null;
   }
 
@@ -37,7 +45,7 @@ export function Replay({ speech, onReplay }: ReplayProps) {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Hear that again"
-      onPress={() => onReplay(speech)}
+      onPress={onReplay}
       // 44pt of touch target on a 20pt label, per HIG. `hitSlop` rather than
       // padding, so the target grows without the line moving.
       hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}

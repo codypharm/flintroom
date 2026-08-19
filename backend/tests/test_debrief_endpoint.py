@@ -122,7 +122,20 @@ async def test_reading_a_debrief_twice_reads_the_room_once(
     second = await client.get(f"/v1/sessions/{session.id}/debrief", headers=headers)
 
     assert weakness_reader.calls == 1
-    assert first.json() == second.json()
+    # Everything readable is identical. The screen must not reshuffle under
+    # somebody working through it, and the greeting must not be reworded either.
+    assert first.json()["weak_answers"] == second.json()["weak_answers"]
+    assert first.json()["pressed"] == second.json()["pressed"]
+    assert first.json()["opening"]["text"] == second.json()["opening"]["text"]
+
+    # The one thing that is deliberately NOT identical, and the reason is money.
+    # `docs/voice-cost.md` puts the expressive speaker at roughly $0.0002 a
+    # character, so a spoken opening costs about what a minute of live
+    # interrogation does — and this is the request a backgrounded phone repeats.
+    # Synthesised for the arrival it belongs to and not again; hearing it a
+    # second time is a deliberate request with its own endpoint.
+    assert first.json()["opening"]["speech"]
+    assert second.json()["opening"]["speech"] == ""
 
 
 async def test_a_room_that_never_existed_is_a_404(client, funded_account, bearer):
@@ -273,3 +286,74 @@ async def test_a_room_at_the_same_rung_says_nothing(
     ).json()
 
     assert body["pressed"] is None
+
+
+async def test_the_opening_can_be_heard_again_when_it_is_asked_for(
+    client, db, engine, sessions, settlement, funded_account, bearer, weakness_reader
+):
+    """The other half of speaking once.
+
+    The greeting autoplays on arrival and is silent on every read after, which
+    is right for a backgrounded phone and wrong for somebody who was on a train
+    with the volume down. This is the way back, and it costs a synthesis at
+    exactly the moment somebody asked for one.
+    """
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    weakness_reader.judged = (FOUND,)
+    headers = bearer(funded_account.user_id)
+    opened = (
+        await client.get(f"/v1/sessions/{session.id}/debrief", headers=headers)
+    ).json()
+
+    again = await client.post(
+        f"/v1/sessions/{session.id}/debrief/opening/speech", headers=headers
+    )
+
+    assert again.status_code == 201
+    assert again.json()["text"] == opened["opening"]["text"]
+    assert again.json()["speech"]
+
+
+async def test_hearing_an_opening_that_was_never_said_is_a_404(
+    client, db, engine, sessions, settlement, funded_account, bearer, weakness_reader
+):
+    """A room whose coaching started at the microphone has no greeting to replay.
+
+    404 rather than synthesising one on the spot: an opening minted here would
+    be a greeting arriving in the middle of a conversation, and it would arrive
+    because somebody pressed replay.
+    """
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    weakness_reader.judged = (FOUND,)
+
+    response = await client.post(
+        f"/v1/sessions/{session.id}/debrief/opening/speech",
+        headers=bearer(funded_account.user_id),
+    )
+
+    assert response.status_code == 404
+
+
+async def test_one_user_cannot_replay_another_users_opening(
+    client, db, engine, sessions, settlement, funded_account, bearer, ledger, weakness_reader
+):
+    """It costs a vendor call, so it is worth being explicit that it is owned."""
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    weakness_reader.judged = (FOUND,)
+    await client.get(
+        f"/v1/sessions/{session.id}/debrief", headers=bearer(funded_account.user_id)
+    )
+    stranger = await create_funded_account(db, ledger)
+
+    response = await client.post(
+        f"/v1/sessions/{session.id}/debrief/opening/speech",
+        headers=bearer(stranger.user_id),
+    )
+
+    assert response.status_code == 404

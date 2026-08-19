@@ -57,6 +57,19 @@ export interface Debrief {
   /** Worst first, as the model ranked them with the whole room in view. */
   weakAnswers: WeakAnswer[];
   pressed: Pressed;
+  /**
+   * What the coach says before anybody has said anything, or null.
+   *
+   * **`speech` is empty on every read after the first**, and that is not a
+   * failure — it is the cost decision. A spoken greeting costs about what a
+   * minute of live interrogation does, and this is the request a backgrounded
+   * phone repeats, so the voice belongs to the arrival. `hearOpeningAgain` is
+   * the way back to it.
+   *
+   * Null on a room whose coaching started at the microphone. Greeting into the
+   * middle of a conversation would read as the coach not having listened.
+   */
+  opening: CoachTurn | null;
 }
 
 export interface CoachTurn {
@@ -99,6 +112,14 @@ export interface DebriefApi {
   say(sessionId: string, clip: Blob): Promise<CoachTurn>;
   /** A re-answer to the weak answer at this rank. Anchored by rank, per #59. */
   spar(sessionId: string, rank: number, clip: Blob): Promise<CoachTurn>;
+  /**
+   * Say the opening again.
+   *
+   * Costs a synthesis every time, which is why it is a call rather than a
+   * field: it spends money at the moment somebody asks to hear it, and never
+   * on a screen that merely redrew.
+   */
+  hearOpeningAgain(sessionId: string): Promise<CoachTurn>;
   playback(sessionId: string): Promise<Playback>;
 }
 
@@ -184,9 +205,14 @@ export function createDebriefApi({
     read: async (sessionId) => {
       const body = (await (
         await send(`/v1/sessions/${sessionId}/debrief`)
-      ).json()) as { weak_answers: WeakAnswerBody[]; pressed: Pressed };
+      ).json()) as {
+        weak_answers: WeakAnswerBody[];
+        pressed: Pressed;
+        opening: CoachTurn | null;
+      };
 
       return {
+        opening: body.opening ?? null,
         weakAnswers: body.weak_answers.map((weak) => ({
           ordinal: weak.ordinal,
           question: weak.question,
@@ -203,6 +229,13 @@ export function createDebriefApi({
 
     spar: (sessionId, rank, clip) =>
       turn(`/v1/sessions/${sessionId}/debrief/weak-answers/${rank}/attempts`, clip),
+
+    hearOpeningAgain: async (sessionId) =>
+      (await (
+        await send(`/v1/sessions/${sessionId}/debrief/opening/speech`, {
+          method: 'POST',
+        })
+      ).json()) as CoachTurn,
 
     playback: async (sessionId) => {
       const body = (await (

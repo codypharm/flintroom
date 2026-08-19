@@ -539,6 +539,68 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/sessions/{session_id}/debrief/opening/speech:
+    post:
+      tags:
+      - sessions
+      summary: Say The Opening Again
+      description: 'Hear the greeting again.
+
+
+        The opening speaks itself on arrival and comes back silent on every read
+
+        after, because `docs/voice-cost.md` puts the expressive speaker at about
+
+        $0.0002 a character — a spoken greeting costs roughly a minute of live
+
+        interrogation, and the debrief read is what a backgrounded phone repeats.
+
+        This is where that cost is paid instead: once, when somebody asks.
+
+
+        `POST` rather than `GET`, and not for style. It is not safe and it is not
+
+        cacheable: every call pays a synthesis vendor, and a proxy or a client
+
+        library that retried a `GET` for free would be spending money it thought was
+
+        idempotent.
+
+
+        Rate-limited for the same reason. This is the only endpoint in the product
+
+        where one authenticated user can spend a vendor at will, and no honest
+
+        client presses replay in a loop.
+
+
+        Unmetered, like every coaching turn — there is no path from here to a
+
+        balance.'
+      operationId: sessions_say_the_opening_again
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Session Id
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoachTurnRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/sessions/{session_id}/debrief/turns:
     post:
       tags:
@@ -1208,6 +1270,10 @@ components:
             - easier
           - type: 'null'
           title: Pressed
+        opening:
+          anyOf:
+          - $ref: '#/components/schemas/CoachTurnRead'
+          - type: 'null'
       type: object
       required:
       - weak_answers

@@ -133,6 +133,19 @@ class GeminiCoachModel:
             usage=_usage_of(payload),
         )
 
+    async def open(self, *, grounds: Grounds) -> CoachReply:
+        """The first thing said, with nothing having been said to you."""
+        payload = await self._generate(
+            _opening_prompt(grounds), instruction=OPENING
+        )
+        reported = _reported(payload)
+
+        return CoachReply(
+            text=_text_of(reported),
+            cites=_cites(reported),
+            usage=_usage_of(payload),
+        )
+
     async def spar(
         self, *, grounds: Grounds, weak: WeakAnswer, attempts: Sequence[str]
     ) -> CoachReply:
@@ -412,4 +425,52 @@ If the newest attempt is worse than an earlier one, say so plainly. That is a \
 difference too, and it is often the most useful one you have.
 
 Cite the numbered line your comparison rests on. One or two sentences.\
+"""
+
+
+def _opening_prompt(grounds: Grounds) -> str:
+    """The room, and nothing said about it yet.
+
+    The same three parts `_prompt` assembles, minus the conversation — because
+    there is not one. Deliberately the same parts and in the same order, so the
+    citation indices mean the same thing on the first turn as on every turn
+    after it. An opening numbered differently from the reply that follows it
+    would cite lines that move.
+    """
+    return "\n\n".join(
+        part
+        for part in (
+            _the_room(grounds),
+            _what_went_wrong(grounds),
+            _the_material(grounds),
+        )
+        if part
+    )
+
+
+OPENING = """\
+You are a speaking coach. Your presenter has just walked out of a rehearsal in \
+which a panel of experts interrogated them, and they have sat down with you. \
+Nobody has said anything yet. You speak first.
+
+The session is below, numbered, along with what the room found and any material \
+they attached.
+
+**Open the conversation.** Say where the room actually got past them and what \
+held, then name the one thing worth starting with. You are putting the list \
+into a human order, not reading it out — they can already see it.
+
+**Never grade them.** No mark, no score, no "solid", no "good job", no reference \
+to how well they did overall. This product exists because scoring delivery is \
+what everything else does. What helps is "they got past you on pricing twice and \
+you held everywhere else"; what does not is any sentence that could be a number.
+
+**Nothing about how they spoke.** Not pace, not filler words, not confidence, \
+not energy. You did not hear them speak — you have a transcript — and the \
+substance is the whole point.
+
+Cite the numbered lines you are working from, as you would on any other turn.
+
+Three or four sentences. You are opening a conversation, not delivering a \
+summary, and they are about to answer you.\
 """

@@ -25,7 +25,23 @@ So both directions are counted here, and they are different questions:
 The turns are printed in full, because the thing that matters most cannot be
 counted: whether it sounds like a person who listened.
 
-Costs one call per prompt.
+Costs one call per prompt, plus three for the opening.
+
+MEASURED 2026-08-19, `gemini-3.5-flash`, the opening added for the debrief's
+greeting. Three runs, 3/3 grounded, six citations each, ~330 characters:
+
+    "They got past you on the payback math and the latency question, but you
+     held firm on your runway. Let's start with the payback calculation,
+     because telling the CFO it takes four months to recover twelve hundred
+     dollars at a hundred and eighty a month is going to break their trust.
+     What was the thinking behind those numbers?"
+
+What to read it for is not the citation count. No grade appeared in any run, no
+sentence about pace or confidence or energy, and each one ends by handing the
+conversation back — which is the difference between opening a conversation and
+reading out a summary. The retired mockup for this screen opens with a B+ over
+"Solid Delivery, Minor Gaps"; that is the output this prompt exists to not
+produce, and a fake cannot show whether it does.
 
 MEASURED 2026-08-18, `gemini-3.5-flash`. Three runs, and the first two are the
 reason this script exists:
@@ -163,6 +179,17 @@ async def main() -> None:
         coach = GeminiCoachModel(api_key=os.environ["GEMINI_API_KEY"], http=http)
 
         print("=" * 72)
+        print("OPENING — the turn nobody asked for, three times")
+        print("=" * 72)
+        for run in range(3):
+            reply = await coach.open(grounds=GROUNDS)
+            said = spoken(reply, GROUNDS)
+            print(f"\nCOACH: {said}")
+            print(f"  [{len(reply.cites)} cite(s), {len(said)} characters]")
+            if said == REDIRECT:
+                print("  ^^ REDIRECTED — an opening that cannot cite the room it opens")
+
+        print("\n" + "=" * 72)
         print("GROUNDED — every one should be answered, not redirected")
         print("=" * 72)
         answered = 0
@@ -192,6 +219,8 @@ async def main() -> None:
         print(f"answered when grounded   {answered}/{len(GROUNDED)}")
         print(f"redirected when not      {refused}/{len(OFF_LIMITS)}")
         print("\nRead the turns: does it sound like somebody who listened?")
+        print("And read the openings: any grade, any mark, any word about how")
+        print("they SPOKE rather than what they said, is a failure.")
 
 
 if __name__ == "__main__":

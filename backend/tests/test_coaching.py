@@ -395,3 +395,186 @@ async def test_attempts_come_back_in_the_order_they_were_made(
     )
 
     assert coach.saw_attempts == ("first go", "second go", "third go", "fourth go")
+
+
+# --- The coach opening the debrief -----------------------------------------
+#
+# Reported from a device: "there is no verdict from the session". The room ends
+# with two voices interrogating you and the debrief arrives as a page of text
+# and a microphone button — nothing greets you, and nothing was ever going to,
+# because every coach turn until now needed a clip to answer.
+#
+# `design-guide/coaching_debrief/` reached for this too: a "Voice Coach Audio
+# Review" player at the top of the sheet. What that mockup ALSO has is a B+ in
+# a circle over "Solid Delivery, Minor Gaps", which is the delivery scorer §1
+# exists to refuse. The opening is a verdict in every sense that helps somebody
+# and in none of the senses that scores them.
+
+
+class OpeningCoach(ScriptedCoach):
+    """Answers an opening from a script, and records what it was shown."""
+
+    def __init__(self, reply: CoachReply | None = None) -> None:
+        super().__init__(reply)
+        self.opened = 0
+
+    async def open(self, *, grounds):
+        self.saw_grounds = grounds
+        self.opened += 1
+        return self._reply
+
+
+async def test_the_coach_speaks_first_when_the_debrief_opens(
+    db, engine, sessions, settlement, funded_account
+):
+    """The tracer. No clip, and a reply anyway.
+
+    Every coach turn before this one needed something said to it. This is the
+    turn that makes the debrief a conversation somebody joins rather than a
+    form they fill in — and it is why the autoplay the client just gained lands
+    on turn one instead of turn two.
+    """
+    session = await debriefed(db, engine, sessions, settlement, funded_account, *ROOM)
+    speaker = ScriptedSpeaker()
+
+    opening = await coaching(db, coach=OpeningCoach(), speaker=speaker).open(
+        session_id=session.id
+    )
+
+    assert opening is not None
+    assert opening.text == "The CFO wanted a base. You gave a mood."
+    assert opening.speech == b"\x01\x02\x03\x04"
+
+
+async def test_the_opening_is_written_once_and_then_only_recalled(
+    db, engine, sessions, settlement, funded_account
+):
+    """The debrief read is idempotent by design and this must not break it.
+
+    `read_debrief`'s own docstring: the first open computes and stores, every
+    open after hands back what was stored, *"because backgrounding and resuming
+    re-fetches"*. A second model call here would also reword the greeting, so
+    the same room would be introduced differently every time somebody glanced
+    at their phone.
+    """
+    session = await debriefed(db, engine, sessions, settlement, funded_account, *ROOM)
+    coach = OpeningCoach()
+    service = coaching(db, coach=coach)
+
+    first = await service.open(session_id=session.id)
+    again = await service.open(session_id=session.id)
+
+    assert coach.opened == 1
+    assert again is not None and again.text == first.text
+
+
+async def test_coming_back_to_a_debrief_is_not_being_greeted_again(
+    db, engine, sessions, settlement, funded_account
+):
+    """The money decision, enforced in code rather than remembered.
+
+    The coach runs on the expressive speaker, measured in `docs/voice-cost.md`
+    at twice Flash — roughly $0.0002 a character, so a spoken opening costs
+    about what a full minute of live interrogation does. Backgrounding the app
+    ten times would spend ten rooms' worth on an unmetered phase.
+
+    So the audio is produced once, for the arrival it belongs to. The text
+    survives because it is stored; the voice does not, and asking for it again
+    is a deliberate request with its own endpoint.
+
+    It is also the rule this product already made once. `Silence.asked()`: a
+    room that asks twice has stopped being a room and become a smoke alarm.
+    """
+    session = await debriefed(db, engine, sessions, settlement, funded_account, *ROOM)
+    speaker = ScriptedSpeaker()
+    service = coaching(db, coach=OpeningCoach(), speaker=speaker)
+
+    await service.open(session_id=session.id)
+    again = await service.open(session_id=session.id)
+
+    assert again is not None and again.text
+    assert again.speech == b""
+    assert len(speaker.spoke) == 1
+
+
+async def test_the_opening_is_the_first_thing_the_next_turn_can_see(
+    db, engine, sessions, settlement, funded_account
+):
+    """Kept in the thread, not held beside it.
+
+    A coach that greeted somebody and then could not see it had done so would
+    open the conversation twice, and the second turn would answer a question
+    the user is replying to as though it had never been asked.
+    """
+    session = await debriefed(db, engine, sessions, settlement, funded_account, *ROOM)
+    said = ScriptedCoach()
+    service = coaching(db, coach=OpeningCoach())
+
+    await service.open(session_id=session.id)
+    await coaching(db, coach=said).say(
+        session_id=session.id, clip=b"a recording", media_type="audio/wav"
+    )
+
+    assert [turn.who for turn in said.saw_exchange] == [COACH, USER]
+
+
+async def test_the_opening_sees_the_session_and_nothing_else(
+    db, engine, sessions, settlement, funded_account
+):
+    """The same fence as every other turn, and for the same reason.
+
+    §405 bounds the coach to the transcript, the ranked weak answers, the
+    Auditor's findings and the ingested material. An opening is the one turn
+    with no user speech to anchor it, which makes it the one most able to
+    wander — so it is handed `Grounds` exactly as `reply` is, and its citations
+    are checked by the same `spoken`.
+    """
+    session = await debriefed(db, engine, sessions, settlement, funded_account, *ROOM)
+    coach = OpeningCoach()
+
+    await coaching(db, coach=coach).open(session_id=session.id)
+
+    assert coach.saw_grounds is not None
+    assert coach.saw_grounds.transcript == ROOM
+    assert [answer.question for answer in coach.saw_grounds.weak_answers] == [
+        "Off what base, and at what cost?"
+    ]
+
+
+async def test_an_opening_that_claims_something_it_cannot_cite_is_redirected(
+    db, engine, sessions, settlement, funded_account
+):
+    """`spoken` is the half of the fence that holds when the prompt is jailbroken.
+
+    Nothing about this turn is special enough to skip it. An opening with no
+    user speech in front of it is the turn most likely to reach for a general
+    observation about pitching, which is the competitor product the wedge
+    refuses.
+    """
+    session = await debriefed(db, engine, sessions, settlement, funded_account, *ROOM)
+    ungrounded = OpeningCoach(
+        CoachReply(text="Great decks always open with a story.", cites=(), usage=TurnUsage(10, 10))
+    )
+
+    opening = await coaching(db, coach=ungrounded).open(session_id=session.id)
+
+    assert opening is not None and opening.text == REDIRECT
+
+
+async def test_nobody_is_greeted_into_the_middle_of_a_conversation(
+    db, engine, sessions, settlement, funded_account
+):
+    """A client that goes straight to the microphone gets no opening at all.
+
+    Reachable: `say` runs `_grounds` through `DebriefService` precisely so that
+    a phone jumping to the mic without reading the list first is still coached
+    properly. That path leaves a thread whose first line is the user's, and
+    introducing the room after they have already asked something would read as
+    the coach not having been listening.
+    """
+    session = await debriefed(db, engine, sessions, settlement, funded_account, *ROOM)
+    await coaching(db).say(
+        session_id=session.id, clip=b"a recording", media_type="audio/wav"
+    )
+
+    assert await coaching(db, coach=OpeningCoach()).open(session_id=session.id) is None

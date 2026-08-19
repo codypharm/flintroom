@@ -422,15 +422,22 @@ def dictation():
 def coach_model():
     """A coach whose answer a test sets, on both of the calls it answers.
 
-    `spar` is here because a `CoachModel` has two methods and a fixture with one
-    of them silently made the sparring endpoint untestable over HTTP — the
-    failure surfaced as an `AttributeError` from inside the service the first
-    time anything posted an attempt, which was long after sparring shipped.
+    `spar` is here because a `CoachModel` has more than one method and a fixture
+    with only the first silently made the sparring endpoint untestable over HTTP
+    — the failure surfaced as an `AttributeError` from inside the service the
+    first time anything posted an attempt, long after sparring shipped.
+
+    It then happened again, identically, when `open` was added for the debrief's
+    greeting. So the docstring is no longer the guard: `CoachModel` is
+    `runtime_checkable` and this is now asserted against it, which fails at the
+    fixture rather than inside whichever endpoint happens to be exercised next.
     """
-    from tests.test_coaching import ScriptedCoach, SparringCoach
+    from app.agents.coach import CoachModel
+    from tests.test_coaching import OpeningCoach, ScriptedCoach, SparringCoach
 
     coach = ScriptedCoach()
     sparring = SparringCoach()
+    opening = OpeningCoach()
 
     class Settable:
         saw_grounds = None
@@ -454,7 +461,16 @@ def coach_model():
                 return self.reply_with
             return await sparring.spar(grounds=grounds, weak=weak, attempts=attempts)
 
-    return Settable()
+        async def open(self, *, grounds):
+            self.saw_grounds = grounds
+            return self.reply_with or await opening.open(grounds=grounds)
+
+    settable = Settable()
+    # The assertion the two AttributeErrors above should have been. A method
+    # added to the protocol and forgotten here now fails on the fixture, before
+    # any test has run, instead of inside whichever endpoint is exercised first.
+    assert isinstance(settable, CoachModel)
+    return settable
 
 
 @pytest.fixture

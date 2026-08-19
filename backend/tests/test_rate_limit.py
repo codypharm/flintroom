@@ -109,11 +109,16 @@ async def test_repeated_sign_in_attempts_are_refused(client, google):
                 "/v1/auth/sessions", json={"provider": "google", "id_token": token}
             )
         ).status_code
-        for _ in range(SIGN_IN_LIMIT + 1)
+        # Twice the budget. The window is fixed and floored off the database
+        # clock, so exactly `limit + 1` attempts that cross a minute boundary
+        # start counting again and never reach the limit — an intermittent
+        # failure that only ever appeared in a full-suite run.
+        for _ in range(SIGN_IN_LIMIT * 2 + 1)
     ]
 
-    assert statuses[:SIGN_IN_LIMIT] == [200] * SIGN_IN_LIMIT
-    assert statuses[-1] == 429
+    limited = statuses.index(429)
+    assert statuses[:limited] == [200] * limited
+    assert limited >= SIGN_IN_LIMIT
 
 
 async def test_failed_attempts_are_counted_too(client):
@@ -131,11 +136,18 @@ async def test_failed_attempts_are_counted_too(client):
                 json={"provider": "google", "id_token": f"guess-{attempt}"},
             )
         ).status_code
-        for attempt in range(SIGN_IN_LIMIT + 1)
+        # Twice the budget, because the window is fixed and floored off the
+        # database clock: a loop of exactly `limit + 1` that straddles a minute
+        # boundary starts counting from one again and never reaches the limit.
+        # Twice cannot be split so that neither half fills.
+        for attempt in range(SIGN_IN_LIMIT * 2 + 1)
     ]
 
-    assert rejected[:SIGN_IN_LIMIT] == [401] * SIGN_IN_LIMIT
-    assert rejected[-1] == 429
+    # Every rejection before the first refusal is a 401 — the attempts really
+    # were counted, rather than the limiter having fired on something else.
+    limited = rejected.index(429)
+    assert rejected[:limited] == [401] * limited
+    assert limited >= SIGN_IN_LIMIT
 
 
 async def test_a_limited_response_says_how_long_to_wait(client):
@@ -144,11 +156,17 @@ async def test_a_limited_response_says_how_long_to_wait(client):
     Both are worse for us than one that waits: the second turns a rate limit
     into a hot loop against the endpoint we were trying to protect.
     """
-    for attempt in range(SIGN_IN_LIMIT + 1):
+    # Twice the budget, and stopping at the refusal rather than at a count —
+    # the window is fixed, so a loop of exactly `limit + 1` that crosses a
+    # minute boundary starts again from one and ends on a 401. Same reason as
+    # `test_failed_attempts_are_counted_too`.
+    for attempt in range(SIGN_IN_LIMIT * 2 + 1):
         response = await client.post(
             "/v1/auth/sessions",
             json={"provider": "google", "id_token": f"guess-{attempt}"},
         )
+        if response.status_code == 429:
+            break
 
     assert response.status_code == 429
     assert 0 < int(response.headers["Retry-After"]) <= 60

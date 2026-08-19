@@ -66,6 +66,18 @@ MATERIAL_REGISTER_LIMIT = 60
 #: retrying a failed request twice is the whole of the honest traffic.
 ACCOUNT_DELETION_LIMIT = 5
 
+#: Replays of the debrief's opening per minute per account.
+#:
+#: The tightest authenticated limit in the product, and the only one set by what
+#: a call *costs* rather than by what it writes. Every one pays a synthesis
+#: vendor for a few hundred characters at the expressive rate — about what a
+#: minute of live interrogation costs — and unlike a coaching turn it needs no
+#: clip, so a loop here is free to the caller and not to us.
+#:
+#: Six is a person who missed it, tapped again, and turned the volume up. Nobody
+#: hears the same four sentences seven times in a minute.
+OPENING_REPLAY_LIMIT = 6
+
 #: Difficulty changes per minute per account.
 #:
 #: Generous, because this is a slider and a slider is dragged: somebody trying

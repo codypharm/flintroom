@@ -13,7 +13,7 @@ from app.core.storage_s3 import DEFAULT_EXPIRY_SECONDS
 from app.modules.auth.dependencies import CurrentUser, rate_limit_user
 from app.modules.ingestion.dependencies import ObjectStorageDep
 from app.modules.voice.recording import recording_key
-from app.modules.auth.rate_limit import SESSION_START_LIMIT
+from app.modules.auth.rate_limit import OPENING_REPLAY_LIMIT, SESSION_START_LIMIT
 from app.modules.sessions.dependencies import (
     CoachServiceDep,
     DebriefServiceDep,
@@ -250,6 +250,7 @@ async def _read(session, sessions: SessionServiceDep) -> SessionRead:
 async def read_debrief(
     session: OwnedSession,
     debrief: DebriefServiceDep,
+    coaching: CoachServiceDep,
 ) -> DebriefRead:
     """What went badly in this room, worst first.
 
@@ -270,7 +271,24 @@ async def read_debrief(
     anything, and one the provider broke — which offers a fresh room, because
     the minutes are already back.
     """
+    # Computed before the list is drawn, and this reads oddly until the cost is
+    # in view. The coach reads the ranked answers to write its opening, and
+    # `CoachService.open` gets them through `DebriefService` — the same
+    # idempotent call `debrief.weak_answers` below makes, returning the stored
+    # list without a second model call. So the order costs nothing and buys the
+    # guarantee that a client which draws the sheet has already been greeted.
+    opening = await coaching.open(session_id=session.id)
+
     return DebriefRead(
+        opening=(
+            CoachTurnRead(
+                text=opening.text,
+                speech=base64.b64encode(opening.speech).decode(),
+                heard=opening.heard,
+            )
+            if opening is not None
+            else None
+        ),
         weak_answers=[
             WeakAnswerRead(
                 ordinal=answer.ordinal,
@@ -286,6 +304,45 @@ async def read_debrief(
         # of it: reading them is what moves the rung, so a comparison taken
         # first would describe the world one calibration out of date.
         pressed=await debrief.pressed(session_id=session.id),
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/debrief/opening/speech",
+    response_model=CoachTurnRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit_user("debrief_opening", OPENING_REPLAY_LIMIT))],
+)
+async def say_the_opening_again(
+    session: OwnedSession,
+    coaching: CoachServiceDep,
+) -> CoachTurnRead:
+    """Hear the greeting again.
+
+    The opening speaks itself on arrival and comes back silent on every read
+    after, because `docs/voice-cost.md` puts the expressive speaker at about
+    $0.0002 a character — a spoken greeting costs roughly a minute of live
+    interrogation, and the debrief read is what a backgrounded phone repeats.
+    This is where that cost is paid instead: once, when somebody asks.
+
+    `POST` rather than `GET`, and not for style. It is not safe and it is not
+    cacheable: every call pays a synthesis vendor, and a proxy or a client
+    library that retried a `GET` for free would be spending money it thought was
+    idempotent.
+
+    Rate-limited for the same reason. This is the only endpoint in the product
+    where one authenticated user can spend a vendor at will, and no honest
+    client presses replay in a loop.
+
+    Unmetered, like every coaching turn — there is no path from here to a
+    balance.
+    """
+    turn = await coaching.say_the_opening_again(session_id=session.id)
+
+    return CoachTurnRead(
+        text=turn.text,
+        speech=base64.b64encode(turn.speech).decode(),
+        heard=turn.heard,
     )
 
 

@@ -53,6 +53,20 @@ class NoSuchWeakAnswer(FlintroomError):
     message = "That isn't one of the questions from this session."
 
 
+class NoOpeningToRepeat(FlintroomError):
+    """This room's coaching conversation has no greeting in it.
+
+    404 rather than composing one: reachable by a client that went straight to
+    the microphone, where the conversation has already started and a greeting
+    arriving now would read as the coach not having been listening. Reachable
+    too by a stale screen on a room that was never opened.
+    """
+
+    code = "no_opening_to_repeat"
+    status_code = 404
+    message = "There's no opening on this room."
+
+
 class NothingWasSaid(FlintroomError):
     """The clip held no speech.
 
@@ -139,6 +153,98 @@ class CoachService:
         return CoachedTurn(
             text=said, speech=await self._voice(said), heard=heard.text
         )
+
+    async def open(self, *, session_id: uuid.UUID) -> CoachedTurn | None:
+        """Say the first thing, before anybody has said anything.
+
+        Reported from a device as *"there is no verdict from the session"*. The
+        room ends with the panel still talking and the debrief arrived as a page
+        of text and a microphone button — nothing greeted the presenter, and
+        nothing was ever going to, because every coach turn until this one
+        needed a clip to answer. `design-guide/coaching_debrief/` reached for
+        the same thing with a "Voice Coach Audio Review" player at the top of
+        the sheet.
+
+        **A verdict in every sense that helps and none that scores.** The same
+        mockup opens with a B+ in a circle over "Solid Delivery, Minor Gaps",
+        which is the delivery-metrics product §1 exists to refuse. The coach can
+        say the room got past them on pricing and held on the rest; it cannot
+        say how well they did out of ten, and there is no number here to render.
+
+        **Spoken once, and this is where the money is.** `docs/voice-cost.md`
+        measures the expressive speaker at twice Flash — roughly $0.0002 a
+        character, so a spoken opening costs about what a full minute of live
+        interrogation does. The debrief read is idempotent and a phone re-fetches
+        it on every resume, so synthesising per read would spend a room's worth
+        of money each time somebody glanced at their screen. The text is stored
+        and recalled; the voice is produced for the arrival it belongs to, and
+        asking to hear it again is a deliberate request with its own endpoint.
+
+        That is also a rule this product already made once. `Silence.asked()`:
+        a room that asks twice has stopped being a room and become a smoke alarm.
+
+        `None` when the conversation started without one — reachable by a client
+        that goes straight to the microphone. Greeting into the middle of an
+        exchange would be worse than not greeting at all.
+        """
+        thread = await self._thread(session_id)
+        if thread:
+            if thread[0].who != COACH:
+                return None
+            # Text only. The voice belonged to an arrival that already happened.
+            return CoachedTurn(text=thread[0].text, speech=b"", heard="")
+
+        grounds = await self._grounds(session_id)
+        reply = await self._coach.open(grounds=grounds)
+        said = spoken(reply, grounds)
+
+        log.info(
+            "coach_opening",
+            session_id=str(session_id),
+            cited=len(held(reply, grounds)),
+            redirected=said != reply.text,
+            input_tokens=reply.usage.input_tokens,
+            output_tokens=reply.usage.output_tokens,
+        )
+
+        await self._greeted(session_id, said)
+        # No `stt_seconds`: nothing was heard, because nothing was said. The
+        # model and the synthesiser are still paid, and a turn whose cost
+        # nobody counted is the one that quietly decides a margin.
+        await self._spent(
+            session_id, heard=Heard(text="", seconds=0.0), reply=reply, said=said
+        )
+
+        return CoachedTurn(text=said, speech=await self._voice(said), heard="")
+
+    async def say_the_opening_again(self, *, session_id: uuid.UUID) -> CoachedTurn:
+        """Speak a greeting that has already been written.
+
+        The other half of speaking once. The opening autoplays on arrival and is
+        silent on every read after it, which is right for a phone that
+        backgrounds and wrong for somebody who was on a train with the volume
+        down — so this is the way back, and it spends a synthesis at exactly the
+        moment somebody asked for one.
+
+        **No model call.** The words are the stored ones, so a replay cannot
+        reword the greeting or say something the first one did not. Only the
+        synthesiser is paid, and only the characters already approved by
+        `spoken` are sent to it.
+
+        Refused rather than minted for a room with no opening. Composing one
+        here would put a greeting in the middle of a conversation, and it would
+        arrive because somebody pressed replay.
+        """
+        thread = await self._thread(session_id)
+        if not thread or thread[0].who != COACH:
+            raise NoOpeningToRepeat(session_id=str(session_id))
+
+        said = thread[0].text
+        # The synthesiser only. Counted, because unmetered is not free and this
+        # is the one coaching cost a user can ask for repeatedly.
+        await self._spend.record(session_id=session_id, tts_characters=len(said))
+
+        return CoachedTurn(text=said, speech=await self._voice(said), heard="")
 
     async def spar(
         self,
@@ -346,6 +452,20 @@ class CoachService:
             .order_by(CoachTurn.ordinal)
         )
         return tuple(Spoken(who=row.who, text=row.text) for row in rows.scalars())
+
+    async def _greeted(self, session_id: uuid.UUID, said: str) -> None:
+        """The opening, as the first line of the thread.
+
+        One row rather than the pair `_keep` writes, because nothing was asked.
+        It goes in the thread rather than beside it so that the next turn can
+        see it: a coach that greeted somebody and could not tell it had done so
+        would open the conversation twice, and would answer their reply as
+        though it were the first thing said.
+        """
+        self._db.add(
+            CoachTurn(session_id=session_id, ordinal=0, who=COACH, text=said)
+        )
+        await self._db.commit()
 
     async def _keep(self, session_id: uuid.UUID, asked: str, answered: str) -> None:
         """Both sides of the turn, in one transaction.

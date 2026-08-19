@@ -56,6 +56,13 @@ export interface DebriefProps {
   /** Worst first, as `GET /v1/sessions/{id}/debrief` ranked them. */
   answers: WeakAnswer[];
   pressed: Pressed;
+  /**
+   * What the coach said on arrival, before anybody said anything.
+   *
+   * Null on a room whose coaching started at the microphone — greeting into
+   * the middle of a conversation would read as not having listened.
+   */
+  opening: Exchange | null;
   /** Coaching turns that belonged to no single question. */
   thread: Exchange[];
   /** Re-answers, keyed by rank — which is the index in `answers`, per #59. */
@@ -79,6 +86,15 @@ export interface DebriefProps {
    * that was missed — see `Replay`, which carries the reasoning.
    */
   onReplay: (speech: string) => void;
+  /**
+   * Hear the opening again.
+   *
+   * Its own callback rather than `onReplay`, because the greeting's audio is
+   * usually not in hand: the server speaks it once, for the arrival it belongs
+   * to, and a screen that resumed has the words without the voice. The route
+   * knows which case it is in; this does not.
+   */
+  onReplayOpening: () => void;
   onPrepSheet: () => void;
 }
 
@@ -100,6 +116,7 @@ function movement(pressed: Pressed): string | null {
 export function Debrief({
   answers,
   pressed,
+  opening,
   thread,
   attempts,
   listening,
@@ -107,6 +124,7 @@ export function Debrief({
   onTalk,
   onStop,
   onReplay,
+  onReplayOpening,
   onPrepSheet,
 }: DebriefProps) {
   // One capture at a time. Two would race, and the loser's clip would arrive
@@ -138,6 +156,29 @@ export function Debrief({
 
         {moved && <Text style={styles.moved}>{moved}</Text>}
 
+        {/*
+          The coach, before the list.
+
+          It speaks itself on arrival, which is the whole point: somebody
+          walking out of a room is greeted rather than handed a form. This is
+          the caption, which `CLAUDE.md` requires alongside the voice rather
+          than instead of it.
+
+          Above the findings because it is what orders them — it says where the
+          room got past you and which one to start with, and reading that after
+          the list would be reading the index after the book.
+
+          There is no grade here and nowhere to put one. The retired mockup for
+          this screen opens with a letter in a circle over a delivery read, and
+          neither this component nor the field it renders can carry one.
+        */}
+        {opening && (
+          <View style={styles.opening}>
+            <Text style={styles.openingSaid}>{opening.said}</Text>
+            <Replay onReplay={onReplayOpening} />
+          </View>
+        )}
+
         {answers.map((answer, rank) => (
           <DebriefEntry
             key={answer.ordinal}
@@ -159,7 +200,10 @@ export function Debrief({
               <View key={index} style={styles.turn}>
                 <Text style={styles.heard}>{exchange.heard}</Text>
                 <Text style={styles.said}>{exchange.said}</Text>
-                <Replay speech={exchange.speech} onReplay={onReplay} />
+                <Replay
+                  available={exchange.speech.length > 0}
+                  onReplay={() => onReplay(exchange.speech)}
+                />
               </View>
             ))}
           </View>
@@ -201,6 +245,18 @@ const styles = StyleSheet.create({
   content: { padding: space.screen, paddingBottom: space.major },
 
   title: { ...type.headlineLg, color: color.onSurface },
+
+  /**
+   * The coach's opening, set as speech rather than as a card.
+   *
+   * No container, no border, no avatar. A card here would make it a summary
+   * panel — which is exactly the retired mockup's B+ block wearing different
+   * clothes — and this is somebody talking. It reads at body size on the page's
+   * own ground, above the first finding, and the only furniture is the control
+   * to hear it again.
+   */
+  opening: { marginTop: space.loose },
+  openingSaid: { ...type.bodyLg, color: color.onSurface },
   standfirst: {
     ...type.bodyLg,
     color: color.onSurfaceVariant,

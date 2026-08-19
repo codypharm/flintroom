@@ -99,7 +99,10 @@ export function DebriefEntry({
             <View key={index} style={index > 0 && styles.later}>
               <Text style={styles.said}>{attempt.heard}</Text>
               <Text style={styles.back}>{attempt.said}</Text>
-              <Replay speech={attempt.speech} onReplay={onReplay} />
+              <Replay
+                available={attempt.speech.length > 0}
+                onReplay={() => onReplay(attempt.speech)}
+              />
             </View>
           ))
         )}

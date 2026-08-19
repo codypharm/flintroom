@@ -228,6 +228,28 @@ class CoachModel(Protocol):
         """
         ...
 
+    async def open(self, *, grounds: Grounds) -> CoachReply:
+        """Say the first thing, with nothing having been said to you.
+
+        The one turn with no user speech in front of it, which makes it the one
+        most able to wander — an opening asked for "how did that go" and handed
+        no anchor is exactly the shape that reaches for a general observation
+        about pitching, which is the competitor product the wedge refuses. So it
+        sees `grounds` and nothing else, like every other turn, and `spoken`
+        checks its citations like every other turn. Nothing about being first
+        earns an exemption from either half of the fence.
+
+        **What it is for:** putting the ranked list in a human order and saying
+        where the room actually got past them. What it is not for is a score.
+        `design-guide/coaching_debrief/` opens with a B+ and a delivery read, and
+        §1 exists to refuse exactly that — so there is no grade in the reply
+        type, no number to render, and nothing here asks for one.
+
+        **May raise, and the caller must survive it.** Same as `reply`: nothing
+        is live and nothing is metered, so a failure costs a retry.
+        """
+        ...
+
     async def spar(
         self,
         *,

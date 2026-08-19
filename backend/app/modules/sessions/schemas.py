@@ -400,6 +400,22 @@ class DebriefRead(BaseModel):
     #: mention on a screen already carrying weak answers and a coach.
     pressed: Literal["harder", "easier"] | None = None
 
+    #: What the coach says before anybody has said anything, or null.
+    #:
+    #: Null in exactly two cases, and both are real rather than errors: a room
+    #: whose coaching conversation started without one — reachable by a client
+    #: that goes straight to the microphone — and, on the client's side of this,
+    #: nothing at all to say. Greeting into the middle of an exchange would read
+    #: as the coach not having been listening.
+    #:
+    #: **`speech` is empty on every read after the first**, and that is the
+    #: whole of the cost decision. `docs/voice-cost.md` puts the expressive
+    #: speaker at roughly $0.0002 a character, so a spoken opening costs about
+    #: what a minute of live interrogation does — and this endpoint is re-fetched
+    #: on every resume. The text is stored and recalled; the voice belongs to the
+    #: arrival, and hearing it again is a request with its own endpoint.
+    opening: CoachTurnRead | None = None
+
 
 class CoachTurnRead(BaseModel):
     """What the coach said, in both channels at once.

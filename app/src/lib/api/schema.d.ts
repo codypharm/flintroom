@@ -330,6 +330,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sessions/{session_id}/debrief/opening/speech": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Say The Opening Again
+         * @description Hear the greeting again.
+         *
+         *     The opening speaks itself on arrival and comes back silent on every read
+         *     after, because `docs/voice-cost.md` puts the expressive speaker at about
+         *     $0.0002 a character — a spoken greeting costs roughly a minute of live
+         *     interrogation, and the debrief read is what a backgrounded phone repeats.
+         *     This is where that cost is paid instead: once, when somebody asks.
+         *
+         *     `POST` rather than `GET`, and not for style. It is not safe and it is not
+         *     cacheable: every call pays a synthesis vendor, and a proxy or a client
+         *     library that retried a `GET` for free would be spending money it thought was
+         *     idempotent.
+         *
+         *     Rate-limited for the same reason. This is the only endpoint in the product
+         *     where one authenticated user can spend a vendor at will, and no honest
+         *     client presses replay in a loop.
+         *
+         *     Unmetered, like every coaching turn — there is no path from here to a
+         *     balance.
+         */
+        post: operations["sessions_say_the_opening_again"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sessions/{session_id}/debrief/turns": {
         parameters: {
             query?: never;
@@ -760,6 +798,7 @@ export interface components {
             weak_answers: components["schemas"]["WeakAnswerRead"][];
             /** Pressed */
             pressed?: ("harder" | "easier") | null;
+            opening?: components["schemas"]["CoachTurnRead"] | null;
         };
         /**
          * DeletionScheduled
@@ -1625,6 +1664,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DebriefRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sessions_say_the_opening_again: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoachTurnRead"];
                 };
             };
             /** @description Validation Error */

@@ -53,6 +53,7 @@ export default function DebriefRoute() {
   const [answers, setAnswers] = useState<WeakAnswer[] | null>(null);
   const [pressed, setPressed] = useState<Pressed>(null);
   const [refusal, setRefusal] = useState<RoomRefusal | null>(null);
+  const [opening, setOpening] = useState<Exchange | null>(null);
   const [thread, setThread] = useState<Exchange[]>([]);
   const [attempts, setAttempts] = useState<Record<number, Exchange[]>>({});
   const [listening, setListening] = useState<Listening>({ state: 'idle' });
@@ -75,45 +76,6 @@ export default function DebriefRoute() {
    * clear the refusal and redraw, and only state does that.
    */
   const [attempt, setAttempt] = useState(0);
-
-  useEffect(() => {
-    let live = true;
-
-    debriefs
-      .read(id)
-      .then((debrief) => {
-        if (!live) return;
-        setAnswers(debrief.weakAnswers);
-        setPressed(debrief.pressed);
-      })
-      .catch((error) => {
-        if (!live) return;
-        if (error instanceof SignedOut) {
-          router.replace('/');
-          return;
-        }
-        setRefusal(refusedRoom(error));
-      });
-
-    return () => {
-      live = false;
-    };
-  }, [id, attempt]);
-
-  /**
-   * Stop the hardware, whatever ended the turn.
-   *
-   * Called from the happy path and from every failure, because a recorder left
-   * running holds the microphone open after the screen has moved on — and on
-   * iOS that is a red status bar over an app that is doing nothing.
-   */
-  const release = useCallback(() => {
-    recorder.current?.stop();
-    recorder.current?.clearOnAudioReady();
-    recorder.current = null;
-  }, []);
-
-  useEffect(() => release, [release]);
 
   /**
    * The coach, out loud — made on first use and kept for the route's life.
@@ -138,6 +100,59 @@ export default function DebriefRoute() {
     voice.current.play(speech);
   }, []);
 
+  useEffect(() => {
+    let live = true;
+
+    debriefs
+      .read(id)
+      .then((debrief) => {
+        if (!live) return;
+        setAnswers(debrief.weakAnswers);
+        setPressed(debrief.pressed);
+
+        if (debrief.opening) {
+          setOpening({
+            heard: '',
+            said: debrief.opening.text,
+            speech: debrief.opening.speech,
+          });
+          // The coach speaks first, which is what makes the debrief a
+          // conversation somebody joins rather than a form they fill in. Empty
+          // on every read after the first — the server synthesises the greeting
+          // for the arrival it belongs to and not for a screen that redrew —
+          // and `play` says nothing when handed nothing.
+          void speak(debrief.opening.speech);
+        }
+      })
+      .catch((error) => {
+        if (!live) return;
+        if (error instanceof SignedOut) {
+          router.replace('/');
+          return;
+        }
+        setRefusal(refusedRoom(error));
+      });
+
+    return () => {
+      live = false;
+    };
+  }, [id, attempt, speak]);
+
+  /**
+   * Stop the hardware, whatever ended the turn.
+   *
+   * Called from the happy path and from every failure, because a recorder left
+   * running holds the microphone open after the screen has moved on — and on
+   * iOS that is a red status bar over an app that is doing nothing.
+   */
+  const release = useCallback(() => {
+    recorder.current?.stop();
+    recorder.current?.clearOnAudioReady();
+    recorder.current = null;
+  }, []);
+
+  useEffect(() => release, [release]);
+
   // The route is popped and the coach must not follow. `stop` rather than
   // `silence`: nothing after this screen should hear it.
   useEffect(
@@ -149,6 +164,42 @@ export default function DebriefRoute() {
     },
     []
   );
+
+  /**
+   * Hear the greeting again, at the cost of asking for it.
+   *
+   * The opening speaks itself on arrival and comes back silent on every read
+   * after — the server synthesises it once, because a spoken greeting costs
+   * about what a minute of live interrogation does and this screen re-fetches
+   * on every resume. So the audio is not in hand and cannot be: this asks for a
+   * fresh synthesis of the same stored words.
+   *
+   * A failure is said beside the control rather than replacing the sheet. A
+   * greeting that would not play again is not a reason to take away findings
+   * somebody is working through.
+   */
+  const hearOpeningAgain = useCallback(async () => {
+    // Already in hand, because this screen asked once already. A second tap
+    // costs nothing, which is the difference between a control somebody uses
+    // and one they think twice about.
+    if (opening?.speech) {
+      await speak(opening.speech);
+      return;
+    }
+
+    try {
+      const again = await debriefs.hearOpeningAgain(id);
+      // Kept, so a second replay in the same screen life is free.
+      setOpening({ heard: '', said: again.text, speech: again.speech });
+      await speak(again.speech);
+    } catch (error) {
+      if (error instanceof SignedOut) {
+        router.replace('/');
+        return;
+      }
+      setTurnRefusal(refusedTurn(error));
+    }
+  }, [id, speak, opening]);
 
   const finish = useCallback(async () => {
     const gathering = clip.current;
@@ -297,6 +348,7 @@ export default function DebriefRoute() {
       <Debrief
         answers={answers}
         pressed={pressed}
+        opening={opening}
         thread={thread}
         attempts={attempts}
         listening={listening}
@@ -304,6 +356,7 @@ export default function DebriefRoute() {
         onTalk={(at) => void start(at)}
         onStop={() => void finish()}
         onReplay={(speech) => void speak(speech)}
+        onReplayOpening={() => void hearOpeningAgain()}
         onPrepSheet={() => router.push('/prep-sheet')}
       />
     </SafeAreaView>
