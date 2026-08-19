@@ -19,9 +19,39 @@
  * These are generated people, not photographs of anyone. That is the whole
  * reason they are permissible — `CLAUDE.md` locks archetypes to pre-built
  * personas precisely so no real person's likeness is ever involved. The set is
- * deliberately spread across age, gender and ethnicity: any one of them alone
- * is fine, but eight lookalike executives would be the product quietly
- * asserting what a CFO looks like.
+ * deliberately spread across age and ethnicity: any one of them alone is fine,
+ * but eight lookalike executives would be the product quietly asserting what a
+ * CFO looks like.
+ *
+ * **THE FACE MUST AGREE WITH THE VOICE, AND THE VOICE DECIDES.** Six of these
+ * were originally hung on the wrong archetype, and it shipped: the architect
+ * saw the CFO's picture and heard Daniel, a British male voice. Portraits are
+ * artwork; `ELEVENLABS_VOICES` is shipped configuration carrying gender, accent
+ * and age, and it predates them. So the pictures were reassigned to match the
+ * casting rather than the casting re-cut to match the pictures.
+ *
+ * Who ended up where, and why — because the obvious repair is to shuffle them
+ * again on taste, and that would break the thing this comment exists to hold:
+ *
+ * - `cfo` / Daniel, British male — the guarded, evaluating face. Reads as
+ *   "not interested in vision until the arithmetic holds".
+ * - `technical_skeptic` / Alice, British female — unimpressed and patient. The
+ *   senior engineer who has watched confident demos fail.
+ * - `champion` / Sarah, American female — the one leaning in. The only ally in
+ *   the room has to look like one.
+ * - `growth_maximalist` / Charlie, Australian male — the youngest and most
+ *   intense. Impatient with caution.
+ * - `distracted_executive` / Adam, American male — open collar, faintly
+ *   unbothered. Half-listening, deciding inside ninety seconds.
+ * - `internal_blocker` / Lily, British female — unfailingly reasonable, mildly
+ *   concerned, immovable.
+ * - `customer_advocate` / Bella, American female — speaks for people who are
+ *   not in the room.
+ * - `risk_officer` / Bill, American older male — sober and still, comfortable
+ *   being why it does not ship.
+ *
+ * Two were already right and were not moved: `internal_blocker` and
+ * `risk_officer`.
  */
 
 /** Keyed by the archetype's slug, as `/v1/archetypes` and the wire spell it. */
