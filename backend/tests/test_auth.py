@@ -20,7 +20,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from app.main import create_app
-from app.modules.auth.dependencies import get_access_tokens
+from app.modules.auth.dependencies import get_access_tokens, get_onboarding_service
 from app.modules.auth.tokens import AccessTokens
 
 #: Not a secret, and not read from the environment. A test that depends on
@@ -33,10 +33,29 @@ def tokens() -> AccessTokens:
     return AccessTokens(secret=SECRET)
 
 
+class NeverAsked:
+    """An onboarding service for tests that have no database.
+
+    `/v1/me` grew a second question on 2026-08-20 — whether this account has
+    ever described a room, so the launch gate knows whether to ask — and that
+    question reads a table. The tests in this file are about *tokens*: they
+    build an app with no database on purpose, because a credential either names
+    its bearer or does not, and a schema has nothing to do with it.
+
+    So the second question is stubbed rather than answered. Overriding it keeps
+    these tests measuring the thing they were written for instead of quietly
+    becoming integration tests.
+    """
+
+    async def described_a_room(self, *, user_id) -> bool:
+        return False
+
+
 @pytest_asyncio.fixture
 async def client(tokens):
     app = create_app()
     app.dependency_overrides[get_access_tokens] = lambda: tokens
+    app.dependency_overrides[get_onboarding_service] = NeverAsked
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:

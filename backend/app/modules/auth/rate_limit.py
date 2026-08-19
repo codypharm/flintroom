@@ -78,6 +78,15 @@ ACCOUNT_DELETION_LIMIT = 5
 #: hears the same four sentences seven times in a minute.
 OPENING_REPLAY_LIMIT = 6
 
+#: Survey answers submitted per minute per account.
+#:
+#: Loose, because a person answering a five-question form is not a threat and a
+#: client re-opened mid-survey will legitimately resend. It is limited at all
+#: because it is the one endpoint that appends a row on every call — a situation
+#: is an occasion rather than a correction — so a loop here grows a table rather
+#: than overwriting a field.
+ONBOARDING_LIMIT = 20
+
 #: Difficulty changes per minute per account.
 #:
 #: Generous, because this is a slider and a slider is dragged: somebody trying

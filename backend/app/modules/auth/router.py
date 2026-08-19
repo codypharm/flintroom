@@ -11,6 +11,7 @@ from app.modules.auth.dependencies import (
     AccountDeletionDep,
     AuthServiceDep,
     CurrentUser,
+    OnboardingServiceDep,
     RefreshTokensDep,
     rate_limit,
     rate_limit_user,
@@ -24,22 +25,65 @@ from app.modules.auth.schemas import (
 )
 from app.modules.auth.rate_limit import (
     ACCOUNT_DELETION_LIMIT,
+    ONBOARDING_LIMIT,
     REFRESH_LIMIT,
     SIGN_IN_LIMIT,
 )
 from app.modules.auth.tokens import ACCESS_TOKEN_TTL
+from app.modules.onboarding.schemas import Answers
 
 router = APIRouter(tags=["auth"])
 
 
 @router.get("/me", response_model=Identity)
-async def read_current_identity(user_id: CurrentUser) -> Identity:
+async def read_current_identity(
+    user_id: CurrentUser, onboarding: OnboardingServiceDep
+) -> Identity:
     """Answer whether the credential the app is holding is still good.
 
     The mobile client calls this on launch. A 200 means go straight in; a 401
-    means sign in again.
+    means sign in again — and since 2026-08-20 that is not a description of an
+    intention but of the app's actual gate, which had none before #86.
+
+    It also answers whether this account has ever described a room, because the
+    same launch has to decide whether to ask. Two questions, one round trip, on
+    the slowest screen in the product.
     """
-    return Identity(user_id=user_id)
+    return Identity(
+        user_id=user_id,
+        onboarded=await onboarding.described_a_room(user_id=user_id),
+    )
+
+
+@router.post(
+    "/onboarding",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(rate_limit_user("onboarding", ONBOARDING_LIMIT))],
+)
+async def describe_the_room(
+    payload: Answers, user_id: CurrentUser, onboarding: OnboardingServiceDep
+) -> None:
+    """Say what you are preparing for, after signing in rather than before.
+
+    **This endpoint is a reversal, and it should be read as one.**
+    `docs/onboarding.md` settled survey-first and had the answers ride on the
+    sign-in request in a single call, because "a partially-created account with
+    no configuration is a state worth not having". The architect reordered it on
+    2026-08-20: a signed-out launch (#86) has no way in under survey-first, and a
+    returning user is not the stranger that argument was about.
+
+    So the refused state is now reachable on purpose, and this is what makes it
+    survivable — an account can describe its room at any later moment, and
+    `/v1/me` tells the client whether to ask.
+
+    The user comes from the credential, never from the body. Both writes still
+    happen in one transaction inside the service, because they are one answer.
+
+    Rate-limited like every authenticated write. Nothing here is expensive, but
+    it is the only endpoint that appends a row per call, and a client re-opened
+    mid-survey will send it more than once.
+    """
+    await onboarding.record(user_id=user_id, answers=payload)
 
 
 @router.delete(

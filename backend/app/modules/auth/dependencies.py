@@ -23,6 +23,7 @@ from app.modules.auth.rate_limit import RATE_LIMIT_WINDOW, PostgresRateLimiter
 from app.modules.billing.deletion import AccountDeletion
 from app.modules.auth.refresh import RefreshTokenService
 from app.modules.auth.service import AuthService, IdentityVerifier
+from app.modules.onboarding.service import OnboardingService
 from app.modules.auth.tokens import AccessTokens
 
 #: `auto_error` off so that a missing header reaches our own handler. FastAPI's
@@ -174,3 +175,19 @@ def _caller(request: Request) -> str:
     nobody else.
     """
     return request.client.host if request.client else "unknown"
+
+
+async def get_onboarding_service(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> OnboardingService:
+    """What somebody said about the room they are preparing for.
+
+    Here rather than in an `onboarding/dependencies.py` of its own, because both
+    callers live on this router: sign-in has always written the answers, and
+    `/v1/me` now reads whether they exist. A module with one dependency and no
+    router is a file nobody would find.
+    """
+    return OnboardingService(db)
+
+
+OnboardingServiceDep = Annotated[OnboardingService, Depends(get_onboarding_service)]

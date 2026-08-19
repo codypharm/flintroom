@@ -235,6 +235,49 @@ Five things this document decided, or implied, that the build had to change.
 Each is recorded because the code now disagrees with the prose above, and a
 reader who trusts the prose would be misled.
 
+### Sign-in moves in front of the survey — 2026-08-20
+
+**This reverses the ordering the rest of this document argues for**, by the
+architect's decision, and the reason is a case the original argument never
+considered.
+
+That argument is *survey first, sign-in after*: "identity is asked for once
+there is something to lose… rather than a toll gate in front of a stranger",
+contrasted with sign-in *at launch*. It is about a **first** launch by somebody
+who has never seen the product.
+
+#86 is about a **signed-out** launch, which is not that. A returning user — one
+who signed out, whose refresh expired, or who reinstalled — is not a stranger
+and has nothing to lose by signing in; they have something to recover. Under
+survey-first they had no way in at all, because `SignInSheet` was rendered in
+exactly one place: after the survey, inside onboarding.
+
+The old order also carried a cost this document already named and accepted:
+"somebody who abandons at the sign-in sheet leaves having answered five
+questions and seen nothing". Sign-in first removes it. Five answers cannot be
+recovered; an unconfigured account can simply be asked again.
+
+**What it costs, stated as plainly as the thing it replaces.** The survey used
+to ride on the sign-in request in a single call, because "a partially-created
+account with no configuration is a state worth not having". That state is now
+reachable on purpose: sign in, abandon the survey, and the account exists with
+no situation, role or audience. Three things make it survivable rather than
+broken —
+
+- It degrades to the ordinary product. `setup.tsx` opens pre-seated only on the
+  reveal path and empty on every other arrival, which is already the code's
+  behaviour rather than a new branch.
+- `GET /v1/me` publishes `onboarded`, so the next launch knows to ask again.
+  Keyed to the **account**, never to the install: a reinstall is the moment a
+  returning user most needs to be left alone, and a local flag is exactly what a
+  reinstall destroys.
+- `POST /v1/onboarding` exists, so the answers can land at any later moment. The
+  two writes still happen in one transaction, because they are still one answer.
+
+The single sign-in call is kept for the path that still uses it. Nothing about
+the survey's shape, the five questions, the on-device holding of answers, or the
+free grant changes.
+
 ### The reveal moves after sign-in
 
 The diagram draws `5 questions ─► "Here's your room" ─► Sign in`. **The

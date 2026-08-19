@@ -37,6 +37,19 @@ class OnboardingService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
+    async def described_a_room(self, *, user_id: uuid.UUID) -> bool:
+        """Whether this account has ever answered the survey.
+
+        `EXISTS` rather than a count: the question is "any", the table appends a
+        row per occasion, and somebody preparing for their fifth meeting should
+        not cost a fifth of a scan on every launch.
+        """
+        return bool(
+            await self._db.scalar(
+                select(Situation.id).where(Situation.user_id == user_id).limit(1)
+            )
+        )
+
     async def record(self, *, user_id: uuid.UUID, answers: Answers) -> None:
         """Store the plan, both halves, atomically.
 

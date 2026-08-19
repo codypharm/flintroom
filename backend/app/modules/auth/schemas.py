@@ -11,12 +11,28 @@ from app.modules.onboarding.schemas import Answers
 class Identity(BaseModel):
     """What the API will admit about the caller to the caller.
 
-    Deliberately only the identifier. `CLAUDE.md` requires minimum necessary
-    fields, and this endpoint's job is answering "is this credential still
-    good", not returning a profile.
+    Still not a profile. `CLAUDE.md` requires minimum necessary fields, and this
+    endpoint's job is answering "is this credential still good" — plus, since
+    2026-08-20, the one other thing the launch gate has to know before it can
+    draw anything.
     """
 
     user_id: uuid.UUID
+
+    #: Whether this account has ever described a room it is preparing for.
+    #:
+    #: Here rather than on an endpoint of its own, because the client asks both
+    #: questions at the same instant: `read_current_identity`'s own docstring
+    #: says "the mobile client calls this on launch", and a second round trip on
+    #: the slowest screen in the product buys nothing.
+    #:
+    #: **Keyed to the account, never to the install.** A reinstall is the moment
+    #: a returning user most needs to be left alone, and a local flag is exactly
+    #: what a reinstall destroys.
+    #:
+    #: Not a profile field and not personal: it is a boolean about whether a
+    #: form was filled, which reveals nothing about what was said in it.
+    onboarded: bool = False
 
 
 class SignInRequest(BaseModel):
