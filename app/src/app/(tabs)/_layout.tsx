@@ -12,7 +12,13 @@ import { color, space, type } from '../../theme/tokens';
  * step in a flow, and which two things the architect asked for both land on:
  * running a past room again, and seeing whether you are getting better.
  *
- * **Three, not the mockup's four.** `design-guide/home/` and
+ * **Four, and the fourth was earned rather than copied.** Progress began as a
+ * caption on Home and the architect's verdict was that a caption is not a
+ * record — the aim is to track performance across rooms, which is a
+ * destination. The mockup's four are Home, Sessions, Library and Profile; these
+ * are not those.
+ *
+ * **On the mockup's own four.** `design-guide/home/` and
  * `design-guide/library/` both draw Home, Sessions, Library and Profile.
  * Sessions and Library do the same job here, so Library keeps it — the
  * architect's own definition, "a browser for all past sessions in case you want
@@ -56,6 +62,13 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="progress"
+        options={{
+          title: 'Progress',
+          tabBarIcon: ({ color: tint }) => <Climb tint={tint} />,
+        }}
+      />
+      <Tabs.Screen
         name="library"
         options={{
           title: 'Library',
@@ -88,6 +101,17 @@ function Table({ tint }: Mark) {
   return (
     <View style={styles.mark}>
       <View style={[styles.ring, { borderColor: tint }]} />
+    </View>
+  );
+}
+
+/** A run of rooms: bars rising left to right, which is what Progress draws. */
+function Climb({ tint }: Mark) {
+  return (
+    <View style={[styles.mark, styles.climb]}>
+      <View style={[styles.step, { height: 7, backgroundColor: tint }]} />
+      <View style={[styles.step, { height: 12, backgroundColor: tint }]} />
+      <View style={[styles.step, { height: 18, backgroundColor: tint }]} />
     </View>
   );
 }
@@ -143,6 +167,10 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     borderWidth: 2,
   },
+
+  /** The bars sit on a shared baseline, which is what makes them a climb. */
+  climb: { flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
+  step: { width: 4, borderRadius: 1 },
 
   rule: { height: 2, borderRadius: 1 },
   long: { width: 18 },

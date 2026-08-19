@@ -11,9 +11,7 @@ import {
   type MaterialLimits,
 } from '../../lib/api/materialsApi';
 import { createPanelsApi, type Catalogue } from '../../lib/api/panelsApi';
-import { Progress } from '../../components/modules/Progress';
 import { createBalanceApi, type Held } from '../../lib/api/balanceApi';
-import { createProgressApi, type Progress as Read } from '../../lib/api/progressApi';
 import { API_BASE_URL, auth } from '../../lib/auth';
 import { SignedOut } from '../../lib/auth/session';
 import { color, space, type } from '../../theme/tokens';
@@ -66,11 +64,6 @@ const ACCEPTS = ['application/pdf', 'application/vnd.openxmlformats-officedocume
  */
 const ASK_AGAIN_MS = 3000;
 
-const progress = createProgressApi({
-  baseUrl: API_BASE_URL,
-  accessToken: () => auth.accessToken(),
-});
-
 const balance = createBalanceApi({
   baseUrl: API_BASE_URL,
   accessToken: () => auth.accessToken(),
@@ -90,7 +83,6 @@ export default function HomeScreen() {
   const [refused, setRefused] = useState<string | null>(null);
   const [seated, setSeated] = useState<string[]>([]);
 
-  const [read, setRead] = useState<Read | null>(null);
   const [held, setHeld] = useState<Held | null>(null);
   const [material, setMaterial] = useState<AttachedMaterial | null>(null);
   const [limits, setLimits] = useState<MaterialLimits | null>(null);
@@ -290,28 +282,19 @@ export default function HomeScreen() {
   }, [material]);
 
   /**
-   * How the last room went, and how much time is available.
+   * How much time is available.
    *
-   * `useFocusEffect` rather than a mount effect, and that is the whole reason
-   * this is worth stating: a tab is not unmounted when somebody leaves it, and
-   * the single walk that changes both of these numbers is exactly the one that
-   * leaves this screen and comes back — build a room, be interrogated, open the
-   * debrief, return.
+   * `useFocusEffect` rather than a mount effect: a tab is not unmounted when
+   * somebody leaves it, and the walk that changes this number is exactly the
+   * one that leaves this screen — into a room, and back.
    *
-   * Failures are silent, and here that is right. Neither figure is how somebody
+   * Failures are silent, and here that is right. This is not how somebody
    * starts a room; a refusal drawn over the panel picker would break the
-   * screen's actual job over a sentence nobody asked for.
+   * screen's actual job over a line nobody asked for.
    */
   useFocusEffect(
     useCallback(() => {
       let live = true;
-
-      progress
-        .read()
-        .then((theirs) => {
-          if (live) setRead(theirs);
-        })
-        .catch(() => undefined);
 
       balance
         .read()
@@ -369,7 +352,7 @@ export default function HomeScreen() {
         onAttach={attach}
         onRemoveMaterial={() => void detach()}
         onDifficultyChange={chooseDifficulty}
-        header={<Standing read={read} held={held} />}
+        header={<Standing held={held} />}
         onStart={() => {
           // The seating and the deck travel as params rather than being read
           // back from the server, because nothing persists them: `seated` is
@@ -390,24 +373,21 @@ export default function HomeScreen() {
 }
 
 /**
- * Where you stand, above the room you are about to build.
+ * How much time is available, above the room about to spend it.
  *
- * Two sentences and nothing else. Above the picker because both are reasons to
- * make a choice below — how the last room went says which panel to seat, and
- * the time available says how long to plan for.
+ * One line. How the last room *went* used to be here too and has moved to its
+ * own tab — a run of rooms is the one thing in this product that cannot be said
+ * in a sentence, and it was being said in one, above a form.
  *
- * Both silent until known. An absent line is a screen still loading; a zero is
- * a claim, and one of these is a claim about somebody's money sitting directly
- * above the control that spends it.
+ * Silent until known. An absent line is a screen still loading; a zero is a
+ * claim, and this one is a claim about somebody's money sitting directly above
+ * the control that spends it.
  */
-function Standing({ read, held }: { read: Read | null; held: Held | null }) {
-  if (!read && !held) return null;
+function Standing({ held }: { held: Held | null }) {
+  if (!held) return null;
 
   return (
     <View style={styles.standing}>
-      {read && read.rooms.length > 0 && (
-        <Progress rooms={read.rooms} habits={read.habits} askers={read.askers} />
-      )}
       {held && (
         <Text style={styles.held}>
           {/* §4.6: framed generously, as what is there rather than what is
