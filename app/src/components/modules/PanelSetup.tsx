@@ -4,7 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { AttachedMaterial, MaterialLimits } from '../../lib/api/materialsApi';
 import { portraitOf } from '../../lib/archetypes/portraits';
 import { color, radius, space, type } from '../../theme/tokens';
-import { ArchetypeCard, AuthorCard } from './ArchetypeCard';
+import { ArchetypeCard, AuthorRow } from './ArchetypeCard';
 import { DeckAttach } from './DeckAttach';
 
 /**
@@ -234,6 +234,10 @@ export function PanelSetup({
         contentContainerStyle={styles.rail}
         // The rail is a list of buttons; the gesture belongs to the cards.
         accessibilityRole="list"
+        // Labelled as well as roled, so the rail is addressable — a test can
+        // ask what is inside it, which is the only way to assert that the
+        // author row is *not*.
+        accessibilityLabel="Panelists to choose from"
         scrollEventThrottle={32}
         onLayout={(event) => setViewport(event.nativeEvent.layout.width)}
         onContentSizeChange={(width) => setReach(width)}
@@ -264,8 +268,6 @@ export function PanelSetup({
             />
           );
         })}
-
-        <AuthorCard yours={room.mayAuthor} />
       </ScrollView>
 
       </View>
@@ -273,6 +275,14 @@ export function PanelSetup({
       {/* Belongs to the roster above it, so it sits on the same left edge
           rather than centred under a left-aligned card. */}
       <Text style={styles.groupNote}>{seatsLine(room, seated.length)}</Text>
+
+      {/*
+        Out of the rail, where it was the ninth card of eight and nobody found
+        it. It is not a panelist being chosen among — it is a capability — and
+        a full-width row after the horizontal scroll ends is where the eye lands
+        without anything having to be swiped. See `AuthorRow`.
+      */}
+      <AuthorRow yours={room.mayAuthor} />
 
       <Text style={styles.field} accessibilityRole="header">
         How hard they push

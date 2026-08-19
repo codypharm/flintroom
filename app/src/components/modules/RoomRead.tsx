@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { SaidLine } from '../../lib/api/sessionsApi';
 import { panelistName } from '../../lib/panel/vocabulary';
 import { color, radius, space, type } from '../../theme/tokens';
+import { BackTo } from '../ui/BackTo';
 
 /**
  * One room, read back.
@@ -44,9 +45,17 @@ export interface RoomReadProps {
   /** Every line, in the order it happened. Empty is a real room. */
   lines: SaidLine[];
   onDebrief: () => void;
+  /**
+   * The way back to wherever this was opened from.
+   *
+   * Named by the route rather than fixed here, because two lists lead in: the
+   * Library and the run of rooms on Progress. Landing somebody back on the one
+   * they did not come from is a worse failure than no control at all.
+   */
+  back: { where: string; onPress: () => void };
 }
 
-export function RoomRead({ when, who, lines, onDebrief }: RoomReadProps) {
+export function RoomRead({ when, who, lines, onDebrief, back }: RoomReadProps) {
   const opened = lines.length > 0 ? new Date(lines[0].saidAt).getTime() : 0;
 
   return (
@@ -56,6 +65,8 @@ export function RoomRead({ when, who, lines, onDebrief }: RoomReadProps) {
         contentContainerStyle={styles.content}
         accessibilityLabel="What was said in this room"
       >
+        <BackTo where={back.where} onPress={back.onPress} />
+
         <Text style={styles.title}>{when}</Text>
         <Text style={styles.who}>{who}</Text>
 
@@ -130,7 +141,7 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { padding: space.screen, paddingBottom: space.major },
 
-  title: { ...type.headlineLg, color: color.onSurface },
+  title: { ...type.headlineLg, color: color.onSurface, marginTop: space.base },
   who: { ...type.bodyLg, color: color.onSurfaceVariant, marginTop: space.hair },
 
   /**

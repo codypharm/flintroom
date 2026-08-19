@@ -252,34 +252,78 @@ const styles = StyleSheet.create({
   author: { borderColor: color.hairline, borderStyle: 'dashed' },
   authorFace: { backgroundColor: 'transparent', borderWidth: 2, borderColor: color.hairline, borderStyle: 'dashed' },
   aside: { ...type.labelLg, color: color.onSurfaceVariant },
+
+  /**
+   * The author row, deliberately unlike the cards above it.
+   *
+   * Full width, laid out horizontally, on the same left edge as the seats line
+   * — everything about its shape says "a different kind of thing" rather than
+   * "another one of those". A hairline above ties it to the rail it follows
+   * without making it a member of it.
+   */
+  authorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.base,
+    marginTop: space.base,
+    paddingTop: space.base,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.hairline,
+  },
+  rowFace: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  rowWords: { flex: 1 },
+  rowTitle: { ...type.labelLg, color: color.onSurface },
+  rowBlurb: { ...type.bodySm, color: color.onSurfaceVariant, marginTop: space.hair },
+  rowAside: { ...type.labelLg, color: color.onSurfaceVariant },
 });
 
 
 /**
- * The archetype somebody would write themselves, as the last card in the rail.
+ * The archetype somebody would write themselves — a row, not a card in the rail.
  *
- * Shown even where the plan cannot use it. `may_author` is published false
- * rather than omitted precisely so the picker can say the capability exists —
- * hiding it is how nobody ever learns it is there. A fact and a plan name,
- * never a locked door with a price on it: §4.5 keeps the upsell out of the way
- * of a rehearsal.
+ * **It was the ninth card in a rail of eight, and nobody found it.** Reported
+ * as *"people will not know it is there based on how it is now"*, which is
+ * exactly what this component's own note was written to prevent: `may_author`
+ * is published false rather than omitted "precisely so the picker can say the
+ * capability exists — hiding it is how nobody ever learns it is there". Putting
+ * it behind eight horizontal swipes hid it anyway, by a different mechanism.
  *
- * Not pressable at either value, and not dimmed at either. Authoring has no
- * endpoint yet (#65), and a control that opens nothing is worse than a
- * statement; a row at 40% is nearly a hidden row, which would cost the
- * legibility that was the entire point of publishing the flag.
+ * The deeper reason it did not belong there: **it is not a panelist you are
+ * choosing among.** The rail is a set of mutually comparable options and this
+ * is a different kind of thing — a capability, and eventually an action. Mixing
+ * one into a list of choices is what let it read as "another one of those,
+ * further along" rather than as something else entirely.
+ *
+ * So it is a full-width row under the rail, where the eye lands after the
+ * horizontal scroll ends and where nothing has to be swiped to reach it.
+ *
+ * Still not pressable, at either plan value. Authoring has no endpoint yet
+ * (#65), and a control that opens nothing is worse than a statement. A fact and
+ * a plan name, never a locked door with a price on it — §4.5 keeps the upsell
+ * out of the way of a rehearsal.
  */
-export function AuthorCard({ yours }: { yours: boolean }) {
+export function AuthorRow({ yours }: { yours: boolean }) {
   return (
-    <View style={[styles.card, styles.author]}>
-      <View style={[styles.face, styles.authorFace]} />
-      <Text style={styles.title} numberOfLines={2}>
-        Write your own
-      </Text>
-      <Text style={styles.blurb} numberOfLines={5}>
-        Somebody this product has never met, described in your words.
-      </Text>
-      <Text style={styles.aside}>{yours ? 'Yours' : 'On Pro'}</Text>
+    <View style={styles.authorRow} accessibilityRole="summary">
+      {/*
+        The same blank face the rail's cards carry, at row scale: it says "a
+        person who is not here yet" in the visual language already established
+        two inches above.
+      */}
+      <View style={[styles.rowFace, styles.authorFace]} />
+
+      <View style={styles.rowWords}>
+        <Text style={styles.rowTitle}>Write your own</Text>
+        <Text style={styles.rowBlurb}>
+          Somebody this product has never met, described in your words.
+        </Text>
+      </View>
+
+      <Text style={styles.rowAside}>{yours ? 'Yours' : 'On Pro'}</Text>
     </View>
   );
 }

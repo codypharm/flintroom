@@ -130,7 +130,7 @@ export default function LibraryRoute() {
         // job is "view the detail of discussion or play it and listen to it" —
         // the findings are one tap further on, from a screen where you have
         // just re-read the answer they are about.
-        onOpen={(id) => router.push(`/rooms/${id}`)}
+        onOpen={(id) => router.push(`/rooms/${id}?from=library`)}
         onRunAgain={runAgain}
         onStart={() => router.replace('/')}
       />

@@ -1,4 +1,4 @@
-import { render, screen, userEvent } from '@testing-library/react-native';
+import { render, screen, userEvent, within } from '@testing-library/react-native';
 
 import { PanelSetup, type PanelSetupProps } from './PanelSetup';
 
@@ -258,4 +258,22 @@ it('puts the deck before the panel, so extraction runs while they decide', async
   expect(order.indexOf('What they can attack')).toBeLessThan(
     order.indexOf('Who is in the room')
   );
+});
+
+
+it('puts writing your own outside the rail, where nothing must be swiped', async () => {
+  // Reported: "people will not know it is there based on how it is now." It was
+  // the ninth card in a rail of eight, which is exactly the hiding this
+  // component's own note was written to prevent — `may_author` is published
+  // false rather than omitted so the picker can say the capability exists.
+  //
+  // Asserted as "not inside the list" rather than by position, because the
+  // point is reachability: a thing behind eight horizontal swipes is hidden
+  // however it is ordered.
+  await setup();
+
+  const rail = within(screen.getByLabelText('Panelists to choose from'));
+
+  expect(screen.getByText('Write your own')).toBeTruthy();
+  expect(rail.queryByText('Write your own')).toBeNull();
 });

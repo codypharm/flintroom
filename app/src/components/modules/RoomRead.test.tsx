@@ -22,6 +22,7 @@ async function setup(overrides: Partial<RoomReadProps> = {}) {
     who: 'The CFO and The Technical Skeptic',
     lines: LINES,
     onDebrief: jest.fn(),
+    back: { where: 'Your rooms', onPress: jest.fn() },
     ...overrides,
   };
 
@@ -51,6 +52,23 @@ it('says where in the room each line fell', async () => {
   await setup();
 
   expect(screen.getByText('0:15')).toBeTruthy();
+});
+
+it('says where the way back goes, rather than only that there is one', async () => {
+  // Reported from a device: "the room detail page from the progress list does
+  // not have nav". Every screen in this app hides its stack header, and the
+  // layout argued back was still available because the edge-swipe gesture
+  // survives. It does — and a gesture is invisible, and unreachable for a
+  // screen-reader or switch-control user, which makes it an accessibility
+  // failure rather than a preference.
+  //
+  // Named rather than "Back", because two lists lead here and somebody
+  // deciding whether to press it wants the destination.
+  const { back } = await setup({ back: { where: 'Progress', onPress: jest.fn() } });
+
+  await userEvent.press(screen.getByLabelText('Back to progress'));
+
+  expect(back.onPress).toHaveBeenCalled();
 });
 
 it('offers the way to what the room found', async () => {

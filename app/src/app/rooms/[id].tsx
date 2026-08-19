@@ -30,7 +30,7 @@ const sessions = createSessionsApi({
 });
 
 export default function RoomRoute() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
 
   const [room, setRoom] = useState<PastRoom | null>(null);
   const [lines, setLines] = useState<SaidLine[] | null>(null);
@@ -99,7 +99,16 @@ export default function RoomRoute() {
         when={room ? whenItRan(room.startedAt, new Date()) : 'That room'}
         who={room ? whoWasThere(room.archetypes) : ''}
         lines={lines}
-        onDebrief={() => router.push(`/debrief/${id}`)}
+        onDebrief={() => router.push(`/debrief/${id}?from=room`)}
+        // Two lists lead here — the Library and the run of rooms on Progress —
+        // and landing somebody back on the one they did not come from is worse
+        // than no control at all. The opener says which it was; `router.back`
+        // does the actual returning, so a deep link with no `from` still says
+        // something true and still goes somewhere sensible.
+        back={{
+          where: from === 'progress' ? 'Progress' : 'Your rooms',
+          onPress: () => router.back(),
+        }}
       />
     </SafeAreaView>
   );

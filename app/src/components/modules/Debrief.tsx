@@ -4,6 +4,7 @@ import type { Pressed, WeakAnswer } from '../../lib/api/debriefApi';
 import { panelistName } from '../../lib/panel/vocabulary';
 import { color, radius, space, type } from '../../theme/tokens';
 import { DebriefEntry, type Exchange } from './DebriefEntry';
+import { BackTo } from '../ui/BackTo';
 import { Replay } from './Replay';
 import { TalkControl, type Listening } from './TalkControl';
 
@@ -95,6 +96,14 @@ export interface DebriefProps {
    * knows which case it is in; this does not.
    */
   onReplayOpening: () => void;
+  /**
+   * The way out, or null when there is nowhere back to.
+   *
+   * Null on the path this screen was built for — handed here by a room that has
+   * just ended, where "back" is a metered session that is over. Non-null when
+   * somebody opened it from a past room, which is a place they can return to.
+   */
+  back: { where: string; onPress: () => void } | null;
   onPrepSheet: () => void;
 }
 
@@ -125,6 +134,7 @@ export function Debrief({
   onStop,
   onReplay,
   onReplayOpening,
+  back,
   onPrepSheet,
 }: DebriefProps) {
   // One capture at a time. Two would race, and the loser's clip would arrive
@@ -140,6 +150,8 @@ export function Debrief({
         contentContainerStyle={styles.content}
         accessibilityLabel="Your debrief"
       >
+        {back && <BackTo where={back.where} onPress={back.onPress} />}
+
         <Text style={styles.title}>
           {answers.length === 0 ? 'Nothing came loose' : 'Where it came loose'}
         </Text>

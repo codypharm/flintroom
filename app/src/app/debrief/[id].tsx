@@ -48,7 +48,7 @@ const debriefs = createDebriefApi({
 const CAPTURE = { sampleRate: 16_000, bufferLength: 1600, channelCount: 1 };
 
 export default function DebriefRoute() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
 
   const [answers, setAnswers] = useState<WeakAnswer[] | null>(null);
   const [pressed, setPressed] = useState<Pressed>(null);
@@ -357,6 +357,11 @@ export default function DebriefRoute() {
         onStop={() => void finish()}
         onReplay={(speech) => void speak(speech)}
         onReplayOpening={() => void hearOpeningAgain()}
+        // Null on the path this screen was built for. A room that has just
+        // ended hands somebody here and there is nowhere back to — the session
+        // is over, and offering to return to it would be offering a dead
+        // screen. Reached from a past room, back is a real place.
+        back={from === 'room' ? { where: 'This room', onPress: () => router.back() } : null}
         onPrepSheet={() => router.push('/prep-sheet')}
       />
     </SafeAreaView>

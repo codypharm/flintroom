@@ -106,7 +106,7 @@ export default function ProgressRoute() {
         // clock in state would redraw the whole run every second to say the
         // same thing.
         now={new Date()}
-        onOpenRoom={(id) => router.push(`/rooms/${id}`)}
+        onOpenRoom={(id) => router.push(`/rooms/${id}?from=progress`)}
       />
     </SafeAreaView>
   );

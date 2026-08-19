@@ -54,6 +54,7 @@ async function setup(overrides: Partial<DebriefProps> = {}) {
     onStop: jest.fn(),
     onReplay: jest.fn(),
     onReplayOpening: jest.fn(),
+    back: null,
     onPrepSheet: jest.fn(),
     ...overrides,
   };
@@ -348,4 +349,26 @@ it('puts no grade on the room, however the coach opens', async () => {
   expect(screen.queryByText(/\d+\s*\/\s*(10|100|5)/)).toBeNull();
   expect(screen.queryByText(/\d+\s*%/)).toBeNull();
   expect(screen.queryByText(/score/i)).toBeNull();
+});
+
+
+it('offers no way back on the path a finished room hands you down', async () => {
+  // The default, and the case this screen was built for. A room that has just
+  // ended sends somebody here and there is nowhere back to — the session is
+  // over, and a control offering to return to it would offer a dead screen.
+  await setup();
+
+  expect(screen.queryByLabelText(/^Back to/)).toBeNull();
+});
+
+it('offers the way back when it was opened from a past room', async () => {
+  // Reached from the Library or from a bar on Progress, "back" is a real place
+  // somebody was a moment ago. Reported against the room screen — "does not
+  // have nav" — and this is the same defect one push further along.
+  const back = { where: 'This room', onPress: jest.fn() };
+  await setup({ back });
+
+  await userEvent.press(screen.getByLabelText('Back to this room'));
+
+  expect(back.onPress).toHaveBeenCalled();
 });
