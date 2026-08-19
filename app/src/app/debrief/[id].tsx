@@ -61,6 +61,18 @@ export default function DebriefRoute() {
   const clip = useRef<Clip | null>(null);
   const target = useRef<number | null>(null);
 
+  /**
+   * Read the room, and be callable a second time.
+   *
+   * A one-shot effect was enough while every refusal was permanent. It is not
+   * now: `provider_unavailable` means the reading failed and the room is
+   * intact, so the recovery is this exact call again — see `refusals.ts`.
+   *
+   * `attempt` is what re-runs the effect. A ref would not: the retry has to
+   * clear the refusal and redraw, and only state does that.
+   */
+  const [attempt, setAttempt] = useState(0);
+
   useEffect(() => {
     let live = true;
 
@@ -83,7 +95,7 @@ export default function DebriefRoute() {
     return () => {
       live = false;
     };
-  }, [id]);
+  }, [id, attempt]);
 
   /**
    * Stop the hardware, whatever ended the turn.
@@ -203,7 +215,18 @@ export default function DebriefRoute() {
   );
 
   if (refusal) {
-    return <Refusal refusal={refusal} />;
+    return (
+      <Refusal
+        refusal={refusal}
+        onRetry={() => {
+          // The refusal has to clear as well as the attempt advancing, or the
+          // screen stays on the failure while the request it triggered
+          // succeeds behind it.
+          setRefusal(null);
+          setAttempt((made) => made + 1);
+        }}
+      />
+    );
   }
 
   if (!answers) {
@@ -239,7 +262,13 @@ export default function DebriefRoute() {
  * is nothing to work on, and drawing the furniture of a debrief around nothing
  * would read as a screen that failed to load rather than as an answer.
  */
-function Refusal({ refusal }: { refusal: RoomRefusal }) {
+function Refusal({
+  refusal,
+  onRetry,
+}: {
+  refusal: RoomRefusal;
+  onRetry: () => void;
+}) {
   return (
     <SafeAreaView style={[styles.screen, styles.refused]} edges={['top', 'bottom']}>
       <Text style={styles.title}>{refusal.title}</Text>
@@ -252,6 +281,18 @@ function Refusal({ refusal }: { refusal: RoomRefusal }) {
           style={({ pressed }) => [styles.offer, pressed && styles.offerPressed]}
         >
           <Text style={styles.offerLabel}>Start a fresh room</Text>
+        </Pressable>
+      )}
+
+      {refusal.offer === 'try again' && (
+        <Pressable
+          accessibilityRole="button"
+          onPress={onRetry}
+          style={({ pressed }) => [styles.offer, pressed && styles.offerPressed]}
+        >
+          {/* Names the action rather than the failure. "Retry" describes what
+              went wrong; this describes what happens next. */}
+          <Text style={styles.offerLabel}>Read it again</Text>
         </Pressable>
       )}
     </SafeAreaView>

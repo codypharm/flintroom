@@ -20,8 +20,17 @@ import { Refused } from '../api/debriefApi';
 export interface RoomRefusal {
   title: string;
   body: string;
-  /** The way out, or null when there is only going back. */
-  offer: 'fresh room' | null;
+  /**
+   * The way out, or null when there is only going back.
+   *
+   * `try again` and `fresh room` are not interchangeable, and telling them
+   * apart is the entire job of this file. One says the room is fine and the
+   * reading failed; the other says the room itself has nothing in it. Offering
+   * the wrong one either sends somebody to start over from a session that is
+   * sitting there intact, or invites them to hammer a request that can never
+   * succeed.
+   */
+  offer: 'fresh room' | 'try again' | null;
 }
 
 const ROOM: Record<string, RoomRefusal> = {
@@ -34,6 +43,20 @@ const ROOM: Record<string, RoomRefusal> = {
     title: 'Nothing was asked',
     body: 'This room ended before the panel got a question out, so there is nothing to go over.',
     offer: 'fresh room',
+  },
+  provider_unavailable: {
+    // The 502 a debrief returned after a real session. It fell through to the
+    // default, which offers nothing — so a **transient** failure was drawn as a
+    // dead end. It was not: the transcript was in the database the whole time,
+    // and the same rooms read back fine once the debrief's model call stopped
+    // inheriting a five-second HTTP timeout meant for OAuth key fetches.
+    //
+    // The body leads with what survived, because the fear this raises is that
+    // the session is gone. It is the only refusal here where the right move is
+    // the same action again.
+    title: 'That did not come back',
+    body: 'Something on our side was slow to answer. Nothing is lost — the room is still there.',
+    offer: 'try again',
   },
   room_broke: {
     // The one refusal that has to lead with the money, because it is the only

@@ -82,3 +82,51 @@ describe('refusedTurn', () => {
     );
   });
 });
+
+describe('a room that could not be read this time', () => {
+  /**
+   * The 502 the architect hit after a session: "That did not load. The service
+   * we depend on is unavailable."
+   *
+   * It fell through to the default, which offers nothing — so a **transient**
+   * failure was presented as a dead end. It was not: the transcript was in the
+   * database the whole time, and the same three sessions returned 200 once the
+   * debrief's model call stopped inheriting a five-second HTTP timeout meant
+   * for OAuth. Re-reading would have worked.
+   *
+   * This is the one refusal where the recovery is the same action again, and
+   * the offer vocabulary had no way to say so.
+   */
+  it('offers another go when the failure was ours and passing', () => {
+    const refusal = refusedRoom(
+      new Refused('provider_unavailable', 'A service we depend on is unavailable.', 502)
+    );
+
+    expect(refusal?.offer).toBe('try again');
+  });
+
+  it('does not blame them for it', () => {
+    // The room happened, they said things, and none of it is gone. A refusal
+    // that reads as their mistake would send somebody to start over from a
+    // session that is sitting there intact.
+    const refusal = refusedRoom(
+      new Refused('provider_unavailable', 'A service we depend on is unavailable.', 502)
+    );
+
+    expect(refusal?.body).toMatch(/nothing is lost|still there|not lost/i);
+  });
+
+  it('still sends them to a fresh room when there is genuinely nothing to read', () => {
+    // The distinction the file was written to protect. Trying again on a room
+    // that asked no questions will fail identically, forever.
+    expect(
+      refusedRoom(new Refused('room_has_no_questions', 'x', 422))?.offer
+    ).toBe('fresh room');
+  });
+
+  it('offers nothing for a refusal this build has never heard of', () => {
+    // An unknown code has an unknown recovery, and guessing "try again" at one
+    // would invite somebody to hammer a request that can never succeed.
+    expect(refusedRoom(new Refused('something_new', 'x', 400))?.offer).toBeNull();
+  });
+});
