@@ -1325,3 +1325,39 @@ async def test_a_room_records_how_long_each_turn_took(caplog):
     (timed,) = [r for r in caplog.records if r.getMessage() == "panel_turn_latency"]
     assert timed.context["seconds"] >= 0
     assert "text" not in timed.context and "line" not in timed.context
+
+
+async def test_a_final_with_nothing_in_it_is_not_an_utterance():
+    """The room stays quiet when the transcriber hands it nothing.
+
+    Reported twice on a device. Once the panel opened with "Begin" after a long
+    silence; once, after the presenter had actually spoken and waited, it said
+    "You have said nothing. What is the cost per unit?" — which is the composer
+    being handed an empty string and improvising a generic challenge out of it.
+
+    `_listen` acted on `result.final` alone and never looked at the text, so an
+    empty final did all four of the things a real utterance does: emitted
+    `UserSpoke`, appended a `Said` to the transcript, ran the Auditor, and
+    started a turn. Every one of those is wrong for a person who said nothing.
+
+    The Auditor and the transcript matter as much as the turn. A blank line in
+    `session_transcript_lines` is one the debrief will later rank a weak answer
+    against, so an empty final does not merely produce one bad question — it
+    corrupts the record the whole unmetered half is grounded in.
+    """
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=FakeTranscription(
+            [
+                Transcription(text="", final=True),
+                Transcription(text="   ", final=True),
+            ]
+        ),
+        model=ScriptedPanelModel(line="Against what basis?"),
+        grounding=Grounding(),
+    )
+
+    events = await events_of(channel)
+
+    assert not [event for event in events if isinstance(event, AgentTranscript)]
+    assert not [event for event in events if type(event).__name__ == "UserSpoke"]

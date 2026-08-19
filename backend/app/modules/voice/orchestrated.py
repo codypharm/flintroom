@@ -337,6 +337,30 @@ class OrchestratedChannel:
         try:
             async for result in self._transcription.results():
                 if result.final:
+                    # **Nothing said is not an utterance.** Acting on `final`
+                    # alone let an empty result do all four things a real one
+                    # does: reset the idle clock, enter the transcript, wake the
+                    # Auditor, and start a turn. Every one is wrong for somebody
+                    # who said nothing, and on a device it produced a panelist
+                    # announcing "You have said nothing. What is the cost per
+                    # unit?" — the composer handed an empty string and
+                    # improvising a generic challenge from it.
+                    #
+                    # The transcript matters as much as the turn. A blank line
+                    # in `session_transcript_lines` is one the debrief later
+                    # ranks a weak answer against, so an empty final does not
+                    # merely ask one bad question: it corrupts the record the
+                    # whole unmetered half is grounded in.
+                    #
+                    # This is a guard, not the fix. Why a transcriber returns
+                    # finals for non-speech at all — and how to stop asking it
+                    # to — is #77. This is the last line of defence, and it
+                    # belongs here whatever the provider does, because a room
+                    # must never answer something nobody said.
+                    if not result.text.strip():
+                        log.info("empty_final_ignored")
+                        continue
+
                     # Before the turn is even started. This is what the relay
                     # turns into `record_speech`, and it is the only thing that
                     # resets the idle clock — panel speech deliberately does not.
