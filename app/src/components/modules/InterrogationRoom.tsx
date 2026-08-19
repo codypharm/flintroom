@@ -63,6 +63,13 @@ export interface InterrogationRoomProps {
   floor: 'panel' | 'yours';
   hearing: Hearing;
   /**
+   * How loud the presenter is right now, nothing to plainly speaking.
+   *
+   * Drives the bars. `audio/hearing.ts` records why this is amplitude at all:
+   * it was asked for twice and the objection was overruled twice.
+   */
+  loudness: number;
+  /**
    * `opening` while the socket is coming up, `ending` during the beat that
    * holds the last line before the debrief.
    */
@@ -97,6 +104,7 @@ export function InterrogationRoom({
   line,
   floor,
   hearing,
+  loudness,
   phase,
   elapsed,
   onEnd,
@@ -181,7 +189,7 @@ export function InterrogationRoom({
         )}
       </View>
 
-      <Floor floor={floor} hearing={hearing} phase={phase} />
+      <Floor floor={floor} hearing={hearing} loudness={loudness} phase={phase} />
     </View>
   );
 }
@@ -288,10 +296,10 @@ function Said({
 function Floor({
   floor,
   hearing,
+  loudness,
   phase,
-}: Pick<InterrogationRoomProps, 'floor' | 'hearing' | 'phase'>) {
+}: Pick<InterrogationRoomProps, 'floor' | 'hearing' | 'loudness' | 'phase'>) {
   const yours = floor === 'yours' && phase === 'live';
-  const heard = yours && hearing === 'hearing';
 
   return (
     <View style={styles.floorRow} pointerEvents="none">
@@ -301,99 +309,87 @@ function Floor({
         </Text>
       )}
 
-      <View
-        testID="floor"
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-        style={styles.floor}
-      >
-        {/* Three, staggered, so the edge is never empty between them — one arc
-            alone reads as a repeating blip rather than as something
-            continuous. */}
-        {[0, 1, 2].map((index) => (
-          <Arc key={index} alive={heard} at={index} />
-        ))}
-
-        {/* Always drawn, under the arcs. The room has a near edge whether or
-            not anybody is talking, and an indicator that only exists while it
-            is firing cannot be found when it is not. */}
-        <View style={[styles.sill, yours && styles.sillYours]} />
-      </View>
+      <SoundBar loudness={yours ? loudness : 0} lit={yours} />
     </View>
   );
 }
 
 /**
- * One ripple off the presenter's own edge of the table.
+ * The presenter's own voice, as bars.
  *
- * **The same language the panel speaks, pointing the other way.** A panelist
- * with the floor emits an expanding ring; the presenter's side emits arcs off
- * the near edge. Two directions of one idea, so neither has to be learned — and
- * it puts the user in the room rather than outside it looking in.
+ * **Asked for directly, twice.** The case against was that a bar tracking
+ * volume teaches somebody to watch how loud they are rather than what they are
+ * saying — the delivery-metrics reflex this product exists to refuse. It was
+ * raised and overruled, and what is here is what was asked for. This note is
+ * not a hedge; it is so the next person reading it knows the trade was decided
+ * rather than drifted into.
  *
- * **Still not a level meter.** These run at a fixed rate rather than tracking
- * amplitude, and the reason is unchanged: a thing that moved with somebody's
- * volume would teach them to watch how loud they are instead of what they are
- * saying, which is precisely the delivery-metrics product this one refuses.
- * Fixed motion answers "yes, and still yes" and is a reading of nothing.
+ * The newest reading is the middle bar and older ones spread outward, so a
+ * syllable opens from the centre and travels to the edges. That is the shape a
+ * voice makes rather than the shape a graph makes, and it puts the most recent
+ * thing said nearest the eye.
  *
- * The arc is the top of a circle far wider than the screen, most of it below
- * the bottom edge — so what shows is a shallow curve opening upward, which is
- * what a ripple looks like from inside it.
+ * Bars scale from their own centre around a common line, which is how a
+ * waveform reads. Growing from the base would make them a chart.
  */
-function Arc({ alive, at }: { alive: boolean; at: number }) {
-  const out = useRef(new Animated.Value(0)).current;
+function SoundBar({ loudness, lit }: { loudness: number; lit: boolean }) {
   const calm = useReduceMotion();
+  const bars = useRef(
+    Array.from({ length: SPAN }, () => new Animated.Value(QUIET))
+  ).current;
+  const history = useRef<number[]>(Array.from({ length: SPAN }, () => 0)).current;
 
   useEffect(() => {
-    if (!alive || calm) {
-      out.setValue(0);
-      return;
-    }
+    history.unshift(loudness);
+    history.length = SPAN;
 
-    const loop = Animated.loop(
-      Animated.timing(out, {
-        toValue: 1,
-        duration: RIPPLE_MS,
-        easing: Easing.out(Easing.quad),
+    bars.forEach((bar, index) => {
+      // Distance from the middle picks how old a reading this bar shows: the
+      // centre is now, the edges are half a second ago.
+      const height = QUIET + (history[Math.abs(index - MIDDLE)] ?? 0) * (1 - QUIET);
+
+      Animated.timing(bar, {
+        toValue: lit ? height : QUIET,
+        // Short, because a reading lands every hundred milliseconds and
+        // anything longer would still be catching up when the next arrives.
+        duration: calm ? 0 : 110,
         useNativeDriver: true,
-      })
-    );
-
-    // Staggered rather than started together, or all three would be the same
-    // arc drawn three times.
-    const start = setTimeout(() => loop.start(), (RIPPLE_MS / 3) * at);
-
-    return () => {
-      clearTimeout(start);
-      loop.stop();
-      out.setValue(0);
-    };
-  }, [alive, at, calm, out]);
+      }).start();
+    });
+  }, [bars, calm, history, lit, loudness]);
 
   return (
-    <Animated.View
-      style={[
-        styles.arc,
-        {
-          opacity: out.interpolate({
-            inputRange: [0, 0.12, 1],
-            outputRange: [0, 0.45, 0],
-          }),
-          transform: [
-            { scale: out.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1.35] }) },
-          ],
-        },
-      ]}
-    />
+    <View
+      testID="floor"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={styles.bars}
+    >
+      {bars.map((bar, index) => (
+        <Animated.View
+          key={index}
+          style={[styles.bar, lit && styles.barLit, { transform: [{ scaleY: bar }] }]}
+        />
+      ))}
+    </View>
   );
 }
 
-/** One ripple, from the edge to gone. Slow enough to read as breathing. */
-const RIPPLE_MS = 2100;
+/** How many bars. Odd, so there is a middle for the newest reading to sit in. */
+const SPAN = 13;
+const MIDDLE = (SPAN - 1) / 2;
 
-/** Wider than any phone, so the visible part is a shallow curve, not a circle. */
-const ARC = 520;
+/**
+ * The height a bar rests at with nothing arriving.
+ *
+ * Never zero. A row that collapsed to nothing between words would flicker out
+ * of existence several times a sentence, and an indicator nobody can find while
+ * it is quiet cannot reassure them the room is still listening.
+ */
+const QUIET = 0.12;
+
+/** The row's full height. Bars scale within it rather than resizing it. */
+const BAR_H = 44;
 
 const styles = StyleSheet.create({
   room: { flex: 1, backgroundColor: color.roomGround },
@@ -472,37 +468,26 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: space.screen,
   },
-  // The band the ripples happen in. Tall enough that an arc has somewhere to
-  // travel; `overflow: hidden` keeps them from climbing into the caption.
-  floor: {
-    height: 56,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
-  },
-
   /**
-   * The arc, which is the top of a circle far wider than the screen with most
-   * of it below the bottom edge. What shows is a shallow curve opening upward
-   * — a ripple seen from inside it.
+   * The bar row, on the near edge.
+   *
+   * A fixed height with bars SCALED rather than resized, so every frame runs on
+   * the native driver — this updates ten times a second for twelve minutes and
+   * must not touch the JS thread to do it.
    */
-  arc: {
-    position: 'absolute',
-    bottom: -ARC / 2,
-    width: ARC,
-    height: ARC,
-    borderRadius: ARC / 2,
-    borderWidth: 2,
-    borderColor: color.roomAmber,
+  bars: {
+    height: BAR_H,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.hair,
   },
-
-  // Always there. A near edge that only existed while somebody was talking
-  // could not be found when they were not.
-  sill: {
-    height: 3,
-    width: 96,
+  bar: {
+    width: 4,
+    height: BAR_H,
     borderRadius: radius.pill,
     backgroundColor: color.roomTray,
   },
-  sillYours: { backgroundColor: color.roomAmber, opacity: 0.55 },
+  barLit: { backgroundColor: color.roomAmber },
+
 });

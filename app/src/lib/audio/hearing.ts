@@ -92,3 +92,39 @@ export function hearing(recentDbfs: readonly number[]): Hearing {
 
   return level - floor >= FAINT_OVER_FLOOR_DB ? 'faint' : 'silent';
 }
+
+
+/**
+ * How loud the room is right now, from nothing to plainly speaking.
+ *
+ * Zero to one, measured against the room's own floor for the same reason
+ * `hearing` is: a fixed scale would read a quiet office as a whisper and a
+ * noisy one as a shout.
+ *
+ * **This is the amplitude, and handing it to the screen was the architect's
+ * call.** The argument against was that a bar tracking volume teaches people to
+ * watch how loud they are rather than what they are saying, which is the
+ * delivery-metrics product this one exists to refuse. That was raised twice and
+ * overruled twice; what is built is what was asked for. Recorded here so the
+ * next person to read it knows it was a decision rather than a drift.
+ */
+export function loudness(recentDbfs: readonly number[]): number {
+  if (recentDbfs.length === 0) {
+    return 0;
+  }
+
+  const sorted = [...recentDbfs].sort((a, b) => a - b);
+  const floor = median(sorted.slice(0, Math.max(1, Math.floor(sorted.length / 4))));
+  const now = recentDbfs[recentDbfs.length - 1];
+
+  if (now < NOTHING_DBFS) {
+    return 0;
+  }
+
+  // Clamped to the span the indicator can actually show. Past a full bar there
+  // is nothing left to say; below the floor there is nothing to say.
+  return Math.max(0, Math.min(1, (now - floor) / FULL_BAR_DB));
+}
+
+/** The rise, in dB, that fills the indicator. Roughly a raised speaking voice. */
+const FULL_BAR_DB = 22;

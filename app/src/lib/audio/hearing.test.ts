@@ -1,4 +1,4 @@
-import { CLEARLY_SPEECH_DBFS, hearing } from './hearing';
+import { CLEARLY_SPEECH_DBFS, hearing, loudness } from './hearing';
 
 /**
  * What the floor indicator is allowed to claim.
@@ -73,4 +73,18 @@ it('waits for enough of a window before claiming anything', () => {
   // the screen's first act and it would be wrong.
   expect(hearing([])).toBe('silent');
   expect(hearing(steady(-20, 3))).toBe('silent');
+});
+
+it('reads nothing as nothing, and a voice as most of the way up', () => {
+  // The amplitude the sound bar is drawn from. Floor-relative like everything
+  // else here, so a quiet office is not read as a whisper.
+  expect(loudness([])).toBe(0);
+  expect(loudness(steady(-75))).toBe(0);
+  expect(loudness([...steady(-52, 12), -32])).toBeGreaterThan(0.8);
+});
+
+it('never reports more than a full bar', () => {
+  // Past a full bar there is nothing left to show, and an unclamped value would
+  // drive a bar out of its own container.
+  expect(loudness([...steady(-60, 12), -5])).toBe(1);
 });

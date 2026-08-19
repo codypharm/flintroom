@@ -21,6 +21,7 @@ async function show(over: Partial<Parameters<typeof InterrogationRoom>[0]> = {})
       line={null}
       floor="yours"
       hearing="silent"
+      loudness={0}
       phase="live"
       elapsed={null}
       onEnd={onEnd}

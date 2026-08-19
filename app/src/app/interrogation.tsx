@@ -12,7 +12,7 @@ import {
   InterrogationRoom,
   type Seat,
 } from '../components/modules/InterrogationRoom';
-import { hearing, type Hearing } from '../lib/audio/hearing';
+import { hearing, loudness, type Hearing } from '../lib/audio/hearing';
 import { ensureMicrophone } from '../lib/audio/permission';
 import { createAccountApi } from '../lib/api/accountApi';
 import { RecordingDisclosure } from '../components/modules/RecordingDisclosure';
@@ -105,6 +105,7 @@ export default function InterrogationScreen() {
   const [line, setLine] = useState<PanelLine | null>(null);
   const [floor, setFloor] = useState<'panel' | 'yours'>('yours');
   const [heard, setHeard] = useState<Hearing>('silent');
+  const [volume, setVolume] = useState(0);
   const [phase, setPhase] = useState<'opening' | 'live' | 'ending'>('opening');
   const [refusal, setRefusal] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState<number | null>(null);
@@ -283,6 +284,7 @@ export default function InterrogationScreen() {
           onLevel: (dbfs) => {
             levels.current = [...levels.current, dbfs].slice(-HEARD_WINDOW);
             setHeard(hearing(levels.current));
+            setVolume(loudness(levels.current));
           },
           onEnding: finish,
         });
@@ -393,6 +395,7 @@ export default function InterrogationScreen() {
         line={line}
         floor={floor}
         hearing={heard}
+        loudness={volume}
         phase={phase}
         elapsed={elapsed}
         onEnd={end}
