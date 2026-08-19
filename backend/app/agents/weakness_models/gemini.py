@@ -140,6 +140,23 @@ _SCHEMA: dict[str, Any] = {
 }
 
 
+
+#: How long the debrief may take to read a room.
+#:
+#: **This is the bug that made the debrief a coin flip.** `main.py` builds one
+#: `httpx.AsyncClient(timeout=5.0)` and shares it with everything — OAuth key
+#: fetches, panel composition, synthesis, this. Five seconds is right for a
+#: JWKS fetch and for `gemini-3.5-flash-lite` at 0.82s. It is not right for a
+#: reasoning model reading a whole transcript: measured against a real
+#: eighteen-line room, 4.97s and 5.35s on consecutive runs. The debrief loaded
+#: or did not depending on the weather, and a longer room never loaded at all.
+#:
+#: Generous because there is nothing to be gained by being tight. This runs
+#: once, offline, after the room has closed and settled — nobody is holding a
+#: microphone waiting for it, and the alternative to waiting is a screen that
+#: says the service is unavailable.
+MODEL_TIMEOUT_SECS = 120.0
+
 class GeminiWeaknessReader:
     """Reads a finished room and says what went badly in it."""
 
@@ -177,6 +194,7 @@ class GeminiWeaknessReader:
                         "responseSchema": _SCHEMA,
                     },
                 },
+                timeout=MODEL_TIMEOUT_SECS,
             )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:

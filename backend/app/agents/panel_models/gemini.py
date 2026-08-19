@@ -97,6 +97,19 @@ MAX_LINE_TOKENS = 512
 #: with one that does. See `DEFAULT_COMPOSITION_MODEL`.
 
 
+
+#: How long a turn may take before the room gives up on it.
+#:
+#: The tightest of the four, because this one is racing a listener: `CLAUDE.md`
+#: puts the illusion's ceiling at ~1.5s and composition measures 0.82s. Twenty
+#: seconds is not a target, it is the point at which something has gone wrong
+#: and the room is better off failing than waiting — `_turn` puts the error on
+#: the queue, which ends and refunds rather than billing silence.
+#:
+#: Explicit rather than inherited so that raising the shared client's default
+#: for the debrief's sake cannot quietly slow the room down.
+MODEL_TIMEOUT_SECS = 20.0
+
 class GeminiPanelModel:
     """Who speaks, and what they say, from Google's text models."""
 
@@ -167,6 +180,7 @@ class GeminiPanelModel:
                         "candidateCount": 1,
                     },
                 },
+                timeout=MODEL_TIMEOUT_SECS,
             )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:

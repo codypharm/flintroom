@@ -94,6 +94,19 @@ _SCHEMA: dict[str, Any] = {
 }
 
 
+
+#: How long one coaching turn may take.
+#:
+#: Shorter than the debrief's and longer than the panel's, which is exactly
+#: where it sits: somebody is waiting, but they are reading a screen rather
+#: than holding a room open, and `docs/debrief-and-sparring.md` decision 5
+#: makes this turn-based HTTP with no socket behind it.
+#:
+#: Explicit for the reason the debrief's is — the shared client's five seconds
+#: belongs to a JWKS fetch, and inheriting it silently is how a feature becomes
+#: a coin flip.
+MODEL_TIMEOUT_SECS = 60.0
+
 class GeminiCoachModel:
     """Holds the coaching conversation, one turn at a time."""
 
@@ -154,6 +167,7 @@ class GeminiCoachModel:
                         "responseSchema": _SCHEMA,
                     },
                 },
+                timeout=MODEL_TIMEOUT_SECS,
             )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:

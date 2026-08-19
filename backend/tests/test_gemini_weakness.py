@@ -194,3 +194,35 @@ async def test_a_refusal_arrives_as_our_type_rather_than_the_vendors():
 
     with pytest.raises(ProviderUnavailable):
         await reader.rank(room=annotate(ROOM, ended=EndReason.USER_ENDED))
+
+
+async def test_the_debrief_is_not_held_to_the_five_second_client_default():
+    """THE BUG, and it was a coin flip.
+
+    `main.py` builds ONE `httpx.AsyncClient(timeout=5.0)` and shares it with
+    everything: OAuth key fetches, panel composition, synthesis, and this. Five
+    seconds is right for a JWKS fetch and for `gemini-3.5-flash-lite` at 0.82s.
+
+    This call is a reasoning model reading a whole transcript. Measured against
+    a real eighteen-line room on 2026-08-19: **4.97s and 5.35s on consecutive
+    runs**, against a 5.0s ceiling. So the debrief loaded or did not depending
+    on the weather, and a longer room never loads at all — surfacing as "that
+    did not load, the service we depend on is unavailable".
+
+    A timeout belongs to the call, not to the client. Only the adapter knows
+    what it is dialling.
+    """
+    handler = replying([])
+    reader = GeminiWeaknessReader(
+        api_key="test-key-with-no-production-counterpart",
+        model="gemini-3.7-flash",
+        # The shared client's own default, as `main.py` builds it. The adapter
+        # has to override it per request or inherit exactly this.
+        http=httpx.AsyncClient(timeout=5.0, transport=httpx.MockTransport(handler)),
+    )
+
+    await reader.rank(room=annotate(list(ROOM), ended=EndReason.USER_ENDED))
+
+    budget = handler.request.extensions.get("timeout")
+    assert budget is not None, "the debrief inherited the shared five-second default"
+    assert budget["read"] >= 60, budget

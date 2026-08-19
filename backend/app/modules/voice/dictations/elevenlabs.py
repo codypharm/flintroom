@@ -51,6 +51,15 @@ MODEL = "scribe_v1"
 FILE_FIELD = "file"
 
 
+
+#: How long one dictated coaching turn may take to transcribe.
+#:
+#: A whole utterance posted at once rather than streamed, so the wait scales
+#: with how long somebody spoke. Sixty seconds covers a long answer with room
+#: to spare, and somebody is waiting on it — but for a reply on a screen, not
+#: for a room to stay believable.
+MODEL_TIMEOUT_SECS = 60.0
+
 class ElevenLabsDictation:
     """Hears one recorded turn."""
 
@@ -66,6 +75,7 @@ class ElevenLabsDictation:
                 headers={"xi-api-key": self._api_key},
                 data={"model_id": MODEL},
                 files={FILE_FIELD: ("turn", clip, media_type)},
+                timeout=MODEL_TIMEOUT_SECS,
             )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:

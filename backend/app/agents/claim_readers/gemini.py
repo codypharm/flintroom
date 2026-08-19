@@ -105,6 +105,19 @@ _INSTRUCTION = (
 )
 
 
+
+#: How long the Auditor may take to read one utterance.
+#:
+#: This runs *during* a room, beside the turn rather than in front of it, so a
+#: slow call costs a catch rather than a question. Twenty seconds matches the
+#: composer's for the same reason: past it something is wrong, and the room
+#: carries on without the finding.
+#:
+#: Explicit rather than inherited. `auditor_invocations` has been zero in every
+#: session recorded so far, and a silently-timing-out reader is one of the
+#: things that would look exactly like that.
+MODEL_TIMEOUT_SECS = 20.0
+
 class GeminiClaimReader:
     """Reads figures out of speech, and does nothing else with them."""
 
@@ -145,6 +158,7 @@ class GeminiClaimReader:
                         "responseSchema": _RESPONSE_SCHEMA,
                     },
                 },
+                timeout=MODEL_TIMEOUT_SECS,
             )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:

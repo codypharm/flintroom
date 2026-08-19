@@ -178,6 +178,17 @@ _SCHEMA: dict[str, Any] = {
 }
 
 
+
+#: How long one batch of pages may take to extract.
+#:
+#: The most generous here, and the least urgent: extraction is a background
+#: sweep against material somebody uploaded, with its own stall detection above
+#: it (`EXTRACTION_TIMEOUT`). A page batch is a vision call over real images.
+#:
+#: Explicit rather than inherited, because the shared client's five seconds
+#: would fail this every single time.
+MODEL_TIMEOUT_SECS = 180.0
+
 class GeminiExtractionModel:
     """One client for the process, as the voice provider is."""
 
@@ -237,6 +248,7 @@ class GeminiExtractionModel:
                             "responseSchema": _SCHEMA,
                         },
                     },
+                timeout=MODEL_TIMEOUT_SECS,
                 )
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
