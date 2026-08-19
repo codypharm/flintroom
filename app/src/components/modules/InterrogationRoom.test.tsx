@@ -131,3 +131,26 @@ it('says so when the room can barely hear you, and only then', async () => {
   await show({ floor: 'panel', hearing: 'faint' });
   expect(screen.queryByText(/barely hear you/)).toBeNull();
 });
+
+it('draws the room across, one seat per archetype, whoever is speaking', async () => {
+  // Stacked, three seats were a list of three things; across, they are people
+  // on the other side of a table — which is what the product is a rehearsal
+  // for. Nobody is ever removed between turns: a panelist who vanished when
+  // somebody else spoke would be a table that keeps changing size.
+  await show({ panel: PANEL, speaking: 'champion' });
+
+  expect(
+    screen.queryAllByTestId('tray', { includeHiddenElements: true })
+  ).toHaveLength(3);
+});
+
+it('keeps every seat drawn while one of them holds the floor', async () => {
+  const quiet = await show({ panel: PANEL, speaking: null });
+  const quietSeats = screen.queryAllByTestId('tray', { includeHiddenElements: true }).length;
+
+  await show({ panel: PANEL, speaking: 'cfo' });
+  const loudSeats = screen.queryAllByTestId('tray', { includeHiddenElements: true }).length;
+
+  expect(loudSeats).toBe(quietSeats);
+  expect(quiet.onEnd).not.toHaveBeenCalled();
+});

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { PanelLine } from '../../lib/voice/connection';
+import { portraitOf } from '../../lib/archetypes/portraits';
 import { useReduceMotion } from '../../lib/a11y/reduceMotion';
 import { color, radius, space, type } from '../../theme/tokens';
 import { Tray } from './Tray';
@@ -85,6 +86,7 @@ export function InterrogationRoom({
   onEnd,
 }: InterrogationRoomProps) {
   const calm = useReduceMotion();
+  const [table, setTable] = useState(0);
   const [armed, setArmed] = useState(false);
   const forget = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -115,12 +117,20 @@ export function InterrogationRoom({
 
   return (
     <View style={styles.room}>
-      <View style={styles.far}>
-        {panel.map((seat) => (
+      <View
+        style={styles.far}
+        // The row's width, so a seat can be told how far it is from the middle.
+        // A seat cannot work that out for itself, and React Native has no
+        // percentage translate to fake it with.
+        onLayout={(event) => setTable(event.nativeEvent.layout.width)}
+      >
+        {panel.map((seat, index) => (
           <Tray
             key={seat.name}
             label={seat.title}
+            portrait={portraitOf(seat.name)}
             speaking={seat.name === speaking}
+            toCentre={centreShift(table, index, panel.length)}
             develop={calm ? 0 : DEVELOP_MS}
           />
         ))}
@@ -147,6 +157,23 @@ export function InterrogationRoom({
       <Floor floor={floor} hearing={hearing} phase={phase} />
     </View>
   );
+}
+
+/**
+ * How far seat `index` has to slide to reach the middle of the table.
+ *
+ * With seats laid out evenly, seat i of n sits at `((i + 0.5) / n) * width`,
+ * and the middle is `width / 2`. The difference is the distance, and it is
+ * naturally zero for the middle seat of an odd-sized room — which is right:
+ * somebody already in the centre should not move to take the floor, they
+ * should simply come up out of the dark.
+ */
+function centreShift(width: number, index: number, seats: number): number {
+  if (width === 0 || seats === 0) {
+    return 0;
+  }
+
+  return width / 2 - ((index + 0.5) / seats) * width;
 }
 
 /**
@@ -208,6 +235,8 @@ function Floor({
   phase,
 }: Pick<InterrogationRoomProps, 'floor' | 'hearing' | 'phase'>) {
   const yours = floor === 'yours' && phase === 'live';
+  const heard = yours && hearing === 'hearing';
+  const breath = useBreath(heard);
 
   return (
     <View style={styles.floorRow}>
@@ -216,19 +245,87 @@ function Floor({
           We can barely hear you — try moving closer.
         </Text>
       )}
-      <View
+      <Animated.View
         testID="floor"
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
         style={[
           styles.floor,
           yours && styles.floorYours,
-          yours && hearing === 'hearing' && styles.floorHeard,
+          heard && styles.floorHeard,
+          { transform: [{ scaleX: breath }] },
         ]}
       />
     </View>
   );
 }
+
+/**
+ * The floor, alive while it is hearing you.
+ *
+ * A colour change alone was not enough on a device: a static bar that goes from
+ * one dim tone to another says nothing at the edge of vision, which is the only
+ * place this is ever seen. What reads is *movement*, and this is the one place
+ * on the screen where movement is the right answer — it is the user's own side
+ * of the table, and the question it answers is "is this thing on".
+ *
+ * **Still not a level meter.** It breathes at a fixed rate rather than tracking
+ * amplitude: the presenter's question is whether their voice is reaching the
+ * room, and a bar that moved WITH their volume would teach them to watch how
+ * loud they are instead of what they are saying — which is the delivery-metrics
+ * product this one exists to refuse. Fixed-rate motion answers "yes, and still
+ * yes" without ever being a reading of anything.
+ *
+ * Horizontal only, from the centre out. It grows along the edge it already
+ * occupies rather than getting taller, so nothing on the screen moves except a
+ * line that was already a line.
+ */
+function useBreath(alive: boolean): Animated.Value {
+  const width = useRef(new Animated.Value(alive ? 1 : REST)).current;
+  const calm = useReduceMotion();
+  const [table, setTable] = useState(0);
+
+  useEffect(() => {
+    if (!alive) {
+      Animated.timing(width, {
+        toValue: REST,
+        duration: calm ? 0 : 260,
+        useNativeDriver: true,
+      }).start();
+      return;
+    }
+
+    if (calm) {
+      // Reduce Motion still gets the *state*, at full width and steady. What it
+      // gives up is the loop, not the answer to "is this thing on".
+      width.setValue(1);
+      return;
+    }
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(width, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(width, {
+          toValue: 0.82,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+
+    return () => loop.stop();
+  }, [alive, calm, width]);
+
+  return width;
+}
+
+/** How wide the floor sits when the room is not hearing anything. */
+const REST = 0.35;
 
 const styles = StyleSheet.create({
   room: { flex: 1, backgroundColor: color.roomGround },
@@ -240,13 +337,17 @@ const styles = StyleSheet.create({
   // the whole 55% the trays stretched into three tall slabs — on a device they
   // read as empty cards waiting for content, which is the opposite of
   // peripheral. Seats are small and the air around them is the room.
+  // A row, and centred in its half rather than pinned to the top. Stacked,
+  // three seats were a list of three things; across, they are people on the
+  // other side of a table — which is what the whole product is a rehearsal
+  // for. `space-around` rather than `space-between` so a room of two does not
+  // put one face in each corner with the table missing from the middle.
   far: {
     flex: 55,
-    gap: space.snug,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
     paddingHorizontal: space.screen,
-    paddingTop: space.loose,
-    paddingBottom: space.base,
-    justifyContent: 'flex-start',
   },
   near: {
     flex: 45,
@@ -287,7 +388,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: space.screen,
   },
-  floor: { height: 3, marginHorizontal: space.screen, borderRadius: radius.pill },
+  // Thicker than a hairline now that it moves: a 3pt line scaling
+  // horizontally reads as a rendering artefact rather than as a thing
+  // responding to you.
+  floor: { height: 5, marginHorizontal: space.screen, borderRadius: radius.pill },
   floorYours: { backgroundColor: color.roomTray },
   floorHeard: { backgroundColor: color.roomAmber },
 });
