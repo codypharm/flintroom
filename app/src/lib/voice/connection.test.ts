@@ -335,3 +335,42 @@ describe('the room ending', () => {
     expect(FakeSocket.created).toHaveLength(1);
   });
 });
+
+describe('what the room says it is doing', () => {
+  /**
+   * #24. Five things look like silence to somebody in a room that has gone
+   * quiet — it is thinking, it did not hear them, it is waiting for more, it
+   * failed, or it is about to end. Only the server can tell the first two
+   * apart, because only the server sees a final arrive.
+   */
+  it('carries the room state through', async () => {
+    const said: string[] = [];
+    const { socket } = await connected({ onAttending: (state) => said.push(state) });
+
+    socket.receive(JSON.stringify({ type: 'attending', state: 'working' }));
+    socket.receive(JSON.stringify({ type: 'attending', state: 'listening' }));
+
+    expect(said).toEqual(['working', 'listening']);
+  });
+
+  it('ignores a state it does not recognise', async () => {
+    // The server may learn a fourth value before the phone does — #24 already
+    // has an idle warning queued behind it. An unknown value must leave the
+    // screen on the last one it understood rather than blanking it.
+    const said: string[] = [];
+    const { socket } = await connected({ onAttending: (state) => said.push(state) });
+
+    socket.receive(JSON.stringify({ type: 'attending', state: 'brooding' }));
+
+    expect(said).toEqual([]);
+  });
+
+  it('ignores a state message with nothing in it', async () => {
+    const said: string[] = [];
+    const { socket } = await connected({ onAttending: (state) => said.push(state) });
+
+    socket.receive(JSON.stringify({ type: 'attending' }));
+
+    expect(said).toEqual([]);
+  });
+});

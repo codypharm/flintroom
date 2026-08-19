@@ -19,7 +19,14 @@ import pytest
 from app.agents.archetypes import DEFAULT_PANEL
 from app.agents.context import USER, Grounding
 from app.agents.opening import OpeningFloor
-from app.modules.voice.events import AgentAudio, AgentFinished, AgentTranscript
+from app.modules.voice.events import (
+    AgentAudio,
+    AgentFinished,
+    AgentTranscript,
+    Attending,
+    Attention,
+    Heartbeat,
+)
 from app.modules.voice.orchestrated import OrchestratedChannel
 from app.modules.voice.transcription import Transcription
 
@@ -404,3 +411,124 @@ async def test_the_room_still_opens_when_there_is_only_one_voice():
     captions = [event for event in events if isinstance(event, AgentTranscript)]
 
     assert only.spoke and only.spoke[0][0] == captions[0].text
+
+
+async def test_the_room_says_it_is_still_listening_when_nobody_has_spoken():
+    """#24, first half. Five things look like silence and this tells three apart.
+
+    Reported after a day of testing: a room that heard nothing and a room that
+    is thinking are the same screen, so the presenter waits, doubts, and ends
+    the session. Only the server knows whether a final arrived, so no amount of
+    cleverness on the phone can separate them — it has to be told.
+    """
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=FakeTranscription([]),
+        model=ScriptedPanelModel(),
+        grounding=Grounding(),
+        floor=held(),
+    )
+
+    events = await events_of(channel)
+    said = [event.state for event in events if isinstance(event, Attending)]
+
+    assert said and said[0] is Attention.LISTENING
+
+
+async def test_the_room_says_it_has_you_while_the_floor_is_still_yours():
+    """The value that earns its place.
+
+    During the opening floor a presenter may talk for ninety seconds across
+    several finals with nobody replying. Without this, the floor built in #79
+    is indistinguishable from the failure reported in #77 — and the fix for one
+    reads as the other.
+    """
+    model = ScriptedPanelModel()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=held_open(
+            [Transcription(text=opening(6), final=True)], gap=0.05
+        ),
+        model=model,
+        grounding=Grounding(),
+        # Never settles on its own, so the floor stays open and holding.
+        floor=OpeningFloor(substance=60, settle=30.0, cap=30.0),
+    )
+
+    collecting = asyncio.create_task(events_of(channel))
+    try:
+        async def holding() -> None:
+            while True:
+                await asyncio.sleep(0)
+                if channel._attention() is Attention.HEARD:  # noqa: SLF001
+                    return
+        await asyncio.wait_for(holding(), timeout=5)
+    finally:
+        channel._transcription.release.set()  # noqa: SLF001
+        await collecting
+
+
+async def test_the_room_says_it_is_working_once_it_owes_an_answer():
+    """The other half of the pair. A turn in flight is not a room gone quiet."""
+    model = ScriptedPanelModel()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=held_open([Transcription(text=opening(12), final=True)]),
+        model=model,
+        grounding=Grounding(),
+        floor=held(substance=10),
+    )
+
+    events = await room_until_composed(channel, model)
+    said = [event.state for event in events if isinstance(event, Attending)]
+
+    assert Attention.WORKING in said
+
+
+async def test_the_state_is_derived_rather_than_remembered():
+    """Nothing has to remember to clear it, so nothing can leave it stuck.
+
+    A reported state that is stored gets stranded by the paths that fail — a
+    turn that dies leaves the room claiming to be working forever, which is
+    worse than the silence it replaced because it is confidently wrong. That is
+    this morning's `turn_finished` bug in a new place.
+
+    Computed at the moment of sending, there is no transition to miss.
+    """
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=FakeTranscription([]),
+        model=ScriptedPanelModel(),
+        grounding=Grounding(),
+        floor=held(),
+    )
+
+    assert channel._attention() is Attention.LISTENING  # noqa: SLF001
+
+
+async def test_the_heartbeat_carries_the_state_even_when_it_has_not_changed():
+    """The safety net, and it is why a missed message cannot be permanent.
+
+    Transitions are sent for speed; this is sent for correctness. Suppressing a
+    repeat here would mean a phone that dropped one message stayed wrong for
+    the rest of the room.
+    """
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=held_open([]),
+        model=ScriptedPanelModel(),
+        grounding=Grounding(),
+        floor=held(),
+        heartbeat_seconds=0.02,
+    )
+
+    collecting = asyncio.create_task(events_of(channel))
+    await asyncio.sleep(0.12)
+    channel._transcription.release.set()  # noqa: SLF001
+    events = await collecting
+
+    beats = [e for e in events if isinstance(e, Heartbeat)]
+    states = [e for e in events if isinstance(e, Attending)]
+
+    assert len(beats) >= 2
+    assert len(states) >= len(beats), "the heartbeat stopped carrying the state"

@@ -53,6 +53,7 @@ inspect a payload to know whether it is holding audio or an instruction.
 | `discard_playback` | — | Drop everything buffered and unplayed, immediately. |
 | `transcript` | `text`, `speaker` | Show this as the panel's current line, from that archetype. |
 | `turn_finished` | — | The panel is done. The floor is the presenter's. |
+| `attending` | `state` | What the room is doing while the floor is the presenter's: `listening`, `heard`, `working`. |
 
 `discard_playback` is barge-in. Audio runs ahead of playback, so when the user
 talks over a panelist the device is still holding frames of a sentence that will
@@ -79,6 +80,27 @@ floor (`Product.md` §3.4), which it cannot do from text alone. It travels
 inside the caption rather than on a frame of its own because one utterance is
 one caption, and a name arriving separately from its line would be a
 synchronisation problem invented for nothing.
+
+`attending` exists because **five things look like silence** to somebody in a
+room that has gone quiet: it is thinking, it did not hear them, it is waiting
+for more, it has failed, or it is about to end. Three of those are told apart by
+this message, and only the server can tell them apart at all — a final arriving
+is invisible to the phone, so any timer on the device would be racing the
+network and would be wrong in exactly the case that matters.
+
+It says nothing about a panelist speaking. The caption and `turn_finished`
+already carry that, and a second source for one fact is what took a speaking
+panelist off the screen mid-sentence.
+
+**Sent on transitions for speed and on every heartbeat for correctness**, and
+the heartbeat repeats it even when nothing has changed. Suppressing the repeat
+would leave a phone that dropped one message wrong for the rest of the room.
+The value is derived at the moment of sending rather than stored, so no path
+that fails can strand it: a turn that dies cannot leave the room claiming to be
+working, because nothing is remembering that it was.
+
+A client that does not recognise a value must keep showing the last one it
+understood. More values are expected — the idle warning is queued behind this.
 
 `turn_finished` says the panel has stopped and is waiting. **It is carried
 rather than inferred, and that is the whole reason it exists.** Nothing else

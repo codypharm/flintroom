@@ -32,6 +32,8 @@ from app.agents.routing import choose
 from app.core.logging import get_logger
 from app.modules.voice.events import (
     AgentAudio,
+    Attending,
+    Attention,
     AgentFinished,
     AgentTranscript,
     ChannelReady,
@@ -263,6 +265,10 @@ class OrchestratedChannel:
         # to cancel whatever the other left running — a barge-in that only
         # `_listen` knew about would talk over the opening challenge.
         self._speaking: asyncio.Task | None = None
+        # The last value put on the queue, so a transition does not repeat
+        # itself. Never read as the truth — `_attention` is the truth, and this
+        # only decides whether saying it again is worth a message.
+        self._attended: Attention | None = None
 
     async def _keep(self, line: Said) -> None:
         """File one line where it will outlive the room, if anywhere.
@@ -333,6 +339,10 @@ class OrchestratedChannel:
         # under which a model invents its subject. It is also what makes the
         # floor legible on a phone lying face-up on a desk, where the screen's
         # own "the room is listening" cannot be seen.
+        # Before the opener, so there is never a window in which the phone has
+        # heard the room speak but does not know what it is doing.
+        await self._attend(out)
+
         await self._open_the_room(out)
 
         listener = asyncio.create_task(self._listen(out))
@@ -480,6 +490,52 @@ class OrchestratedChannel:
             await self._take_finding(),
             thin_opening=opening.thin,
         )
+        await self._attend(out)
+
+    def _attention(self) -> Attention:
+        """What the room is doing with the floor, worked out rather than recalled.
+
+        **Nothing stores this**, which is the whole point. A remembered state is
+        stranded by the paths that fail — a turn that dies would leave the room
+        claiming to be working for the rest of the session, and a confidently
+        wrong screen is worse than the silence it replaced. Derived, there is no
+        transition to miss and nothing to clear.
+
+        One function, two callers. The heartbeat and the transition points must
+        never disagree about the same instant, and they cannot if neither of
+        them decides anything.
+
+        Deliberately silent about a panelist speaking: the caption and
+        `AgentFinished` already carry that, and a second source for one fact is
+        the bug that took a panelist off the screen mid-sentence.
+        """
+        if self._speaking is not None and not self._speaking.done():
+            return Attention.WORKING
+        if self._floor.open and self._floor.words:
+            return Attention.HEARD
+        return Attention.LISTENING
+
+    async def _attend(
+        self,
+        out: asyncio.Queue[VoiceEvent | BaseException | None],
+        *,
+        always: bool = False,
+    ) -> None:
+        """Say what the room is doing, if it is worth saying.
+
+        `always` is the heartbeat, and the difference matters. Transitions are
+        sent for speed and de-duplicated, because a room repeating itself on
+        every buffer would be noise; the heartbeat is sent for correctness and
+        repeats deliberately, because suppressing it would leave a phone that
+        dropped one message wrong for the rest of the room.
+
+        The de-duplication is an optimisation and never a source of truth — it
+        can cost a redundant message and never a missed one.
+        """
+        state = self._attention()
+        if always or state is not self._attended:
+            self._attended = state
+            await out.put(Attending(state))
 
     async def _beat(self, out: asyncio.Queue[VoiceEvent | BaseException | None]) -> None:
         """Report that the room is open, until it is not.
@@ -495,6 +551,8 @@ class OrchestratedChannel:
         while True:
             await asyncio.sleep(self._heartbeat_seconds)
             await out.put(Heartbeat())
+            # Unconditional, and that is the safety net. See `_attend`.
+            await self._attend(out, always=True)
 
     async def _listen(self, out: asyncio.Queue[VoiceEvent | None]) -> None:
         """Read transcription forever; start, and stop, turns as it goes."""
@@ -556,6 +614,7 @@ class OrchestratedChannel:
                         # Wakes `_hold_the_floor` so it rearms rather than
                         # closing on a pause the presenter has already ended.
                         self._spoke.set()
+                        await self._attend(out)
                         continue
 
                     # Collected before the new one starts, so this turn is
@@ -570,6 +629,7 @@ class OrchestratedChannel:
                         await self._take_routing(result.text),
                         finding,
                     )
+                    await self._attend(out)
                     continue
 
                 # The user is mid-sentence, and this is where the latency budget

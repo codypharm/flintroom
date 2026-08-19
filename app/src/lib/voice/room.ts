@@ -1,5 +1,6 @@
 import {
   openConnection,
+  type Attending,
   type Ending,
   type PanelLine,
   type SocketFactory,
@@ -51,6 +52,15 @@ export interface RoomOptions {
    * silenced — which reads as a room that has lost track of who is talking.
    */
   onDiscardPlayback?: () => void;
+  /**
+   * What the room is doing with the floor. Straight through, unexamined.
+   *
+   * `joinRoom` derives `turn_finished` from two signals because neither is
+   * sufficient alone; this one is a fact the server states outright, so adding
+   * any reasoning here would only be a second opinion about something already
+   * answered.
+   */
+  onAttending?: (state: Attending) => void;
   /**
    * How loud each captured buffer was, in dBFS.
    *
@@ -146,6 +156,7 @@ export async function joinRoom(options: RoomOptions): Promise<Room> {
       playback.enqueue(pcm);
     },
     onTranscript: options.onTranscript,
+    onAttending: options.onAttending,
     onTurnFinished: () => {
       sent = true;
       handOver();

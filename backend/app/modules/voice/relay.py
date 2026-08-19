@@ -30,6 +30,7 @@ from app.modules.voice.mixing import RoomMixer
 from app.modules.voice.recording import RoomRecordings
 from app.modules.voice.events import (
     AgentAudio,
+    Attending,
     AgentFinished,
     AgentTranscript,
     ChannelReady,
@@ -313,6 +314,11 @@ class VoiceRelay:
             # and no redaction rule can catch it, because it is indistinguishable
             # from any other string by key name.
             await self._client.send_transcript(event.text, event.speaker)
+        elif isinstance(event, Attending):
+            # Straight through, and carrying no session state of its own. The
+            # channel derives this per send; the relay's only job is that the
+            # phone hears it.
+            await self._client.attending(event.state.value)
         elif isinstance(event, AgentFinished):
             # The floor, handed back explicitly. Nothing else on this socket
             # marks where an utterance ends — the caption goes out ahead of its

@@ -30,6 +30,9 @@ TRANSCRIPT = "transcript"
 #: alternates, so naming who yielded would repeat the caption that just went.
 TURN_FINISHED = {"type": "turn_finished"}
 
+#: What the room is doing with the floor. See `events.Attention`.
+ATTENDING = "attending"
+
 
 class WebSocketClientChannel:
     """One connected client."""
@@ -63,6 +66,15 @@ class WebSocketClientChannel:
         await self._websocket.send_json(
             {"type": TRANSCRIPT, "text": text, "speaker": speaker}
         )
+
+    async def attending(self, state: str) -> None:
+        """Say what the room is doing, so the phone never has to infer it.
+
+        Only the server sees a final arrive, so a device left to guess would be
+        timing a network and would guess wrong in exactly the case that matters
+        — the one where nothing was heard at all.
+        """
+        await self._websocket.send_json({"type": ATTENDING, "state": state})
 
     async def turn_finished(self) -> None:
         """The panel is done, and the floor is the presenter's again.

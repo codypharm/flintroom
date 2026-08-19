@@ -85,11 +85,16 @@ class FakeClientChannel:
         self._inbound = list(inbound)
         self._hung_up = asyncio.Event()
 
+        #: What the room said it was doing, in order (#24).
+        self.attended: list[str] = []
     async def send_audio(self, pcm: bytes) -> None:
         self.sent.append(pcm)
 
     async def send_transcript(self, text: str, speaker: str) -> None:
         self.captions.append((speaker, text))
+
+    async def attending(self, state: str) -> None:
+        self.attended.append(state)
 
     async def turn_finished(self) -> None:
         self.yielded += 1

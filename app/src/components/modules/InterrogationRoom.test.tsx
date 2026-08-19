@@ -21,6 +21,7 @@ async function show(over: Partial<Parameters<typeof InterrogationRoom>[0]> = {})
       line={null}
       floor="yours"
       hearing="silent"
+      attending={{ state: 'listening', since: Date.now() }}
       loudness={0}
       phase="live"
       elapsed={null}
@@ -183,4 +184,60 @@ it('shows no clock before the room is open', async () => {
   await show({ elapsed: null, phase: 'opening' });
 
   expect(screen.queryByText(/^\d+:\d\d$/)).toBeNull();
+});
+
+describe('what the room says it is doing', () => {
+  /**
+   * #24. Five things look like silence to somebody in a room that has gone
+   * quiet, and after a day of testing the architect reported two of them as
+   * the panel being broken: it was thinking, and it had not heard them.
+   */
+  it('says nothing at all while it is simply listening', async () => {
+    // The sound bar directly above already moves when they speak. Words here
+    // would be a second answer to a question already answered, which is the
+    // mistake that took a panelist off the screen mid-sentence.
+    await show({ attending: { state: 'listening', since: Date.now() } });
+
+    expect(screen.queryByText(/Got that/)).toBeNull();
+    expect(screen.queryByText(/Working on it/)).toBeNull();
+  });
+
+  it('says it has you while the floor is still yours', async () => {
+    // The opening floor (#79) may hold for ninety seconds across several
+    // finals. Without this it is indistinguishable from the room failing to
+    // answer — the fix for one reading as the other.
+    await show({ attending: { state: 'heard', since: Date.now() } });
+
+    expect(await screen.findByText('Got that.')).toBeTruthy();
+  });
+
+  it('says it is working once it owes an answer', async () => {
+    await show({ attending: { state: 'working', since: Date.now() } });
+
+    expect(await screen.findByText('Working on it.')).toBeTruthy();
+  });
+
+  it('says nothing while a panelist has the floor', async () => {
+    // The caption and the developing tray already say who is talking. This
+    // describes what happens while the floor is the presenter's and must stay
+    // out of the way otherwise.
+    await show({
+      floor: 'panel',
+      attending: { state: 'working', since: Date.now() },
+    });
+
+    expect(screen.queryByText(/Working on it/)).toBeNull();
+  });
+
+  it('yields to the warning that something is actually wrong', async () => {
+    // Two lines of machinery on a hands-free screen is a paragraph nobody
+    // glancing will read, and "we can barely hear you" is the more actionable.
+    await show({
+      hearing: 'faint',
+      attending: { state: 'working', since: Date.now() },
+    });
+
+    expect(await screen.findByText(/barely hear you/)).toBeTruthy();
+    expect(screen.queryByText(/Working on it/)).toBeNull();
+  });
 });

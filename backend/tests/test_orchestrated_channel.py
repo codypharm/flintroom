@@ -134,6 +134,21 @@ def mid_room() -> OpeningFloor:
     return OpeningFloor(open=False)
 
 
+def sequence(events) -> list[str]:
+    """The events in order, without the room narrating what it is doing.
+
+    #24 added `Attending`, which the room emits on every transition and on
+    every heartbeat — orthogonal to the orderings these tests are about, and
+    noisy enough to bury them. It has its own coverage in
+    `test_opening_in_the_room.py`, where the ordering that matters is its own.
+    """
+    return [
+        type(event).__name__
+        for event in events
+        if type(event).__name__ != "Attending"
+    ]
+
+
 async def events_of(channel: OrchestratedChannel) -> list:
     return [event async for event in channel.events()]
 
@@ -165,6 +180,9 @@ async def test_the_room_reports_itself_open_before_anyone_speaks():
     # opens the billable span and everything audible has to come after it.
     assert [type(event).__name__ for event in events] == [
         "ChannelReady",
+        # #24: what the room is doing, said before anything can change it, so a
+        # room that opens and waits says so rather than saying nothing.
+        "Attending",
         "AgentTranscript",
         "AgentFinished",
     ]
@@ -677,7 +695,7 @@ async def test_the_user_speaking_is_reported_before_the_panel_answers():
 
     events = await events_of(channel)
 
-    assert [type(event).__name__ for event in events] == [
+    assert sequence(events) == [
         "ChannelReady",
         "UserSpoke",
         "AgentTranscript",
@@ -846,7 +864,7 @@ async def test_the_line_is_spoken_in_that_archetypes_own_voice():
 
     events = await events_of(channel)
 
-    assert [type(event).__name__ for event in events] == [
+    assert sequence(events) == [
         "ChannelReady",
         "UserSpoke",
         "AgentTranscript",

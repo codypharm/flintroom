@@ -29,7 +29,7 @@ import { createPanelsApi } from '../lib/api/panelsApi';
 import { createSessionsApi, type StartedRoom } from '../lib/api/sessionsApi';
 import { API_BASE_URL, auth } from '../lib/auth';
 import { joinRoom, type Room } from '../lib/voice/room';
-import type { Ending } from '../lib/voice/connection';
+import type { Attending, Ending } from '../lib/voice/connection';
 import type { PanelLine } from '../lib/voice/connection';
 import { color, space, type } from '../theme/tokens';
 
@@ -102,6 +102,18 @@ export default function InterrogationScreen() {
   const [speaking, setSpeaking] = useState<string | null>(null);
   const [line, setLine] = useState<PanelLine | null>(null);
   const [floor, setFloor] = useState<'panel' | 'yours'>('yours');
+  /**
+   * What the room says it is doing, and when it said so.
+   *
+   * The clock is kept beside the value because `working` earns the right to
+   * say how long it has been working — a hang stated as a number is a fact
+   * somebody can act on, where a hang stated as nothing is the silence this
+   * whole thing replaces.
+   */
+  const [attending, setAttending] = useState<{ state: Attending; since: number }>({
+    state: 'listening',
+    since: Date.now(),
+  });
   const [heard, setHeard] = useState<Hearing>('silent');
   const [volume, setVolume] = useState(0);
   const [phase, setPhase] = useState<'opening' | 'live' | 'ending'>('opening');
@@ -289,6 +301,13 @@ export default function InterrogationScreen() {
           // phone has played it. `joinRoom` is what waits for the second —
           // acting on the first alone put the speaker down while their voice
           // was still coming out of the loudspeaker.
+          // Reported, never inferred: only the server sees a final arrive, so
+          // a timer here would be racing the network and would be wrong in
+          // exactly the case that matters.
+          onAttending: (state) =>
+            setAttending((held) =>
+              held.state === state ? held : { state, since: Date.now() }
+            ),
           onTurnFinished: () => {
             setSpeaking(null);
             setFloor('yours');
@@ -422,6 +441,7 @@ export default function InterrogationScreen() {
         line={line}
         floor={floor}
         hearing={heard}
+        attending={attending}
         loudness={volume}
         phase={phase}
         elapsed={elapsed}

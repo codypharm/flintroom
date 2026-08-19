@@ -46,6 +46,18 @@ export class RoomNotOpened extends Error {
  * `archetypes`, so a caption can be matched to a seat without translating
  * between two vocabularies.
  */
+/**
+ * The three things the room may be doing, and no more.
+ *
+ * Deliberately silent about a panelist speaking: the caption and
+ * `turn_finished` already carry that, and a second source for one fact is what
+ * took a panelist off the screen mid-sentence.
+ */
+export type Attending = 'listening' | 'heard' | 'working';
+
+/** Every value this build understands. Anything else is dropped, not rendered. */
+const ATTENDING: readonly Attending[] = ['listening', 'heard', 'working'];
+
 export interface PanelLine {
   speaker: string;
   text: string;
@@ -78,6 +90,19 @@ export interface ConnectionOptions {
    * standing on it reads as a room that has lost track.
    */
   onTurnFinished?: () => void;
+  /**
+   * What the room is doing with the floor, while the floor is the presenter's.
+   *
+   * #24. Five things look like silence to somebody in a room that has gone
+   * quiet — it is thinking, it did not hear them, it is waiting for more, it
+   * failed, or it is about to end — and after a day of testing the middle of
+   * that list was reported as the panel being broken.
+   *
+   * **Reported rather than inferred, because only the server can answer it.**
+   * A final arriving is invisible here, so any timer on this side would be
+   * racing a network and would be wrong in exactly the case that matters.
+   */
+  onAttending?: (state: Attending) => void;
   /** Barge-in: drop everything buffered and unplayed, immediately. */
   onDiscardPlayback?: () => void;
   /** The room is over, and why. Called once. */
@@ -131,7 +156,12 @@ export function openConnection(options: ConnectionOptions): Promise<Connection> 
       return;
     }
 
-    let control: { type?: string; text?: string; speaker?: string };
+    let control: {
+      type?: string;
+      text?: string;
+      speaker?: string;
+      state?: string;
+    };
     try {
       control = JSON.parse(event.data as string);
     } catch {
@@ -154,6 +184,14 @@ export function openConnection(options: ConnectionOptions): Promise<Connection> 
       // hear that it is wrong, or develop nobody.
       if (control.text !== undefined && control.speaker !== undefined) {
         options.onTranscript?.({ speaker: control.speaker, text: control.text });
+      }
+    } else if (control.type === 'attending') {
+      // Checked against what this build knows rather than passed through. The
+      // server may learn a fourth value first — #24 has an idle warning queued
+      // behind this — and an unrecognised one must leave the screen showing the
+      // last state it understood rather than blanking it.
+      if (ATTENDING.includes(control.state as Attending)) {
+        options.onAttending?.(control.state as Attending);
       }
     } else if (control.type === 'turn_finished') {
       options.onTurnFinished?.();

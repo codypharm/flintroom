@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import type { PanelLine } from '../../lib/voice/connection';
+import type { Attending, PanelLine } from '../../lib/voice/connection';
 import { portraitOf } from '../../lib/archetypes/portraits';
 import { useReduceMotion } from '../../lib/a11y/reduceMotion';
 import { color, radius, space, type } from '../../theme/tokens';
@@ -63,6 +63,18 @@ export interface InterrogationRoomProps {
   floor: 'panel' | 'yours';
   hearing: Hearing;
   /**
+   * What the room says it is doing, and when it said so.
+   *
+   * #24. Five things look like silence to somebody in a room that has gone
+   * quiet — it is thinking, it did not hear them, it is waiting for more, it
+   * failed, or it is about to end. Three of those are told apart here.
+   *
+   * Reported by the server and never inferred: only it sees a final arrive, so
+   * a timer on this side would be racing the network and would be wrong in
+   * exactly the case that matters.
+   */
+  attending: { state: Attending; since: number };
+  /**
    * How loud the presenter is right now, nothing to plainly speaking.
    *
    * Drives the bars. `audio/hearing.ts` records why this is amplitude at all:
@@ -107,6 +119,7 @@ export function InterrogationRoom({
   loudness,
   phase,
   elapsed,
+  attending,
   onEnd,
 }: InterrogationRoomProps) {
   const calm = useReduceMotion();
@@ -189,7 +202,13 @@ export function InterrogationRoom({
         )}
       </View>
 
-      <Floor floor={floor} hearing={hearing} loudness={loudness} phase={phase} />
+      <Floor
+        floor={floor}
+        hearing={hearing}
+        loudness={loudness}
+        phase={phase}
+        attending={attending}
+      />
     </View>
   );
 }
@@ -298,7 +317,11 @@ function Floor({
   hearing,
   loudness,
   phase,
-}: Pick<InterrogationRoomProps, 'floor' | 'hearing' | 'loudness' | 'phase'>) {
+  attending,
+}: Pick<
+  InterrogationRoomProps,
+  'floor' | 'hearing' | 'loudness' | 'phase' | 'attending'
+>) {
   const yours = floor === 'yours' && phase === 'live';
 
   return (
@@ -309,10 +332,85 @@ function Floor({
         </Text>
       )}
 
+      {yours && hearing !== 'faint' && <Doing attending={attending} />}
+
       <SoundBar loudness={yours ? loudness : 0} lit={yours} />
     </View>
   );
 }
+
+/**
+ * What the room is doing, in the fewest words that answer it.
+ *
+ * **Silent while listening**, deliberately. The sound bar directly above is
+ * already moving when the presenter speaks, and words there would be a second
+ * answer to a question already answered — which is the mistake that took a
+ * panelist off the screen mid-sentence. It speaks only when it knows something
+ * the bar does not.
+ *
+ * **Plain, not in character.** Chosen by the architect over an in-world
+ * reading. These are the only non-diegetic lines in the room: everything else
+ * heard or read there is a panelist. Somebody asking "is this thing on?" wants
+ * the system to answer, not the CFO — and blurring which voice is which is
+ * worst at exactly the moment they suspect it is broken.
+ *
+ * It yields to the faint-audio warning rather than stacking with it. Two lines
+ * of machinery on a hands-free screen is a paragraph nobody glancing will read,
+ * and "we can barely hear you" is the more actionable of the two.
+ */
+function Doing({ attending }: Pick<InterrogationRoomProps, 'attending'>) {
+  const held = useHeldFor(attending.since, attending.state === 'working');
+
+  if (attending.state === 'listening') {
+    return null;
+  }
+
+  return (
+    <Text style={styles.doing} accessibilityLiveRegion="polite">
+      {attending.state === 'heard'
+        ? 'Got that.'
+        : held < PATIENCE
+          ? 'Working on it.'
+          : `Working on it — ${held}s`}
+    </Text>
+  );
+}
+
+/**
+ * How long the room has been in this state, in whole seconds.
+ *
+ * Only ticks while it is worth showing, so a listening room holds no timer at
+ * all. A hang stated as a number is a fact somebody can act on; a hang stated
+ * as nothing is the silence this whole thing exists to replace.
+ */
+function useHeldFor(since: number, ticking: boolean): number {
+  const [held, setHeld] = useState(0);
+
+  useEffect(() => {
+    if (!ticking) {
+      setHeld(0);
+      return;
+    }
+
+    const tick = setInterval(
+      () => setHeld(Math.floor((Date.now() - since) / 1000)),
+      1000
+    );
+
+    return () => clearInterval(tick);
+  }, [since, ticking]);
+
+  return held;
+}
+
+/**
+ * How long a turn may take before the room says how long it has taken.
+ *
+ * Under this it is an ordinary pause and a number would be noise — composition
+ * measures 0.82s and synthesis 0.89s. Past it something is slow, and saying so
+ * is the difference between somebody waiting and somebody giving up.
+ */
+const PATIENCE = 4;
 
 /**
  * The presenter's own voice, as bars.
@@ -462,6 +560,17 @@ const styles = StyleSheet.create({
   // like part of the effect and the effect looked like it belonged to the
   // button.
   floorRow: { gap: space.tight, paddingBottom: space.base, marginTop: space.section },
+  // Same size and place as the faint warning it stands in for, so the two never
+  // shift the bar beneath them. Dimmer, because this is the ordinary case and
+  // that one is a problem.
+  doing: {
+    ...type.bodySm,
+    color: color.onRoom,
+    opacity: 0.6,
+    textAlign: 'center',
+    paddingHorizontal: space.screen,
+  },
+
   faint: {
     ...type.bodySm,
     color: color.roomAmber,

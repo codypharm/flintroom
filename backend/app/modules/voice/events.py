@@ -14,6 +14,7 @@ swapping the provider would still mean editing the relay.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,16 +148,55 @@ class AgentFinished:
 #: The union upstream code matches on. It grows as the relay learns to handle
 #: more, rather than being written out in advance against events nothing yet
 #: reacts to.
-VoiceEvent = (
-    ChannelReady
-    | UserSpoke
-    | Heartbeat
-    | AgentAudio
-    | AgentTranscript
-    | AgentFinished
-    | Interrupted
-)
 
+class Attention(StrEnum):
+    """What the room is doing with the floor, while the floor is the presenter's.
+
+    Five things look identical to somebody sitting in a room that has gone
+    quiet — it is thinking, it did not hear them, it is waiting for more, it has
+    failed, or it is about to end — and after a day of testing the architect
+    reported the middle of that list as the panel being broken. These three
+    values separate the two that cost a session.
+
+    **Only the server can answer this.** A final arriving is invisible to the
+    phone, so no timer on the device can tell "composing" from "never heard
+    you"; it can only guess, and it would guess wrong in exactly the case that
+    matters.
+
+    Deliberately silent about a panelist speaking. The caption and
+    `turn_finished` already carry that, and a second source for one fact is the
+    bug that took a panelist off the screen mid-sentence this morning.
+    """
+
+    #: Nothing of theirs is outstanding. The sound bar already says this, so the
+    #: screen shows no words for it.
+    LISTENING = "listening"
+
+    #: We have an utterance and are not answering yet — the opening floor (#79)
+    #: letting somebody finish making their case.
+    HEARD = "heard"
+
+    #: A turn is in flight. Composing, or synthesising, or streaming.
+    WORKING = "working"
+
+
+@dataclass(frozen=True, slots=True)
+class Attending:
+    """The room reporting what it is doing, so the phone never has to infer it.
+
+    **Derived at the moment of sending, never stored.** A remembered state is
+    stranded by the paths that fail: a turn that dies would leave the room
+    claiming to be working for the rest of the session, which is worse than the
+    silence it replaced because it is confidently wrong. Computed, there is no
+    transition to miss and nothing to clear.
+
+    Sent on the moments that matter for speed, and on every heartbeat for
+    correctness — the heartbeat repeats it even when nothing changed, because
+    suppressing that would leave a phone which dropped one message wrong for
+    the rest of the room.
+    """
+
+    state: Attention
 
 @dataclass(frozen=True, slots=True)
 class Spent:
@@ -192,3 +232,24 @@ class Spent:
     #: than a terse one for the same minute. It is the one vendor whose bill the
     #: 25-word limit directly controls.
     tts_characters: int = 0
+
+
+#: Everything a channel may say. Named after the classes rather than before
+#: them, because the union has to sit below every member and `Spent` and
+#: `Attending` are declared last.
+#:
+#: `Spent` was missing until 2026-08-19 — handled by the relay and absent here,
+#: which nothing caught because this project runs no type checker. Worth knowing
+#: that this union is documentation with teeth only if somebody points a checker
+#: at it.
+VoiceEvent = (
+    ChannelReady
+    | UserSpoke
+    | Heartbeat
+    | AgentAudio
+    | AgentTranscript
+    | AgentFinished
+    | Interrupted
+    | Attending
+    | Spent
+)
