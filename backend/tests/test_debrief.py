@@ -83,6 +83,14 @@ async def room_that_happened(
     return session
 
 
+#: One finding, for tests that need a room to have produced something.
+CAUGHT = Judgement(
+    ordinal=1,
+    quote="Off what base, and at what cost?",
+    weakness=Weakness.EVASIVE,
+    why="You answered with a feeling about the trend, not a base.",
+)
+
 ROOM = (
     Said(speaker=USER, text="We grew forty percent last quarter."),
     Said(speaker="cfo", text="Off what base, and at what cost?"),
@@ -550,3 +558,72 @@ async def test_two_devices_opening_at_once_read_the_room_once(
     # wasted model call is the price of not holding a lock across it. What must
     # not happen twice is the write.
     assert reader.calls == 2
+
+
+async def test_reading_a_room_records_that_it_was_read(
+    db, engine, sessions, settlement, funded_account
+):
+    """`debriefed_at` from the outside, which nothing else asserted.
+
+    The column has existed since it was added for the read-once guard, and its
+    own docstring gives the reason: *"a column rather than 'are there any rows',
+    because an empty list is a real answer"*. Every test until now exercised it
+    through the guard — how many times the reader was called — so the marker
+    itself was only ever observed by its side effect.
+
+    Asserted directly because progress reads it for a different purpose: it is
+    what separates a room with nothing wrong from a room nobody opened, and a
+    figure built on the wrong one of those is a figure nobody should trust.
+    """
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    assert (await sessions.get(session_id=session.id)).debriefed_at is None
+
+    await DebriefService(db, reader=CountingReader(CAUGHT)).weak_answers(
+        session_id=session.id
+    )
+
+    assert (await sessions.get(session_id=session.id)).debriefed_at is not None
+
+
+async def test_a_room_with_nothing_wrong_is_still_recorded_as_read(
+    db, engine, sessions, settlement, funded_account
+):
+    """The case the column exists for, stated as a fact about the room.
+
+    A presenter who answered everything well leaves no findings. Counted by
+    rows, their best room would be invisible to progress — which inverts the
+    signal exactly where somebody most wants to see it.
+    """
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+
+    await DebriefService(db, reader=CountingReader()).weak_answers(
+        session_id=session.id
+    )
+
+    assert (await sessions.get(session_id=session.id)).debriefed_at is not None
+
+
+async def test_reading_a_room_twice_keeps_the_first_reading_time(
+    db, engine, sessions, settlement, funded_account
+):
+    """When the room was assessed, not when it was last looked at.
+
+    A phone re-fetches on every resume. A marker that moved would make "when did
+    I work on this" unanswerable and would make the ordering of a history depend
+    on which rooms somebody happened to reopen.
+    """
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    service = DebriefService(db, reader=CountingReader(CAUGHT))
+
+    await service.weak_answers(session_id=session.id)
+    first = (await sessions.get(session_id=session.id)).debriefed_at
+
+    await service.weak_answers(session_id=session.id)
+
+    assert (await sessions.get(session_id=session.id)).debriefed_at == first

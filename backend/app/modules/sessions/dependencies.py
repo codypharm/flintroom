@@ -24,6 +24,7 @@ from app.agents.coach import CoachModel
 from app.agents.weakness import WeaknessReader
 from app.modules.sessions.coaching import CoachService
 from app.modules.sessions.debrief import DebriefService
+from app.modules.sessions.progress import ProgressService
 from app.modules.sessions.preferences import PreferenceService
 from app.modules.sessions.retention import RecordingRetention
 from app.modules.sessions.service import SessionService
@@ -107,6 +108,21 @@ async def get_preference_service(
 
 
 PreferenceServiceDep = Annotated[PreferenceService, Depends(get_preference_service)]
+
+
+async def get_progress_service(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ProgressService:
+    """A read, and only a read.
+
+    No `CallerContext` for the same reason `PreferenceService` has none: it
+    writes nothing, moves no money and leaves no audit row. It is arithmetic
+    over rooms that were already assessed.
+    """
+    return ProgressService(db)
+
+
+ProgressServiceDep = Annotated[ProgressService, Depends(get_progress_service)]
 
 
 async def get_recording_retention(

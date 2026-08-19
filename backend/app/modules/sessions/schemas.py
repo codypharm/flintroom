@@ -462,6 +462,73 @@ class TranscriptRead(BaseModel):
     lines: list[TranscriptLineRead]
 
 
+class RoomHeldRead(BaseModel):
+    """One assessed room: what it put to them, what held, and how hard it was.
+
+    **All three on one object, never in three lists.** `held` and `challenged`
+    mean nothing without `level`: difficulty escalates, so a room where more got
+    past somebody may simply be a room that pressed harder. A client that could
+    receive the figures separately from the rung could render them separately,
+    and the first thing it would draw is a trend that tells an improving
+    presenter they are getting worse.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    session_id: uuid.UUID
+    started_at: datetime
+
+    #: Challenges the presenter actually had a turn at.
+    #:
+    #: A question a colleague talked over is in neither term. It is not a
+    #: failure — #56 — and it is not a success either, because nobody answered
+    #: it; counting it as held would be the same false comfort that counting it
+    #: as fumbled is a false accusation.
+    challenged: int
+    held: int
+
+    #: The rung this room ran at. Null for a room predating the ladder, and left
+    #: null rather than guessed — `sessions.difficulty_level`'s own migration
+    #: gives the reason.
+    level: int | None = None
+
+
+class TallyRead(BaseModel):
+    """A thing, and how many *rooms* it happened in.
+
+    Rooms rather than occurrences, because a habit is a thing that recurs. Two
+    evasive answers in one bad afternoon is one room where it happened, and
+    counting occurrences would let a single disastrous session read as a
+    pattern — the opposite of what somebody should take from it.
+    """
+
+    name: str
+    rooms: int
+
+
+class ProgressRead(BaseModel):
+    """A history, with no total in it.
+
+    No average, no lifetime figure, no streak. An average across rungs is
+    arithmetic over incomparable rooms, and a single number is the shape that
+    invites optimising the number instead of the argument.
+
+    Every list empty is a real answer — a new account — rather than a refusal,
+    so the screen can say "you have not run a room yet".
+    """
+
+    #: Newest first: the room somebody just left is the one they are looking for.
+    rooms: list[RoomHeldRead] = Field(default_factory=list)
+
+    #: How they fail, commonest first. Only what they were at fault for — a list
+    #: naming `dismissed` would be things the room did, filed under things they
+    #: do.
+    habits: list[TallyRead] = Field(default_factory=list)
+
+    #: Who keeps catching them, commonest first.
+    askers: list[TallyRead] = Field(default_factory=list)
+
+
 class CoachTurnRead(BaseModel):
     """What the coach said, in both channels at once.
 

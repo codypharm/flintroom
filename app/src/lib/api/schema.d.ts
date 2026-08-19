@@ -293,6 +293,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Progress
+         * @description Whether this account is getting better.
+         *
+         *     Scoped by the credential, never by a parameter — the same rule the session
+         *     list follows, and for the same reason: an id in the query is an
+         *     authorisation check waiting to be forgotten.
+         *
+         *     **Arithmetic over what the debrief already stored.** No model call and no
+         *     second judgement: #57's reading of a room is the one judgement in this
+         *     pipeline, and an opinion layered on top would be a second thing to be wrong
+         *     about the same session.
+         *
+         *     Carries no transcript and no findings text — only counts, and the rung each
+         *     count was earned at.
+         */
+        get: operations["sessions_read_progress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sessions/{session_id}/transcript": {
         parameters: {
             query?: never;
@@ -1036,6 +1068,25 @@ export interface components {
             upload_url: string;
         };
         /**
+         * ProgressRead
+         * @description A history, with no total in it.
+         *
+         *     No average, no lifetime figure, no streak. An average across rungs is
+         *     arithmetic over incomparable rooms, and a single number is the shape that
+         *     invites optimising the number instead of the argument.
+         *
+         *     Every list empty is a real answer — a new account — rather than a refusal,
+         *     so the screen can say "you have not run a room yet".
+         */
+        ProgressRead: {
+            /** Rooms */
+            rooms?: components["schemas"]["RoomHeldRead"][];
+            /** Habits */
+            habits?: components["schemas"]["TallyRead"][];
+            /** Askers */
+            askers?: components["schemas"]["TallyRead"][];
+        };
+        /**
          * RecordingPlayback
          * @description A short-lived link to one room's audio.
          *
@@ -1106,6 +1157,35 @@ export interface components {
         RefreshRequest: {
             /** Refresh Token */
             refresh_token: string;
+        };
+        /**
+         * RoomHeldRead
+         * @description One assessed room: what it put to them, what held, and how hard it was.
+         *
+         *     **All three on one object, never in three lists.** `held` and `challenged`
+         *     mean nothing without `level`: difficulty escalates, so a room where more got
+         *     past somebody may simply be a room that pressed harder. A client that could
+         *     receive the figures separately from the rung could render them separately,
+         *     and the first thing it would draw is a trend that tells an improving
+         *     presenter they are getting worse.
+         */
+        RoomHeldRead: {
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Challenged */
+            challenged: number;
+            /** Held */
+            held: number;
+            /** Level */
+            level?: number | null;
         };
         /**
          * SessionRead
@@ -1261,6 +1341,21 @@ export interface components {
              * @default false
              */
             deletion_cancelled: boolean;
+        };
+        /**
+         * TallyRead
+         * @description A thing, and how many *rooms* it happened in.
+         *
+         *     Rooms rather than occurrences, because a habit is a thing that recurs. Two
+         *     evasive answers in one bad afternoon is one room where it happened, and
+         *     counting occurrences would let a single disastrous session read as a
+         *     pattern — the opposite of what somebody should take from it.
+         */
+        TallyRead: {
+            /** Name */
+            name: string;
+            /** Rooms */
+            rooms: number;
         };
         /**
          * TierUpload
@@ -1720,6 +1815,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sessions_read_progress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressRead"];
                 };
             };
         };

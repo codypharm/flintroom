@@ -1,8 +1,17 @@
-import { Link, router } from 'expo-router';
+import { Link, router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Progress } from '../../components/modules/Progress';
+import { createProgressApi, type Progress as Read } from '../../lib/api/progressApi';
+import { API_BASE_URL, auth } from '../../lib/auth';
 import { color, radius, space, type } from '../../theme/tokens';
+
+const progress = createProgressApi({
+  baseUrl: API_BASE_URL,
+  accessToken: () => auth.accessToken(),
+});
 
 /**
  * The front door.
@@ -27,6 +36,38 @@ import { color, radius, space, type } from '../../theme/tokens';
  * once there is more than one room to compare.
  */
 export default function HomeScreen() {
+  const [read, setRead] = useState<Read | null>(null);
+
+  /**
+   * Re-read on every visit, not once on mount.
+   *
+   * This is a tab, so it is not unmounted when somebody leaves it — and the
+   * one journey that changes what it says is exactly the one that leaves and
+   * comes back: start a room, be interrogated, open the debrief, return. A
+   * mount effect would show the state before the room they just ran.
+   *
+   * Failures are silent, and this is the one screen where that is right. The
+   * progress block is a reason to start a room, not the way to start one; a
+   * refusal drawn over the primary control would break the screen's actual job
+   * over a sentence nobody asked for.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      let live = true;
+
+      progress
+        .read()
+        .then((theirs) => {
+          if (live) setRead(theirs);
+        })
+        .catch(() => undefined);
+
+      return () => {
+        live = false;
+      };
+    }, [])
+  );
+
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -36,6 +77,18 @@ export default function HomeScreen() {
             The room that grills you before the room that matters.
           </Text>
         </View>
+
+        {/*
+          Above the control, because it is the reason to press it. Drawn only
+          once there is something true to say — a block that said "nothing yet"
+          on a first launch would put an absence where the product's whole
+          promise should be.
+        */}
+        {read && read.rooms.length > 0 && (
+          <View style={styles.progress}>
+            <Progress rooms={read.rooms} habits={read.habits} askers={read.askers} />
+          </View>
+        )}
 
         <Pressable
           accessibilityRole="button"
@@ -90,6 +143,8 @@ const styles = StyleSheet.create({
     color: color.onSurfaceVariant,
     marginTop: space.snug,
   },
+
+  progress: { marginTop: space.section },
 
   start: {
     alignSelf: 'flex-start',

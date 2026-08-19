@@ -18,6 +18,7 @@ from app.modules.sessions.dependencies import (
     CoachServiceDep,
     DebriefServiceDep,
     PreferenceServiceDep,
+    ProgressServiceDep,
     RecordingRetentionDep,
     OwnedSession,
     SessionServiceDep,
@@ -33,7 +34,10 @@ from app.modules.sessions.schemas import (
     EndReason,
     SessionRead,
     SessionStart,
+    ProgressRead,
+    RoomHeldRead,
     SessionStarted,
+    TallyRead,
     TranscriptLineRead,
     TranscriptRead,
     WeakAnswerRead,
@@ -245,6 +249,34 @@ async def _read(session, sessions: SessionServiceDep) -> SessionRead:
             "recording": await sessions.recording(session_id=session.id),
             "archetypes": [archetype.name for archetype in panel],
         }
+    )
+
+
+@router.get("/progress", response_model=ProgressRead)
+async def read_progress(
+    user_id: CurrentUser,
+    progress: ProgressServiceDep,
+) -> ProgressRead:
+    """Whether this account is getting better.
+
+    Scoped by the credential, never by a parameter — the same rule the session
+    list follows, and for the same reason: an id in the query is an
+    authorisation check waiting to be forgotten.
+
+    **Arithmetic over what the debrief already stored.** No model call and no
+    second judgement: #57's reading of a room is the one judgement in this
+    pipeline, and an opinion layered on top would be a second thing to be wrong
+    about the same session.
+
+    Carries no transcript and no findings text — only counts, and the rung each
+    count was earned at.
+    """
+    read = await progress.read(user_id=user_id)
+
+    return ProgressRead(
+        rooms=[RoomHeldRead.model_validate(room) for room in read.rooms],
+        habits=[TallyRead(name=name, rooms=count) for name, count in read.habits],
+        askers=[TallyRead(name=name, rooms=count) for name, count in read.askers],
     )
 
 

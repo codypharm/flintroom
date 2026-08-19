@@ -478,6 +478,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/progress:
+    get:
+      tags:
+      - sessions
+      summary: Read Progress
+      description: 'Whether this account is getting better.
+
+
+        Scoped by the credential, never by a parameter — the same rule the session
+
+        list follows, and for the same reason: an id in the query is an
+
+        authorisation check waiting to be forgotten.
+
+
+        **Arithmetic over what the debrief already stored.** No model call and no
+
+        second judgement: #57''s reading of a room is the one judgement in this
+
+        pipeline, and an opinion layered on top would be a second thing to be wrong
+
+        about the same session.
+
+
+        Carries no transcript and no findings text — only counts, and the rung each
+
+        count was earned at.'
+      operationId: sessions_read_progress
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressRead'
+      security:
+      - HTTPBearer: []
   /v1/sessions/{session_id}/transcript:
     get:
       tags:
@@ -1656,6 +1693,38 @@ components:
         credential for a single object at a single size — short-lived by
 
         construction, and not the kind of thing to hand back on every GET.'
+    ProgressRead:
+      properties:
+        rooms:
+          items:
+            $ref: '#/components/schemas/RoomHeldRead'
+          type: array
+          title: Rooms
+        habits:
+          items:
+            $ref: '#/components/schemas/TallyRead'
+          type: array
+          title: Habits
+        askers:
+          items:
+            $ref: '#/components/schemas/TallyRead'
+          type: array
+          title: Askers
+      type: object
+      title: ProgressRead
+      description: 'A history, with no total in it.
+
+
+        No average, no lifetime figure, no streak. An average across rungs is
+
+        arithmetic over incomparable rooms, and a single number is the shape that
+
+        invites optimising the number instead of the argument.
+
+
+        Every list empty is a real answer — a new account — rather than a refusal,
+
+        so the screen can say "you have not run a room yet".'
     RecordingPlayback:
       properties:
         url:
@@ -1767,6 +1836,49 @@ components:
       - refresh_token
       title: RefreshRequest
       description: The stored credential, offered in exchange for a fresh pair.
+    RoomHeldRead:
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          title: Session Id
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        challenged:
+          type: integer
+          title: Challenged
+        held:
+          type: integer
+          title: Held
+        level:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Level
+      type: object
+      required:
+      - session_id
+      - started_at
+      - challenged
+      - held
+      title: RoomHeldRead
+      description: 'One assessed room: what it put to them, what held, and how hard
+        it was.
+
+
+        **All three on one object, never in three lists.** `held` and `challenged`
+
+        mean nothing without `level`: difficulty escalates, so a room where more got
+
+        past somebody may simply be a room that pressed harder. A client that could
+
+        receive the figures separately from the rung could render them separately,
+
+        and the first thing it would draw is a trend that tells an improving
+
+        presenter they are getting worse.'
     SessionRead:
       properties:
         id:
@@ -2002,6 +2114,29 @@ components:
         token rotates on use. A client that keeps the old one will be treated as a
 
         replay and lose the session, so "always store both" is the contract.'
+    TallyRead:
+      properties:
+        name:
+          type: string
+          title: Name
+        rooms:
+          type: integer
+          title: Rooms
+      type: object
+      required:
+      - name
+      - rooms
+      title: TallyRead
+      description: 'A thing, and how many *rooms* it happened in.
+
+
+        Rooms rather than occurrences, because a habit is a thing that recurs. Two
+
+        evasive answers in one bad afternoon is one room where it happened, and
+
+        counting occurrences would let a single disastrous session read as a
+
+        pattern — the opposite of what somebody should take from it.'
     TierUpload:
       properties:
         tier:
