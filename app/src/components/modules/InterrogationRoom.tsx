@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { PanelLine } from '../../lib/voice/connection';
 import { portraitOf } from '../../lib/archetypes/portraits';
@@ -236,96 +236,108 @@ function Floor({
 }: Pick<InterrogationRoomProps, 'floor' | 'hearing' | 'phase'>) {
   const yours = floor === 'yours' && phase === 'live';
   const heard = yours && hearing === 'hearing';
-  const breath = useBreath(heard);
 
   return (
-    <View style={styles.floorRow}>
+    <View style={styles.floorRow} pointerEvents="none">
       {yours && hearing === 'faint' && (
         <Text style={styles.faint} accessibilityLiveRegion="polite">
           We can barely hear you — try moving closer.
         </Text>
       )}
-      <Animated.View
+
+      <View
         testID="floor"
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
-        style={[
-          styles.floor,
-          yours && styles.floorYours,
-          heard && styles.floorHeard,
-          { transform: [{ scaleX: breath }] },
-        ]}
-      />
+        style={styles.floor}
+      >
+        {/* Three, staggered, so the edge is never empty between them — one arc
+            alone reads as a repeating blip rather than as something
+            continuous. */}
+        {[0, 1, 2].map((index) => (
+          <Arc key={index} alive={heard} at={index} />
+        ))}
+
+        {/* Always drawn, under the arcs. The room has a near edge whether or
+            not anybody is talking, and an indicator that only exists while it
+            is firing cannot be found when it is not. */}
+        <View style={[styles.sill, yours && styles.sillYours]} />
+      </View>
     </View>
   );
 }
 
 /**
- * The floor, alive while it is hearing you.
+ * One ripple off the presenter's own edge of the table.
  *
- * A colour change alone was not enough on a device: a static bar that goes from
- * one dim tone to another says nothing at the edge of vision, which is the only
- * place this is ever seen. What reads is *movement*, and this is the one place
- * on the screen where movement is the right answer — it is the user's own side
- * of the table, and the question it answers is "is this thing on".
+ * **The same language the panel speaks, pointing the other way.** A panelist
+ * with the floor emits an expanding ring; the presenter's side emits arcs off
+ * the near edge. Two directions of one idea, so neither has to be learned — and
+ * it puts the user in the room rather than outside it looking in.
  *
- * **Still not a level meter.** It breathes at a fixed rate rather than tracking
- * amplitude: the presenter's question is whether their voice is reaching the
- * room, and a bar that moved WITH their volume would teach them to watch how
- * loud they are instead of what they are saying — which is the delivery-metrics
- * product this one exists to refuse. Fixed-rate motion answers "yes, and still
- * yes" without ever being a reading of anything.
+ * **Still not a level meter.** These run at a fixed rate rather than tracking
+ * amplitude, and the reason is unchanged: a thing that moved with somebody's
+ * volume would teach them to watch how loud they are instead of what they are
+ * saying, which is precisely the delivery-metrics product this one refuses.
+ * Fixed motion answers "yes, and still yes" and is a reading of nothing.
  *
- * Horizontal only, from the centre out. It grows along the edge it already
- * occupies rather than getting taller, so nothing on the screen moves except a
- * line that was already a line.
+ * The arc is the top of a circle far wider than the screen, most of it below
+ * the bottom edge — so what shows is a shallow curve opening upward, which is
+ * what a ripple looks like from inside it.
  */
-function useBreath(alive: boolean): Animated.Value {
-  const width = useRef(new Animated.Value(alive ? 1 : REST)).current;
+function Arc({ alive, at }: { alive: boolean; at: number }) {
+  const out = useRef(new Animated.Value(0)).current;
   const calm = useReduceMotion();
-  const [table, setTable] = useState(0);
 
   useEffect(() => {
-    if (!alive) {
-      Animated.timing(width, {
-        toValue: REST,
-        duration: calm ? 0 : 260,
-        useNativeDriver: true,
-      }).start();
-      return;
-    }
-
-    if (calm) {
-      // Reduce Motion still gets the *state*, at full width and steady. What it
-      // gives up is the loop, not the answer to "is this thing on".
-      width.setValue(1);
+    if (!alive || calm) {
+      out.setValue(0);
       return;
     }
 
     const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(width, {
-          toValue: 1,
-          duration: 900,
-          useNativeDriver: true,
-        }),
-        Animated.timing(width, {
-          toValue: 0.82,
-          duration: 900,
-          useNativeDriver: true,
-        }),
-      ])
+      Animated.timing(out, {
+        toValue: 1,
+        duration: RIPPLE_MS,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      })
     );
-    loop.start();
 
-    return () => loop.stop();
-  }, [alive, calm, width]);
+    // Staggered rather than started together, or all three would be the same
+    // arc drawn three times.
+    const start = setTimeout(() => loop.start(), (RIPPLE_MS / 3) * at);
 
-  return width;
+    return () => {
+      clearTimeout(start);
+      loop.stop();
+      out.setValue(0);
+    };
+  }, [alive, at, calm, out]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.arc,
+        {
+          opacity: out.interpolate({
+            inputRange: [0, 0.12, 1],
+            outputRange: [0, 0.45, 0],
+          }),
+          transform: [
+            { scale: out.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1.35] }) },
+          ],
+        },
+      ]}
+    />
+  );
 }
 
-/** How wide the floor sits when the room is not hearing anything. */
-const REST = 0.35;
+/** One ripple, from the edge to gone. Slow enough to read as breathing. */
+const RIPPLE_MS = 2100;
+
+/** Wider than any phone, so the visible part is a shallow curve, not a circle. */
+const ARC = 520;
 
 const styles = StyleSheet.create({
   room: { flex: 1, backgroundColor: color.roomGround },
@@ -353,6 +365,7 @@ const styles = StyleSheet.create({
     flex: 45,
     paddingHorizontal: space.screen,
     justifyContent: 'space-between',
+    paddingBottom: space.base,
   },
 
   said: { gap: space.tight },
@@ -381,17 +394,48 @@ const styles = StyleSheet.create({
   endLabel: { ...type.labelLg, color: color.roomGround },
   pressed: { opacity: 0.6 },
 
-  floorRow: { gap: space.tight, paddingBottom: space.tight },
+  // The room's near edge, and it needs air above it. End sat eight points off
+  // the ripples, which put a control inside an animation — the button looked
+  // like part of the effect and the effect looked like it belonged to the
+  // button.
+  floorRow: { gap: space.tight, paddingBottom: space.base, marginTop: space.section },
   faint: {
     ...type.bodySm,
     color: color.roomAmber,
     textAlign: 'center',
     paddingHorizontal: space.screen,
   },
-  // Thicker than a hairline now that it moves: a 3pt line scaling
-  // horizontally reads as a rendering artefact rather than as a thing
-  // responding to you.
-  floor: { height: 5, marginHorizontal: space.screen, borderRadius: radius.pill },
-  floorYours: { backgroundColor: color.roomTray },
-  floorHeard: { backgroundColor: color.roomAmber },
+  // The band the ripples happen in. Tall enough that an arc has somewhere to
+  // travel; `overflow: hidden` keeps them from climbing into the caption.
+  floor: {
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+  },
+
+  /**
+   * The arc, which is the top of a circle far wider than the screen with most
+   * of it below the bottom edge. What shows is a shallow curve opening upward
+   * — a ripple seen from inside it.
+   */
+  arc: {
+    position: 'absolute',
+    bottom: -ARC / 2,
+    width: ARC,
+    height: ARC,
+    borderRadius: ARC / 2,
+    borderWidth: 2,
+    borderColor: color.roomAmber,
+  },
+
+  // Always there. A near edge that only existed while somebody was talking
+  // could not be found when they were not.
+  sill: {
+    height: 3,
+    width: 96,
+    borderRadius: radius.pill,
+    backgroundColor: color.roomTray,
+  },
+  sillYours: { backgroundColor: color.roomAmber, opacity: 0.55 },
 });
