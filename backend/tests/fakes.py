@@ -76,16 +76,23 @@ class FakeClientChannel:
 
     def __init__(self, inbound: Sequence[bytes] = ()) -> None:
         self.sent: list[bytes] = []
-        self.captions: list[str] = []
+        #: `(speaker, text)`, because one utterance is one caption and the
+        #: name is part of it — a fake that kept only the words would let a
+        #: relay that dropped the speaker pass.
+        self.captions: list[tuple[str, str]] = []
         self.discarded = 0
+        self.yielded = 0
         self._inbound = list(inbound)
         self._hung_up = asyncio.Event()
 
     async def send_audio(self, pcm: bytes) -> None:
         self.sent.append(pcm)
 
-    async def send_transcript(self, text: str) -> None:
-        self.captions.append(text)
+    async def send_transcript(self, text: str, speaker: str) -> None:
+        self.captions.append((speaker, text))
+
+    async def turn_finished(self) -> None:
+        self.yielded += 1
 
     async def discard_playback(self) -> None:
         self.discarded += 1

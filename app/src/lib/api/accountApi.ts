@@ -25,6 +25,20 @@ export interface AccountApiOptions {
 export interface AccountApi {
   /** Schedules deletion and returns when the purge happens. */
   deleteAccount(): Promise<Date>;
+  /**
+   * How long this account's rooms are kept, in days.
+   *
+   * Read by the recording disclosure, which must state the real window rather
+   * than a number in the app: it is per tier, it changes when somebody
+   * upgrades, and a sheet that promised thirty days to a subscriber whose
+   * rooms are kept for ninety would be a disclosure that misinforms.
+   */
+  recordingWindow(): Promise<number>;
+}
+
+/** The wire's spelling of the recording preference. */
+interface RecordingBody {
+  retention_days: number;
 }
 
 /** What the contract calls a scheduled deletion, before the app renames it. */
@@ -38,6 +52,18 @@ export function createAccountApi({
   fetch: fetcher = fetch,
 }: AccountApiOptions): AccountApi {
   return {
+    recordingWindow: async () => {
+      const response = await fetcher(`${baseUrl}/v1/preferences/recording`, {
+        headers: { Authorization: `Bearer ${await accessToken()}` },
+      });
+
+      if (!response.ok) {
+        throw new Error(`/v1/preferences/recording failed with ${response.status}`);
+      }
+
+      return ((await response.json()) as RecordingBody).retention_days;
+    },
+
     deleteAccount: async () => {
       const response = await fetcher(`${baseUrl}/v1/me`, {
         method: 'DELETE',

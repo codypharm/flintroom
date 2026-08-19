@@ -19,12 +19,18 @@ from collections.abc import AsyncIterator, Sequence
 
 import pytest
 
-from app.agents.archetypes import DEFAULT_PANEL, Archetype
+from app.agents.archetypes import DEFAULT_PANEL, LIBRARY, Archetype
 from app.agents.auditor import Auditor, ClaimReading
 from app.agents.context import USER, Grounding, Said
 from app.agents.model import ModelReply
 from app.core.errors import ProviderUnavailable
-from app.modules.voice.events import AgentTranscript, Heartbeat, Spent
+from app.modules.voice.events import (
+    AgentAudio,
+    AgentFinished,
+    AgentTranscript,
+    Heartbeat,
+    Spent,
+)
 from app.modules.voice.orchestrated import HEARTBEAT_SECONDS, OrchestratedChannel
 from app.modules.voice.transcribers.elevenlabs import SAMPLE_RATE
 from app.modules.ingestion.schemas import QuantitativeClaim, Unit
@@ -152,8 +158,86 @@ async def test_a_finished_utterance_becomes_a_panel_line():
 
     events = await events_of(channel)
 
-    assert AgentTranscript("Seventy percent against a deck that says 61.") in events
     assert model.said == ["Our gross margin is seventy percent."]
+    assert [
+        event.text for event in events if isinstance(event, AgentTranscript)
+    ] == ["Seventy percent against a deck that says 61."]
+
+
+async def test_the_room_says_when_the_floor_comes_back_to_the_presenter():
+    """The turn is over, said out loud rather than left to be inferred.
+
+    The room strictly alternates — one panel turn per finished utterance — so
+    "the panelist stopped" really does mean "your turn". But nothing on the
+    wire marks the end of an utterance, so a phone would have to guess it from
+    a gap in arriving frames or a drained playback buffer. Both are guesses
+    about the network: a two-second stall would tell the presenter to speak
+    while a panelist is still mid-question, they would start, the panelist
+    would resume, and the room would have manufactured an accidental barge-in.
+
+    Last, and after the audio. A signal that the floor is free has to arrive
+    behind the sound it follows, or the presenter is invited to talk over the
+    end of the question.
+
+    Deliberately NOT emitted when a turn is cancelled by barge-in: the
+    presenter already holds the floor by having taken it, and being handed
+    something you are standing on reads as the room losing track.
+    """
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=FakeTranscription(
+            [Transcription(text="Our gross margin is seventy percent.", final=True)]
+        ),
+        model=ScriptedPanelModel(line="Against a deck that says 61."),
+        grounding=Grounding(),
+    )
+
+    events = await events_of(channel)
+
+    spoke = [
+        index for index, event in enumerate(events) if isinstance(event, AgentAudio)
+    ]
+    yielded = [
+        index for index, event in enumerate(events) if isinstance(event, AgentFinished)
+    ]
+
+    assert len(yielded) == 1
+    assert not spoke or yielded[0] > spoke[-1]
+
+
+async def test_a_caption_names_the_archetype_who_composed_it():
+    """Who spoke, carried with the words rather than left to be guessed.
+
+    The composer already picks an archetype and speaks in its voice; until now
+    that choice died here, and the phone received three identical rectangles
+    and a line with no owner. `Product.md` §3.4 makes the active speaker part
+    of the live interrogation surface, and the screen develops one tray per
+    seated archetype — which it cannot do from text.
+
+    Seated with one archetype so the assertion is about the name being *the
+    one who spoke*, not about it being a plausible member of the room. With a
+    full panel a broken implementation that always named the first seat would
+    pass roughly a third of the time.
+
+    The slug rather than a display name, matching `Session.archetypes` and the
+    transcript's own `speaker` column. The phone resolves it against the
+    archetype catalogue it already holds to offer the picker.
+    """
+    only = next(one for one in LIBRARY if one.name == "risk_officer")
+    channel = OrchestratedChannel(
+        panel=(only,),
+        transcription=FakeTranscription(
+            [Transcription(text="We have no exposure there.", final=True)]
+        ),
+        model=ScriptedPanelModel(line="No exposure, or none you have measured?"),
+        grounding=Grounding(),
+    )
+
+    events = await events_of(channel)
+
+    assert [
+        event.speaker for event in events if isinstance(event, AgentTranscript)
+    ] == ["risk_officer"]
 
 
 async def test_what_the_user_said_outlives_the_room():
@@ -557,6 +641,9 @@ async def test_the_user_speaking_is_reported_before_the_panel_answers():
         # No speaker on this channel, so `Spent` still reports the model's
         # tokens and zero characters — nothing was synthesised to charge for.
         "Spent",
+        # Nothing was played, but the turn is just as over and the phone still
+        # has to know the floor came back.
+        "AgentFinished",
     ]
 
 
@@ -722,6 +809,9 @@ async def test_the_line_is_spoken_in_that_archetypes_own_voice():
         "Spent",
         "AgentAudio",
         "AgentAudio",
+        # Last, behind the sound it follows. Announced any earlier and the
+        # presenter is invited to talk over the end of the question.
+        "AgentFinished",
     ]
     assert speaker.spoke == [("Against what basis?", "voice_cfo")]
 

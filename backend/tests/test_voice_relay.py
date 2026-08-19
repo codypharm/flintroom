@@ -35,6 +35,7 @@ from app.modules.sessions.schemas import (
 from app.modules.voice.recording import RoomRecordings, recording_key
 from app.modules.voice.events import (
     AgentAudio,
+    AgentFinished,
     AgentTranscript,
     ChannelReady,
     Heartbeat,
@@ -255,14 +256,21 @@ async def test_what_the_panel_says_also_reaches_the_phone_as_words(
     relay = VoiceRelay(
         db,
         provider=FakeVoiceProvider(
-            [ChannelReady(), AgentAudio(frame), AgentTranscript(line)]
+            [
+                ChannelReady(),
+                AgentAudio(frame),
+                AgentTranscript(line, speaker="The CFO"),
+            ]
         ),
         client=client,
     )
     await relay.run(session_id=session.id)
 
     assert client.sent == [frame]
-    assert client.captions == [line]
+    # The name travels with the words. The live screen develops one tray per
+    # seated archetype (`Product.md` §3.4) and cannot tell three identical
+    # rectangles apart from text alone.
+    assert client.captions == [("The CFO", line)]
 
 
 async def test_the_panel_s_words_never_reach_the_logs(
@@ -291,7 +299,9 @@ async def test_the_panel_s_words_never_reach_the_logs(
     with caplog.at_level(logging.DEBUG):
         await VoiceRelay(
             db,
-            provider=FakeVoiceProvider([ChannelReady(), AgentTranscript(secret)]),
+            provider=FakeVoiceProvider(
+                    [ChannelReady(), AgentTranscript(secret, speaker="The CFO")]
+                ),
             client=FakeClientChannel(),
         ).run(session_id=session.id)
 
@@ -627,3 +637,33 @@ async def test_the_recording_drops_what_the_phone_was_told_to_drop(
     # The user never spoke, so the clock never advanced and every panel sample
     # was still unplayed when the interruption landed.
     assert relay._mixer.mixed() == b""
+
+
+async def test_the_phone_is_told_when_the_floor_comes_back(
+    db, sessions, funded_account
+):
+    """The turn is over, forwarded rather than left for the phone to infer.
+
+    Its own channel method, like the caption and the barge-in before it: the
+    client never inspects a payload to know what it is holding. And its own
+    frame rather than a flag on the caption, because the caption arrives
+    *before* the audio it captions — a floor announced there would invite the
+    presenter to talk over the whole question.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+    client = FakeClientChannel()
+
+    relay = VoiceRelay(
+        db,
+        provider=FakeVoiceProvider(
+            [
+                ChannelReady(),
+                AgentAudio(b"\x00\x01"),
+                AgentFinished(),
+            ]
+        ),
+        client=client,
+    )
+    await relay.run(session_id=session.id)
+
+    assert client.yielded == 1

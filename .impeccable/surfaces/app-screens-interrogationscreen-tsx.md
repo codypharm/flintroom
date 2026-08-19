@@ -1,7 +1,7 @@
 ---
 version: 1
 slug: "app-screens-interrogationscreen-tsx"
-primary_target: "app/screens/InterrogationScreen.tsx"
+primary_target: "app/src/components/modules/InterrogationRoom.tsx"
 related_targets: ["design-guide/interrogation_dashboard/code.html"]
 ---
 
@@ -69,3 +69,65 @@ One touch target on the entire screen. Safe areas respected; nothing under the D
 - On-screen archetype naming.
 - Recording retention window (open product decision).
 - **The world is committed on paper and unproven in pixels.** Honest risk: if it reads as moody rather than as an instrument, it fails. Second risk: the developing-challenger signal could become something users watch instead of arguing — mitigated by keeping it far-field and detail-free, but it is the first thing to test with real users. Next step is a comp of this screen, which also settles archetype depiction for panel setup to inherit.
+
+---
+
+## Built, 2026-08-19 (#41)
+
+`app/src/components/modules/InterrogationRoom.tsx` + `Tray.tsx`, behind
+`app/src/app/interrogation.tsx`. Reached only from Start on `/setup`. The
+instrument screen it replaced (`app/src/app/room.tsx`, a pasted dev token and an
+inline `POST /v1/sessions`) is deleted.
+
+**Shipped from this brief:** the split field, the trays, the single End control,
+one caption as the near field's content, the dark ground.
+
+**Deferred, each with its own task and its reason:** room temperature as the
+safelight (#74 — nothing anywhere computes it, and it is a model call asking for
+a judgement on a scale whose vocabulary is the architect's); the developing
+challenger (#75 — the Auditor's finding outranks the early selection, so a tray
+that emerged and then did not speak would have lied mid-argument).
+**Nothing else was allowed to colonise the ambient ground,** so #74 has
+somewhere to land: the floor indicator is at the nearest edge and the speaker
+indicator is in the trays.
+
+### Where the built screen departs from this brief, and why
+
+- **The line appears whole, not word by word.** The wire carries finished
+  utterances and no word timing — the caption is put on the socket *before* its
+  own audio (`orchestrated.py:726`) — so emergence would be the phone guessing
+  a speech rate and drifting against the voice. Theatre on the one screen that
+  has to be trusted at a glance, and worst for the reader captions exist for,
+  who would be paced by a soundtrack they cannot hear.
+- **The speaker is named in text, beside the line.** The brief's "no names" was
+  about the far field and still holds there. But caption standards want the
+  speaker identified wherever more than one person speaks, and at the trays'
+  intended subtlety they fail WCAG 1.4.11 as the sole carrier of who is asking.
+  Naming it in text releases the trays to stay quiet.
+- **A floor indicator was added**, at the architect's request: the nearest edge
+  lifts while speech is present, and says so when the presenter is too quiet to
+  be transcribed. **Not a level meter** — the anti-goal stands, and the reason
+  is the viewing condition: a moving object is the most attention-capturing
+  thing possible in peripheral vision on a screen whose premise is that nobody
+  looks at it, and at an oblique angle on a desk it cannot be read as a quantity
+  anyway. Three states, in `app/src/lib/audio/hearing.ts`.
+- **The room says the floor is yours before anyone speaks.** Not in the brief's
+  state table, and load-bearing: the panel does not open the room
+  (`orchestrated.py:294`), and the meter starts when the channel does — so a
+  confused silence is billed at 15-second ticks until the idle timeout at 90.
+- **End confirms in place** — one tap arms it, the second ends. One touch
+  target, no modal, no hidden gesture, and a brushed thumb cannot end a
+  rehearsal that has no resume.
+
+### Resolved from the Unresolved list
+
+- **The user's own speech is still not captioned back.** Unchanged, and now
+  structural: there is no event for it and `events.py` says adding one is a
+  decision rather than a completion.
+- **On-screen archetype naming:** resolved. Titles from `/v1/archetypes`, in the
+  near field only, never on a tray.
+- **Recording retention window:** resolved. Read per account from
+  `GET /v1/preferences/recording` and stated in the disclosure sheet, which
+  `/interrogation` presents via the tested `enterRoom` sequence.
+- **"Committed on paper and unproven in pixels" still stands.** It has now been
+  built and typechecked and tested; it has not been seen on a device.

@@ -1,4 +1,9 @@
-import { openConnection, type Ending, type SocketFactory } from './connection';
+import {
+  openConnection,
+  type Ending,
+  type PanelLine,
+  type SocketFactory,
+} from './connection';
 import { createPlayback, type PlaybackContext } from './playback';
 import { createUplink, type UplinkRecorder } from './uplink';
 
@@ -25,8 +30,25 @@ export interface RoomOptions {
    * caller starts it once this resolves.
    */
   recorder: UplinkRecorder;
-  /** A finished panel utterance, to caption. */
-  onTranscript?: (text: string) => void;
+  /** A finished panel utterance, to caption, and who said it. */
+  onTranscript?: (line: PanelLine) => void;
+  /**
+   * The panel has stopped; the floor is the presenter's.
+   *
+   * Passed straight through rather than derived here. `joinRoom` holds the
+   * playback queue and could watch it drain, which is exactly the tempting
+   * wrong answer — a drained buffer means the network stalled just as often as
+   * it means the utterance ended.
+   */
+  onTurnFinished?: () => void;
+  /**
+   * How loud each captured buffer was, in dBFS.
+   *
+   * From the uplink, which already holds it. The screen turns a window of
+   * these into three states — see `audio/hearing.ts` — and is never shown the
+   * number itself.
+   */
+  onLevel?: (dbfs: number) => void;
   /** The room is over, and why. Called once, after everything is torn down. */
   onEnding?: (ending: Ending) => void;
   socketFactory?: SocketFactory;
@@ -74,6 +96,7 @@ export async function joinRoom(options: RoomOptions): Promise<Room> {
     socketFactory: options.socketFactory,
     onAudio: (pcm) => playback.enqueue(pcm),
     onTranscript: options.onTranscript,
+    onTurnFinished: options.onTurnFinished,
     onDiscardPlayback: () => playback.discard(),
     onEnding: teardown,
   });
@@ -81,6 +104,7 @@ export async function joinRoom(options: RoomOptions): Promise<Room> {
   uplink = createUplink({
     recorder: options.recorder,
     send: (pcm) => connection.send(pcm),
+    onLevel: options.onLevel,
     // A device whose microphone cannot deliver the wire's rate has no usable
     // room. Closing costs the user nothing: ticks are whole 15-second units
     // charged in arrears, and this is detected on the first buffer.

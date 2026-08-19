@@ -25,6 +25,11 @@ DISCARD_PLAYBACK = {"type": "discard_playback"}
 #: rather than a whole message: the text is filled in per utterance.
 TRANSCRIPT = "transcript"
 
+#: The panel's turn is over and the presenter has the floor. Whole message,
+#: like `discard_playback`: there is nothing to fill in, and the room strictly
+#: alternates, so naming who yielded would repeat the caption that just went.
+TURN_FINISHED = {"type": "turn_finished"}
+
 
 class WebSocketClientChannel:
     """One connected client."""
@@ -41,14 +46,32 @@ class WebSocketClientChannel:
         """
         await self._websocket.send_bytes(pcm)
 
-    async def send_transcript(self, text: str) -> None:
-        """The panel's current line, for the caption field.
+    async def send_transcript(self, text: str, speaker: str) -> None:
+        """The panel's current line and who said it, for the caption field.
 
         Deliberately not logged, at any level. `CLAUDE.md` forbids transcript
         text in logs, and unlike a credential it cannot be caught by key-name
-        redaction — the only thing that keeps it out is nobody passing it.
+        redaction — the only thing that keeps it out is nobody passing it. The
+        speaker is only an archetype name and carries nothing about the user,
+        but it travels inside the same call and there is no line here to put it
+        on.
+
+        One message rather than two. The live screen has to develop the right
+        tray at the moment the words appear, and a name arriving on its own
+        frame would be a synchronisation problem invented for nothing.
         """
-        await self._websocket.send_json({"type": TRANSCRIPT, "text": text})
+        await self._websocket.send_json(
+            {"type": TRANSCRIPT, "text": text, "speaker": speaker}
+        )
+
+    async def turn_finished(self) -> None:
+        """The panel is done, and the floor is the presenter's again.
+
+        A whole message rather than a type name, like `discard_playback` and
+        unlike `transcript`: there is nothing to fill in. The fact is the
+        message.
+        """
+        await self._websocket.send_json(TURN_FINISHED)
 
     async def discard_playback(self) -> None:
         """Barge-in: drop what the device has buffered and not yet played."""

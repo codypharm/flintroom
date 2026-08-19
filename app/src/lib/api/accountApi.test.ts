@@ -77,3 +77,24 @@ it('rejects on anything else rather than pretending it worked', async () => {
 
   await expect(api.deleteAccount()).rejects.toThrow('503');
 });
+
+it('reads the account own recording window, rather than assuming a tier', async () => {
+  // The disclosure sheet states this number out loud. It is per tier and moves
+  // when somebody upgrades, so a hardcoded thirty would eventually be a
+  // disclosure that misinforms — which is the one kind of bug in this flow that
+  // is not merely a bug.
+  const fetcher = jest.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: async () => ({ retention_days: 90 }),
+  });
+
+  const account = createAccountApi({
+    baseUrl: 'https://flintroom.test',
+    accessToken: async () => 'a-token',
+    fetch: fetcher as unknown as typeof fetch,
+  });
+
+  await expect(account.recordingWindow()).resolves.toBe(90);
+  expect(fetcher.mock.calls[0][0]).toBe('https://flintroom.test/v1/preferences/recording');
+});

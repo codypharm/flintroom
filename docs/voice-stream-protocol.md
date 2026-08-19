@@ -51,7 +51,8 @@ inspect a payload to know whether it is holding audio or an instruction.
 | `type` | Payload | Client must |
 | --- | --- | --- |
 | `discard_playback` | — | Drop everything buffered and unplayed, immediately. |
-| `transcript` | `text` | Show this as the panel's current line. |
+| `transcript` | `text`, `speaker` | Show this as the panel's current line, from that archetype. |
+| `turn_finished` | — | The panel is done. The floor is the presenter's. |
 
 `discard_playback` is barge-in. Audio runs ahead of playback, so when the user
 talks over a panelist the device is still holding frames of a sentence that will
@@ -69,6 +70,33 @@ for audio the client is already playing. Any word-by-word emergence is the
 client's animation; the wire carries finished lines. A provider that revises an
 utterance after the fact is ignored — by the time a correction lands the line has
 been spoken aloud, and retracting it would be the room contradicting itself.
+
+`speaker` is the archetype's name as `POST /v1/sessions` returned it in
+`archetypes`, and as the stored transcript spells it — one vocabulary, so the
+phone can match a caption to a seat without translating. The live interrogation
+surface draws one tray per seated archetype and develops whoever holds the
+floor (`Product.md` §3.4), which it cannot do from text alone. It travels
+inside the caption rather than on a frame of its own because one utterance is
+one caption, and a name arriving separately from its line would be a
+synchronisation problem invented for nothing.
+
+`turn_finished` says the panel has stopped and is waiting. **It is carried
+rather than inferred, and that is the whole reason it exists.** Nothing else
+marks where an utterance ends: the caption arrives *before* its audio, and
+audio is frames that simply stop. A client left to guess would watch for a gap
+in arrivals or a drained playback buffer, and both are guesses about the
+network — a two-second stall would tell the presenter to speak while a panelist
+is still mid-question, they would take the floor, the panelist would resume,
+and the room would have manufactured an accidental barge-in.
+
+It arrives **after** the last frame of the utterance, never before. A floor
+announced ahead of the sound it follows is the same invitation to talk over the
+end of the question.
+
+It is **not** sent when barge-in cuts a turn short. The presenter already holds
+the floor by having taken it, and `discard_playback` has already said so;
+handing somebody something they are standing on reads as a room that has lost
+track of who is speaking.
 
 **Only the panel is captioned.** The user's own speech is deliberately not sent
 back to them; whether it ever should be is an open product question, currently

@@ -38,6 +38,17 @@ it.each([
   ['primary', () => color.primary],
   ['on-primary', () => color.onPrimary],
   ['error', () => color.danger],
+  // The interrogation's own ground. Scoped names, because these are the one
+  // exception to the warm off-white and must not be reachable by accident from
+  // a light screen.
+  ['interrogation-ground', () => color.roomGround],
+  ['interrogation-tray', () => color.roomTray],
+  ['interrogation-tray-lit', () => color.roomTrayLit],
+  // Already in the palette, and used unchanged: these are the light-on-dark
+  // answers this system already had, so the dark surface invents no text
+  // colour of its own.
+  ['inverse-on-surface', () => color.onRoom],
+  ['inverse-primary', () => color.roomAmber],
 ])('takes %s straight from DESIGN.md', (key, actual) => {
   expect(actual()).toBe(documented(key));
 });

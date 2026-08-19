@@ -48,6 +48,9 @@ colors:
   background: '#fcf9f8'
   on-background: '#1c1b1b'
   surface-variant: '#e5e2e1'
+  interrogation-ground: '#15110f'
+  interrogation-tray: '#413c3a'
+  interrogation-tray-lit: '#675f5b'
 typography:
   headline-lg:
     fontFamily: Hanken Grotesk
@@ -133,6 +136,41 @@ The palette is designed to reduce eye strain while maintaining clear visual hier
 - **Surface Container (#FFFFFF):** Pure white used for cards and interactive inputs to provide a clean, elevated look.
 - **On-Surface High Emphasis (#1A1A1A):** Dark charcoal for headers and primary titles to ensure maximum readability and a professional tone.
 - **On-Surface Medium Emphasis (#757575):** A medium warm grey for body text, descriptions, and labels to create a natural hierarchy.
+
+### The interrogation, and only the interrogation
+
+Every surface in this system sits on the warm off-white. The live interrogation
+does not, and it is the single exception: the phone lies flat on a desk for
+twelve minutes while somebody argues, and a page-bright screen in that position
+is a lamp pointed at the ceiling. Setup, debrief and sparring stay light. You go
+into the dark room, and you come out.
+
+The three values below are **derived from the committed primary, not chosen.**
+`#a43700` is hue 20°; each holds that hue and moves only saturation and
+lightness, so the dark surface is a deeper reading of the same identity rather
+than a second palette that happens to live in the same app.
+
+- **Interrogation Ground (#15110f)** — `hsl(20, 18%, 7%)`. Near-black that is
+  unmistakably warm once it fills a screen: a darkroom under a safelight, not an
+  OLED void. `inverse-surface` (#313030) is deliberately *not* used here — it is
+  a near-neutral mid grey meant for snackbars, and bled across a whole screen it
+  reads as a generic dark-mode app.
+- **Interrogation Tray (#413c3a)** — `hsl(20, 6%, 24%)`. A quiet archetype: a
+  seat that is occupied and not speaking.
+- **Interrogation Tray Lit (#675f5b)** — `hsl(20, 6%, 38%)`. The archetype
+  holding the floor, at exactly **3:1** against the ground — the WCAG 2.2
+  non-text contrast floor, solved for rather than eyeballed.
+
+Text on this ground uses the inverse tokens already in the palette:
+`inverse-on-surface` (#f3f0ef) for the line, at 16.5:1, and `inverse-primary`
+(#ffb59a) for anything active, at 11:1. Both are the existing light-on-dark
+answers this system already had; nothing new was invented for them.
+
+**Who is speaking is carried in text, not only in a tray.** Caption standards
+require speaker identification wherever more than one person speaks, and a
+tray deepening in peripheral vision tells a deaf or hard-of-hearing reader
+nothing about which archetype is asking. The trays are reinforcement; the name
+beside the line is the answer.
 
 ## Typography
 

@@ -104,6 +104,17 @@ export interface AuthSession {
   accessToken(): Promise<string>;
   /** Ends the session here and, if reachable, everywhere. Never rejects. */
   signOut(): Promise<void>;
+  /**
+   * Who is signed in, read from the access token's `sub`.
+   *
+   * Here rather than in a screen because the token's shape is this module's
+   * business and nowhere else's. **Not a security check.** Nothing local
+   * verifies a signature — the server does that on every call — and this claim
+   * is used only to key things that belong to one account on one device, like
+   * whether the recording disclosure has been shown. A tampered token buys
+   * somebody a second copy of a sheet.
+   */
+  userId(): Promise<string>;
 }
 
 export interface AuthSessionOptions {
@@ -172,7 +183,7 @@ export function createAuthSession({
     });
   };
 
-  return {
+  const session: AuthSession = {
     signIn: async (provider, idToken, plan) => {
       const admitted = await api.signIn(provider, idToken, plan);
       await persist(admitted);
@@ -200,6 +211,20 @@ export function createAuthSession({
       await store.clear();
     },
 
+    userId: async () => {
+      const claim = subjectOf(await session.accessToken());
+
+      if (claim === null) {
+        // A token we cannot read is a session we cannot attribute. Treated as
+        // signed out rather than guessed at: the alternative is a shared
+        // fallback key, which would tell the second account on a device that it
+        // had already been shown a disclosure it has never seen.
+        throw new SignedOut('the access token carries no subject');
+      }
+
+      return claim;
+    },
+
     accessToken: async () => {
       const stored = await store.load();
 
@@ -223,4 +248,33 @@ export function createAuthSession({
       return (await refreshing).accessToken;
     },
   };
+
+  return session;
+}
+
+/**
+ * The `sub` claim, or null if there is not one to read.
+ *
+ * A JWT's payload is base64url in the middle segment. Nothing here verifies
+ * anything — see `userId` for why that is fine and what it is limited to.
+ * `atob` is on Hermes; `Buffer` is not, and reaching for a polyfill to read one
+ * string would be a dependency for five lines.
+ */
+function subjectOf(token: string): string | null {
+  const [, payload] = token.split('.');
+
+  if (payload === undefined) {
+    return null;
+  }
+
+  try {
+    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+    const claims = JSON.parse(json) as { sub?: unknown };
+
+    return typeof claims.sub === 'string' && claims.sub.length > 0 ? claims.sub : null;
+  } catch {
+    // Anything unreadable is "no subject", which `userId` turns into a signed-out
+    // session rather than a guess.
+    return null;
+  }
 }

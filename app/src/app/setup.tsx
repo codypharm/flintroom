@@ -1,4 +1,5 @@
 import * as DocumentPicker from 'expo-document-picker';
+import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -250,7 +251,20 @@ export default function SetupRoute() {
         onAttach={attach}
         onRemoveMaterial={() => void detach()}
         onDifficultyChange={chooseDifficulty}
-        onStart={() => undefined}
+        onStart={() => {
+          // The seating and the deck travel as params rather than being read
+          // back from the server, because nothing persists them: `seated` is
+          // this screen's own state, so a room started from whatever was last
+          // saved would seat a panel the person in front of it did not
+          // assemble.
+          router.push({
+            pathname: '/interrogation',
+            params: {
+              archetypes: seated.join(','),
+              material: material?.state === 'ready' ? material.id : '',
+            },
+          });
+        }}
       />
     </SafeAreaView>
   );

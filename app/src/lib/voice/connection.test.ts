@@ -1,4 +1,4 @@
-import { openConnection } from './connection';
+import { openConnection, type PanelLine } from './connection';
 
 /**
  * The client half of `docs/voice-stream-protocol.md`.
@@ -119,13 +119,15 @@ describe('frames arriving', () => {
     // kill a live interrogation by arriving at a build that predates it. This
     // is what makes the wire extensible without a forced app update, and phones
     // hold old builds for a long time.
-    const lines: string[] = [];
-    const { socket } = await connected({ onTranscript: (text) => lines.push(text) });
+    const lines: PanelLine[] = [];
+    const { socket } = await connected({ onTranscript: (line) => lines.push(line) });
 
     expect(() => socket.receive(JSON.stringify({ type: 'room_temperature', value: 3 }))).not.toThrow();
 
-    socket.receive(JSON.stringify({ type: 'transcript', text: 'Still here.' }));
-    expect(lines).toEqual(['Still here.']);
+    socket.receive(
+      JSON.stringify({ type: 'transcript', text: 'Still here.', speaker: 'cfo' })
+    );
+    expect(lines).toEqual([{ speaker: 'cfo', text: 'Still here.' }]);
   });
 
   it('survives a text frame that is not JSON at all', async () => {
@@ -133,26 +135,68 @@ describe('frames arriving', () => {
     // test: an unparsed frame throwing inside `onmessage` takes out the handler
     // for every frame after it, so one malformed byte would silence the panel
     // for the rest of the session rather than for one message.
-    const lines: string[] = [];
-    const { socket } = await connected({ onTranscript: (text) => lines.push(text) });
+    const lines: PanelLine[] = [];
+    const { socket } = await connected({ onTranscript: (line) => lines.push(line) });
 
     expect(() => socket.receive('<html>502 Bad Gateway</html>')).not.toThrow();
 
-    socket.receive(JSON.stringify({ type: 'transcript', text: 'Still here.' }));
-    expect(lines).toEqual(['Still here.']);
+    socket.receive(
+      JSON.stringify({ type: 'transcript', text: 'Still here.', speaker: 'cfo' })
+    );
+    expect(lines).toEqual([{ speaker: 'cfo', text: 'Still here.' }]);
   });
 
-  it('delivers a transcript as the panel line to caption', async () => {
+  it('delivers a transcript as the panel line to caption, with who said it', async () => {
     // Captions are a v1 accessibility requirement, not a convenience: a
     // voice-only interrogation offers a deaf or hard-of-hearing user nothing.
     // The wire carries whole utterances, so this is a finished line, not a
     // token to append.
-    const lines: string[] = [];
-    const { socket } = await connected({ onTranscript: (text) => lines.push(text) });
+    //
+    // The speaker comes with it because the screen draws one tray per seated
+    // archetype and develops whoever holds the floor (`Product.md` §3.4) —
+    // which it cannot do from text alone.
+    const lines: PanelLine[] = [];
+    const { socket } = await connected({ onTranscript: (line) => lines.push(line) });
 
-    socket.receive(JSON.stringify({ type: 'transcript', text: 'Where does that margin come from?' }));
+    socket.receive(
+      JSON.stringify({
+        type: 'transcript',
+        text: 'Where does that margin come from?',
+        speaker: 'cfo',
+      })
+    );
 
-    expect(lines).toEqual(['Where does that margin come from?']);
+    expect(lines).toEqual([
+      { speaker: 'cfo', text: 'Where does that margin come from?' },
+    ]);
+  });
+
+  it('ignores a transcript frame with no speaker on it', async () => {
+    // Same reasoning as the missing text below, and the same consequence: the
+    // speaker picks which tray develops, so an undefined one would either
+    // develop nobody or throw inside a render while a room is live. A frame
+    // that cannot say who spoke is malformed, and the room carries on without
+    // it.
+    const lines: PanelLine[] = [];
+    const { socket } = await connected({ onTranscript: (line) => lines.push(line) });
+
+    socket.receive(JSON.stringify({ type: 'transcript', text: 'And the margin?' }));
+
+    expect(lines).toStrictEqual([]);
+  });
+
+  it('hands the floor back when the panel has finished its turn', async () => {
+    // Carried rather than inferred. Nothing else marks where an utterance
+    // ends — the caption arrives before its audio, and audio is frames that
+    // stop — so a client guessing from a gap in arrivals would invite the
+    // presenter to speak over the end of a question during a network stall,
+    // and manufacture an accidental barge-in.
+    const floor: number[] = [];
+    const { socket } = await connected({ onTurnFinished: () => floor.push(1) });
+
+    socket.receive(JSON.stringify({ type: 'turn_finished' }));
+
+    expect(floor).toHaveLength(1);
   });
 
   it('ignores a transcript frame carrying no text', async () => {
@@ -160,10 +204,10 @@ describe('frames arriving', () => {
     // rendered directly, so an undefined text would put the string "undefined"
     // on screen under a panelist's face — and, being a caption, on screen for
     // precisely the user who cannot hear that it is wrong.
-    const lines: string[] = [];
-    const { socket } = await connected({ onTranscript: (text) => lines.push(text) });
+    const lines: PanelLine[] = [];
+    const { socket } = await connected({ onTranscript: (line) => lines.push(line) });
 
-    socket.receive(JSON.stringify({ type: 'transcript' }));
+    socket.receive(JSON.stringify({ type: 'transcript', speaker: 'cfo' }));
 
     // `toStrictEqual`, not `toEqual`: the latter ignores undefined entries in
     // an array, so it cannot tell "nothing was captioned" from "undefined was

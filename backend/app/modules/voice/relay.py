@@ -30,6 +30,7 @@ from app.modules.voice.mixing import RoomMixer
 from app.modules.voice.recording import RoomRecordings
 from app.modules.voice.events import (
     AgentAudio,
+    AgentFinished,
     AgentTranscript,
     ChannelReady,
     Heartbeat,
@@ -311,7 +312,14 @@ class VoiceRelay:
             # phone. Not logged: `CLAUDE.md` forbids transcript text in logs,
             # and no redaction rule can catch it, because it is indistinguishable
             # from any other string by key name.
-            await self._client.send_transcript(event.text)
+            await self._client.send_transcript(event.text, event.speaker)
+        elif isinstance(event, AgentFinished):
+            # The floor, handed back explicitly. Nothing else on this socket
+            # marks where an utterance ends — the caption goes out ahead of its
+            # audio, and audio is frames that simply stop — so a phone left to
+            # infer it would be guessing about the network, and a stall would
+            # invite the presenter to speak over the end of a question.
+            await self._client.turn_finished()
         elif isinstance(event, Interrupted):
             # Audio runs ahead of playback, so by now frames the panelist will
             # never get to finish are already buffered on the phone. Stopping

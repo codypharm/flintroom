@@ -35,6 +35,22 @@ export class RoomNotOpened extends Error {
   }
 }
 
+/**
+ * One finished panel utterance, and who said it.
+ *
+ * The pair travels together because they arrive together — one utterance is
+ * one caption. Splitting them would hand the screen a synchronisation problem
+ * invented for nothing.
+ *
+ * `speaker` is the archetype's name as `POST /v1/sessions` returned it in
+ * `archetypes`, so a caption can be matched to a seat without translating
+ * between two vocabularies.
+ */
+export interface PanelLine {
+  speaker: string;
+  text: string;
+}
+
 /** Builds the socket. Injected so tests need no network, and no fake globals. */
 export type SocketFactory = (url: string) => WebSocket;
 
@@ -46,7 +62,22 @@ export interface ConnectionOptions {
   /** Panel audio, PCM16 16 kHz mono, to be played as received. */
   onAudio?: (pcm: ArrayBuffer) => void;
   /** A finished panel utterance, to caption. Never the user's own speech. */
-  onTranscript?: (text: string) => void;
+  onTranscript?: (line: PanelLine) => void;
+  /**
+   * The panel has stopped and the floor is the presenter's.
+   *
+   * Carried on the wire rather than inferred here, and that is the point: the
+   * caption arrives *before* its audio and audio is frames that simply stop,
+   * so a client watching for a gap in arrivals would be guessing about the
+   * network. A two-second stall would invite the presenter to speak over the
+   * end of a question, and the room would have manufactured a barge-in nobody
+   * meant.
+   *
+   * Not raised when barge-in cuts a turn short: `onDiscardPlayback` has
+   * already said the presenter took the floor, and handing it to somebody
+   * standing on it reads as a room that has lost track.
+   */
+  onTurnFinished?: () => void;
   /** Barge-in: drop everything buffered and unplayed, immediately. */
   onDiscardPlayback?: () => void;
   /** The room is over, and why. Called once. */
@@ -100,7 +131,7 @@ export function openConnection(options: ConnectionOptions): Promise<Connection> 
       return;
     }
 
-    let control: { type?: string; text?: string };
+    let control: { type?: string; text?: string; speaker?: string };
     try {
       control = JSON.parse(event.data as string);
     } catch {
@@ -115,12 +146,17 @@ export function openConnection(options: ConnectionOptions): Promise<Connection> 
     }
 
     if (control.type === 'transcript') {
-      // A transcript with no text is not a caption, it is a malformed frame,
-      // and it is dropped for the same reason an unknown type is: the room
-      // carries on.
-      if (control.text !== undefined) {
-        options.onTranscript?.(control.text);
+      // A transcript missing either half is not a caption, it is a malformed
+      // frame, and it is dropped for the same reason an unknown type is: the
+      // room carries on. Both halves are required because both are rendered —
+      // the text as the line, the speaker as the tray that develops — and a
+      // missing one would either print "undefined" to the person who cannot
+      // hear that it is wrong, or develop nobody.
+      if (control.text !== undefined && control.speaker !== undefined) {
+        options.onTranscript?.({ speaker: control.speaker, text: control.text });
       }
+    } else if (control.type === 'turn_finished') {
+      options.onTurnFinished?.();
     } else if (control.type === 'discard_playback') {
       options.onDiscardPlayback?.();
     }

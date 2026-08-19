@@ -28,11 +28,6 @@ export default function HomeScreen() {
           destination, and nothing should come to depend on this link.
         */}
         {/*
-          The same kind of thing as the echo spike, and it leaves the same way.
-          The room has never met a phone; this is the door that lets it, until
-          sign-in exists and the real interrogation screen replaces it.
-        */}
-        {/*
           The real front door, and the one link here that is not temporary —
           #70. This is where a first launch will land once `_layout` routes an
           account-less install to it, which needs sign-in to have run at least
@@ -41,9 +36,6 @@ export default function HomeScreen() {
         */}
         <Link href="/onboarding" style={[styles.link, { color: colors.primary }]}>
           Onboarding
-        </Link>
-        <Link href="/room" style={[styles.link, { color: colors.primary }]}>
-          Room
         </Link>
         <Link href="/echo-spike" style={[styles.link, { color: colors.primary }]}>
           Echo spike
@@ -67,9 +59,10 @@ export default function HomeScreen() {
         </Link>
         {/*
           The real front door, and the one link here that will eventually be
-          where the app opens. Nothing else can assemble a room: /room posts an
-          empty body with a pasted token and takes the shipped default panel,
-          which is an instrument rather than a way in.
+          where the app opens. It is also now the *only* door into a room: the
+          instrument screen that took a pasted token is gone, and `/interrogation`
+          is reachable only from Start, because it needs a panel and a deck that
+          nothing else holds.
         */}
         <Link href="/setup" style={[styles.link, { color: colors.primary }]}>
           Set up a room

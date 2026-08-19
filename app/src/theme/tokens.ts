@@ -35,6 +35,40 @@ export const color = {
   onPrimary: '#ffffff',
   /** Destructive actions only. Never decorative, never a status colour. */
   danger: '#ba1a1a',
+
+  /**
+   * The interrogation, and nowhere else.
+   *
+   * Every other surface in this app sits on `surface`. The live room does not,
+   * and it is the single exception DESIGN.md carves out: the phone lies flat
+   * on a desk for twelve minutes while somebody argues, and a page-bright
+   * screen in that position is a lamp pointed at the ceiling. Setup, debrief
+   * and sparring stay light — you go into the dark room, and you come out.
+   *
+   * Named `room*` rather than folded into the names above so that reaching for
+   * one on a light screen reads as obviously wrong at the call site.
+   *
+   * Derived, not chosen: `primary` is hue 20°, and each of these holds that
+   * hue and moves only saturation and lightness. The dark surface is a deeper
+   * reading of the same identity rather than a second palette.
+   */
+  roomGround: '#15110f',
+  /** An archetype who is seated and not speaking. */
+  roomTray: '#413c3a',
+  /**
+   * The archetype holding the floor.
+   *
+   * 3:1 against `roomGround` — the WCAG 2.2 non-text contrast floor, solved
+   * for rather than eyeballed.
+   */
+  roomTrayLit: '#675f5b',
+  /** The line, at 16.5:1. `inverse-on-surface`, unchanged. */
+  onRoom: '#f3f0ef',
+  /**
+   * Anything active on the dark ground, at 11:1. `inverse-primary`, unchanged
+   * — the committed burnt orange as this system already renders it on dark.
+   */
+  roomAmber: '#ffb59a',
 } as const;
 
 /**

@@ -9,12 +9,11 @@ import { RecordingDisclosure } from '../components/modules/RecordingDisclosure';
  * Router reads presentation from the `Stack.Screen` that owns the route rather
  * than from the screen itself.
  *
- * **Standing in for a flow that does not exist yet.** `enterRoom`
+ * **A window onto the sheet, not the flow.** `enterRoom`
  * (`src/lib/consent/entry.ts`) owns the real sequence — disclose, then the
- * microphone, then mint — and it needs a signed-in user and a session endpoint
- * to run. Sign-in has no screen, so until it does this route is the only way to
- * look at the sheet on a device, in the same spirit as the `Room` and
- * `Echo spike` links beside it.
+ * microphone, then mint — and `/interrogation` runs it, presenting this same
+ * component as a modal on the way into a room. This route exists so the sheet
+ * can be looked at without spending minutes to reach it.
  *
  * The window is hard-coded here and nowhere else. The real one is per tier and
  * arrives from `GET /v1/preferences/recording`; the component takes it as a
@@ -34,8 +33,11 @@ export default function DisclosureScreen() {
         // between these two steps. Here it goes straight through, because a
         // button labelled "Enter the room" that only closed a sheet was a
         // control naming an action it did not perform.
+        // Dismisses and stops. The real flow is `enterRoom`, and it runs
+        // inside `/interrogation` — disclosure, then the microphone, then the
+        // session — so pushing a room from here would open a second one with
+        // the sheet already shown and the sequence half-run.
         router.dismiss();
-        router.push('/room');
       }}
     />
   );

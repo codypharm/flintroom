@@ -31,6 +31,7 @@ from app.agents.routing import choose
 from app.core.logging import get_logger
 from app.modules.voice.events import (
     AgentAudio,
+    AgentFinished,
     AgentTranscript,
     ChannelReady,
     Heartbeat,
@@ -723,7 +724,7 @@ class OrchestratedChannel:
         # the length of an utterance, so a client waiting for the last frame
         # before displaying the line would caption the room seconds late — and
         # captions are in the v1 accessibility floor, not a garnish on the audio.
-        await out.put(AgentTranscript(turn.line))
+        await out.put(AgentTranscript(turn.line, speaker=turn.archetype.name))
 
         # Reported before synthesis rather than after it, and that ordering is
         # the whole reason this is not a `finally`. A panelist cut off two words
@@ -740,10 +741,18 @@ class OrchestratedChannel:
             )
         )
 
-        if self._speaker is None:
-            return
+        if self._speaker is not None:
+            async for pcm in self._speaker.speak(
+                text=turn.line, voice=turn.archetype.voice
+            ):
+                await out.put(AgentAudio(pcm))
 
-        async for pcm in self._speaker.speak(
-            text=turn.line, voice=turn.archetype.voice
-        ):
-            await out.put(AgentAudio(pcm))
+        # After the last frame, and deliberately not in a `finally`. Barge-in
+        # cancels this task, and a cancelled turn must not announce the floor:
+        # the presenter already took it, and handing somebody something they are
+        # standing on reads as a room that has lost track of who is speaking.
+        # A `finally` would do exactly that on every interruption.
+        #
+        # A room with no synthesiser reaches here too. It played nothing, but
+        # the turn is just as over, and the phone still needs to know.
+        await out.put(AgentFinished())

@@ -1,3 +1,4 @@
+import { rms, toDbfs } from '../audio/level';
 import { toPcm16 } from '../audio/pcm';
 
 /**
@@ -59,6 +60,20 @@ export interface UplinkOptions {
   send: (pcm: ArrayBuffer) => void;
   /** The uplink cannot carry this device's audio. Called at most once. */
   onFailure?: (error: UnsupportedCaptureRate) => void;
+  /**
+   * How loud the buffer just sent was, in dBFS.
+   *
+   * Here rather than on a second subscription to the recorder, and that is the
+   * whole reason it exists on this interface: `onAudioReady` takes one callback,
+   * so a screen that wanted levels would have to either replace the uplink's
+   * handler or open a second capture. This is the buffer that is already in
+   * hand, measured on the way past.
+   *
+   * Feeds the interrogation screen's floor indicator, which answers "is my
+   * voice reaching the room" — presence, not loudness. See `audio/hearing.ts`
+   * for why the screen is never shown this number.
+   */
+  onLevel?: (dbfs: number) => void;
 }
 
 export interface Uplink {
@@ -66,7 +81,7 @@ export interface Uplink {
   stop(): void;
 }
 
-export function createUplink({ recorder, send, onFailure }: UplinkOptions): Uplink {
+export function createUplink({ recorder, send, onFailure, onLevel }: UplinkOptions): Uplink {
   const stop = () => recorder.clearOnAudioReady();
 
   recorder.onAudioReady(
@@ -90,6 +105,7 @@ export function createUplink({ recorder, send, onFailure }: UplinkOptions): Upli
       const captured = event.buffer.getChannelData(0).subarray(0, event.numFrames);
 
       send(toPcm16(captured));
+      onLevel?.(toDbfs(rms(captured)));
     }
   );
 

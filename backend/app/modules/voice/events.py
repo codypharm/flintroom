@@ -90,9 +90,19 @@ class AgentTranscript:
     Never logged. `CLAUDE.md` forbids transcript text in logs, and unlike a
     secret it cannot be caught by key-name redaction, so it must not be passed
     to a log call at all.
+
+    `speaker` travels with the words rather than in a frame of its own. One
+    utterance is one caption, and a name arriving separately from the line it
+    belongs to would be a synchronisation problem invented for nothing. The
+    live screen draws one tray per seated archetype and develops whoever holds
+    the floor (`Product.md` §3.4), which it cannot do from text alone.
     """
 
     text: str
+    #: The archetype's name, as `Session.archetypes` and the transcript's own
+    #: `speaker` column spell it — so the phone can match a caption to a seat
+    #: without a second vocabulary.
+    speaker: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,11 +117,44 @@ class Interrupted:
     """
 
 
+@dataclass(frozen=True, slots=True)
+class AgentFinished:
+    """The panel is done, and the floor is the presenter's again.
+
+    The room strictly alternates — one panel turn per finished utterance, with
+    a dispute being how a turn is *framed* rather than a second turn queued
+    behind it — so a panelist stopping really does hand the floor back.
+
+    Carried rather than inferred. Nothing else on the wire marks where an
+    utterance ends: the caption arrives *before* its audio, and audio is just
+    frames that stop. A phone left to guess would watch for a gap in arrivals
+    or a drained playback buffer, and both are guesses about the network. A
+    two-second stall would invite the presenter to speak over the end of a
+    question, they would take it, the panelist would resume, and the room would
+    have manufactured an accidental barge-in — which reads as broken at exactly
+    the moment it is supposed to feel real.
+
+    Emitted after the last frame, never before: a floor announced ahead of the
+    sound it follows is the same invitation to talk over the question.
+
+    **Not emitted when barge-in cancels the turn.** The presenter already holds
+    the floor by having taken it, and handing somebody something they are
+    standing on reads as a room that has lost track. `Interrupted` is that
+    case, and it says so already.
+    """
+
+
 #: The union upstream code matches on. It grows as the relay learns to handle
 #: more, rather than being written out in advance against events nothing yet
 #: reacts to.
 VoiceEvent = (
-    ChannelReady | UserSpoke | Heartbeat | AgentAudio | AgentTranscript | Interrupted
+    ChannelReady
+    | UserSpoke
+    | Heartbeat
+    | AgentAudio
+    | AgentTranscript
+    | AgentFinished
+    | Interrupted
 )
 
 

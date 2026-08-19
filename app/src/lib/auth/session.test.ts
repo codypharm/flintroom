@@ -232,3 +232,47 @@ describe('when the refresh is refused', () => {
     await expect(auth.accessToken()).resolves.toBe('access-1');
   });
 });
+
+it('reads who is signed in from the access token, without trusting it', async () => {
+  // Used to key things that belong to one account on one device — whether the
+  // recording disclosure has been shown, and nothing else. Nothing local
+  // verifies the signature, because nothing local needs to: the server checks
+  // it on every call, and the worst a tampered token buys is a second copy of
+  // a sheet.
+  const sub = 'e4c1a0d2-0000-4000-8000-000000000001';
+  const token = `header.${Buffer.from(JSON.stringify({ sub })).toString('base64url')}.sig`;
+
+  const session = createAuthSession({
+    api: {} as never,
+    store: {
+      load: async () => ({
+        accessToken: token,
+        refreshToken: 'r',
+        expiresAt: Date.now() + 600_000,
+      }),
+      save: async () => undefined,
+      clear: async () => undefined,
+    },
+  });
+
+  await expect(session.userId()).resolves.toBe(sub);
+});
+
+it('refuses to guess an account when the token carries no subject', async () => {
+  // A shared fallback key would tell the second person to sign in on a device
+  // that they had already been shown a disclosure they have never seen.
+  const session = createAuthSession({
+    api: {} as never,
+    store: {
+      load: async () => ({
+        accessToken: 'not.a.jwt',
+        refreshToken: 'r',
+        expiresAt: Date.now() + 600_000,
+      }),
+      save: async () => undefined,
+      clear: async () => undefined,
+    },
+  });
+
+  await expect(session.userId()).rejects.toBeInstanceOf(SignedOut);
+});
