@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import base64
 import json
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -116,6 +117,18 @@ DEFAULT_LANGUAGE = "en"
 #: where this becomes rude (Product.md §4.3).
 SILENCE_THRESHOLD_SECS = 0.7
 
+#: How close together two identical finals have to be to count as one utterance.
+#:
+#: The two message types this adapter accepts describe the *same* commit, so a
+#: duplicate arrives immediately or not at all — well inside a second. Anything
+#: further apart is a person saying the same short thing again, which in a
+#: hostile Q&A is the common case rather than the exception.
+#:
+#: Deliberately short. The cost of being too generous is a silent room, which
+#: the presenter cannot tell from a panel that is thinking; the cost of being
+#: too tight is one duplicated turn, which is visible and cheap.
+REPEAT_WINDOW_SECS = 2.0
+
 #: Errors the room cannot continue through. The account is wrong, out of
 #: credit, or the engine itself has failed — no amount of further audio
 #: improves any of them, so the honest move is to end the session upstream,
@@ -173,11 +186,17 @@ class ElevenLabsTranscriptionStream:
     is here; what the messages *say* is `to_transcription`.
     """
 
-    def __init__(self, socket: Any) -> None:
+    def __init__(self, socket: Any, *, now: Any = None) -> None:
         self._socket = socket
-        #: The last utterance declared final, so the same one declared final
-        #: twice is only answered once. See `results`.
+        #: The last utterance declared final, and when — so one utterance
+        #: committed twice is answered once, and a person repeating themselves
+        #: a minute later is answered twice. See `results`.
         self._settled: str | None = None
+        self._settled_at = 0.0
+        #: Injected so the window can be tested without sleeping through it.
+        #: Monotonic, because this measures an interval and a wall clock can
+        #: step backwards mid-room.
+        self._now = now or time.monotonic
 
     async def send_audio(self, pcm: bytes) -> None:
         """Forward the user's audio. Base64 is applied here and only here.
@@ -205,13 +224,21 @@ class ElevenLabsTranscriptionStream:
         an ordinary part of a hostile Q&A, and deciding a room is abandoned
         belongs to the idle timeout, on a clock the session owns.
 
-        A final repeating the one before it is dropped. Their protocol
-        documents both `final_transcript` and `committed_transcript` without
-        saying which VAD emits, so `to_transcription` accepts both; if both
-        arrive for one utterance, the panel would otherwise answer the same
-        sentence twice — two model calls, two syntheses, two metered turns.
-        Only the immediately preceding final is compared, so a user who says
-        "no" twice in separate segments is heard both times.
+        A final repeating the one before it **within `REPEAT_WINDOW_SECS`** is
+        dropped. Their protocol documents both `final_transcript` and
+        `committed_transcript` without saying which VAD emits, so
+        `to_transcription` accepts both; if both arrive for one utterance the
+        panel would otherwise answer the same sentence twice — two model calls,
+        two syntheses, two metered turns.
+
+        **The window is the whole of it, and it was missing.** The first
+        version compared against the last final and kept it forever, which
+        silently swallowed a presenter answering two different questions the
+        same way — and a hostile Q&A is full of "Yes.", "No.", "Twenty.". Its
+        own docstring claimed such a user was "heard both times" while using
+        the failing case as the example. Reported from a device as the room
+        going quiet: no turn, no reply, and nothing to distinguish it from a
+        panel that is thinking.
         """
         try:
             async for frame in self._socket:
@@ -220,10 +247,15 @@ class ElevenLabsTranscriptionStream:
                 if not result.final:
                     yield result
                     continue
-                if result.text == self._settled:
+                at = self._now()
+                if (
+                    result.text == self._settled
+                    and at - self._settled_at < REPEAT_WINDOW_SECS
+                ):
                     log.debug("transcription_repeat_dropped", provider=PROVIDER)
                     continue
                 self._settled = result.text
+                self._settled_at = at
                 yield result
         except WebSocketException as exc:
             # The vendor's exception stops here. CLAUDE.md: provider failures

@@ -424,3 +424,51 @@ async def test_the_language_is_configurable_because_not_every_room_is_english():
         pass
 
     assert "language_code=fr" in connects.url
+
+
+async def test_the_same_short_answer_twice_is_heard_twice():
+    """THE BUG, reported as "no one replies then I remain in the room".
+
+    A hostile Q&A produces short answers — "Yes.", "No.", "Twenty.", "Correct."
+    — and a presenter answering two different questions the same way is
+    ordinary. The de-duplication compared against the last final and kept it
+    FOREVER, so the second "Yes." was dropped silently: no turn, no reply, and
+    nothing on screen to distinguish it from a panel that is thinking.
+
+    The docstring claimed the opposite — "a user who says 'no' twice in
+    separate segments is heard both times" — using as its example the exact
+    case that failed.
+    """
+    clock = iter([0.0, 30.0])
+    socket = FakeSocket(
+        [
+            json.dumps({"message_type": "committed_transcript", "text": "Yes."}),
+            json.dumps({"message_type": "committed_transcript", "text": "Yes."}),
+        ]
+    )
+    stream = ElevenLabsTranscriptionStream(socket, now=lambda: next(clock))
+
+    assert [result.text async for result in stream.results()] == ["Yes.", "Yes."]
+
+
+async def test_one_utterance_committed_twice_is_still_answered_once():
+    """What the de-duplication was for, and it still holds.
+
+    `to_transcription` accepts both `committed_transcript` and
+    `final_transcript` because the vendor documents both without saying which
+    VAD emits. If both ever arrive for one utterance the panel would interrogate
+    the same sentence twice — two model calls, two syntheses, two metered turns.
+
+    Bounded by time rather than by "the last one seen": a repeat inside the
+    window is that duplicate, and a repeat a minute later is a person.
+    """
+    clock = iter([0.0, 0.2])
+    socket = FakeSocket(
+        [
+            json.dumps({"message_type": "committed_transcript", "text": "Yes."}),
+            json.dumps({"message_type": "final_transcript", "text": "Yes."}),
+        ]
+    )
+    stream = ElevenLabsTranscriptionStream(socket, now=lambda: next(clock))
+
+    assert [result.text async for result in stream.results()] == ["Yes."]
