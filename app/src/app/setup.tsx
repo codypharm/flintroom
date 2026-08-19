@@ -1,5 +1,5 @@
 import * as DocumentPicker from 'expo-document-picker';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -56,6 +56,11 @@ const ACCEPTS = ['application/pdf', 'application/vnd.openxmlformats-officedocume
 const ASK_AGAIN_MS = 3000;
 
 export default function SetupRoute() {
+  // Set once by onboarding, and never by a link, a back gesture or a fresh
+  // launch. A string because route params are strings; the comparison is
+  // explicit so a truthy `'0'` cannot creep in later.
+  const { reveal } = useLocalSearchParams<{ reveal?: string }>();
+  const revealing = reveal === '1';
   const [room, setRoom] = useState<Catalogue | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
   const [seated, setSeated] = useState<string[]>([]);
@@ -72,17 +77,24 @@ export default function SetupRoute() {
       .then((fetched) => {
         if (!live) return;
         setRoom(fetched);
-        // **The reveal.** `seated` is the room the survey described, derived on
-        // the server from the answers — so on a first run this screen opens
-        // showing the people somebody placed on their plan rather than an empty
-        // roster. `docs/onboarding.md` promised a "here's your room" moment;
-        // this is it, and it arrives without a screen of its own because the
-        // reveal and setup are one surface in two postures (2026-08-18).
+
+        // **The reveal, and only on the path that earned it.** `seated` is the
+        // room the survey described, derived on the server from the answers, so
+        // arriving here straight from onboarding opens on the people somebody
+        // placed on their plan — the "here's your room" moment
+        // `docs/onboarding.md` promised, delivered without a screen of its own.
         //
-        // Only when nothing is seated yet. Coming back from an attach, the
-        // choices already on screen are the user's and must not be overwritten
-        // by what the account defaults to.
-        setSeated((chosen) => (chosen.length === 0 ? fetched.seated : chosen));
+        // Every other arrival opens EMPTY. Seating three people somebody never
+        // chose does not save them work, it gives them work: measured on a
+        // device, the first thing to do with a pre-filled room was unpick it.
+        // A default is only a kindness when it is probably right, and outside
+        // the survey there is nothing to make it probably right.
+        //
+        // Still guarded on `chosen.length === 0`: coming back from an attach,
+        // the choices on screen are the user's and must never be overwritten.
+        if (revealing) {
+          setSeated((chosen) => (chosen.length === 0 ? fetched.seated : chosen));
+        }
       })
       .catch((error) =>
         live &&

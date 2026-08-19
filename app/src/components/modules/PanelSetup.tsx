@@ -194,9 +194,13 @@ export function PanelSetup({
         <Text style={styles.groupTitle} accessibilityRole="header">
           Who is in the room
         </Text>
-        <Text style={styles.fieldAside}>
-          {`${counted(room.archetypes.length)} to choose from`}
-        </Text>
+        <View style={styles.count}>
+          {more === 'left' && <RailEnd more="left" />}
+          <Text style={styles.fieldAside}>
+            {`${counted(room.archetypes.length)} to choose from`}
+          </Text>
+          {more === 'right' && <RailEnd more="right" />}
+        </View>
       </View>
 
       {/*
@@ -252,16 +256,6 @@ export function PanelSetup({
         <AuthorCard yours={room.mayAuthor} />
       </ScrollView>
 
-      {/*
-        Which way there is more, over the edge it is on. A count says the list
-        continues; this says where — and on a rail whose next card is white
-        against a warm off-white margin, "where" is the part the eye cannot
-        work out for itself.
-
-        It flips rather than doubling: two arrows at once is a scrollbar drawn
-        by hand, and at the far right the only useful direction is back.
-      */}
-      <RailEnd more={more} />
       </View>
 
       {/* Belongs to the roster above it, so it sits on the same left edge
@@ -361,11 +355,18 @@ export function PanelSetup({
 }
 
 /**
- * Which way the rail continues, over the edge it continues past.
+ * Which way the rail continues, beside the count of what is in it.
  *
  * Drawn from two borders on a rotated square rather than set as a character:
  * a chevron from a font is a font dependency for a shape, and it inherits
  * whatever that face does at small sizes on a device nobody tested.
+ *
+ * Beside the count rather than floating over the rail's edge, which is where
+ * it started. Over the edge it sat on top of a card — a disc covering part of
+ * a face, on a row whose entire job is comparing faces — and it had to carry
+ * its own background to stay legible against whatever it happened to overlap.
+ * Next to the count it occludes nothing, needs no plate, and pairs the
+ * direction with the quantity it belongs to.
  *
  * Hidden from a screen reader, and that is not an omission. Swiping a rail is
  * not how anybody reaches these cards with VoiceOver on — the cards are
@@ -373,17 +374,9 @@ export function PanelSetup({
  * announced arrow would be describing a gesture that reader does not need.
  * The count beside the heading is the spoken form of the same fact.
  */
-function RailEnd({ more }: { more: 'left' | 'right' | null }) {
-  if (more === null) {
-    return null;
-  }
-
+function RailEnd({ more }: { more: 'left' | 'right' }) {
   return (
-    <View
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-      style={[styles.railEnd, more === 'left' ? styles.railEndLeft : styles.railEndRight]}
-    >
+    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <View style={[styles.chevron, more === 'left' && styles.chevronBack]} />
     </View>
   );
@@ -578,24 +571,8 @@ const styles = StyleSheet.create({
     paddingBottom: space.hair,
   },
 
-  /**
-   * The pointer's disc, floated over the rail's edge.
-   *
-   * Centred on the portrait rather than on the card, so it sits against the
-   * face it is pointing past instead of halfway down a blurb.
-   */
-  railEnd: {
-    position: 'absolute',
-    top: 52,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: color.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  railEndRight: { right: space.hair },
-  railEndLeft: { left: space.hair },
+  /** The count and its direction, on one line. */
+  count: { flexDirection: 'row', alignItems: 'center', gap: space.tight },
 
   chevron: {
     width: 8,

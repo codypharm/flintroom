@@ -91,7 +91,13 @@ export default function OnboardingRoute() {
       // `replace`, not `push`. Onboarding runs once and there is nothing behind
       // it worth a back gesture — returning here would offer to build a plan
       // for an account that already has one.
-      router.replace('/setup');
+      // `reveal` is the whole reason this parameter exists. `docs/onboarding.md`
+      // promised a "here's your room" moment, and the server derives a seating
+      // from the survey answers to deliver it — but that is a reveal *earned by
+      // answering five questions*, and it is only ever right on this one path.
+      // Every other way into setup opens on an empty roster, because a room
+      // somebody did not choose is a room they have to undo.
+      router.replace({ pathname: '/setup', params: { reveal: '1' } });
     } catch (error) {
       if (error instanceof CancelledByUser) {
         // Not a failure. Somebody deliberately made nothing happen, and saying
