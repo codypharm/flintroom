@@ -85,6 +85,26 @@ CUT_ACROSS = (
 #: *Sometimes* is the objection: this is the product's sharpest claim about
 #: itself, and it should not be re-derived by inspection when the room already
 #: proved it deterministically.
+#: The presenter said this before anybody had asked them anything.
+#:
+#: #79's opening floor: every room now begins with the presenter making their
+#: case, uninterrupted. Those lines have no question above them, and to a model
+#: reading raw text that looks exactly like the other three facts here look —
+#: like somebody ducking. The debrief would then tell them they dodged a
+#: question nobody asked, which reads as the product not having listened.
+#:
+#: It stays **rankable**, deliberately. A vague opening is the highest-leverage
+#: weakness this product can report — everything downstream inherits it, and
+#: "you spoke for ninety seconds and never said what you do or what you are
+#: asking for" outranks any single fumbled answer. What the note buys is that
+#: the model knows which kind of line it is judging.
+#:
+#: A fact, not an instruction, like the three above it and for the reason #43
+#: measured: a model handed a rule applies it everywhere.
+OPENED_THE_ROOM = (
+    "This is the presenter's opening statement; no question preceded it."
+)
+
 AUDITOR_CAUGHT = (
     "A figure in the answer above this line contradicted one the presenter "
     "gave earlier; that is what prompted this interruption."
@@ -117,19 +137,48 @@ def annotate(
     those readings for every caller that did not think about it.
     """
     ending = _hanging_question(transcript)
+    opening = _opening_statement(transcript)
 
     return tuple(
         Annotated(
             ordinal=ordinal,
             said=line,
-            notes=_notes_on(ordinal, line, ending=ending, ended=ended),
+            notes=_notes_on(
+                ordinal, line, ending=ending, ended=ended, opening=opening
+            ),
         )
         for ordinal, line in enumerate(transcript)
     )
 
 
+def _opening_statement(transcript: Sequence[Said]) -> int:
+    """How many lines the presenter said before anybody asked them anything.
+
+    Everything up to the first panel line, not merely the first line. A person
+    speaking pauses, and a pause is two transcript lines rather than one — the
+    same reason `OpeningFloor.words` counts across finals and `_answer_to`
+    gathers until the next panel line. Marking only the first would leave the
+    rest of somebody's opening looking like answers to a question that had not
+    been asked.
+
+    Zero when the room did not open that way, which is a real case rather than a
+    defensive one: a transcript restored from a session that predates the
+    opening floor begins with a panelist. The note is a fact about what
+    happened, so it must not be applied on the assumption that it did.
+    """
+    for ordinal, line in enumerate(transcript):
+        if line.speaker != USER:
+            return ordinal
+    return len(transcript)
+
+
 def _notes_on(
-    ordinal: int, line: Said, *, ending: int | None, ended: EndReason
+    ordinal: int,
+    line: Said,
+    *,
+    ending: int | None,
+    ended: EndReason,
+    opening: int = 0,
 ) -> tuple[str, ...]:
     """What the room knew about this line and the transcript does not record.
 
@@ -138,6 +187,8 @@ def _notes_on(
     """
     notes: list[str] = []
 
+    if ordinal < opening:
+        notes.append(OPENED_THE_ROOM)
     if line.disputed:
         notes.append(CUT_ACROSS)
     if line.chosen_by == "finding":

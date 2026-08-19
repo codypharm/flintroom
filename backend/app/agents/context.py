@@ -162,6 +162,19 @@ class TurnContext:
     #: presses an evasion cannot tell them apart on its own.
     unfinished: bool = False
 
+    #: The presenter's opening statement closed without saying what this is
+    #: about — under `opening.SUBSTANCE_WORDS`.
+    #:
+    #: **A fact, never an instruction.** It says what happened; what to do about
+    #: it is the composer's, the same discipline `weakness.py` holds for its
+    #: annotations and for the reason #43 measured — a model handed a rule
+    #: applies it everywhere.
+    #:
+    #: Only ever true on the first turn of a room. Once somebody has made their
+    #: case there is ground to attack, and a panelist still asking what the
+    #: company does is one that was not listening.
+    thin_opening: bool = False
+
 
 @dataclass(frozen=True)
 class Finding:

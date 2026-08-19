@@ -99,6 +99,23 @@ class Archetype(BaseModel):
     #: which `test_panel_limits.py` enforces.
     voice: Voice | None = None
 
+    #: How this panelist hands the presenter the floor at the start of a room.
+    #:
+    #: **Written by hand, and never by a model.** #79: the opener is spoken when
+    #: the room holds nothing at all — no transcript, and possibly no material —
+    #: which is the exact condition under which a composer invents its subject.
+    #: A constant cannot hallucinate, costs no model call, and stays outside the
+    #: latency budget.
+    #:
+    #: Per archetype rather than one shared list, because the opener is the
+    #: first thing anybody hears and §3.3's *"synthetic within two minutes"* is
+    #: one voice in four costumes. Several each, drawn at random, so a second
+    #: room does not open with the first room's words.
+    #:
+    #: They say nothing about the argument, because there is no argument yet.
+    #: What they carry is *manner* — which is the whole job.
+    openers: tuple[str, ...] = Field(default=())
+
 
 #: Every archetype the product ships with.
 #:
@@ -136,6 +153,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "soften anything with a preamble."
         ),
         voice=Voice.MEASURED,
+        openers=(
+            "Let's hear it.",
+            "Begin when you're ready. I'll hold my questions.",
+            'You have the floor.',
+        ),
     ),
     Archetype(
         name="technical_skeptic",
@@ -159,6 +181,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "concrete noun rather than trailing off."
         ),
         voice=Voice.PRECISE,
+        openers=(
+            "Whenever you're ready. I'll listen first.",
+            'Take us through it.',
+            "I'd like the whole thing before I ask anything.",
+        ),
     ),
     Archetype(
         name="champion",
@@ -184,6 +211,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "sentence always turns."
         ),
         voice=Voice.ASSURED,
+        openers=(
+            "Take your time. Tell us what you've got.",
+            "We're listening. Make your case.",
+            "Off you go — I've been looking forward to this.",
+        ),
     ),
     Archetype(
         name="growth_maximalist",
@@ -208,6 +240,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "arriving faster than it should."
         ),
         voice=Voice.EAGER,
+        openers=(
+            "Right, let's go. What have you got?",
+            'Straight in, then. Tell us.',
+            "Ready when you are. Don't hold back.",
+        ),
     ),
     Archetype(
         name="distracted_executive",
@@ -236,6 +273,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "a word spent on politeness."
         ),
         voice=Voice.BRISK,
+        openers=(
+            "Go ahead. I've got a few minutes.",
+            "Right, let's do this. Keep it moving.",
+            'Start whenever.',
+        ),
     ),
     Archetype(
         name="internal_blocker",
@@ -261,6 +303,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "never hurried, and never actually agrees."
         ),
         voice=Voice.SMOOTH,
+        openers=(
+            "Please, carry on. I'm sure it's all been thought through.",
+            "Whenever suits you. I'll follow along.",
+            "Do begin. I'll save my concerns for the end.",
+        ),
     ),
     Archetype(
         name="customer_advocate",
@@ -286,6 +333,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "abstraction at all."
         ),
         voice=Voice.WARM,
+        openers=(
+            "Over to you. I'll be thinking about who this affects.",
+            "Take it away. I'm all ears.",
+            'Please start. I want to hear how you frame it.',
+        ),
     ),
     Archetype(
         name="risk_officer",
@@ -311,6 +363,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "emphasis, no hedging, no hurry."
         ),
         voice=Voice.DRY,
+        openers=(
+            'Proceed.',
+            "When you're ready. I'll be taking notes.",
+            "Go on. I'll flag anything that concerns me.",
+        ),
     ),
 )
 

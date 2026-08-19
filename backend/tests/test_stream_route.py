@@ -20,6 +20,7 @@ import pytest
 from fastapi import WebSocketDisconnect
 from sqlalchemy import select
 
+from app.agents.archetypes import DEFAULT_PANEL
 from app.agents.model import ModelReply
 from app.core.errors import ProviderUnavailable
 from app.modules.sessions.schemas import EndReason, SessionState
@@ -77,12 +78,18 @@ class FakePanelModel:
 
 
 class FakeWebSocket:
-    """A phone that hangs up once the panel has said something.
+    """A phone that hangs up once the panel has *answered*.
 
     Holding the connection open until then is the point: the relay pumps client
     audio and channel events concurrently, so a socket that disconnected
     immediately would race the turn and pass or fail on scheduling rather than
     on behaviour.
+
+    **Answered, not merely spoken.** Since #79 the room opens out loud — a
+    panelist hands the presenter the floor before anybody has said anything —
+    so the first transcript to arrive is the opener rather than a reply.
+    Hanging up on it would end the room before the presenter had spoken, which
+    is precisely what this fake exists to avoid.
     """
 
     def __init__(self, *, hangs_up: str = "after_transcript") -> None:
@@ -105,7 +112,11 @@ class FakeWebSocket:
     async def send_json(self, message: dict) -> None:
         if message.get("type") == "transcript":
             self.transcripts.append(message["text"])
-            self._spoken.set()
+            # The first is the opener; the second is the answer this fake is
+            # waiting for. Counted rather than matched on text, so a test does
+            # not have to know which of an archetype's openers was drawn.
+            if len(self.transcripts) > 1:
+                self._spoken.set()
 
     async def receive(self) -> dict:
         if self._hangs_up == "after_transcript":
@@ -162,7 +173,16 @@ async def test_a_socket_reaches_the_panel_and_the_panel_answers(db, funded_accou
 
     assert websocket.accepted
     assert model.wrote_as == ["cfo"]
-    assert websocket.transcripts == [LINE]
+
+    # Two captions, in order: the room opens (#79), then it answers. The opener
+    # is asserted by membership rather than by text, because **both** halves of
+    # it are drawn at random — which seated panelist opens, and which of their
+    # lines they use. Pinning either would make this test fail on a copy change
+    # it has no opinion about, and pinning the speaker would quietly assert a
+    # fixed opener the room deliberately does not have.
+    opened, answered = websocket.transcripts
+    assert opened in {line for one in DEFAULT_PANEL for line in one.openers}
+    assert answered == LINE
 
 
 async def test_a_room_is_grounded_in_its_own_deck(db, ingestion, storage, funded_account, session_factory, recordings):

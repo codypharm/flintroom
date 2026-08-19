@@ -535,5 +535,25 @@ def _composition_prompt(
             "Put it to them directly, using both figures above and no others."
         )
 
+    if context.thin_opening:
+        parts.append(
+            # #79, and the architect's own idea: when the room does not know
+            # what this is about, it should ask rather than invent. The trigger
+            # is code-checkable — the opening floor closed under
+            # `SUBSTANCE_WORDS` — never a model judging whether grounding
+            # "feels thin", because #43 measured what that judgement is worth.
+            #
+            # **In character, and still a demand.** "Tell me about your
+            # business" is a podcast; the CFO asking what they are being asked
+            # for, against what revenue, is the same request with the room's
+            # teeth in — and a vague answer to it is itself a finding the
+            # debrief can rank. The line between those is the entire wedge, so
+            # this says what is missing and lets the persona above decide how to
+            # ask for it.
+            "They have not yet said what this is about — no product, no ask, "
+            "no numbers. Do not attack what is not there, and do not guess at "
+            "it. Ask for the one thing you would need first, in your own terms."
+        )
+
     parts.append(f"They just said:\n{context.said}")
     return "\n\n".join(parts)

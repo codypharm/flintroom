@@ -28,6 +28,7 @@ from app.agents.weakness import (
     AUDITOR_CAUGHT,
     CUT_ACROSS,
     ENDED_AT_THE_CAP,
+    OPENED_THE_ROOM,
     Judgement,
     WeakAnswer,
     Weakness,
@@ -41,10 +42,22 @@ from app.modules.sessions.schemas import EndReason
 
 
 def notes_on(room, *, ended) -> dict[int, tuple[str, ...]]:
-    """Every line that carries a note, by ordinal. Lines without one are absent."""
-    return {
-        line.ordinal: line.notes for line in annotate(room, ended=ended) if line.notes
+    """Every line that carries a note, by ordinal, except the opening one.
+
+    #79 gave every room an opening statement, and every fixture below begins
+    with one — so `OPENED_THE_ROOM` would appear in every expectation here
+    while saying nothing about the fact each test was actually written for.
+    It is asserted directly, in its own tests further down.
+
+    The filter does not weaken the guard in
+    `test_an_ordinary_room_carries_no_notes_at_all`: an implementation that
+    returned every note on every line would still show the other three.
+    """
+    kept = {
+        line.ordinal: tuple(note for note in line.notes if note != OPENED_THE_ROOM)
+        for line in annotate(room, ended=ended)
     }
+    return {ordinal: notes for ordinal, notes in kept.items() if notes}
 
 
 def test_the_room_running_out_of_time_is_said_out_loud():
@@ -246,7 +259,15 @@ async def test_the_reader_is_shown_the_room_with_its_notes_and_its_answer_is_che
 
     ranked = await weak_answers(room, ended=EndReason.USER_ENDED, reader=reader)
 
-    assert [line.notes for line in reader.saw] == [(), (), (CUT_ACROSS,), ()]
+    # The opening statement carries its own note (#79) — the reader is shown
+    # what kind of line each one is, and the first here is somebody making their
+    # case rather than answering anything.
+    assert [line.notes for line in reader.saw] == [
+        (OPENED_THE_ROOM,),
+        (),
+        (CUT_ACROSS,),
+        (),
+    ]
     assert ranked.answers == (
         WeakAnswer(
             ordinal=1,
@@ -281,3 +302,66 @@ def test_ninety_seconds_of_silence_gets_no_excuse():
     )
 
     assert notes_on(room, ended=EndReason.IDLE_TIMEOUT) == {}
+
+
+def test_the_opening_statement_is_marked_as_one():
+    """#79's fourth note, and the reason this module exists.
+
+    An opening statement is the presenter talking with no question above it.
+    Shown raw, that reads to a model exactly like the three facts this module
+    already restores read — as somebody ducking — and the debrief would tell
+    them they dodged a question nobody asked.
+
+    It stays rankable, deliberately: "you spoke for ninety seconds and never
+    said what you do" is the highest-leverage thing the product can report,
+    because everything downstream inherits it. What the note buys is that the
+    model knows which it is looking at.
+    """
+    room = annotate(
+        [
+            Said(speaker=USER, text="We move freight for mid-market retailers."),
+            Said(speaker="cfo", text="What does each customer cost to acquire?"),
+            Said(speaker=USER, text="Around forty pounds."),
+        ],
+        ended=EndReason.USER_ENDED,
+    )
+
+    assert OPENED_THE_ROOM in room[0].notes
+    assert OPENED_THE_ROOM not in room[2].notes
+
+
+def test_only_the_lines_before_anybody_asked_anything_are_the_opening():
+    """The opening is everything up to the first panel line, and no further.
+
+    A presenter pauses, so an opening statement is several transcript lines —
+    the same reason `OpeningFloor.words` counts across finals rather than per
+    final. Marking only the first would leave the rest looking like answers to
+    a question that had not been asked yet.
+    """
+    room = annotate(
+        [
+            Said(speaker=USER, text="We move freight."),
+            Said(speaker=USER, text="Margin is thirty per cent."),
+            Said(speaker="cfo", text="Against what volume?"),
+        ],
+        ended=EndReason.USER_ENDED,
+    )
+
+    assert [OPENED_THE_ROOM in line.notes for line in room] == [True, True, False]
+
+
+def test_a_room_that_opened_with_a_question_marks_nothing():
+    """Not every room has an opening statement — a restored session may not.
+
+    The note is a fact about what happened, so it must not be applied on the
+    assumption that it did.
+    """
+    room = annotate(
+        [
+            Said(speaker="cfo", text="What does each customer cost to acquire?"),
+            Said(speaker=USER, text="Around forty pounds."),
+        ],
+        ended=EndReason.USER_ENDED,
+    )
+
+    assert all(OPENED_THE_ROOM not in line.notes for line in room)

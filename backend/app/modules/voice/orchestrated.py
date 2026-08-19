@@ -26,6 +26,7 @@ from app.agents.auditor import Auditor, ClaimReader
 from app.agents.context import Finding, Grounding, Routed, Said, TurnContext, USER
 from app.agents.difficulty import STANDARD_PRESSURE, Pressure
 from app.agents.model import PanelModel
+from app.agents.opening import Chooser, NoOneToOpen, OpeningFloor, opener_from
 from app.agents.panel import interrogate, select_speaker
 from app.agents.routing import choose
 from app.core.logging import get_logger
@@ -179,6 +180,8 @@ class OrchestratedChannel:
         transcript: TranscriptStore | None = None,
         pressure: Pressure = STANDARD_PRESSURE,
         heartbeat_seconds: float = HEARTBEAT_SECONDS,
+        floor: OpeningFloor | None = None,
+        choose: Chooser | None = None,
     ) -> None:
         self._panel = panel
         # Stamped on every `TurnContext` this channel builds. Defaulted to the
@@ -232,6 +235,24 @@ class OrchestratedChannel:
         # cannot say which lines disputed because a disputing line and an
         # ordinary one are the same shape.
         self._disputes = 0
+        # #79. The stretch at the start where nobody interrupts. Defaulted
+        # rather than optional, because a room without one is the room that
+        # attacked an empty transcript and invented its subject — that is not a
+        # configuration a deployment should be able to choose by omission.
+        self._floor = floor if floor is not None else OpeningFloor()
+        # Injected so `scripts/rotation.py` and the suite can pin who opens and
+        # with which line. A room that cannot be repeated cannot be measured.
+        self._choose = choose
+        # Set whenever the presenter says something while the floor is open, so
+        # `_hold_the_floor` can rearm its settle timer instead of guessing.
+        # An event rather than a timestamp: the waiter has to be *woken*, and a
+        # value it would have to poll for is the same bug with more code.
+        self._spoke = asyncio.Event()
+        # The turn in flight. An attribute rather than a local in `_listen`,
+        # because the floor closing can start one too and both have to be able
+        # to cancel whatever the other left running — a barge-in that only
+        # `_listen` knew about would talk over the opening challenge.
+        self._speaking: asyncio.Task | None = None
 
     async def _keep(self, line: Said) -> None:
         """File one line where it will outlive the room, if anywhere.
@@ -295,8 +316,18 @@ class OrchestratedChannel:
         yield ChannelReady()
 
         out: asyncio.Queue[VoiceEvent | BaseException | None] = asyncio.Queue()
+
+        # Before anything is transcribed, and never composed. #79: the opener is
+        # spoken at the one moment the room holds nothing at all — no
+        # transcript, and possibly no material — which is the exact condition
+        # under which a model invents its subject. It is also what makes the
+        # floor legible on a phone lying face-up on a desk, where the screen's
+        # own "the room is listening" cannot be seen.
+        await self._open_the_room(out)
+
         listener = asyncio.create_task(self._listen(out))
         beating = asyncio.create_task(self._beat(out))
+        holding = asyncio.create_task(self._hold_the_floor(out))
         try:
             while (event := await out.get()) is not None:
                 if isinstance(event, BaseException):
@@ -314,7 +345,131 @@ class OrchestratedChannel:
             # invoice with nobody reading it.
             listener.cancel()
             beating.cancel()
-            await asyncio.gather(listener, beating, return_exceptions=True)
+            # Ordinarily already finished: the floor closes on the first settle.
+            # Cancelled anyway for the room that ends before anybody spoke, where
+            # it would otherwise sit out the whole ninety-second cap.
+            holding.cancel()
+            await asyncio.gather(
+                listener, beating, holding, return_exceptions=True
+            )
+
+    async def _open_the_room(
+        self, out: asyncio.Queue[VoiceEvent | BaseException | None]
+    ) -> None:
+        """Hand the presenter the floor, out loud, in somebody's voice.
+
+        **No model call.** The line comes from `Archetype.openers`, written by
+        hand, and that is the point rather than an optimisation: this is spoken
+        before a single word has been transcribed, so a composer asked for it
+        would be composing from nothing — which is precisely the failure #79
+        exists to remove. It also keeps the room's first sound off the critical
+        path of a vendor round trip.
+
+        Emitted through the same three events an ordinary turn uses, so the
+        relay, the mixer, the recording and the phone all treat it as what it
+        is: a panelist speaking. Nothing downstream needed a new case.
+
+        A floor handed over already closed opens nothing. That is not a
+        production state — `OrchestratedProvider.open` builds a fresh
+        `OpeningFloor` for every room — but it is what lets a test describe the
+        room *after* its opening without also re-describing the opening, and it
+        keeps that affordance honest rather than hidden behind a second flag.
+
+        A room whose panel has nothing to open with still opens — silently, and
+        logged. That is only reachable with a panel seated entirely from custom
+        archetypes, and losing the opener is a far smaller harm than refusing a
+        metered room the user has already paid to enter.
+        """
+        if not self._floor.open:
+            return
+
+        try:
+            who, line = (
+                opener_from(self._panel, choose=self._choose)
+                if self._choose is not None
+                else opener_from(self._panel)
+            )
+        except NoOneToOpen:
+            log.warning("room_opened_in_silence")
+            return
+
+        await out.put(AgentTranscript(line, speaker=who.name))
+        if self._speaker is not None:
+            async for pcm in self._speaker.speak(text=line, voice=who.voice):
+                await out.put(AgentAudio(pcm))
+        await out.put(AgentFinished())
+
+    async def _hold_the_floor(
+        self, out: asyncio.Queue[VoiceEvent | BaseException | None]
+    ) -> None:
+        """Wait out the opening statement, then let the panel in.
+
+        Two clocks, and they answer different questions. Until anything has been
+        said the only thing that can end the floor is the **cap** — somebody
+        collecting their thoughts for twenty seconds has not finished, and a
+        settle pause measured from an empty room would fire before they drew
+        breath. Once they have started, each thing they say rearms the
+        **settle**, so the pauses inside a sentence do not read as the end of
+        one. That distinction is the whole bug: finals commit after 0.7s, and
+        nobody speaks in 0.7-second units.
+
+        Woken by an event rather than polling a timestamp. The waiter has to be
+        *woken*; a value it would have to check on a schedule is the same
+        mechanism with a worse resolution and more code.
+        """
+        if not self._floor.open:
+            return
+
+        opened = time.monotonic()
+
+        while True:
+            left = self._floor.cap - (time.monotonic() - opened)
+            if left <= 0:
+                break
+            # Nothing to settle until they have started. See above.
+            wait = (
+                self._floor.wait_for(elapsed=time.monotonic() - opened)
+                if self._floor.words
+                else left
+            )
+            self._spoke.clear()
+            try:
+                await asyncio.wait_for(self._spoke.wait(), timeout=wait)
+            except TimeoutError:
+                break
+
+        await self._close_the_floor(out)
+
+    async def _close_the_floor(
+        self, out: asyncio.Queue[VoiceEvent | BaseException | None]
+    ) -> None:
+        """The panel's room now. Open the questioning against what was said.
+
+        The turn is composed against the **whole** opening rather than the last
+        fragment of it — `_answer` takes one `said`, and grounding a room's
+        first challenge in the tail of a sentence is how it ends up about the
+        wrong thing.
+
+        A thin opening travels as a fact on the context, never as an
+        instruction: `TurnContext.thin_opening`. What that earns is the
+        composer's to decide, which is the discipline `weakness.py` holds for
+        the same reason.
+        """
+        opening = self._floor.close()
+        log.info("opening_floor_closed", words=self._floor.words, thin=opening.thin)
+
+        self._speaking = await self._restart(
+            self._speaking,
+            opening.text,
+            out,
+            # Deliberately unrouted. Selection normally overlaps the tail of an
+            # utterance, and here the tail was minutes ago — `interrogate`
+            # chooses fresh, seeing the whole opening rather than a guess made
+            # from its first partial.
+            None,
+            await self._take_finding(),
+            thin_opening=opening.thin,
+        )
 
     async def _beat(self, out: asyncio.Queue[VoiceEvent | BaseException | None]) -> None:
         """Report that the room is open, until it is not.
@@ -333,7 +488,6 @@ class OrchestratedChannel:
 
     async def _listen(self, out: asyncio.Queue[VoiceEvent | None]) -> None:
         """Read transcription forever; start, and stop, turns as it goes."""
-        speaking: asyncio.Task | None = None
         try:
             async for result in self._transcription.results():
                 if result.final:
@@ -378,13 +532,29 @@ class OrchestratedChannel:
                     said = Said(speaker=USER, text=result.text)
                     self._transcript.append(said)
                     await self._keep(said)
+
+                    # **The floor is still theirs.** #79: everything above this
+                    # line keeps running through the opening — the transcript
+                    # fills, the idle clock resets, the Auditor is fed — and
+                    # only the turn is held back. A version that paused the
+                    # whole room would cost the debrief its grounding and the
+                    # panel its best catch, which are the two things the
+                    # opening statement exists to create.
+                    if self._floor.open:
+                        self._floor.heard(result.text)
+                        self._audit(result.text)
+                        # Wakes `_hold_the_floor` so it rearms rather than
+                        # closing on a pause the presenter has already ended.
+                        self._spoke.set()
+                        continue
+
                     # Collected before the new one starts, so this turn is
                     # answered with the catch from the *previous* utterance and
                     # never waits for its own. See `_audit`.
                     finding = await self._take_finding()
                     self._audit(result.text)
-                    speaking = await self._restart(
-                        speaking,
+                    self._speaking = await self._restart(
+                        self._speaking,
                         result.text,
                         out,
                         await self._take_routing(result.text),
@@ -405,18 +575,31 @@ class OrchestratedChannel:
                 # waiting for the user to finish before conceding, which is a
                 # panelist talking over them for three seconds and then stopping
                 # politely.
-                if speaking is not None and not speaking.done():
-                    speaking = await self._stop(speaking)
+                if self._speaking is not None and not self._speaking.done():
+                    self._speaking = await self._stop(self._speaking)
                     # Synthesis runs ahead of playback, so frames the panelist
                     # will never reach are already buffered on the phone.
                     # Stopping only what we have not sent yet lets them talk over
                     # the person who just cut in.
                     await out.put(Interrupted())
 
+            # The stream closed while the presenter still held the floor —
+            # they made their case and nothing had answered it yet. Closing here
+            # means an opening statement is always answered, whatever ended the
+            # room, rather than being silently discarded because the socket
+            # happened to go first.
+            #
+            # **Only if they actually said something.** A room that ends having
+            # heard nothing must not compose anything — that is #77's rule, and
+            # answering an empty opening is the same failure wearing a new
+            # shape: a panelist challenging a statement nobody made.
+            if self._floor.open and self._floor.words:
+                await self._close_the_floor(out)
+
             # The stream closed. A turn still in flight is the room's last word,
             # and dropping it would lose a line the user was owed.
-            if speaking is not None:
-                await asyncio.gather(speaking, return_exceptions=True)
+            if self._speaking is not None:
+                await asyncio.gather(self._speaking, return_exceptions=True)
         finally:
             # A selection started on a partial the user never finished. There is
             # no turn left to hand it to, so it is a paid request nobody will
@@ -615,6 +798,7 @@ class OrchestratedChannel:
         out: asyncio.Queue[VoiceEvent | None],
         routed: Routed | None,
         finding: Finding | None,
+        thin_opening: bool = False,
     ) -> asyncio.Task:
         """Begin a turn, abandoning one already running.
 
@@ -624,7 +808,9 @@ class OrchestratedChannel:
         """
         if speaking is not None and not speaking.done():
             await self._stop(speaking)
-        return asyncio.create_task(self._turn(said, out, routed, finding))
+        return asyncio.create_task(
+            self._turn(said, out, routed, finding, thin_opening=thin_opening)
+        )
 
     @staticmethod
     async def _stop(speaking: asyncio.Task) -> None:
@@ -641,6 +827,7 @@ class OrchestratedChannel:
         out: asyncio.Queue[VoiceEvent | BaseException | None],
         routed: Routed | None = None,
         finding: Finding | None = None,
+        thin_opening: bool = False,
     ) -> None:
         """One archetype's answer, from selection through to the last frame.
 
@@ -656,7 +843,7 @@ class OrchestratedChannel:
         and refund the user the first time they talked over a panelist.
         """
         try:
-            await self._answer(said, out, routed, finding)
+            await self._answer(said, out, routed, finding, thin_opening=thin_opening)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -672,6 +859,7 @@ class OrchestratedChannel:
         out: asyncio.Queue[VoiceEvent | BaseException | None],
         routed: Routed | None = None,
         finding: Finding | None = None,
+        thin_opening: bool = False,
     ) -> None:
         started = time.monotonic()
         turn = await interrogate(
@@ -696,6 +884,9 @@ class OrchestratedChannel:
             # the count stayed here unpassed — silently, because every turn on
             # its own would still look correct.
             disputes_spent=self._disputes,
+            # Only ever true on a room's first turn — the presenter stopped
+            # without saying what this is about. A fact, not an instruction.
+            thin_opening=thin_opening,
         )
 
         # Recorded before the line is spoken, so that a panelist cut off two

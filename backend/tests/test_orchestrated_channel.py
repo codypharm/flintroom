@@ -31,6 +31,7 @@ from app.modules.voice.events import (
     Heartbeat,
     Spent,
 )
+from app.agents.opening import OpeningFloor
 from app.modules.voice.orchestrated import HEARTBEAT_SECONDS, OrchestratedChannel
 from app.modules.voice.transcribers.elevenlabs import SAMPLE_RATE
 from app.modules.ingestion.schemas import QuantitativeClaim, Unit
@@ -78,6 +79,11 @@ class ScriptedPanelModel:
         self._line = line
         self.composed_for: list[str] = []
         self.said: list[str] = []
+        #: Every `TurnContext` the composer was handed, kept whole. Individual
+        #: fields were being copied out one at a time as the context grew; the
+        #: object is what the model actually sees, so a test asserting on a
+        #: field nobody copied is the failure this avoids.
+        self.contexts: list = []
         #: What each selection call was shown. The text matters as much as the
         #: count: routing off a partial is the entire latency plan, and a
         #: selection that saw the finished sentence is one that ran too late.
@@ -94,6 +100,7 @@ class ScriptedPanelModel:
     async def compose(self, *, archetype: Archetype, context, finding=None, dispute=None) -> ModelReply:
         self.composed_for.append(archetype.name)
         self.said.append(context.said)
+        self.contexts.append(context)
         return ModelReply(text=self._line)
 
 
@@ -109,6 +116,22 @@ class FakeTranscript:
 
     async def record(self, line: Said) -> None:
         self.lines.append(line)
+
+
+def mid_room() -> OpeningFloor:
+    """A room already past its opening statement.
+
+    #79 gave every room an opening floor: it speaks first, then listens without
+    interrupting until the presenter settles. Almost every test in this file
+    describes what happens *after* that — one utterance, one answer — and would
+    otherwise have to re-describe the opening to get there.
+
+    Handing over a floor that is already closed says exactly that, and says it
+    in the domain's own terms. It is not a production configuration:
+    `OrchestratedProvider.open` builds a fresh `OpeningFloor` per room, which
+    `test_opening_in_the_room.py` is what covers.
+    """
+    return OpeningFloor(open=False)
 
 
 async def events_of(channel: OrchestratedChannel) -> list:
@@ -137,7 +160,14 @@ async def test_the_room_reports_itself_open_before_anyone_speaks():
 
     events = await events_of(channel)
 
-    assert [type(event).__name__ for event in events] == ["ChannelReady"]
+    # First, and before the opener. #79 gave the room a spoken opening — the
+    # property under test is the *ordering*, because `ChannelReady` is what
+    # opens the billable span and everything audible has to come after it.
+    assert [type(event).__name__ for event in events] == [
+        "ChannelReady",
+        "AgentTranscript",
+        "AgentFinished",
+    ]
 
 
 async def test_a_finished_utterance_becomes_a_panel_line():
@@ -154,6 +184,7 @@ async def test_a_finished_utterance_becomes_a_panel_line():
         ),
         model=model,
         grounding=Grounding(),
+        floor=mid_room(),
     )
 
     events = await events_of(channel)
@@ -190,6 +221,7 @@ async def test_the_room_says_when_the_floor_comes_back_to_the_presenter():
         ),
         model=ScriptedPanelModel(line="Against a deck that says 61."),
         grounding=Grounding(),
+        floor=mid_room(),
     )
 
     events = await events_of(channel)
@@ -231,6 +263,7 @@ async def test_a_caption_names_the_archetype_who_composed_it():
         ),
         model=ScriptedPanelModel(line="No exposure, or none you have measured?"),
         grounding=Grounding(),
+        floor=mid_room(),
     )
 
     events = await events_of(channel)
@@ -262,6 +295,7 @@ async def test_what_the_user_said_outlives_the_room():
         model=ScriptedPanelModel(),
         grounding=Grounding(),
         transcript=transcript,
+        floor=mid_room(),
     )
 
     await events_of(channel)
@@ -291,6 +325,7 @@ async def test_a_challenge_is_kept_against_the_panelist_who_made_it():
         model=ScriptedPanelModel(speaker="cfo", line="The deck says sixty-one."),
         grounding=Grounding(),
         transcript=transcript,
+        floor=mid_room(),
     )
 
     await events_of(channel)
@@ -357,6 +392,7 @@ async def test_a_disputing_line_is_recorded_as_one():
         model=TakingTurns("champion", "cfo"),
         grounding=Grounding(),
         transcript=transcript,
+        floor=mid_room(),
     )
 
     reader = asyncio.create_task(events_of(channel))
@@ -405,6 +441,7 @@ async def test_words_spoken_through_a_cancelled_turn_are_still_kept():
         model=ScriptedPanelModel(),
         grounding=Grounding(),
         transcript=transcript,
+        floor=mid_room(),
     )
 
     await events_of(channel)
@@ -433,6 +470,7 @@ async def test_a_partial_result_does_not_put_words_in_the_room():
         ),
         model=model,
         grounding=Grounding(),
+        floor=mid_room(),
     )
 
     events = await events_of(channel)
@@ -467,6 +505,7 @@ async def test_selection_runs_while_the_user_is_still_speaking():
         transcription=transcription,
         model=model,
         grounding=Grounding(),
+        floor=mid_room(),
     )
 
     reader = asyncio.create_task(events_of(channel))
@@ -497,6 +536,7 @@ async def test_the_finished_utterance_uses_the_speaker_already_chosen_for_it():
         transcription=transcription,
         model=model,
         grounding=Grounding(),
+        floor=mid_room(),
     )
 
     reader = asyncio.create_task(events_of(channel))
@@ -547,6 +587,7 @@ async def test_a_selection_the_user_outran_does_not_hold_up_the_answer():
         transcription=transcription,
         model=model,
         grounding=Grounding(),
+        floor=mid_room(),
     )
 
     reader = asyncio.create_task(events_of(channel))
@@ -596,6 +637,7 @@ async def test_a_room_that_ends_mid_sentence_leaves_no_routing_call_running():
         transcription=transcription,
         model=model,
         grounding=Grounding(),
+        floor=mid_room(),
     )
 
     reader = asyncio.create_task(events_of(channel))
@@ -630,6 +672,7 @@ async def test_the_user_speaking_is_reported_before_the_panel_answers():
         ),
         model=ScriptedPanelModel(),
         grounding=Grounding(),
+        floor=mid_room(),
     )
 
     events = await events_of(channel)
@@ -661,6 +704,7 @@ async def two_turns(model, grounding: Grounding, said: Sequence[str]) -> None:
         transcription=transcription,
         model=model,
         grounding=grounding,
+        floor=mid_room(),
     )
 
     spoken = asyncio.Queue()
@@ -735,6 +779,7 @@ async def test_a_user_who_talks_through_the_answer_is_still_on_record():
         ),
         model=Watching(),
         grounding=Grounding(),
+        floor=mid_room(),
     )
 
     await events_of(channel)
@@ -796,6 +841,7 @@ async def test_the_line_is_spoken_in_that_archetypes_own_voice():
         model=ScriptedPanelModel(speaker="cfo", line="Against what basis?"),
         speaker=speaker,
         grounding=Grounding(),
+        floor=mid_room(),
     )
 
     events = await events_of(channel)
@@ -878,6 +924,7 @@ async def test_speaking_over_a_panelist_stops_them():
         model=ScriptedPanelModel(line="Against what basis?"),
         speaker=speaker,
         grounding=Grounding(),
+        floor=mid_room(),
     )
 
     collected = []
@@ -923,6 +970,7 @@ async def test_a_turn_reports_what_it_spent():
         model=model,
         speaker=FakeSpeaker(),
         grounding=Grounding(),
+        floor=mid_room(),
     )
 
     events = await events_of(channel)
@@ -951,6 +999,7 @@ async def test_the_audio_a_room_listened_to_is_charged_for_once():
         transcription=transcription,
         model=ScriptedPanelModel(),
         grounding=Grounding(),
+        floor=mid_room(),
     )
 
     async def feed():
@@ -998,6 +1047,7 @@ async def test_a_room_that_cannot_compose_ends_instead_of_billing_in_silence():
         ),
         model=BrokenModel(),
         grounding=Grounding(),
+        floor=mid_room(),
     )
 
     with pytest.raises(ProviderUnavailable):
@@ -1019,6 +1069,7 @@ async def test_a_panelist_cut_off_is_not_a_failure():
         model=ScriptedPanelModel(),
         speaker=GatedSpeaker(),
         grounding=Grounding(),
+        floor=mid_room(),
     )
 
     async def interrupt():
@@ -1057,6 +1108,7 @@ async def test_a_room_says_it_is_alive_even_when_nobody_is_speaking():
         model=ScriptedPanelModel(),
         grounding=Grounding(),
         heartbeat_seconds=0.02,
+        floor=mid_room(),
     )
 
     async def stay_quiet():
@@ -1109,6 +1161,7 @@ async def three_turns(model, reader, said: Sequence[str], transcript=None) -> No
         grounding=Grounding(),
         auditor=Auditor(reader=reader),
         transcript=transcript,
+        floor=mid_room(),
     )
 
     spoken = asyncio.Queue()
@@ -1268,6 +1321,7 @@ async def test_a_slow_reading_never_stands_between_the_user_and_an_answer():
         model=model,
         grounding=Grounding(),
         auditor=Auditor(reader=reader),
+        floor=mid_room(),
     )
 
     spoken = asyncio.Queue()
@@ -1317,6 +1371,7 @@ async def test_a_room_records_how_long_each_turn_took(caplog):
         ),
         model=ScriptedPanelModel(),
         grounding=Grounding(),
+        floor=mid_room(),
     )
 
     with caplog.at_level(logging.INFO):
@@ -1355,6 +1410,7 @@ async def test_a_final_with_nothing_in_it_is_not_an_utterance():
         ),
         model=ScriptedPanelModel(line="Against what basis?"),
         grounding=Grounding(),
+        floor=mid_room(),
     )
 
     events = await events_of(channel)

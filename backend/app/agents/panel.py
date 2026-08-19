@@ -100,6 +100,7 @@ async def interrogate(
     routed: Routed | None = None,
     disputes_spent: int = 0,
     pressure: Pressure = STANDARD_PRESSURE,
+    thin_opening: bool = False,
 ) -> PanelTurn:
     """Answer one thing the user said, in one archetype's voice.
 
@@ -132,7 +133,14 @@ async def interrogate(
     measured.
     """
     context = TurnContext(
-        said=said, grounding=grounding or Grounding(), pressure=pressure
+        said=said,
+        grounding=grounding or Grounding(),
+        pressure=pressure,
+        # Only ever true on a room's first turn — #79. Stamped here with
+        # `pressure` because this is where the context is built, and it stays
+        # off `PanelModel` for the same reason calibration did: neither adapter
+        # has to learn that an opening floor exists.
+        thin_opening=thin_opening,
     )
 
     archetype = _owner(panel, finding.domain) if finding else None

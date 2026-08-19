@@ -35,12 +35,12 @@
  *
  * - `cfo` / Daniel, British male — the guarded, evaluating face. Reads as
  *   "not interested in vision until the arithmetic holds".
- * - `technical_skeptic` / Alice, British female — unimpressed and patient. The
- *   senior engineer who has watched confident demos fail.
+ * - `technical_skeptic` / Cecily, African American female — unimpressed and
+ *   patient. The senior engineer who has watched confident demos fail.
  * - `champion` / Sarah, American female — the one leaning in. The only ally in
  *   the room has to look like one.
- * - `growth_maximalist` / Charlie, Australian male — the youngest and most
- *   intense. Impatient with caution.
+ * - `growth_maximalist` / Derrick, African American male — the youngest and
+ *   most intense. Impatient with caution.
  * - `distracted_executive` / Adam, American male — open collar, faintly
  *   unbothered. Half-listening, deciding inside ninety seconds.
  * - `internal_blocker` / Lily, British female — unfailingly reasonable, mildly
@@ -52,6 +52,14 @@
  *
  * Two were already right and were not moved: `internal_blocker` and
  * `risk_officer`.
+ *
+ * **The rule ran backwards once, on 2026-08-19, and only because the architect
+ * said so.** These two seats were recast in African American voices to agree
+ * with the faces that were already in them. That is not the rule failing: a
+ * casting table is a decision by whoever owns the product, and the rule above
+ * governs what an *engineer* may infer, which is that artwork never gets to
+ * overrule shipped configuration on its own. `ELEVENLABS_VOICES` carries the
+ * same note from the other side.
  */
 
 /** Keyed by the archetype's slug, as `/v1/archetypes` and the wire spell it. */

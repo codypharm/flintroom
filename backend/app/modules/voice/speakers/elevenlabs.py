@@ -93,11 +93,30 @@ def _spoken(text: str, *, model: str) -> str:
 #:
 #: The names in comments are the vendor's own, kept because they are what an
 #: operator sees in the dashboard when a voice needs replacing.
+#:
+#: **Two of these are library voices rather than premades, and that is a
+#: durability difference worth knowing before adding a third.** The six premades
+#: are shipped by the vendor and are as permanent as anything here gets. A
+#: library voice belongs to whoever uploaded it and can be withdrawn by them
+#: without warning — at which point `speak` falls back to the house voice and
+#: logs `voice_uncast`, so the room survives but a panelist quietly loses the
+#: identity `Product.md` §3.3 says the panel is made of. Nothing here can
+#: prevent that; what it can do is make the trade explicit, since the vendor's
+#: own premade catalogue carries only british, american and australian accents
+#: and cannot cast this room at all.
 ELEVENLABS_VOICES: dict[str, str] = {
     "measured": "onwK4e9ZLuTAKqWW03F9",  # Daniel  — British, formal, steady
-    "precise": "Xb7hH8MSUJpSbSDYk0k2",  # Alice   — British, clear, exact
+    # Cast 2026-08-19 by the architect: the Technical Skeptic and the Growth
+    # Maximalist are African American. Their portraits already were — the
+    # reassignment in `portraits.ts` sat a Black woman and a Black man in these
+    # two chairs — so this is the voice being brought into agreement with the
+    # face rather than the other way round. That is the one direction that rule
+    # normally forbids, and it is allowed here because a casting table is
+    # configuration and a decision by the person who owns the product, not an
+    # inference drawn from artwork.
+    "precise": "NQMJRVvPew6HsaebYnZj",  # Cecily  — African American, middle-aged, confident (library)
     "assured": "EXAVITQu4vr4xnSDxMaL",  # Sarah   — American, mature, confident
-    "eager": "IKne3meq5aSn9XLyUdCD",  # Charlie — Australian, energetic
+    "eager": "f9aL8jTNAvSfAy338u1R",  # Derrick M — African American, young, confident (library)
     "brisk": "pNInz6obpgDQGcFmaJgB",  # Adam    — American, dominant, firm
     "smooth": "pFZP5JQG7iQjIQuC4Bku",  # Lily    — British, velvety
     "warm": "hpp4J3VqNfWAUOO0d1Us",  # Bella   — American, bright, open
