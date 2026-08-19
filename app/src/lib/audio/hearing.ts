@@ -8,55 +8,87 @@ import { median } from './level';
  * the wrong answer on a phone lying flat on a desk. This is the classifier
  * behind that indicator.
  *
- * Pure, and over a window rather than a sample, because both of the things
- * that would make it useless are properties of windows: speech has silence in
- * it, and a single buffer is noise.
+ * **Measured against the room's own floor, not against absolute silence.** The
+ * first version used a fixed dBFS band for `faint`, and it was wrong in the
+ * way that matters: ordinary room tone — air conditioning, a laptop fan, a
+ * street outside — sits at roughly -50 dBFS, which was inside the band. So the
+ * room told the presenter it could barely hear them, continuously, while they
+ * were saying nothing at all. A warning that fires at the noise floor is worse
+ * than no warning, because it teaches people to ignore the one that matters.
+ *
+ * Every room has a different floor. The only honest question is how far above
+ * ITS OWN floor the signal has risen, which is the same question
+ * `echoAboveFloorDb` asks for the echo spike, for the same reason.
  */
 export type Hearing = 'silent' | 'hearing' | 'faint';
 
 /**
- * Loud enough to be transcribed with confidence.
+ * How far above the room's floor counts as being heard properly.
  *
- * A judgement rather than a measurement, and deliberately generous: the cost
- * of warning somebody who was fine is a sentence they ignore, and the cost of
- * staying quiet while the transcriber guesses is a panel that answers a
- * question the presenter never asked.
+ * Conversational speech at arm's length runs 15–25 dB over a quiet room's
+ * floor. Twelve is comfortably under that and comfortably over the couple of
+ * decibels a fan varies by.
  */
-export const HEARD_DBFS = -38;
+export const HEARD_OVER_FLOOR_DB = 12;
 
 /**
- * Below this there is nothing to warn about, because there is nothing there.
+ * Where "there is a voice, and it is too quiet" begins.
  *
- * A room with the air conditioning on sits somewhere under here. Treating that
- * as a quiet voice would put "we can barely hear you" on screen for a presenter
- * who has simply stopped to think — which the idle timeout, not this, is for.
+ * The band between this and `HEARD_OVER_FLOOR_DB` is the only place the warning
+ * ever speaks. Deliberately narrow: this is the one state that interrupts, and
+ * it has already cried wolf once.
  */
-export const TOO_QUIET_DBFS = -58;
+export const FAINT_OVER_FLOOR_DB = 5;
+
+/**
+ * Loud enough to be speech whatever the floor says.
+ *
+ * The floor is estimated from the quiet part of the window, so somebody who
+ * talks without pausing for the whole window drags their own floor up and would
+ * otherwise measure as a small rise over a loud room. This is the guard against
+ * that: past here it is speech, and no arithmetic about floors is going to
+ * change it.
+ */
+export const CLEARLY_SPEECH_DBFS = -30;
+
+/**
+ * Below this there is nothing to reason about.
+ *
+ * A digital-silence window has no floor worth estimating, and dividing a room's
+ * behaviour by the difference between two effectively-zero readings is how a
+ * classifier becomes a random number generator.
+ */
+export const NOTHING_DBFS = -70;
 
 /**
  * How many readings make a window worth judging.
  *
- * At the room's 100ms buffers this is under half a second, which is long enough
- * to contain a syllable and short enough that the indicator still feels live.
+ * At the room's 100ms buffers, twenty is two seconds — long enough to contain
+ * both a syllable and the gaps around it, which is exactly what the floor
+ * estimate needs.
  */
-const ENOUGH = 4;
+const ENOUGH = 8;
 
 export function hearing(recentDbfs: readonly number[]): Hearing {
   if (recentDbfs.length < ENOUGH) {
     return 'silent';
   }
 
-  // The loudest half decides. A median would call a person talking "silent"
-  // roughly whenever they were between words — half of any window of real
-  // speech is the gaps in it — so the level that matters is the middle of the
-  // parts where there was a voice, not the middle of everything.
   const sorted = [...recentDbfs].sort((a, b) => a - b);
-  const loudest = sorted.slice(Math.floor(sorted.length / 2));
-  const level = median(loudest);
 
-  if (level >= HEARD_DBFS) {
+  // The quiet quarter is the room; the loud half is whatever is happening in
+  // it. Speech is roughly half gaps, so the quiet end of any window of somebody
+  // talking is still the room itself.
+  const floor = median(sorted.slice(0, Math.max(1, Math.floor(sorted.length / 4))));
+  const level = median(sorted.slice(Math.floor(sorted.length / 2)));
+
+  if (level < NOTHING_DBFS) {
+    return 'silent';
+  }
+
+  if (level >= CLEARLY_SPEECH_DBFS || level - floor >= HEARD_OVER_FLOOR_DB) {
     return 'hearing';
   }
 
-  return level >= TOO_QUIET_DBFS ? 'faint' : 'silent';
+  return level - floor >= FAINT_OVER_FLOOR_DB ? 'faint' : 'silent';
 }

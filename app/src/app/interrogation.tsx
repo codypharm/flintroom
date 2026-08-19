@@ -107,6 +107,7 @@ export default function InterrogationScreen() {
   const [heard, setHeard] = useState<Hearing>('silent');
   const [phase, setPhase] = useState<'opening' | 'live' | 'ending'>('opening');
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState<number | null>(null);
   /** The sheet, and the resolver that lets `enterRoom` carry on once it is read. */
   const [disclosing, setDisclosing] = useState<{
     retentionDays: number;
@@ -118,6 +119,7 @@ export default function InterrogationScreen() {
   const recorder = useRef<AudioRecorder | null>(null);
   const session = useRef<string | null>(null);
   const levels = useRef<number[]>([]);
+  const opened = useRef(0);
   /** Guards the hand-off: a close and an End both arrive, and only one may navigate. */
   const leaving = useRef(false);
 
@@ -291,6 +293,10 @@ export default function InterrogationScreen() {
         capture.start();
         if (!alive) return;
         setPhase('live');
+        // From here rather than from the tap. The clock should measure the
+        // room, and everything before this — the sheet, the permission dialog,
+        // minting, the socket — is not the room and is not metered either.
+        opened.current = Date.now();
       } catch (thrown) {
         if (!alive) return;
         setRefusal(refusalFor(thrown));
@@ -308,6 +314,27 @@ export default function InterrogationScreen() {
     // re-running this would open a second metered room.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * The clock, once a second, and only while the room is open.
+   *
+   * A wall-clock difference rather than an accumulating count: a timer that
+   * added one per tick drifts, and drifts most on a backgrounded app — which is
+   * exactly what a phone lying on a desk for twelve minutes is closest to.
+   */
+  useEffect(() => {
+    if (phase !== 'live') {
+      return;
+    }
+
+    const tick = setInterval(
+      () => setElapsed(Math.floor((Date.now() - opened.current) / 1000)),
+      1000
+    );
+    setElapsed(0);
+
+    return () => clearInterval(tick);
+  }, [phase]);
 
   const end = useCallback(() => {
     const settled = session.current;
@@ -367,6 +394,7 @@ export default function InterrogationScreen() {
         floor={floor}
         hearing={heard}
         phase={phase}
+        elapsed={elapsed}
         onEnd={end}
       />
     </SafeAreaView>

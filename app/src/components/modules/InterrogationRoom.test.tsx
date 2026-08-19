@@ -22,6 +22,7 @@ async function show(over: Partial<Parameters<typeof InterrogationRoom>[0]> = {})
       floor="yours"
       hearing="silent"
       phase="live"
+      elapsed={null}
       onEnd={onEnd}
       {...over}
     />
@@ -153,4 +154,32 @@ it('keeps every seat drawn while one of them holds the floor', async () => {
 
   expect(loudSeats).toBe(quietSeats);
   expect(quiet.onEnd).not.toHaveBeenCalled();
+});
+
+it('counts up rather than down', async () => {
+  // §4.6 bans a DEPLETING counter, because a number falling toward zero makes
+  // people ration and rationing users churn. Elapsed time is the opposite
+  // framing of the same fact, and it is what a rehearsal needs: the slot you
+  // are practising for has a length, and the useful question is how far into
+  // it you are.
+  await show({ elapsed: 272 });
+
+  expect(screen.getByText('4:32')).toBeTruthy();
+});
+
+it('reads the clock to a screen reader as words, not as a colon', async () => {
+  // "4:32" read aloud is a guess — a time of day, "four thirty-two", or "four
+  // colon three two", depending on the reader. Somebody relying on it during a
+  // room is the last person who should have to work out which.
+  await show({ elapsed: 272 });
+
+  expect(screen.getByLabelText('4 minutes 32 seconds in the room')).toBeTruthy();
+});
+
+it('shows no clock before the room is open', async () => {
+  // Nothing has elapsed yet, and a 0:00 sitting over a screen that is still
+  // connecting is a clock measuring the wrong thing.
+  await show({ elapsed: null, phase: 'opening' });
+
+  expect(screen.queryByText(/^\d+:\d\d$/)).toBeNull();
 });

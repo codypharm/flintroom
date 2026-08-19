@@ -1,55 +1,76 @@
-import { HEARD_DBFS, TOO_QUIET_DBFS, hearing } from './hearing';
+import { CLEARLY_SPEECH_DBFS, hearing } from './hearing';
 
 /**
  * What the floor indicator is allowed to claim.
  *
- * Three states rather than a level, and the reasoning is in
- * `InterrogationRoom`: a bar that moved with amplitude would be the most
- * attention-capturing object on a screen whose premise is that nobody looks at
- * it, and at sixty centimetres and an oblique angle it could not be read as a
- * quantity anyway. What is left is the only question a presenter actually has —
- * is my voice reaching the room.
+ * These exist mostly because of one bug found on a device: the room told the
+ * architect it could barely hear them, continuously, while they were saying
+ * nothing. The first version judged an absolute dBFS band, and ordinary room
+ * tone lives inside it. Every case below is really the same case — the room's
+ * own noise is not a quiet voice.
  */
 
-/** A window of readings all at one level, which is what a steady voice gives. */
+/** A window of readings all at one level. */
 function steady(dbfs: number, samples = 20): number[] {
   return Array.from({ length: samples }, () => dbfs);
 }
 
-it('says nothing is arriving when the room is quiet', () => {
-  expect(hearing(steady(-70))).toBe('silent');
+/** A quiet room with a voice in it: gaps at the floor, syllables above it. */
+function speech(floor: number, over: number, samples = 20): number[] {
+  return Array.from({ length: samples }, (_, index) =>
+    index % 3 === 0 ? floor : floor + over
+  );
+}
+
+it('treats a quiet room as silence, not as somebody being too quiet', () => {
+  // THE BUG. Air conditioning, a laptop fan and a street outside all land near
+  // -50 dBFS, which the first version called "faint" — so the warning fired at
+  // the noise floor, forever, while nobody was speaking. A warning that fires
+  // at the floor is worse than no warning: it teaches people to ignore the one
+  // that matters.
+  expect(hearing(steady(-50))).toBe('silent');
+  expect(hearing(steady(-45))).toBe('silent');
+  expect(hearing(steady(-58))).toBe('silent');
 });
 
-it('says the room is hearing you when you are speaking normally', () => {
-  expect(hearing(steady(-20))).toBe('hearing');
+it('says nothing is arriving when the room is properly quiet', () => {
+  expect(hearing(steady(-75))).toBe('silent');
 });
 
-it('warns when there is a voice there but too little of it', () => {
-  // The one thing a presence light cannot carry on its own. It would read
-  // "hearing you" while the transcriber gets mush, the room would answer a
-  // garbled question, and the panel would look stupid for it.
-  expect(hearing(steady((HEARD_DBFS + TOO_QUIET_DBFS) / 2))).toBe('faint');
+it('hears somebody speaking over a quiet room', () => {
+  expect(hearing(speech(-52, 20))).toBe('hearing');
+});
+
+it('hears somebody speaking over a loud room', () => {
+  // The same voice in a noisier room. Judged on the rise, so a café does not
+  // become "we cannot hear you" for somebody who is perfectly audible.
+  expect(hearing(speech(-38, 20))).toBe('hearing');
+});
+
+it('hears somebody who never pauses long enough to reveal the floor', () => {
+  // Continuous speech drags its own floor estimate up, so the rise collapses.
+  // Past a level that is unambiguously a voice, no arithmetic about floors
+  // should be able to argue otherwise.
+  expect(hearing(steady(CLEARLY_SPEECH_DBFS + 4))).toBe('hearing');
+});
+
+it('warns only for a voice that is genuinely there and genuinely too quiet', () => {
+  // The narrow band this is allowed to speak in: risen off the floor, but not
+  // far enough for a transcriber to do anything useful with it.
+  expect(hearing(speech(-55, 8))).toBe('faint');
 });
 
 it('is not thrown by the gaps between words', () => {
-  // Speech is not continuous. Half of any window of a person talking is the
-  // silence between syllables, and a classifier reading the latest buffer
-  // would flicker between "hearing" and "silent" several times a second — on
-  // an indicator sitting in somebody's peripheral vision.
-  const talking = [
-    ...steady(-18, 6),
-    ...steady(-80, 5),
-    ...steady(-16, 6),
-    ...steady(-75, 3),
-  ];
-
-  expect(hearing(talking)).toBe('hearing');
+  // Half of any window of real speech is the silence between syllables. A
+  // classifier reading the latest buffer would flicker several times a second
+  // on an indicator sitting in somebody's peripheral vision.
+  expect(hearing(speech(-52, 22))).toBe('hearing');
 });
 
 it('waits for enough of a window before claiming anything', () => {
-  // The room opens and the first buffer arrives 100ms later. Announcing
-  // "barely hear you" off one reading, before the presenter has drawn breath,
-  // would be the screen's first act and would be wrong.
+  // The room opens and the first buffer lands 100ms later. Announcing "barely
+  // hear you" off one reading, before the presenter has drawn breath, would be
+  // the screen's first act and it would be wrong.
   expect(hearing([])).toBe('silent');
-  expect(hearing(steady(-20, 2))).toBe('silent');
+  expect(hearing(steady(-20, 3))).toBe('silent');
 });

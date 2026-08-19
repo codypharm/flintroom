@@ -67,6 +67,21 @@ export interface InterrogationRoomProps {
    * holds the last line before the debrief.
    */
   phase: 'opening' | 'live' | 'ending';
+  /**
+   * Seconds this room has been open, or null before it is.
+   *
+   * **Elapsed, never remaining, and the distinction is the rule.** §4.6 forbids
+   * a depleting counter — "2 of 5 credits left" — because depletion framing
+   * makes people ration and rationing users churn. A count UP is not that: it
+   * says how long you have been going, which is the single most useful fact to
+   * somebody rehearsing for a slot with a length. A board readout is ten
+   * minutes; knowing you are at six is the point of the exercise.
+   *
+   * It is also the only honest warning available for the twelve-minute session
+   * cap. §4.7 hands that over with a spoken line rather than cutting audio, and
+   * a clock quietly approaching twelve is how somebody is not surprised by it.
+   */
+  elapsed: number | null;
   onEnd: () => void;
 }
 
@@ -83,6 +98,7 @@ export function InterrogationRoom({
   floor,
   hearing,
   phase,
+  elapsed,
   onEnd,
 }: InterrogationRoomProps) {
   const calm = useReduceMotion();
@@ -117,6 +133,17 @@ export function InterrogationRoom({
 
   return (
     <View style={styles.room}>
+      {/*
+        Small, high, and out of the way. It recedes by size and position rather
+        than by being dimmed: on a dark ground, dimming text is how contrast
+        fails, and this has to stay readable at a glance from a desk.
+      */}
+      {elapsed !== null && (
+        <Text style={styles.clock} accessibilityLabel={spoken(elapsed)}>
+          {onTheClock(elapsed)}
+        </Text>
+      )}
+
       <View
         style={styles.far}
         // The row's width, so a seat can be told how far it is from the middle.
@@ -157,6 +184,35 @@ export function InterrogationRoom({
       <Floor floor={floor} hearing={hearing} phase={phase} />
     </View>
   );
+}
+
+/**
+ * How long this room has been running, as a clock reads.
+ *
+ * Counting up rather than down. §4.6's ban is on DEPLETION — a number falling
+ * toward zero makes people ration, and rationing users churn. Elapsed time is
+ * the opposite framing of the same fact and is what a rehearsal actually needs:
+ * the slot you are practising for has a length, and the useful question is how
+ * far into it you are.
+ */
+function onTheClock(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+
+  return `${minutes}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+}
+
+/**
+ * The same thing for a screen reader, which should not be handed "4:32".
+ *
+ * Read aloud, a colon is a guess — VoiceOver may say "four thirty-two", "four
+ * colon three two", or a time of day. Somebody relying on it during a room is
+ * the last person who should have to work out which.
+ */
+function spoken(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.floor(seconds % 60);
+
+  return `${minutes} minute${minutes === 1 ? '' : 's'} ${rest} second${rest === 1 ? '' : 's'} in the room`;
 }
 
 /**
@@ -341,6 +397,17 @@ const ARC = 520;
 
 const styles = StyleSheet.create({
   room: { flex: 1, backgroundColor: color.roomGround },
+
+  clock: {
+    ...type.bodySm,
+    color: color.onRoom,
+    fontVariant: ['tabular-nums'],
+    textAlign: 'center',
+    paddingTop: space.snug,
+    // Half strength by *placement*, not by colour. It is the smallest thing on
+    // the screen and the furthest from the eye, which is enough.
+    opacity: 0.55,
+  },
 
   // 55/45, the surface brief's split, and it is about distance rather than
   // proportion: on a phone lying flat the top of the screen is further from the
