@@ -184,6 +184,38 @@ resampling step is needed in the client. Whether Oboe resamples internally from
 a 48 kHz hardware rate is not visible from here and does not change our
 contract. This closes task #18.
 
+## What the transcriber does with echo — measured 2026-08-19
+
+Prompted by `filter_background_audio`, an engine option we do not set. Three
+experiments against the live account, all with `language_code=en` pinned:
+
+| Fed to Scribe | Filter off | Filter on |
+| --- | --- | --- |
+| Speech under broadband noise, 10 dB and 3 dB SNR | correct | correct |
+| Presenter with a panel voice mixed **underneath** at 0.5 and 0.25 gain | presenter only | presenter only |
+| A panel voice **alone** | transcribed verbatim | transcribed verbatim |
+
+**`filter_background_audio` changed nothing in any of them, so it stays off.**
+A knob that cannot be shown to do anything is a knob that will later be blamed
+for something it does not affect.
+
+The second row is the finding worth keeping. **Scribe already rejects a
+simultaneous second voice** — at half amplitude, unaided — so echo arriving
+*while the presenter is talking* is not a problem the room has. It never
+reaches the transcript.
+
+Which makes the third row the whole of #78: echo is transcribed **only when
+nobody is talking over it**. With the presenter silent, the panel's returning
+voice is not background at all — it is the only voice, and therefore the
+primary speaker. That is exactly what happened in room 066f32db, where six of
+nine "user" lines were verbatim repeats of the panelist before them, every one
+of them landing in a gap.
+
+So a defence does not need to reason about mixed audio, levels, or ratios. It
+needs to notice that a lone utterance arriving after a panelist spoke is that
+panelist. The verbatim-repeat check #78 already proposes is the right shape,
+and this bounds when it has to fire.
+
 ## Open
 
 - **Whether the gate swallows a quiet interruption.** The acoustic question has
