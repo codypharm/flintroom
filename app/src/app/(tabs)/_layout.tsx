@@ -23,6 +23,12 @@ import { color, space, type } from '../../theme/tokens';
  * is an action rather than a place — HIG puts actions on screens and
  * destinations in the bar. It lives on Home as the primary control.
  *
+ * **Screens under this bar claim only the top inset.** `edges={['top']}`, not
+ * `['top', 'bottom']`: the bar itself sits in the bottom safe area and already
+ * accounts for the home indicator, so a screen claiming it too pads twice and
+ * leaves a band of ground above the tabs. The screens on the stack — the room,
+ * the debrief, the prep sheet — still take both, because nothing is under them.
+ *
  * The marks are drawn from Views, following `DeckAttach` and `SignInSheet`:
  * there is no icon library here, `expo-symbols` is SF Symbols and so iOS-only,
  * and a Unicode glyph standing in for an icon is a costume. Three shapes that

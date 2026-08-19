@@ -182,7 +182,7 @@ export default function InterrogationScreen() {
       const settled = session.current;
       setTimeout(() => {
         if (settled === null) {
-          router.replace('/setup');
+          router.replace('/');
           return;
         }
         router.replace(`/debrief/${settled}`);

@@ -97,7 +97,10 @@ export default function OnboardingRoute() {
       // answering five questions*, and it is only ever right on this one path.
       // Every other way into setup opens on an empty roster, because a room
       // somebody did not choose is a room they have to undo.
-      router.replace({ pathname: '/setup', params: { reveal: '1' } });
+      // The Home tab, which is now where a room is assembled. `replace` rather
+      // than `push`, so the back gesture does not return somebody to a survey
+      // they have already answered.
+      router.replace({ pathname: '/', params: { reveal: '1' } });
     } catch (error) {
       if (error instanceof CancelledByUser) {
         // Not a failure. Somebody deliberately made nothing happen, and saying

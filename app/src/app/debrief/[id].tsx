@@ -385,7 +385,7 @@ function Refusal({
       {refusal.offer === 'fresh room' && (
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.replace('/setup')}
+          onPress={() => router.replace('/')}
           style={({ pressed }) => [styles.offer, pressed && styles.offerPressed]}
         >
           <Text style={styles.offerLabel}>Start a fresh room</Text>

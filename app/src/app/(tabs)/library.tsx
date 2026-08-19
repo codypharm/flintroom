@@ -71,7 +71,10 @@ export default function LibraryRoute() {
    */
   const runAgain = useCallback((room: PastRoom) => {
     router.push({
-      pathname: '/setup',
+      // The Home tab. Assembling a room is what that screen now is, so a
+      // re-run lands on the picker with the seating already on it rather than
+      // on a landing page one tap away from it.
+      pathname: '/',
       params: {
         archetypes: room.archetypes.join(','),
         // One id, not a list. A room can be grounded in several materials on
@@ -85,7 +88,7 @@ export default function LibraryRoute() {
 
   if (refused !== null) {
     return (
-      <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.screen} edges={['top']}>
         <View style={styles.centred}>
           <Text style={styles.refusalTitle}>That did not load</Text>
           <Text style={styles.refusalBody}>{refused}</Text>
@@ -106,7 +109,7 @@ export default function LibraryRoute() {
 
   if (rooms === null) {
     return (
-      <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.screen} edges={['top']}>
         <View style={styles.centred}>
           <ActivityIndicator color={color.primary} />
         </View>
@@ -115,7 +118,7 @@ export default function LibraryRoute() {
   }
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.screen} edges={['top']}>
       <Library
         rooms={rooms}
         // Read once per render rather than held in state. Nothing here ticks —
@@ -129,7 +132,7 @@ export default function LibraryRoute() {
         // just re-read the answer they are about.
         onOpen={(id) => router.push(`/rooms/${id}`)}
         onRunAgain={runAgain}
-        onStart={() => router.push('/setup')}
+        onStart={() => router.replace('/')}
       />
     </SafeAreaView>
   );

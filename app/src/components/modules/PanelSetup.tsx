@@ -100,6 +100,15 @@ export interface PanelSetupProps {
   onAttach: () => void;
   onRemoveMaterial: () => void;
   onDifficultyChange: (level: number) => void;
+  /**
+   * Drawn above the title, inside this screen's own scroll.
+   *
+   * A slot rather than a second scroll view stacked on top, because two
+   * scrollers on one screen is a screen where a flick sometimes moves the wrong
+   * thing. What goes in it is Home's business — how the last room went, and how
+   * much time is available — and this component stays ignorant of both.
+   */
+  header?: React.ReactNode;
   onStart: () => void;
 }
 
@@ -144,6 +153,7 @@ export function PanelSetup({
   onAttach,
   onRemoveMaterial,
   onDifficultyChange,
+  header,
   onStart,
 }: PanelSetupProps) {
   const full = seated.length >= room.seats;
@@ -161,6 +171,8 @@ export function PanelSetup({
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      {header}
+
       <Text style={styles.title} accessibilityRole="header">
         Set the room
       </Text>
