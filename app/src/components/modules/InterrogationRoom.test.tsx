@@ -1,3 +1,4 @@
+import { AccessibilityInfo } from 'react-native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import { InterrogationRoom } from './InterrogationRoom';
@@ -238,6 +239,60 @@ describe('what the room says it is doing', () => {
     });
 
     expect(await screen.findByText(/barely hear you/)).toBeTruthy();
+    expect(screen.queryByText(/Working on it/)).toBeNull();
+  });
+});
+
+describe('the room moving while it works', () => {
+  /**
+   * The bars are dead at exactly the wrong moment: the floor is still the
+   * presenter's, they have stopped talking, and the room owes them an answer.
+   * Nothing on screen moves, which is when they start to wonder whether it
+   * heard them at all.
+   *
+   * The animation itself is verified on a device — what is worth holding here
+   * is that the state reaches the bars and that it is bounded to the one case
+   * where the row is otherwise still.
+   */
+  it('does not move for somebody who asked us not to move things', async () => {
+    // The real obligation here, and the only part of an animation worth
+    // asserting off a device. `useReduceMotion`'s rule is to honour it by
+    // CUTTING rather than slowing — a shortened swell is still a swell, and the
+    // setting means "do not move things", not "move them less".
+    //
+    // The words stay either way, which is what makes cutting safe: somebody who
+    // has turned motion off is not left with less information than everyone
+    // else, only with less movement.
+    jest
+      .spyOn(AccessibilityInfo, 'isReduceMotionEnabled')
+      .mockResolvedValue(true);
+
+    await show({ attending: { state: 'working', since: Date.now() } });
+
+    expect(await screen.findByText('Working on it.')).toBeTruthy();
+  });
+
+  it('leaves the bars to the presenter while they are still talking', async () => {
+    // `heard` gets no motion of its own. They are mid-sentence, so the bars are
+    // already alive with their own voice, and a second animation would be
+    // fighting them for the same pixels.
+    await show({
+      attending: { state: 'heard', since: Date.now() },
+      loudness: 0.6,
+    });
+
+    expect(await screen.findByText('Got that.')).toBeTruthy();
+  });
+
+  it('does not move while a panelist has the floor', async () => {
+    // The tray's developing print and its amber ring already carry that. Two
+    // things saying "somebody is speaking" is the bug that took a panelist off
+    // the screen mid-sentence.
+    await show({
+      floor: 'panel',
+      attending: { state: 'working', since: Date.now() },
+    });
+
     expect(screen.queryByText(/Working on it/)).toBeNull();
   });
 });

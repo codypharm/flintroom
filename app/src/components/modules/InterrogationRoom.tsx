@@ -334,7 +334,15 @@ function Floor({
 
       {yours && hearing !== 'faint' && <Doing attending={attending} />}
 
-      <SoundBar loudness={yours ? loudness : 0} lit={yours} />
+      <SoundBar
+        loudness={yours ? loudness : 0}
+        lit={yours}
+        // The one state where the bars would otherwise be dead: the floor is
+        // still the presenter's, they have stopped talking, and the room owes
+        // them an answer. Nothing on this screen moves, which is precisely the
+        // moment they start to wonder whether it heard them.
+        working={yours && attending.state === 'working'}
+      />
     </View>
   );
 }
@@ -430,12 +438,60 @@ const PATIENCE = 4;
  * Bars scale from their own centre around a common line, which is how a
  * waveform reads. Growing from the base would make them a chart.
  */
-function SoundBar({ loudness, lit }: { loudness: number; lit: boolean }) {
+function SoundBar({
+  loudness,
+  lit,
+  working,
+}: {
+  loudness: number;
+  lit: boolean;
+  working: boolean;
+}) {
   const calm = useReduceMotion();
   const bars = useRef(
     Array.from({ length: SPAN }, () => new Animated.Value(QUIET))
   ).current;
   const history = useRef<number[]>(Array.from({ length: SPAN }, () => 0)).current;
+  /**
+   * The room's own motion, nought to one, once per cycle.
+   *
+   * **Whose movement it is, is the whole signal.** The presenter's voice blooms
+   * out of the middle and dies away symmetrically, because the bars either side
+   * of centre show older readings. This travels — a swell crossing the row in
+   * one direction — so it cannot be mistaken for somebody being heard even
+   * though it uses the same thirteen bars. Nobody has to be told which is
+   * which; they simply do not look alike.
+   *
+   * One authored moment rather than several. `heard` gets none, and that is
+   * deliberate: the presenter is still talking through it, so the bars are
+   * already alive with their own voice and a second animation would be fighting
+   * them for the same pixels.
+   */
+  const swell = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!working || calm) {
+      swell.setValue(0);
+      return;
+    }
+
+    const crossing = Animated.loop(
+      Animated.timing(swell, {
+        toValue: 1,
+        // Unhurried on purpose. A fast pulse reads as a spinner — a thing
+        // waiting on a network — and this is a room considering an answer.
+        duration: 2200,
+        easing: Easing.inOut(Easing.quad),
+        useNativeDriver: true,
+      })
+    );
+    crossing.start();
+
+    return () => {
+      crossing.stop();
+      swell.setValue(0);
+    };
+  }, [calm, swell, working]);
 
   useEffect(() => {
     history.unshift(loudness);
@@ -466,7 +522,11 @@ function SoundBar({ loudness, lit }: { loudness: number; lit: boolean }) {
       {bars.map((bar, index) => (
         <Animated.View
           key={index}
-          style={[styles.bar, lit && styles.barLit, { transform: [{ scaleY: bar }] }]}
+          style={[
+            styles.bar,
+            lit && styles.barLit,
+            { transform: [{ scaleY: working && !calm ? crossing(swell, index) : bar }] },
+          ]}
         />
       ))}
     </View>
@@ -488,6 +548,58 @@ const QUIET = 0.12;
 
 /** The row's full height. Bars scale within it rather than resizing it. */
 const BAR_H = 44;
+
+/**
+ * How far the room's own swell lifts a bar.
+ *
+ * Small, and the smallness is load-bearing. It has to read in peripheral vision
+ * on a phone lying flat, and it must never be mistaken for a voice — somebody
+ * speaking normally fills far more of the bar than this, so the two never
+ * occupy the same range and the eye can tell them apart without being told.
+ */
+const SWELL = 0.28;
+
+/**
+ * One bar's part in a swell crossing the row.
+ *
+ * Each peaks a little after the one before it, so the movement reads as
+ * *travelling* rather than as thirteen bars breathing in unison — which would
+ * look like a heartbeat, and a heartbeat on a screen means something is wrong.
+ *
+ * That direction is the entire signal. The presenter's own voice blooms out of
+ * the middle and decays symmetrically, because the bars either side of centre
+ * show older readings. The room's does not. Same thirteen bars, two motions
+ * nobody could confuse.
+ *
+ * The phase sits inside the cycle rather than at its ends, so the first and
+ * last bars get a whole rise and fall instead of a clipped one.
+ */
+function crossing(
+  swell: Animated.Value,
+  index: number
+): Animated.AnimatedInterpolation<number> {
+  const peak = EDGE + (index / (SPAN - 1)) * (1 - EDGE * 2);
+
+  return swell.interpolate({
+    inputRange: [0, peak - RAMP, peak, peak + RAMP, 1],
+    outputRange: [QUIET, QUIET, QUIET + SWELL, QUIET, QUIET],
+    extrapolate: 'clamp',
+  });
+}
+
+/**
+ * How far into the cycle the first bar peaks, and how far from the end the last
+ * one does.
+ *
+ * The margin exists so the outermost bars get a whole rise and fall rather than
+ * a clipped one — and it bounds `RAMP`, because a ramp wider than this margin
+ * puts a negative number in the input range and React Native refuses it
+ * outright ("inputRange must be monotonically non-decreasing").
+ */
+const EDGE = 0.15;
+
+/** How much of the cycle one bar spends rising and falling. Under `EDGE`. */
+const RAMP = 0.12;
 
 const styles = StyleSheet.create({
   room: { flex: 1, backgroundColor: color.roomGround },
