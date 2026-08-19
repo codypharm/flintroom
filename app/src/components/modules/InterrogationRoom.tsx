@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { PanelLine } from '../../lib/voice/connection';
+import { useReduceMotion } from '../../lib/a11y/reduceMotion';
 import { color, radius, space, type } from '../../theme/tokens';
 import { Tray } from './Tray';
 
@@ -227,37 +228,6 @@ function Floor({
       />
     </View>
   );
-}
-
-/**
- * Whether to move at all.
- *
- * Read once rather than subscribed to: somebody does not change this setting
- * during a twelve-minute room, and a listener left attached is a leak on the
- * one screen that is open the longest.
- */
-function useReduceMotion(): boolean {
-  const [calm, setCalm] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-
-    AccessibilityInfo.isReduceMotionEnabled()
-      .then((on) => {
-        if (alive) {
-          setCalm(on);
-        }
-      })
-      // Not knowing means moving, which is the pre-existing behaviour of every
-      // other screen. Refusing to render the room over it would be worse.
-      .catch(() => undefined);
-
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  return calm;
 }
 
 const styles = StyleSheet.create({

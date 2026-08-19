@@ -190,3 +190,45 @@ it('offers the way out only once the room is full', async () => {
   await setup({ seated: ['cfo', 'technical_skeptic', 'champion'] });
   expect(screen.getByText(/Tap someone to swap them out/)).toBeTruthy();
 });
+
+it('says back the room that was built, in the order it will speak', async () => {
+  // Everything above this line is eight cards, a file row and three pills. The
+  // screen never once said what any of it added up to, which left Start a
+  // button at the bottom of a scroll rather than the door into a specific
+  // room.
+  //
+  // Order carries information: the server seats archetypes as they arrive and
+  // chair one takes the floor first, so "then" is a fact about the next twelve
+  // minutes rather than a list separator.
+  await setup({ seated: ['champion', 'cfo'] });
+
+  expect(
+    screen.getByText('The Champion, then the CFO. They push gentle.')
+  ).toBeTruthy();
+});
+
+it('does not apologise for a room with nothing attached', async () => {
+  // Material is an optional enrichment (§3.2) and pitching cold is a supported
+  // way to use this. Naming the absence would turn a deliberate choice into a
+  // missing step.
+  await setup({ seated: ['cfo'], material: null });
+
+  expect(screen.queryByText(/nothing attached|no deck/i)).toBeNull();
+});
+
+it('names the deck the room is grounded in, once one is ready', async () => {
+  await setup({
+    seated: ['cfo'],
+    material: { id: 'm-1', filename: 'Q3 board deck.pdf', state: 'ready' },
+  });
+
+  expect(screen.getByText(/over Q3 board deck\.pdf/)).toBeTruthy();
+});
+
+it('shows why it cannot start instead of the room, when it cannot start', async () => {
+  // The two occupy one slot on purpose. A summary of a room nobody can enter,
+  // sitting above a dead button, is the screen talking past the problem.
+  await setup({ seated: [] });
+
+  expect(screen.queryByText(/They push/)).toBeNull();
+});

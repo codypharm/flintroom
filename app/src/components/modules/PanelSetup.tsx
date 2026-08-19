@@ -206,7 +206,7 @@ export function PanelSetup({
           rather than centred under a left-aligned card. */}
       <Text style={styles.groupNote}>{seatsLine(room, seated.length)}</Text>
 
-      <Text style={styles.sectionTitle} accessibilityRole="header">
+      <Text style={styles.field} accessibilityRole="header">
         What they can attack
       </Text>
 
@@ -217,7 +217,7 @@ export function PanelSetup({
         onRemove={onRemoveMaterial}
       />
 
-      <Text style={styles.sectionTitle} accessibilityRole="header">
+      <Text style={styles.field} accessibilityRole="header">
         How hard they push
       </Text>
 
@@ -278,6 +278,18 @@ export function PanelSetup({
         without this the user learns by watching Start fail — which is the
         difference between a screen that waited with them and one that broke.
       */}
+      {/*
+        What they assembled, in speaking order, immediately above the control
+        that commits it. Composed from state and nothing else — no claim the
+        screen cannot back.
+
+        This is the difference between a form and an act. Everything above is
+        eight cards, a file row and three pills; without this the screen never
+        once says what any of it added up to, and Start is a button at the
+        bottom of a scroll rather than the door into a specific room.
+      */}
+      {held === null && <Text style={styles.assembled}>{assembled(room, seated, material)}</Text>}
+
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ disabled: held !== null }}
@@ -295,6 +307,39 @@ export function PanelSetup({
       {held !== null && <Text style={styles.footnote}>{held}</Text>}
     </ScrollView>
   );
+}
+
+/**
+ * The room, said back in the order it will speak.
+ *
+ * Order is the point rather than a flourish: the server seats archetypes as
+ * they arrive and chair one takes the floor first, so "The CFO, then the
+ * Champion" is a fact about the next twelve minutes and not a list.
+ *
+ * Grounding is named only when there is some. "and nothing attached" would be
+ * an apology for a deliberate choice — `Product.md` §3.2 makes material an
+ * optional enrichment, and pitching cold is a supported way to use this.
+ */
+function assembled(
+  room: Room,
+  seated: string[],
+  material: AttachedMaterial | null
+): string {
+  const names = seated
+    .map((name) => room.archetypes.find((one) => one.name === name)?.title ?? name)
+    // Lowercased after the first, because this is a sentence rather than a
+    // list. "The CFO, then The Technical Skeptic" reads as three proper nouns
+    // stacked up; "then the Technical Skeptic" reads as somebody describing a
+    // room. The catalogue keeps its capitals — the article only drops where
+    // English would drop it.
+    .map((title, index) => (index === 0 ? title : title.replace(/^The /, 'the ')))
+    .join(', then ');
+
+  const pressure = (RUNGS[room.difficulty - 1] ?? RUNGS[0]).label.toLowerCase();
+  const ground =
+    material?.state === 'ready' ? `, over ${material.filename}` : '';
+
+  return `${names}${ground}. They push ${pressure}.`;
 }
 
 /**
@@ -355,27 +400,22 @@ const styles = StyleSheet.create({
   },
 
   /**
-   * Two heading sizes and two intervals, which between them are the hierarchy.
+   * The screen's one question, and the only thing at display size.
    *
-   * Three headings at one size and one 32/12 interval gave the screen no
-   * loudest thing — squint and it was three identical white slabs. The panel is
-   * the decision and the other two are adjustments to it, so the first heading
-   * is the screen's title and the rest step down. The section break goes to 48
-   * against 12 inside a group, so a break is four times a gap rather than not
-   * quite three.
-   *
-   * No top margin on the title: the content's own padding is the space above
-   * it, and a margin there would double it.
+   * No top margin: `content` already carries the inset, and a heading that
+   * adds its own to a container's is the commonest way a screen ends up with
+   * two different top edges depending on which one you measure.
    */
   title: {
     ...type.headlineLg,
     color: color.onSurface,
     marginBottom: space.base,
   },
-  sectionTitle: {
-    ...type.headlineSm,
-    color: color.onSurface,
-    marginTop: space.major,
+
+  field: {
+    ...type.labelLg,
+    color: color.onSurfaceVariant,
+    marginTop: space.section,
     marginBottom: space.snug,
   },
 
@@ -456,7 +496,7 @@ const styles = StyleSheet.create({
   },
 
   start: {
-    marginTop: space.major,
+    marginTop: space.hair,
     minHeight: 52,
     justifyContent: 'center',
     alignItems: 'center',
@@ -466,7 +506,21 @@ const styles = StyleSheet.create({
 
   startLabel: { ...type.labelLg, fontSize: 16, color: color.onPrimary },
 
-  /** A note about the group above it. Left-aligned, because the group is. */
+  /**
+   * The assembled room, directly above Start.
+   *
+   * Centred, unlike every other note on this screen, and deliberately: it
+   * belongs to the button rather than to the group above it, and it is the one
+   * line here that is a summary rather than a caption.
+   */
+  assembled: {
+    ...type.bodyMd,
+    color: color.onSurfaceVariant,
+    textAlign: 'center',
+    marginTop: space.major,
+    marginBottom: space.snug,
+  },
+
   groupNote: {
     ...type.bodySm,
     color: color.onSurfaceVariant,

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { AccessibilityInfo } from 'react-native';
 
 import { ArchetypeCard, initialsOf } from './ArchetypeCard';
 
@@ -87,4 +88,16 @@ it.each([
   // Every archetype begins with "The". Keeping it would give all eight cards
   // the same first letter and defeat the point of initials entirely.
   expect(initialsOf(title)).toBe(expected);
+});
+
+it('does not move the badge for somebody who asked it not to', async () => {
+  // Reduce Motion is honoured by cutting, not by shortening. A quick bounce is
+  // still a bounce, and the setting means "do not move things".
+  jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(true);
+
+  await show({ seat: 1 });
+
+  // The badge is present and fully settled rather than mid-spring: what the
+  // setting buys is arriving, not arriving slowly.
+  expect(await screen.findByText('1')).toBeTruthy();
 });

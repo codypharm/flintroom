@@ -1,5 +1,7 @@
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useReduceMotion } from '../../lib/a11y/reduceMotion';
 import { color, radius, space, type } from '../../theme/tokens';
 
 /**
@@ -47,6 +49,7 @@ export function ArchetypeCard({
   onPress,
 }: ArchetypeCardProps) {
   const taken = seat !== null;
+  const settled = useSeated(taken);
 
   return (
     <Pressable
@@ -86,9 +89,14 @@ export function ArchetypeCard({
       </View>
 
       {taken && (
-        <View style={styles.seat}>
+        <Animated.View
+          style={[
+            styles.seat,
+            { transform: [{ scale: settled }], opacity: settled },
+          ]}
+        >
           <Text style={styles.seatLabel}>{seat}</Text>
-        </View>
+        </Animated.View>
       )}
 
       {/* Two lines always, even for "The CFO". Left to size itself, a
@@ -137,6 +145,57 @@ export function initialsOf(title: string): string {
     .map((word) => word[0].toUpperCase())
     .join('')
     .slice(0, 2);
+}
+
+/**
+ * The screen's one authored moment: somebody taking a seat.
+ *
+ * Everything else on setup is a state flip, and it should be — a file attaches,
+ * a pill selects, and dressing either up would be motion for its own sake. But
+ * seating a panelist is the decision this screen exists for, and the badge
+ * simply blinking into existence makes the most consequential tap on the screen
+ * the least felt one.
+ *
+ * Overshoots slightly and settles, which is what a physical thing does when it
+ * is put down. Out is a plain fade: taking somebody out is a correction, and a
+ * correction that performs is a screen congratulating you for undoing
+ * something.
+ *
+ * Honours Reduce Motion by cutting, not by slowing — a shortened bounce is
+ * still a bounce, and the setting means "do not move things", not "move them
+ * less".
+ */
+function useSeated(taken: boolean): Animated.Value {
+  const settled = useRef(new Animated.Value(taken ? 1 : 0)).current;
+  const calm = useReduceMotion();
+
+  useEffect(() => {
+    if (!taken) {
+      Animated.timing(settled, {
+        toValue: 0,
+        duration: calm ? 0 : 120,
+        useNativeDriver: true,
+      }).start();
+      return;
+    }
+
+    if (calm) {
+      settled.setValue(1);
+      return;
+    }
+
+    Animated.spring(settled, {
+      toValue: 1,
+      // Low friction against a high tension: it arrives fast and overshoots
+      // once. Anything softer reads as a loading state rather than as a thing
+      // being set down.
+      friction: 5,
+      tension: 180,
+      useNativeDriver: true,
+    }).start();
+  }, [calm, settled, taken]);
+
+  return settled;
 }
 
 const CARD = 168;
