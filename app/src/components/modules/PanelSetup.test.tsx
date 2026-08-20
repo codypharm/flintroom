@@ -299,3 +299,34 @@ it('never puts a price on the row', async () => {
   expect(screen.getByText('On Pro')).toBeTruthy();
   expect(screen.queryByText(/\$|month|upgrade now/i)).toBeNull();
 });
+
+it('will not start a room with nobody in it who can open it', async () => {
+  // §3's floor, arriving where it was designed to: in the picker rather than as
+  // a 422 on a screen somebody has already committed to. The server refuses it
+  // either way — `panel_without_a_shipped_voice` — and the metering rules are
+  // explicit that a room in progress is never where a constraint is discovered.
+  //
+  // A sentence rather than a bare disabled button, matching every other reason
+  // Start holds: openers and nudges are hand-written per archetype, so a room
+  // of only your own opens in silence AND reaps at ninety seconds with no
+  // warning at sixty.
+  const mine = { name: 'custom:0191d4c2', title: 'The Board Chair', blurb: 'Mine.' };
+
+  await setup({
+    room: { ...ROOM, archetypes: [...LIBRARY, mine] },
+    seated: [mine.name],
+  });
+
+  expect(screen.getByText(/at least one of ours/i)).toBeTruthy();
+});
+
+it('starts happily once one of ours is beside them', async () => {
+  const mine = { name: 'custom:0191d4c2', title: 'The Board Chair', blurb: 'Mine.' };
+
+  await setup({
+    room: { ...ROOM, archetypes: [...LIBRARY, mine] },
+    seated: [mine.name, 'cfo'],
+  });
+
+  expect(screen.queryByText(/at least one of ours/i)).toBeNull();
+});

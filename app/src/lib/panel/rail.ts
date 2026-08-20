@@ -37,3 +37,22 @@ export function railFor(
     })),
   ];
 }
+
+
+/**
+ * Whether this name belongs to a panelist somebody wrote.
+ *
+ * The prefix is minted server-side and enforced by a check constraint, so this
+ * is a reliable test rather than a heuristic — the same guarantee `by_name`
+ * leans on to keep two authorities out of one namespace.
+ *
+ * Duplicated from `agents/authored.CUSTOM_PREFIX` across the wire, which is
+ * what a contract is. It is pinned by `test_the_prefix_is_the_same_string_in_
+ * both_places` on the server and by the rail's own test here.
+ */
+export function isAuthored(name: string): boolean {
+  return name.startsWith(AUTHORED_PREFIX);
+}
+
+/** What separates a row somebody owns from an archetype we ship. */
+export const AUTHORED_PREFIX = 'custom:';

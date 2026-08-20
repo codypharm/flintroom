@@ -1,4 +1,4 @@
-import { railFor } from './rail';
+import { AUTHORED_PREFIX, isAuthored, railFor } from './rail';
 
 const SHIPPED = [
   { name: 'cfo', title: 'The CFO', blurb: 'Unimpressed.' },
@@ -40,4 +40,19 @@ it('shows their own words on the card', () => {
 
 it('is just the shipped roster for an account that has written none', () => {
   expect(railFor(SHIPPED, [])).toEqual(SHIPPED);
+});
+
+it('knows a panelist somebody wrote from one we ship', () => {
+  // The prefix is minted server-side and held by a check constraint, so this is
+  // a reliable test rather than a heuristic. It is what the picker uses to
+  // enforce the shipped-archetype floor before Start does.
+  expect(isAuthored('custom:0191d4c2')).toBe(true);
+  expect(isAuthored('cfo')).toBe(false);
+});
+
+it('matches the prefix the server mints', () => {
+  // Duplicated across the wire, which is what a contract is. The server pins
+  // its own copy in test_the_prefix_is_the_same_string_in_both_places; this is
+  // the other end, so the two cannot drift silently.
+  expect(AUTHORED_PREFIX).toBe('custom:');
 });

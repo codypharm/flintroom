@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { AttachedMaterial, MaterialLimits } from '../../lib/api/materialsApi';
 import { portraitOf } from '../../lib/archetypes/portraits';
+import { isAuthored } from '../../lib/panel/rail';
 import { color, radius, space, type } from '../../theme/tokens';
 import { ArchetypeCard, AuthorRow } from './ArchetypeCard';
 import { DeckAttach } from './DeckAttach';
@@ -488,6 +489,24 @@ function holdingUpStart(
     // would quietly produce a room nobody chose. Asking is better than seating
     // somebody on their behalf.
     return 'Seat at least one of them.';
+  }
+  if (seated.every(isAuthored)) {
+    // The floor from `docs/custom-archetypes.md` §3, said here rather than
+    // discovered at Start. The server refuses the same shape —
+    // `panel_without_a_shipped_voice` — and the metering rules are explicit
+    // that a room in progress is never where a constraint is found.
+    //
+    // Two things break without it and only one is visible. A room of nobody
+    // but your own opens in silence, because `openers` are hand-written per
+    // archetype and a row a user typed carries none. And nobody warns them at
+    // sixty seconds before the idle timeout reaps and refunds, for somebody who
+    // by then has stopped looking at the phone — that one is silent by design
+    // and costs them a room.
+    //
+    // Worded as a shortfall rather than as a rule. "Seat at least one of ours"
+    // is something to do; "a room may not be all custom archetypes" is a
+    // policy, and nobody reads a policy while assembling a panel.
+    return 'Seat at least one of ours beside them.';
   }
   if (material?.state === 'extracting') {
     return `Still reading ${material.filename}.`;
