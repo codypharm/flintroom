@@ -1,3 +1,5 @@
+import os
+
 from collections.abc import AsyncIterator
 from datetime import datetime
 
@@ -11,9 +13,40 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase
 
+from app.core.config import get_settings
+
 
 class Base(DeclarativeBase):
     """Declarative base for every Flintroom ORM model."""
+
+
+def configured_url() -> str:
+    """Which database this process should talk to.
+
+    `DATABASE_URL` first, because deployment sets it and `tests/conftest.py`
+    sets it on purpose — that is what keeps `pytest` on the test database while
+    still exercising the real migration chain.
+
+    **Otherwise the application\'s own, and never a name written in a file.**
+    `migrations/env.py` used to fall back to a hardcoded `...flintroom_test`,
+    which meant that at an ordinary terminal — where nobody exports the
+    variable — `alembic upgrade head` migrated the test database while
+    appearing to migrate the app\'s, and `alembic current` reported the test
+    database\'s revision in the same voice. On 2026-08-20 a table was created
+    everywhere except the database the phone talks to, and the suite stayed
+    green throughout, because the suite is the one caller that sets the
+    variable.
+
+    It was the unfinished half of #28, "make .env actually configure the
+    database": that fix moved `create_engine` off `os.getenv` and left the
+    migrations on it, pointed somewhere else.
+
+    Here rather than in `env.py` so it can be imported and tested — that file
+    reads `context.config` at module scope and cannot be imported outside an
+    alembic run, which is exactly how a resolver nobody could test came to have
+    a fallback nobody noticed.
+    """
+    return os.getenv("DATABASE_URL") or get_settings().database_url
 
 
 def create_engine(url: str) -> AsyncEngine:

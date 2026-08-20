@@ -21,7 +21,7 @@ if config.config_file_name is not None:
     # application logging for the life of the process.
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
-from app.core.database import Base
+from app.core.database import Base, configured_url
 
 # Importing the models registers them on Base.metadata. Autogenerate only sees
 # what has been imported, and a module missing here does not fail — it produces
@@ -47,15 +47,11 @@ from app.modules.voice import models as voice_models  # noqa: F401
 
 target_metadata = Base.metadata
 
-# The URL comes from the environment, never from alembic.ini — CLAUDE.md allows
-# zero secrets in code, and the production URL is a secret.
-config.set_main_option(
-    "sqlalchemy.url",
-    os.getenv(
-        "DATABASE_URL",
-        "postgresql+asyncpg://flintroom:flintroom@localhost:55432/flintroom_test",
-    ),
-)
+# Never from alembic.ini — CLAUDE.md allows zero secrets in code, and a
+# production URL is a secret. `configured_url` lives in `app.core.database`
+# rather than here because this file cannot be imported outside an alembic run,
+# and a resolver nobody can test is how the old hardcoded fallback survived.
+config.set_main_option("sqlalchemy.url", configured_url())
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
