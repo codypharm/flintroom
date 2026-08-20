@@ -158,10 +158,25 @@ LIBRARY: tuple[Archetype, ...] = (
             "uninterested in vision until the arithmetic holds. Speaks in short "
             "sentences and asks one question at a time."
         ),
+        #: **"the cost line nobody mentioned" was here, and it was an instruction
+        #: to break the rule below it** (#63). `_persona_prompt` forbids
+        #: asserting a fact the presenter did not supply and names the tell as
+        #: the word THE — *"naming a thing that way tells them it exists, and you
+        #: do not know that it does"* — and this listed a cost line as a target
+        #: while saying outright that nobody had mentioned it. The CFO obeyed the
+        #: half written in its own voice, which is the correct reading of a
+        #: contradiction.
+        #:
+        #: Asked rather than asserted now, which is the shape the other seven
+        #: already used and which the prompt blesses: *"If you need one to exist,
+        #: ask whether it does."* The intent is unchanged — find the cost nobody
+        #: has priced — and it arrives as a question the presenter has to answer
+        #: instead of a figure the panel invented.
         attack_strategy=(
             "Attack the numbers and what they assume. Unit economics, margin at "
-            "scale, the cost line nobody mentioned, the growth rate that implies "
-            "an impossible headcount. Never accept a figure without its basis."
+            "scale, whether a cost has been left out of the arithmetic, the "
+            "growth rate that implies an impossible headcount. Never accept a "
+            "figure without its basis."
         ),
         domains=("margin", "revenue", "cost", "valuation", "runway", "headcount"),
         cadence=(

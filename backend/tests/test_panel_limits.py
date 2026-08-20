@@ -14,6 +14,8 @@ rather than crowding one.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from app.agents.archetypes import DEFAULT_PANEL, LIBRARY, by_name
@@ -262,3 +264,43 @@ def test_no_word_signals_two_domains_at_once():
                 f"routing picks one by dict order rather than by decision"
             )
             owner[term] = domain
+
+
+#: A definite article naming a thing in the presenter's business, in the same
+#: breath as saying they never mentioned it.
+NAMES_THE_UNMENTIONED = re.compile(
+    r"\bthe\s+[\w\s'-]{0,40}?\bnobody\s+(?:ever\s+)?mentioned\b", re.IGNORECASE
+)
+
+
+def test_no_archetype_is_told_to_name_what_nobody_mentioned():
+    """#63 — the CFO ignored a prohibition the other seven obey.
+
+    `_persona_prompt` forbids asserting a fact the presenter did not supply, and
+    names the tell: *"the tell is the word THE. Do not say 'the architecture',
+    'the pipeline' ... Naming a thing that way tells them it exists, and you do
+    not know that it does."*
+
+    The CFO's own strategy told it to do exactly that. It listed targets — *"Unit
+    economics, margin at scale, the cost line nobody mentioned, the growth rate
+    ..."* — a definite article naming a line in their books while stating outright
+    that they never mentioned it. **No model failure: the configuration
+    contradicted the instruction beneath it**, and the archetype obeyed the half
+    written in its own voice.
+
+    The other seven phrase the same idea as a question, which the prompt blesses
+    in as many words — *"A question you cannot answer yourself is the strongest
+    thing you can say."* The Skeptic asks *which* single point of failure nobody
+    has named; the Risk Officer asks *which* approval has not been obtained. An
+    interrogative asks whether a thing exists. A noun phrase asserts it does.
+
+    **Narrow on purpose.** This pins the construction that shipped, not a general
+    theory of presupposition — no regex can separate "the case nobody wants to
+    discuss", a category every plan has, from "the cost line nobody mentioned",
+    a specific claim about somebody's accounts.
+    """
+    for archetype in LIBRARY:
+        assert not NAMES_THE_UNMENTIONED.search(archetype.attack_strategy), (
+            f"{archetype.name} is told to name something unmentioned"
+        )
+        assert not NAMES_THE_UNMENTIONED.search(archetype.persona), archetype.name
