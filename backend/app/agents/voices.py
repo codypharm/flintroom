@@ -58,3 +58,25 @@ class Voice(StrEnum):
 #: is per-room, not per-library, and two custom archetypes never seated together
 #: may safely share a voice.
 CASTABLE: frozenset[Voice] = frozenset(Voice)
+
+
+#: How each voice sounds, said to the person choosing one.
+#:
+#: The same sentences that document the members above, promoted to data because
+#: a user has to pick between them. `measured` and `smooth` are indistinguishable
+#: as keys — what separates them is the description, and a picker of eight
+#: one-word labels is a picker nobody can use.
+#:
+#: Kept beside the members rather than in a schema so the two cannot drift:
+#: `test_voice_casting.py` already requires every member to be castable, and
+#: this asserts every member is also sayable.
+VOICE_BLURBS: dict[Voice, str] = {
+    Voice.MEASURED: "Unhurried and formal. Says less than it could.",
+    Voice.PRECISE: "Careful and exact. Explains rather than asserts.",
+    Voice.ASSURED: "Steady and credible. Sounds like it has decided.",
+    Voice.EAGER: "Fast and forward-leaning. Runs slightly ahead of the room.",
+    Voice.BRISK: "Clipped and impatient. Sounds like it is late for something.",
+    Voice.SMOOTH: "Even and unhurried, and never quite says the whole thing.",
+    Voice.WARM: "Open and direct. The easiest of them to listen to.",
+    Voice.DRY: "Older and flat. Reads the caveat rather than the headline.",
+}

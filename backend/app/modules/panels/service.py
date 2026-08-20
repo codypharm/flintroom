@@ -25,7 +25,9 @@ from app.modules.billing.tiers import (
     next_tier_above,
 )
 from app.modules.onboarding.service import OnboardingService
-from app.modules.panels.schemas import ArchetypeCatalogue, ArchetypeRead
+from app.agents.vocabulary import DOMAIN_TERMS
+from app.agents.voices import CASTABLE, VOICE_BLURBS
+from app.modules.panels.schemas import ArchetypeCatalogue, ArchetypeRead, VoiceRead
 
 log = get_logger(__name__, tag="panel")
 
@@ -78,6 +80,11 @@ class PanelCatalogueService:
                 for archetype in await OnboardingService(self._db).room_for(
                     user_id=user_id, seats=seats
                 )
+            ],
+            domains=sorted(DOMAIN_TERMS),
+            voices=[
+                VoiceRead(name=voice.value, sounds=VOICE_BLURBS[voice])
+                for voice in sorted(CASTABLE, key=lambda one: one.value)
             ],
             may_author=may_author_archetypes(tier),
             upgrade_seats=max_panel_size(above) if above else None,

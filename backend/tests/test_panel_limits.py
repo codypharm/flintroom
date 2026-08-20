@@ -21,6 +21,7 @@ import pytest
 from app.agents.archetypes import DEFAULT_PANEL, LIBRARY, by_name
 from app.agents.routing import _domain_hits
 from app.agents.vocabulary import DOMAIN_TERMS, terms_for
+from app.agents.voices import CASTABLE, VOICE_BLURBS
 from app.agents.panel import assemble
 from app.core.errors import ArchetypeNotFound, PanelTooLarge
 from app.modules.billing.tiers import (
@@ -304,3 +305,14 @@ def test_no_archetype_is_told_to_name_what_nobody_mentioned():
             f"{archetype.name} is told to name something unmentioned"
         )
         assert not NAMES_THE_UNMENTIONED.search(archetype.persona), archetype.name
+
+
+def test_every_voice_says_how_it_sounds():
+    """A castable voice a user cannot be told about is one they cannot choose.
+
+    `test_every_shipped_archetype_has_been_cast` holds the other end: every
+    archetype has a voice. This holds that every voice has a sentence, so adding
+    a ninth cannot half-land — castable in the adapter and blank in the picker.
+    """
+    for voice in CASTABLE:
+        assert VOICE_BLURBS.get(voice), voice

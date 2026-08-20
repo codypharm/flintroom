@@ -901,6 +901,10 @@ export interface components {
              * @default 3
              */
             hardest: number;
+            /** Domains */
+            domains?: string[];
+            /** Voices */
+            voices?: components["schemas"]["VoiceRead"][];
         };
         /**
          * ArchetypeDraft
@@ -1591,6 +1595,16 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * VoiceRead
+         * @description One voice a panelist may be cast in, and what it sounds like.
+         */
+        VoiceRead: {
+            /** Name */
+            name: string;
+            /** Sounds */
+            sounds: string;
         };
         /**
          * WeakAnswerRead

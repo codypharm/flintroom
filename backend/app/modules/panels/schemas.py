@@ -38,6 +38,17 @@ class ArchetypeRead(BaseModel):
     blurb: str
 
 
+class VoiceRead(BaseModel):
+    """One voice a panelist may be cast in, and what it sounds like."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    #: The stored value — `measured`, `brisk`. A character, never a vendor id.
+    name: str
+    #: The sentence somebody chooses by.
+    sounds: str
+
+
 class ArchetypeCatalogue(BaseModel):
     """Everybody available, and how many of them this plan seats.
 
@@ -90,6 +101,17 @@ class ArchetypeCatalogue(BaseModel):
     #: failure a hardcoded archetype library would be: two lists free to
     #: disagree, with an app release between them.
     hardest: int = Field(default=RELENTLESS)
+
+    #: Every claim domain a panelist may own, sorted.
+    #:
+    #: Published because the authoring form cannot invent it: domains are the
+    #: Auditor's routing key, the server refuses one it does not route on, and a
+    #: hardcoded copy in the app is a form offering choices the API rejects —
+    #: the failure this endpoint already exists to prevent for the roster.
+    domains: list[str] = Field(default_factory=list)
+
+    #: Every voice a panelist may be cast in, with how each sounds.
+    voices: list[VoiceRead] = Field(default_factory=list)
 
 
 class DifficultyChoice(BaseModel):

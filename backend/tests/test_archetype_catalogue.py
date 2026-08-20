@@ -15,6 +15,8 @@ from sqlalchemy import select
 
 from app.agents.archetypes import DEFAULT_PANEL, LIBRARY
 from app.agents.difficulty import GENTLE, RELENTLESS
+from app.agents.vocabulary import DOMAIN_TERMS
+from app.agents.voices import CASTABLE
 from app.modules.billing.models import Account
 from app.modules.billing.tiers import max_panel_size
 from app.modules.onboarding.schemas import Answers
@@ -169,3 +171,38 @@ async def test_an_account_that_answered_nothing_still_has_a_room(
     body = (await client.get("/v1/archetypes", headers=bearer(account.user_id))).json()
 
     assert body["seated"] == [archetype.name for archetype in DEFAULT_PANEL]
+
+
+async def test_the_catalogue_publishes_the_domains_a_panelist_may_own(
+    client, bearer, account
+):
+    """The authoring form cannot invent this list.
+
+    Domains are the Auditor's routing key and the server refuses one it does not
+    route on, so a hardcoded copy in the app is a form that offers choices the
+    API rejects — the failure this endpoint already exists to prevent for the
+    archetype roster, one field along.
+    """
+    catalogue = await client.get("/v1/archetypes", headers=bearer(account.user_id))
+
+    published = catalogue.json()["domains"]
+
+    assert set(published) == set(DOMAIN_TERMS)
+    assert published == sorted(published)
+
+
+async def test_the_catalogue_publishes_the_voices_and_says_how_each_sounds(
+    client, bearer, account
+):
+    """A picker of eight one-word keys is a picker nobody can use.
+
+    `measured` and `smooth` are indistinguishable as labels; what separates them
+    is the sentence beside each in `voices.py`, which existed only as a comment
+    until a user had to choose between them.
+    """
+    catalogue = await client.get("/v1/archetypes", headers=bearer(account.user_id))
+
+    published = catalogue.json()["voices"]
+
+    assert {one["name"] for one in published} == {one.value for one in CASTABLE}
+    assert all(one["sounds"] for one in published)

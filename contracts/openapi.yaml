@@ -1449,6 +1449,16 @@ components:
           type: integer
           title: Hardest
           default: 3
+        domains:
+          items:
+            type: string
+          type: array
+          title: Domains
+        voices:
+          items:
+            $ref: '#/components/schemas/VoiceRead'
+          type: array
+          title: Voices
       type: object
       required:
       - archetypes
@@ -2559,6 +2569,20 @@ components:
       - msg
       - type
       title: ValidationError
+    VoiceRead:
+      properties:
+        name:
+          type: string
+          title: Name
+        sounds:
+          type: string
+          title: Sounds
+      type: object
+      required:
+      - name
+      - sounds
+      title: VoiceRead
+      description: One voice a panelist may be cast in, and what it sounds like.
     WeakAnswerRead:
       properties:
         ordinal:
