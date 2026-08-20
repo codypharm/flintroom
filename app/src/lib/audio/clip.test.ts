@@ -21,7 +21,7 @@ describe('collectClip', () => {
     clip.push(new Float32Array([1, 0, -1]), 16_000);
     clip.push(new Float32Array([0.5]), 16_000);
 
-    const wav = await clip.finish().arrayBuffer();
+    const wav = clip.finish();
 
     expect(wav.byteLength).toBe(WAV_HEADER_BYTES + 4 * 2);
     expect(new DataView(wav).getInt16(WAV_HEADER_BYTES, true)).toBe(0x7fff);
@@ -34,7 +34,7 @@ describe('collectClip', () => {
     const clip = collectClip();
     clip.push(frames(), 48_000);
 
-    const wav = await clip.finish().arrayBuffer();
+    const wav = clip.finish();
 
     expect(new DataView(wav).getUint32(24, true)).toBe(48_000);
   });
@@ -54,7 +54,7 @@ describe('collectClip', () => {
     // `nothing_was_said`, which is a sentence somebody can act on — but only if
     // the file parsed as audio. A zero-length body gets a vendor error instead,
     // and the user is told the recording broke when in fact they said nothing.
-    const wav = await collectClip().finish().arrayBuffer();
+    const wav = collectClip().finish();
 
     expect(wav.byteLength).toBe(WAV_HEADER_BYTES);
   });
@@ -83,4 +83,43 @@ describe('collectClip', () => {
       10 * 1024 * 1024
     );
   });
+});
+
+it('hands back something React Native can actually put on a request', async () => {
+  // The bug that made every coaching turn and every sparring re-answer fail on
+  // a device, while 549 tests passed. `finish()` built a `Blob` from the WAV,
+  // and React Native refuses that outright — `BlobManager.js`:
+  //
+  //   if (part instanceof ArrayBuffer || ArrayBuffer.isView(part)) {
+  //     throw new Error("Creating blobs from 'ArrayBuffer' and
+  //       'ArrayBufferView' are not supported");
+  //   }
+  //
+  // So this threw synchronously, before any fetch, and the screen reported "I
+  // could not reach the server" for a server it had never contacted.
+  //
+  // Invisible to the suite because jsdom's `Blob` takes typed arrays happily.
+  // That is what this stub exists to correct: RN's rule, applied for the length
+  // of one test, so the runner stops telling us this works.
+  const real = global.Blob;
+  global.Blob = class {
+    constructor(parts: unknown[]) {
+      for (const part of parts) {
+        if (part instanceof ArrayBuffer || ArrayBuffer.isView(part)) {
+          throw new Error(
+            "Creating blobs from 'ArrayBuffer' and 'ArrayBufferView' are not supported"
+          );
+        }
+      }
+    }
+  } as unknown as typeof Blob;
+
+  try {
+    const clip = collectClip();
+    clip.push(frames(), 16_000);
+
+    expect(() => clip.finish()).not.toThrow();
+  } finally {
+    global.Blob = real;
+  }
 });

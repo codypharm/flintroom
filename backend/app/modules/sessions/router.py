@@ -6,7 +6,7 @@ Thin, per `CLAUDE.md`: parse the request, call a service, return a response.
 import base64
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, Depends, Request, status
 
 from app.core.errors import ClipTooLong, RecordingNotAvailable
 from app.core.storage_s3 import DEFAULT_EXPIRY_SECONDS
@@ -52,6 +52,49 @@ from app.modules.voice.dependencies import VoiceTicketServiceDep
 #: a limit set too tight is a user whose longest, most considered answer is the
 #: one that gets refused.
 MAX_CLIP_BYTES = 10 * 1024 * 1024
+
+# What the two coaching endpoints accept, stated for the contract.
+#
+# FastAPI infers a `requestBody` from a declared parameter, and these read the
+# request directly — so without this the contract would publish two POSTs that
+# take nothing, and the generated client would offer no way to send the clip.
+SPOKEN_TURN = {
+    "requestBody": {
+        "required": True,
+        "content": {
+            "audio/wav": {"schema": {"type": "string", "format": "binary"}}
+        },
+    }
+}
+
+
+async def _recorded(request: Request, session_id: str) -> tuple[bytes, str]:
+    """One spoken turn, read off the wire under the ceiling.
+
+    The clip is the entire body rather than a multipart part. This request
+    carries one thing and the session is already in the path, so the envelope
+    has nothing to hold — the shape a single-clip speech endpoint normally
+    takes. It is also the only shape the client can produce: the recorder hands
+    React Native in-memory PCM and never a file URI, and `BlobManager` refuses
+    an `ArrayBuffer`, so a multipart part would mean writing the user's voice to
+    disk purely to satisfy the envelope.
+
+    Read in chunks and abandoned the moment it passes the ceiling. `UploadFile`
+    could not do that: it spooled the whole upload to disk before the handler
+    saw a byte, so an oversized clip was fully received and only then refused.
+    Here the connection stops paying for audio nobody will transcribe.
+    """
+    recorded = bytearray()
+    async for chunk in request.stream():
+        recorded.extend(chunk)
+        if len(recorded) > MAX_CLIP_BYTES:
+            raise ClipTooLong(session_id=session_id, limit_bytes=MAX_CLIP_BYTES)
+
+    # Believed only as a hint to the transcriber, never as a permission: the
+    # ceiling above is what bounds this, and it is measured rather than declared.
+    return bytes(recorded), request.headers.get(
+        "content-type", "application/octet-stream"
+    )
 
 router = APIRouter(tags=["sessions"])
 
@@ -417,11 +460,12 @@ async def say_the_opening_again(
     "/sessions/{session_id}/debrief/turns",
     response_model=CoachTurnRead,
     status_code=status.HTTP_201_CREATED,
+    openapi_extra=SPOKEN_TURN,
 )
 async def speak_to_coach(
     session: OwnedSession,
     coaching: CoachServiceDep,
-    clip: Annotated[UploadFile, File(description="One recorded turn.")],
+    request: Request,
 ) -> CoachTurnRead:
     """Say one thing to the coach, and hear one thing back.
 
@@ -444,21 +488,12 @@ async def speak_to_coach(
     `CLAUDE.md` sets — WCAG 2.2 AA plus live captions, as a v1 requirement — and
     a client cannot caption bytes it was handed.
     """
-    # Read with one byte of headroom so a clip exactly at the ceiling passes and
-    # anything past it is caught here rather than by however much memory the
-    # process had left. `UploadFile` spools to disk above a threshold, so this
-    # bounds what reaches the transcriber rather than what reaches the process —
-    # which is the number that matters, since the vendor is billed by audio.
-    recorded = await clip.read(MAX_CLIP_BYTES + 1)
-    if len(recorded) > MAX_CLIP_BYTES:
-        raise ClipTooLong(
-            session_id=str(session.id), limit_bytes=MAX_CLIP_BYTES
-        )
+    recorded, media_type = await _recorded(request, str(session.id))
 
     turn = await coaching.say(
         session_id=session.id,
         clip=recorded,
-        media_type=clip.content_type or "application/octet-stream",
+        media_type=media_type,
     )
 
     return CoachTurnRead(
@@ -472,12 +507,13 @@ async def speak_to_coach(
     "/sessions/{session_id}/debrief/weak-answers/{rank}/attempts",
     response_model=CoachTurnRead,
     status_code=status.HTTP_201_CREATED,
+    openapi_extra=SPOKEN_TURN,
 )
 async def spar(
     session: OwnedSession,
     rank: int,
     coaching: CoachServiceDep,
-    clip: Annotated[UploadFile, File(description="One re-answer, spoken.")],
+    request: Request,
 ) -> CoachTurnRead:
     """Answer one of the room's questions again, and hear what changed.
 
@@ -500,15 +536,13 @@ async def spar(
     Unmetered, like every coaching turn, and with no path from here to a
     balance.
     """
-    recorded = await clip.read(MAX_CLIP_BYTES + 1)
-    if len(recorded) > MAX_CLIP_BYTES:
-        raise ClipTooLong(session_id=str(session.id), limit_bytes=MAX_CLIP_BYTES)
+    recorded, media_type = await _recorded(request, str(session.id))
 
     turn = await coaching.spar(
         session_id=session.id,
         weak_rank=rank,
         clip=recorded,
-        media_type=clip.content_type or "application/octet-stream",
+        media_type=media_type,
     )
 
     return CoachTurnRead(

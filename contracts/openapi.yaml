@@ -818,12 +818,6 @@ paths:
           type: string
           format: uuid
           title: Session Id
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/Body_sessions_speak_to_coach'
       responses:
         '201':
           description: Successful Response
@@ -837,6 +831,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+      requestBody:
+        required: true
+        content:
+          audio/wav:
+            schema:
+              type: string
+              format: binary
   /v1/sessions/{session_id}/debrief/weak-answers/{rank}/attempts:
     post:
       tags:
@@ -894,12 +895,6 @@ paths:
           type: string
           format: uuid
           title: Session Id
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/Body_sessions_spar'
       responses:
         '201':
           description: Successful Response
@@ -913,6 +908,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+      requestBody:
+        required: true
+        content:
+          audio/wav:
+            schema:
+              type: string
+              format: binary
   /v1/balance:
     get:
       tags:
@@ -1616,28 +1618,6 @@ components:
         ordering, an internal rule, and showing three numbers that deplete in turn
 
         is the credits display §4.6 exists to refuse.'
-    Body_sessions_spar:
-      properties:
-        clip:
-          type: string
-          contentMediaType: application/octet-stream
-          title: Clip
-          description: One re-answer, spoken.
-      type: object
-      required:
-      - clip
-      title: Body_sessions_spar
-    Body_sessions_speak_to_coach:
-      properties:
-        clip:
-          type: string
-          contentMediaType: application/octet-stream
-          title: Clip
-          description: One recorded turn.
-      type: object
-      required:
-      - clip
-      title: Body_sessions_speak_to_coach
     CoachTurnRead:
       properties:
         text:

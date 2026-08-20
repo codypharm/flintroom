@@ -31,7 +31,16 @@ export interface Clip {
   /** True once no more will be accepted. The caller should stop and send. */
   full(): boolean;
   /** One WAV. Valid with nothing in it — the server names that case. */
-  finish(): Blob;
+  /**
+   * The recorded turn as WAV bytes, ready to be a request body.
+   *
+   * Deliberately not a `Blob`. React Native's `BlobManager` throws on an
+   * `ArrayBuffer` or any view over one, so the obvious wrapper is the one thing
+   * that cannot be built here — see the stub in `clip.test.ts`. `fetch` takes
+   * an `ArrayBuffer` body directly and base64s it across the bridge itself, so
+   * the wrapper bought nothing even where it worked.
+   */
+  finish(): ArrayBuffer;
 }
 
 export function collectClip(): Clip {
@@ -75,7 +84,7 @@ export function collectClip(): Clip {
         at += part.length;
       }
 
-      return new Blob([toWav(joined, rate)], { type: 'audio/wav' });
+      return toWav(joined, rate);
     },
   };
 }

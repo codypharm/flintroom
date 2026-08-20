@@ -109,9 +109,9 @@ export { Refused } from './refused';
 export interface DebriefApi {
   read(sessionId: string): Promise<Debrief>;
   /** One coaching turn: a clip in, a captioned and spoken reply out. */
-  say(sessionId: string, clip: Blob): Promise<CoachTurn>;
+  say(sessionId: string, clip: ArrayBuffer): Promise<CoachTurn>;
   /** A re-answer to the weak answer at this rank. Anchored by rank, per #59. */
-  spar(sessionId: string, rank: number, clip: Blob): Promise<CoachTurn>;
+  spar(sessionId: string, rank: number, clip: ArrayBuffer): Promise<CoachTurn>;
   /**
    * Say the opening again.
    *
@@ -148,11 +148,11 @@ export function createDebriefApi({
     const response = await fetcher(`${baseUrl}${path}`, {
       ...init,
       headers: {
-        // Deliberately nothing else. A multipart body needs a boundary in its
-        // Content-Type and only the runtime knows the one it generated; setting
-        // the header by hand produces a body the server cannot split, which
-        // surfaces as a 422 about a missing field rather than as a bad header.
         Authorization: `Bearer ${await accessToken()}`,
+        // Caller's last, so a turn can declare `audio/wav` over a body that
+        // would otherwise arrive as `application/octet-stream` and be handed to
+        // the transcriber with no idea what it is holding.
+        ...init.headers,
       },
     });
 
@@ -191,14 +191,29 @@ export function createDebriefApi({
     return new Refused('unreachable', `${path} failed with ${response.status}`, response.status);
   };
 
-  const turn = async (path: string, clip: Blob): Promise<CoachTurn> => {
-    const form = new FormData();
-    // `clip` is the field name both handlers read. Named here rather than
-    // derived, because a mismatch is a 422 the user sees as the recording
-    // having failed.
-    form.append('clip', clip, 'turn.wav');
-
-    return (await (await send(path, { method: 'POST', body: form })).json()) as CoachTurn;
+  const turn = async (path: string, clip: ArrayBuffer): Promise<CoachTurn> => {
+    /**
+     * The WAV is the entire body — no multipart, no form part, no file.
+     *
+     * The request has one thing in it and the session is already in the path,
+     * so the envelope multipart exists to provide has nothing to carry. It is
+     * the shape a single-clip speech endpoint normally takes.
+     *
+     * It is also the only shape React Native can send from memory. The recorder
+     * hands back PCM, never a file URI, and `BlobManager` throws outright on an
+     * ArrayBuffer — so the obvious `new Blob([wav])` failed on every device
+     * while the suite passed against jsdom, and every coaching turn reported "I
+     * could not reach the server" for a server it never opened a socket to.
+     * `convertRequestBody` takes an ArrayBuffer directly and base64s it across
+     * the bridge, so the bytes on the wire are real binary either way.
+     */
+    return (await (
+      await send(path, {
+        method: 'POST',
+        body: clip,
+        headers: { 'Content-Type': 'audio/wav' },
+      })
+    ).json()) as CoachTurn;
   };
 
   return {

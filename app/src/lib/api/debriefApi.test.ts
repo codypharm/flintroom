@@ -67,6 +67,7 @@ describe('read', () => {
     });
   });
 
+
   it('keeps an empty list as a list, not as an absence', async () => {
     // `DebriefRead` says this in as many words: an empty list is "this room had
     // nothing worth raising", and it is not the same as any of the refusals.
@@ -135,13 +136,13 @@ describe('refusals', () => {
 });
 
 describe('say', () => {
-  it('posts the clip as multipart under the name the endpoint reads', async () => {
+  it('posts the WAV as the whole body, because there is nothing else to send', async () => {
     const fetcher = answering(201, {
       text: 'Say the payback figure first.',
       speech: 'AAA=',
       heard: 'Payback lands around four months.',
     });
-    const clip = new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/wav' });
+    const clip = new Uint8Array([1, 2, 3]).buffer;
 
     const turn = await api(fetcher).say(SESSION, clip);
 
@@ -155,18 +156,22 @@ describe('say', () => {
 
     const [url, init] = (fetcher as jest.Mock).mock.calls[0];
     expect(url).toBe(`https://api.test/v1/sessions/${SESSION}/debrief/turns`);
-    expect((init.body as FormData).get('clip')).toBeTruthy();
-    // Never set by hand. A multipart request needs a boundary in its
-    // Content-Type, and the runtime writes one only when it is left alone — a
-    // hand-written `multipart/form-data` produces a body the server cannot
-    // split, which arrives as a 422 about a missing field.
-    expect(init.headers).not.toHaveProperty('Content-Type');
+    // The bytes themselves, not a form part wrapping them. Multipart exists to
+    // carry several parts and this request has one, with the session already in
+    // the path — the shape Deepgram and AssemblyAI take for the same job.
+    //
+    // It is also the only shape React Native can send from memory:
+    // `BlobManager` refuses an ArrayBuffer, and `FormData` has no part type for
+    // one, so multipart here would mean writing the user's voice to disk purely
+    // to satisfy the envelope. `convertRequestBody` takes this directly.
+    expect(init.body).toBe(clip);
+    expect(init.headers['Content-Type']).toBe('audio/wav');
   });
 
   it('refuses a clip the server called too long, by its own code', async () => {
     const promise = api(
       refusing(413, 'clip_too_long', 'That recording is too long.')
-    ).say(SESSION, new Blob());
+    ).say(SESSION, new ArrayBuffer(0));
 
     await expect(promise).rejects.toMatchObject({ code: 'clip_too_long' });
   });
@@ -176,7 +181,7 @@ describe('say', () => {
     // the one refusal whose recovery is "say it again", not "something broke".
     const promise = api(
       refusing(422, 'nothing_was_said', "I didn't catch anything there.")
-    ).say(SESSION, new Blob());
+    ).say(SESSION, new ArrayBuffer(0));
 
     await expect(promise).rejects.toMatchObject({ code: 'nothing_was_said' });
   });
@@ -189,13 +194,13 @@ describe('spar', () => {
     // makes "spar me on this instead" unexpressible.
     const fetcher = answering(201, { text: 'Closer.', speech: 'AAA=', heard: 'Two million.' });
 
-    await api(fetcher).spar(SESSION, 2, new Blob());
+    await api(fetcher).spar(SESSION, 2, new ArrayBuffer(0));
 
     const [url, init] = (fetcher as jest.Mock).mock.calls[0];
     expect(url).toBe(
       `https://api.test/v1/sessions/${SESSION}/debrief/weak-answers/2/attempts`
     );
-    expect([...(init.body as FormData).keys()]).toEqual(['clip']);
+    expect(init.body).toBeInstanceOf(ArrayBuffer);
   });
 
   it('refuses a rank this room does not have', async () => {
@@ -203,7 +208,7 @@ describe('spar', () => {
     // resumed onto a screen whose data has moved on.
     const promise = api(
       refusing(404, 'no_such_weak_answer', "That isn't one of this session's questions.")
-    ).spar(SESSION, 9, new Blob());
+    ).spar(SESSION, 9, new ArrayBuffer(0));
 
     await expect(promise).rejects.toMatchObject({ code: 'no_such_weak_answer' });
   });

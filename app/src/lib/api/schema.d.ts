@@ -981,22 +981,6 @@ export interface components {
             /** Has Time Remaining */
             has_time_remaining: boolean;
         };
-        /** Body_sessions_spar */
-        Body_sessions_spar: {
-            /**
-             * Clip
-             * @description One re-answer, spoken.
-             */
-            clip: string;
-        };
-        /** Body_sessions_speak_to_coach */
-        Body_sessions_speak_to_coach: {
-            /**
-             * Clip
-             * @description One recorded turn.
-             */
-            clip: string;
-        };
         /**
          * CoachTurnRead
          * @description What the coach said, in both channels at once.
@@ -1640,6 +1624,7 @@ export interface components {
             weakness: string;
             /** Why */
             why: string;
+            /** Next Time */
         };
     };
     responses: never;
@@ -2170,7 +2155,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_sessions_speak_to_coach"];
+                "audio/wav": string;
             };
         };
         responses: {
@@ -2206,7 +2191,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_sessions_spar"];
+                "audio/wav": string;
             };
         };
         responses: {

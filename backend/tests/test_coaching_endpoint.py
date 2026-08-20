@@ -31,7 +31,11 @@ FOUND = Judgement(
     why="You answered with a feeling about the trend, not a base.",
 )
 
-CLIP = {"clip": ("turn.wav", b"a recording", "audio/wav")}
+# The bytes and nothing else. Multipart until 2026-08-20, which a raw-body
+# handler would swallow whole — the MIME envelope reaching the transcriber as
+# though it were audio, with every assertion here still green.
+CLIP = b"a recording"
+WAV = {"Content-Type": "audio/wav"}
 
 
 async def test_a_spoken_turn_comes_back_as_captions_and_audio(
@@ -56,8 +60,8 @@ async def test_a_spoken_turn_comes_back_as_captions_and_audio(
 
     response = await client.post(
         f"/v1/sessions/{session.id}/debrief/turns",
-        headers=bearer(funded_account.user_id),
-        files=CLIP,
+        headers={**bearer(funded_account.user_id), **WAV},
+        content=CLIP,
     )
 
     assert response.status_code == 201
@@ -85,7 +89,7 @@ async def test_somebody_elses_room_cannot_be_spoken_to(
     response = await client.post(
         f"/v1/sessions/{session.id}/debrief/turns",
         headers=bearer(stranger.user_id),
-        files=CLIP,
+        content=CLIP,
     )
 
     assert response.status_code == 404
@@ -112,8 +116,8 @@ async def test_a_clip_past_the_ceiling_is_refused(
 
     response = await client.post(
         f"/v1/sessions/{session.id}/debrief/turns",
-        headers=bearer(funded_account.user_id),
-        files={"clip": ("turn.wav", b"x" * (MAX_CLIP_BYTES + 1), "audio/wav")},
+        headers={**bearer(funded_account.user_id), **WAV},
+        content=b"x" * (MAX_CLIP_BYTES + 1),
     )
 
     assert response.status_code == 413
@@ -135,7 +139,7 @@ async def test_speaking_without_a_credential_transcribes_nothing(
     )
 
     response = await client.post(
-        f"/v1/sessions/{session.id}/debrief/turns", files=CLIP
+        f"/v1/sessions/{session.id}/debrief/turns", content=CLIP
     )
 
     assert response.status_code == 401
@@ -172,8 +176,8 @@ async def test_the_reply_carries_back_what_the_transcriber_heard(
 
     response = await client.post(
         f"/v1/sessions/{session.id}/debrief/turns",
-        headers=bearer(funded_account.user_id),
-        files=CLIP,
+        headers={**bearer(funded_account.user_id), **WAV},
+        content=CLIP,
     )
 
     assert response.status_code == 201
@@ -199,8 +203,8 @@ async def test_a_re_answer_comes_back_beside_what_was_heard(
 
     response = await client.post(
         f"/v1/sessions/{session.id}/debrief/weak-answers/0/attempts",
-        headers=bearer(funded_account.user_id),
-        files=CLIP,
+        headers={**bearer(funded_account.user_id), **WAV},
+        content=CLIP,
     )
 
     assert response.status_code == 201
@@ -208,3 +212,41 @@ async def test_a_re_answer_comes_back_beside_what_was_heard(
         response.json()["heard"]
         == "Off a base of two million, at a cost of forty a customer."
     )
+
+
+async def test_a_turn_is_the_wav_itself_rather_than_a_form_around_it(
+    client, db, engine, sessions, settlement, funded_account, bearer,
+    weakness_reader, coach_model, speaker,
+):
+    """One clip, sent as the body, with nothing wrapped around it.
+
+    Multipart carries several parts and this request has one — the session is
+    already in the path, so the envelope has nothing left to hold. Deepgram and
+    AssemblyAI take the same shape for the same job.
+
+    What forces it rather than merely favouring it is the client. The recorder
+    hands React Native in-memory PCM and never a file URI, and `BlobManager`
+    throws on an `ArrayBuffer` outright, so there is no multipart part a phone
+    can build from what it is holding — short of writing the user's voice to
+    disk purely to satisfy the envelope. Until 2026-08-20 the app tried anyway
+    and threw before opening a socket, which somebody read as "I could not reach
+    the server" on a server that had never been called.
+    """
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    weakness_reader.judged = (FOUND,)
+    coach_model.reply_with = CoachReply(
+        text="Lead with the number.",
+        cites=(Cite(kind="line", index=1),),
+        usage=TurnUsage(900, 120),
+    )
+
+    response = await client.post(
+        f"/v1/sessions/{session.id}/debrief/turns",
+        headers={**bearer(funded_account.user_id), "Content-Type": "audio/wav"},
+        content=b"a recording",
+    )
+
+    assert response.status_code == 201
+    assert response.json()["text"] == "Lead with the number."
