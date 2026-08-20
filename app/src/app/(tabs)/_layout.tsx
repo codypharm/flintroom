@@ -1,6 +1,7 @@
+import { MaterialIcons } from '@expo/vector-icons';
 import { Tabs, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { StyleSheet, View, type ColorValue } from 'react-native';
+import { StyleSheet } from 'react-native';
 
 import { createBalanceApi, type Held } from '../../lib/api/balanceApi';
 import { API_BASE_URL, auth } from '../../lib/auth';
@@ -44,11 +45,19 @@ const balance = createBalanceApi({
  * leaves a band of ground above the tabs. The screens on the stack — the room,
  * the debrief, the prep sheet — still take both, because nothing is under them.
  *
- * The marks are drawn from Views, following `DeckAttach` and `SignInSheet`:
- * there is no icon library here, `expo-symbols` is SF Symbols and so iOS-only,
- * and a Unicode glyph standing in for an icon is a costume. Three shapes that
- * read at twenty-four points and mean something in every language this will
- * ship in.
+ * **The marks are Material Icons, which is what the mockups always specified.**
+ * `design-guide/home/code.html` draws its bottom nav with
+ * `material-symbols-outlined`, and this bar spent its life approximating that
+ * with Views — because no icon set was installed, and `expo-symbols`, though a
+ * dependency, is SF Symbols and so iOS-only.
+ *
+ * What that produced was a ring for Home whose docstring described a seat the
+ * component never drew. Hand-drawing a house from two borders on a rotated
+ * square was not better: the same mistake with more geometry.
+ *
+ * `@expo/vector-icons` is Expo's own package and ships the Material set as a
+ * font, so these are real vectors at any size and identical on both platforms.
+ * It replaces four hand-built components.
  */
 export default function TabsLayout() {
   const [held, setHeld] = useState<Held | null>(null);
@@ -108,105 +117,35 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color: tint }) => <House tint={tint} />,
+          tabBarIcon: ({ color: tint }) => <MaterialIcons name="home" size={MARK} color={tint} />,
         }}
       />
       <Tabs.Screen
         name="progress"
         options={{
           title: 'Progress',
-          tabBarIcon: ({ color: tint }) => <Climb tint={tint} />,
+          tabBarIcon: ({ color: tint }) => <MaterialIcons name="trending-up" size={MARK} color={tint} />,
         }}
       />
       <Tabs.Screen
         name="library"
         options={{
           title: 'Library',
-          tabBarIcon: ({ color: tint }) => <Shelf tint={tint} />,
+          tabBarIcon: ({ color: tint }) => <MaterialIcons name="history" size={MARK} color={tint} />,
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: 'Settings',
-          tabBarIcon: ({ color: tint }) => <Dials tint={tint} />,
+          tabBarIcon: ({ color: tint }) => <MaterialIcons name="settings" size={MARK} color={tint} />,
         }}
       />
     </Tabs>
   );
 }
 
-/**
- * What the bar hands a mark.
- *
- * `ColorValue` rather than `string`: React Native's own type admits an opaque
- * platform colour, and narrowing it here would be a lie that only compiles.
- */
-interface Mark {
-  tint: ColorValue;
-}
-
-/**
- * A house, because this tab is called Home and a tab bar is not the place to
- * be clever.
- *
- * It was a ring until 2026-08-20 — "the table seen from above, with the
- * presenter's seat at its edge". The seat was never drawn, so what shipped was
- * a bare circle beside three marks that read, and the architect asked for a
- * proper home icon. `design-guide/home/code.html` had it right all along: the
- * mockup's bottom nav uses Material Symbols `home`, a house.
- *
- * Outline rather than filled, unlike the mockup's `FILL 1`. The active tab is
- * already carrying tint; filling it as well would make Home the only mark that
- * changes weight and not just colour.
- */
-function House({ tint }: Mark) {
-  return (
-    <View style={styles.mark}>
-      <View style={[styles.roof, { borderColor: tint }]} />
-      <View style={[styles.walls, { borderColor: tint }]} />
-    </View>
-  );
-}
-
-/** A run of rooms: bars rising left to right, which is what Progress draws. */
-function Climb({ tint }: Mark) {
-  return (
-    <View style={[styles.mark, styles.climb]}>
-      <View style={[styles.step, { height: 7, backgroundColor: tint }]} />
-      <View style={[styles.step, { height: 12, backgroundColor: tint }]} />
-      <View style={[styles.step, { height: 18, backgroundColor: tint }]} />
-    </View>
-  );
-}
-
-/** An archive: entries stacked down a page, which is what the Library draws. */
-function Shelf({ tint }: Mark) {
-  return (
-    <View style={styles.mark}>
-      <View style={[styles.rule, styles.long, { backgroundColor: tint }]} />
-      <View style={[styles.rule, styles.long, { backgroundColor: tint }]} />
-      <View style={[styles.rule, styles.short, { backgroundColor: tint }]} />
-    </View>
-  );
-}
-
-/** Two tracks with their handles at different points — a control, not a cog. */
-function Dials({ tint }: Mark) {
-  return (
-    <View style={styles.mark}>
-      <View style={styles.track}>
-        <View style={[styles.rule, styles.long, { backgroundColor: tint }]} />
-        <View style={[styles.handle, styles.handleLeft, { backgroundColor: tint }]} />
-      </View>
-      <View style={styles.track}>
-        <View style={[styles.rule, styles.long, { backgroundColor: tint }]} />
-        <View style={[styles.handle, styles.handleRight, { backgroundColor: tint }]} />
-      </View>
-    </View>
-  );
-}
-
+/** Both platforms' tab-bar convention, and what the glyphs are drawn for. */
 const MARK = 24;
 
 const styles = StyleSheet.create({
@@ -216,63 +155,4 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   label: { ...type.labelLg, fontSize: 11 },
-
-  mark: {
-    width: MARK,
-    height: MARK,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: space.hair,
-  },
-
-  /**
-   * Two adjacent borders on a square, turned to stand on its point.
-   *
-   * A transform does not change layout, so this still occupies 12pt in the
-   * column while the drawn peak spans 12√2 ≈ 17pt corner to corner. That is
-   * deliberate: the arms overhang `walls` by two points on each side, which is
-   * an eave, and it is what stops the shape reading as a triangle balanced on
-   * a box.
-   */
-  roof: {
-    width: 12,
-    height: 12,
-    borderTopWidth: 2,
-    borderLeftWidth: 2,
-    transform: [{ rotate: '45deg' }],
-    // The arm ends fall ~2.5pt below the un-rotated box. Without this the
-    // walls start level with the box instead of level with the eaves, and the
-    // roof floats.
-    marginBottom: 2,
-  },
-
-  /** No top edge: the roof already closes it, and drawing both doubles it. */
-  walls: {
-    width: 13,
-    height: 8,
-    borderWidth: 2,
-    borderTopWidth: 0,
-  },
-
-  /** The bars sit on a shared baseline, which is what makes them a climb. */
-  climb: { flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
-  step: { width: 4, borderRadius: 1 },
-
-  rule: { height: 2, borderRadius: 1 },
-  long: { width: 18 },
-  short: { width: 11 },
-
-  /**
-   * The handle sits *on* the track rather than beside it, which is what makes
-   * two rules read as controls rather than as a shorter list.
-   */
-  track: { width: 18, justifyContent: 'center' },
-  handle: {
-    position: 'absolute',
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  handleLeft: { left: 3 },
-  handleRight: { right: 3 },
 });
