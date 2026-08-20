@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -97,7 +97,30 @@ export default function RoomRoute() {
   }
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.screen} edges={['bottom']}>
+      {/*
+        **The header is the way back, and it is the real one.** Two lists lead
+        here — the Library and the run of rooms on Progress — and landing
+        somebody on the one they did not come from is worse than no control at
+        all, so `from` still names the destination. It goes on
+        `headerBackTitle`, which is where iOS draws it, instead of into a
+        chevron this screen drew for itself.
+
+        An empty `headerTitle` on purpose. The bar exists for the back button;
+        the date below it is this screen's title and always was. That is the
+        arrangement `_layout.tsx` was reaching for when it hid every header —
+        it just threw out the back button along with the duplicate title.
+      */}
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerTitle: '',
+          headerBackTitle: from === 'progress' ? 'Progress' : 'Your rooms',
+          headerTintColor: color.onSurface,
+          headerShadowVisible: false,
+          headerStyle: { backgroundColor: color.surface },
+        }}
+      />
       <RoomRead
         // Null when the room is not in the list — a deep link to somebody
         // else's, or one deleted since. The transcript request would have
@@ -107,15 +130,6 @@ export default function RoomRoute() {
         who={room ? whoWasThere(room.archetypes) : ''}
         lines={lines}
         onDebrief={() => router.push(`/debrief/${id}?from=room`)}
-        // Two lists lead here — the Library and the run of rooms on Progress —
-        // and landing somebody back on the one they did not come from is worse
-        // than no control at all. The opener says which it was; `router.back`
-        // does the actual returning, so a deep link with no `from` still says
-        // something true and still goes somewhere sensible.
-        back={{
-          where: from === 'progress' ? 'Progress' : 'Your rooms',
-          onPress: () => router.back(),
-        }}
       />
     </SafeAreaView>
   );
@@ -123,7 +137,7 @@ export default function RoomRoute() {
 
 function Centred({ children }: { children: React.ReactNode }) {
   return (
-    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.screen} edges={['bottom']}>
       <View style={styles.centred}>{children}</View>
     </SafeAreaView>
   );

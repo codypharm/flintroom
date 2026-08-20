@@ -90,22 +90,39 @@ function Shell() {
       */}
       <StatusBar style="dark" />
       {/*
-        No headers, anywhere.
+        No header by default, and two routes that opt back in.
 
         Every screen in this app draws its own title — `Room`, `Echo spike`,
-        `Before you go in`, `Who is in the room` — so a stack header is a second
-        title stacked above the first. Worse, a route with no `Stack.Screen`
-        entry falls back to its *filename*, which is how six screens came to be
-        headed `onboarding`, `setup`, `room`, `prep-sheet` in lowercase.
+        `Before you go in`, `Who is in the room` — so a stack header carrying a
+        *title* is a second title stacked above the first. Worse, a route with
+        no `Stack.Screen` entry falls back to its *filename*, which is how six
+        screens came to be headed `onboarding`, `setup`, `room`, `prep-sheet` in
+        lowercase.
 
-        Set here rather than per route so a new screen inherits it: the failure
-        this replaces was silent and opt-out, and the fix should be the default.
-        Back is still available — `Stack` keeps the edge-swipe gesture with the
-        header hidden, and Android has the system gesture regardless.
+        **That argument was half right, and the half it got wrong cost the back
+        button.** The duplicate title was the problem; hiding the bar threw out
+        the back control with it, and every pushed screen then grew a chevron of
+        its own — which `CLAUDE.md` forbids in as many words ("brand expresses
+        through tint, type, motion, and content, not through reinvented
+        controls"). Those chevrons also sat *inside* their ScrollViews, so on a
+        long transcript the only way back scrolled off the top of the screen and
+        left nothing but the invisible edge-swipe.
 
-        The cost is that each screen owns its own top safe-area inset. That is
-        `edges={['top', 'bottom']}` on every `SafeAreaView` below, and it is the
-        honest trade: the header was paying that rent by occupying the space.
+        So `rooms/[id]` and `debrief/[id]` set `headerShown` themselves with an
+        empty `headerTitle`: the bar carries the back button, the content keeps
+        the title, and nothing is drawn twice. `prep-sheet/[id]` deliberately
+        does not — that sheet is photographed and carried into a real meeting,
+        and a nav bar is in every one of those photographs, so its way back
+        stays at the foot where `PrepSheet` argues for it.
+
+        Still `false` here rather than per route, because it remains the right
+        default: the failure it replaces was silent and opt-out. A screen that
+        wants a bar now says so.
+
+        The cost is that each screen owns its own top safe-area inset — the two
+        with headers drop `'top'` from their `SafeAreaView`, and the debrief
+        does it conditionally, because it hides its bar when there is nowhere
+        back to.
       */}
       {/*
         **Nothing renders until we know who is there.** Until 2026-08-20 the app

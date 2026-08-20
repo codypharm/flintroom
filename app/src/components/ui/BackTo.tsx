@@ -5,22 +5,26 @@ import { color, space, type } from '../../theme/tokens';
 /**
  * The way back, drawn rather than assumed.
  *
- * `_layout.tsx` hides every stack header, for a good reason — each screen draws
- * its own title, and a header would stack a second one above it — and it argued
- * that back was still available because the stack keeps the edge-swipe gesture.
- * That is true and it was not enough. **A gesture is invisible**, so nobody is
- * told it exists, and it is unreachable for a screen-reader or switch-control
- * user, which makes it an accessibility failure rather than a preference.
+ * **One screen uses this, and only because a native header cannot serve it.**
+ * `rooms/[id]` and `debrief/[id]` both had one of these and both gave it up for
+ * a real stack header on 2026-08-20 — a drawn chevron is a reinvented control,
+ * and theirs scrolled off the top of the screen besides.
  *
- * It surfaced on the room a Progress bar opens: a screen you dip into from a
- * list and come back from, where a linear flow's "you finish and move on" does
- * not apply. Reported as *"the room detail page from the progress list does not
+ * `PrepSheet` keeps it, and the reason is the sheet's whole purpose: it is
+ * photographed and carried into a real meeting, and a nav bar is in every one
+ * of those photographs. Below the content the way out is reachable by thumb and
+ * out of frame, which no header can be. See `PrepSheetProps.back`.
+ *
+ * Not left to the edge-swipe gesture either. **A gesture is invisible**, so
+ * nobody is told it exists, and it is unreachable for a screen-reader or
+ * switch-control user — an accessibility failure rather than a preference.
+ * Reported originally as *"the room detail page from the progress list does not
  * have nav"*.
  *
- * Lifted from `SignInSheet`, which had grown one of these privately. A second
- * hand-rolled back control is how two screens come to disagree about where the
- * way out is, and this is the one control on any screen that must never be a
- * surprise.
+ * **Do not reach for this on a new screen.** If a pushed screen needs a way
+ * back, it wants `headerShown` on its own `Stack.Screen`, not a second drawn
+ * chevron — that is how two screens come to disagree about where the way out
+ * is.
  *
  * **It says where it goes.** "Back" alone is a direction; "Your rooms" is a
  * destination, and a person deciding whether to press it wants the second.

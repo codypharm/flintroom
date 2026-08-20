@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AudioContext, AudioManager, AudioRecorder } from 'react-native-audio-api';
@@ -361,7 +361,29 @@ export default function DebriefRoute() {
   }
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.screen} edges={from === 'room' ? ['top', 'bottom'] : ['bottom']}>
+      {/*
+        **Shown or hidden, because sometimes there is nowhere back to.**
+        Arriving from a room that has just ended, "back" is a metered session
+        that is over — but the interrogation route is still on the stack, so a
+        header would draw a live back button onto a dead screen. Hiding the bar
+        entirely beats drawing an empty one, and the top inset returns to the
+        SafeAreaView in exactly that case.
+
+        Otherwise somebody opened this from a past room, which is a place worth
+        returning to, and the bar carries the way there. Empty title: the
+        heading below is this screen's title.
+      */}
+      <Stack.Screen
+        options={{
+          headerShown: from !== 'room',
+          headerTitle: '',
+          headerBackTitle: 'This room',
+          headerTintColor: color.onSurface,
+          headerShadowVisible: false,
+          headerStyle: { backgroundColor: color.surface },
+        }}
+      />
       <Debrief
         answers={answers}
         pressed={pressed}
@@ -378,7 +400,6 @@ export default function DebriefRoute() {
         // ended hands somebody here and there is nowhere back to — the session
         // is over, and offering to return to it would be offering a dead
         // screen. Reached from a past room, back is a real place.
-        back={from === 'room' ? { where: 'This room', onPress: () => router.back() } : null}
         onPrepSheet={() => router.push(`/prep-sheet/${id}`)}
       />
     </SafeAreaView>

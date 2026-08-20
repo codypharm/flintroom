@@ -22,7 +22,6 @@ async function setup(overrides: Partial<RoomReadProps> = {}) {
     who: 'The CFO and The Technical Skeptic',
     lines: LINES,
     onDebrief: jest.fn(),
-    back: { where: 'Your rooms', onPress: jest.fn() },
     ...overrides,
   };
 
@@ -54,21 +53,21 @@ it('says where in the room each line fell', async () => {
   expect(screen.getByText('0:15')).toBeTruthy();
 });
 
-it('says where the way back goes, rather than only that there is one', async () => {
-  // Reported from a device: "the room detail page from the progress list does
-  // not have nav". Every screen in this app hides its stack header, and the
-  // layout argued back was still available because the edge-swipe gesture
-  // survives. It does — and a gesture is invisible, and unreachable for a
-  // screen-reader or switch-control user, which makes it an accessibility
-  // failure rather than a preference.
+it('draws no back control of its own, because the stack draws a real one', async () => {
+  // This screen grew a hand-rolled chevron because the layout hid every stack
+  // header, and the layout hid them because a route with no `Stack.Screen`
+  // entry falls back to its filename. That was an argument for configuring
+  // titles, not for switching off a native subsystem — and the drawn one had a
+  // defect the native one cannot have: it sat *inside* the ScrollView, so on a
+  // long transcript the only way back scrolled off the top of the screen and
+  // left nothing but the invisible edge-swipe.
   //
-  // Named rather than "Back", because two lists lead here and somebody
-  // deciding whether to press it wants the destination.
-  const { back } = await setup({ back: { where: 'Progress', onPress: jest.fn() } });
+  // `rooms/[id]` turns the header on with an empty title, so the bar carries
+  // the back button and this content keeps its own. The destination name moves
+  // to `headerBackTitle`, which is where iOS puts it.
+  await setup({});
 
-  await userEvent.press(screen.getByLabelText('Back to progress'));
-
-  expect(back.onPress).toHaveBeenCalled();
+  expect(screen.queryByLabelText(/^Back to/)).toBeNull();
 });
 
 it('offers the way to what the room found', async () => {

@@ -4,7 +4,6 @@ import type { Pressed, WeakAnswer } from '../../lib/api/debriefApi';
 import { panelistName } from '../../lib/panel/vocabulary';
 import { color, radius, space, type } from '../../theme/tokens';
 import { DebriefEntry, type Exchange } from './DebriefEntry';
-import { BackTo } from '../ui/BackTo';
 import { Replay } from './Replay';
 import { TalkControl, type Listening } from './TalkControl';
 
@@ -97,13 +96,15 @@ export interface DebriefProps {
    */
   onReplayOpening: () => void;
   /**
-   * The way out, or null when there is nowhere back to.
+   * REMOVED — `debrief/[id]` shows or hides the stack header instead.
    *
-   * Null on the path this screen was built for — handed here by a room that has
-   * just ended, where "back" is a metered session that is over. Non-null when
-   * somebody opened it from a past room, which is a place they can return to.
+   * The nullability was the interesting part and it survives: arriving from a
+   * room that has just ended, "back" is a metered session that is over, so
+   * there is genuinely nowhere to return to. A native header would still draw
+   * a back button there, because the interrogation route is still on the
+   * stack. The route answers that with `headerShown` rather than with a prop,
+   * which also spares this screen a 44pt bar holding nothing.
    */
-  back: { where: string; onPress: () => void } | null;
   onPrepSheet: () => void;
 }
 
@@ -134,7 +135,6 @@ export function Debrief({
   onStop,
   onReplay,
   onReplayOpening,
-  back,
   onPrepSheet,
 }: DebriefProps) {
   // One capture at a time. Two would race, and the loser's clip would arrive
@@ -150,8 +150,6 @@ export function Debrief({
         contentContainerStyle={styles.content}
         accessibilityLabel="Your debrief"
       >
-        {back && <BackTo where={back.where} onPress={back.onPress} />}
-
         <Text style={styles.title}>
           {answers.length === 0 ? 'Nothing came loose' : 'Where it came loose'}
         </Text>

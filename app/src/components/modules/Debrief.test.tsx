@@ -54,7 +54,6 @@ async function setup(overrides: Partial<DebriefProps> = {}) {
     onStop: jest.fn(),
     onReplay: jest.fn(),
     onReplayOpening: jest.fn(),
-    back: null,
     onPrepSheet: jest.fn(),
     ...overrides,
   };
@@ -361,14 +360,17 @@ it('offers no way back on the path a finished room hands you down', async () => 
   expect(screen.queryByLabelText(/^Back to/)).toBeNull();
 });
 
-it('offers the way back when it was opened from a past room', async () => {
-  // Reached from the Library or from a bar on Progress, "back" is a real place
-  // somebody was a moment ago. Reported against the room screen — "does not
-  // have nav" — and this is the same defect one push further along.
-  const back = { where: 'This room', onPress: jest.fn() };
-  await setup({ back });
+it('leaves the way back to the stack, in both directions', async () => {
+  // This screen used to draw its own chevron and take a nullable `back` to
+  // decide whether to. The nullability was the real content and it moved rather
+  // than vanished: `debrief/[id]` now sets `headerShown: from !== 'room'`, so
+  // arriving from a room that has just ended still gets no way "back" to a
+  // metered session that is over — it gets no bar at all, rather than an empty
+  // one.
+  //
+  // Both cases are asserted here as the same absence, because from this
+  // component's side they are: it never draws one.
+  await setup({});
 
-  await userEvent.press(screen.getByLabelText('Back to this room'));
-
-  expect(back.onPress).toHaveBeenCalled();
+  expect(screen.queryByLabelText(/^Back to/)).toBeNull();
 });
