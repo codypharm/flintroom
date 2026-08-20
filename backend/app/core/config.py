@@ -54,10 +54,63 @@ def _describe(error: ValidationError) -> str:
     return f"configuration is invalid: {problems}"
 
 
+#: Substrings that make a field name a credential.
+#:
+#: Derived rather than a hand-kept list of fields, because a hand-kept list is
+#: only correct until the next credential is added and somebody forgets. A name
+#: containing any of these is redacted whether or not anybody thought about it.
+_SECRET_HINTS = ("secret", "key", "password", "token", "database_url")
+
+#: Names that look like credentials and are not.
+#:
+#: A client *id* is published to app stores and printed in error messages by the
+#: providers themselves. Redacting it would hide the field most often wrong
+#: during a sign-in problem, which is the opposite of the point.
+_PUBLIC_ANYWAY = ("google_client_id", "apple_client_id", "elevenlabs_default_voice_id")
+
+
+def _is_secret(field: str) -> bool:
+    """Whether this field's value may ever be printed."""
+    if field in _PUBLIC_ANYWAY:
+        return False
+    return any(hint in field for hint in _SECRET_HINTS)
+
+
 class Settings(BaseSettings):
-    """Read from the environment, and from a local `.env` that is never committed."""
+    """Read from the environment, and from a local `.env` that is never committed.
+
+    **Never prints what it holds.** On 2026-08-20 a call passed this object where
+    `create_engine` expected a string; SQLAlchemy's `ArgumentError` reprs what it
+    was given, and a terminal received the JWT signing secret, three provider API
+    keys and the database password. Every one had to be rotated.
+
+    #28 stopped a *successful* boot from logging secrets. This is the other half
+    — what an *unsuccessful* anything carries. `repr` is what tracebacks, the
+    logging module's `%r` and most debuggers reach for, so the guard belongs
+    here rather than at each call site, where it would have to be remembered
+    once per caller forever.
+
+    The field *names* survive redaction on purpose: knowing `jwt_secret` is set
+    and wrong is the whole of debugging it, and knowing its value is not.
+    """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    def __repr__(self) -> str:
+        # `getattr` with a default, because pydantic reprs a half-built object
+        # while raising a `ValidationError` — a repr that itself raises turns a
+        # missing-variable message into an `AttributeError` about the reporter,
+        # which is a worse morning than the one it was trying to describe.
+        shown = ", ".join(
+            f"{name}="
+            + ("'<redacted>'" if _is_secret(name) else repr(getattr(self, name, ...)))
+            for name in type(self).model_fields
+        )
+        return f"{type(self).__name__}({shown})"
+
+    # Pydantic builds `__str__` from the fields too, so redacting only `__repr__`
+    # would leave `f"{settings}"` and `print(settings)` leaking everything.
+    __str__ = __repr__
 
     #: Where the database is. Declared here rather than read by `create_engine`
     #: through `os.getenv`, which is what it used to do — and which never saw

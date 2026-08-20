@@ -184,3 +184,81 @@ def test_a_single_client_still_works_unchanged(environment):
     environment(APPLE_CLIENT_ID="com.flintroom.app")
 
     assert Settings(_env_file=None).apple_audiences == ("com.flintroom.app",)
+
+
+#: Field names whose value must never reach a traceback, a log or a repr.
+#:
+#: Matched on the name rather than listed by hand, so a credential added next
+#: year is covered by the guard that already exists rather than by somebody
+#: remembering to extend a list.
+SECRET_ISH = ("secret", "key", "password", "token", "database_url")
+
+
+def test_settings_never_print_what_they_hold():
+    """A real leak, on 2026-08-20, and not a hypothetical one.
+
+    `create_engine(url: str)` was handed the whole `Settings` object by mistake.
+    SQLAlchemy's `ArgumentError` reprs what it was given, so the traceback
+    printed the JWT secret, three provider API keys and the database password
+    into a terminal — and would do the same into any log aggregator.
+
+    #28 was "stop boot from leaking secrets" and covered the values a *successful*
+    boot logs. This is the other path: the values an *unsuccessful* anything
+    carries. `repr` is what tracebacks, logging's `%r`, and most debuggers reach
+    for, so the guard belongs there rather than at each call site.
+    """
+    settings = Settings(
+        database_url="postgresql+asyncpg://u:hunter2@localhost/db",
+        jwt_secret="a-real-signing-secret-of-at-least-32-chars",
+        google_client_id="public.apps.googleusercontent.com",
+        apple_client_id="com.flintroom.app",
+        elevenlabs_api_key="sk_a_real_key",
+        anthropic_api_key="sk-ant-a-real-key",
+        gemini_api_key="a-real-gemini-key",
+    )
+
+    printed = repr(settings)
+
+    for leaked in (
+        "hunter2",
+        "a-real-signing-secret-of-at-least-32-chars",
+        "sk_a_real_key",
+        "sk-ant-a-real-key",
+        "a-real-gemini-key",
+    ):
+        assert leaked not in printed, printed
+    assert leaked not in str(settings)
+
+
+def test_a_redacted_setting_still_says_which_one_it_is():
+    """Redaction that hides the field name too is a debugging dead end.
+
+    The point is to know that `jwt_secret` is set and wrong, without learning
+    what it is.
+    """
+    settings = Settings(
+        database_url="postgresql+asyncpg://u:p@localhost/db",
+        jwt_secret="x" * 32,
+        google_client_id="g",
+        apple_client_id="a",
+        elevenlabs_api_key="e",
+    )
+
+    printed = repr(settings)
+
+    assert "jwt_secret" in printed
+    assert "google_client_id='g'" in printed, "a public identifier is not a secret"
+
+
+def test_every_secret_shaped_field_is_covered_by_the_guard():
+    """The list of what to hide is derived, not maintained.
+
+    A credential added next year is redacted because its *name* looks like one,
+    rather than because somebody remembered to add it — which is the failure
+    mode of every hand-kept list of sensitive fields.
+    """
+    from app.core.config import _is_secret
+
+    for name in Settings.model_fields:
+        if any(hint in name for hint in SECRET_ISH):
+            assert _is_secret(name), name
