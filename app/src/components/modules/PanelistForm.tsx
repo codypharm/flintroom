@@ -107,12 +107,34 @@ export function PanelistForm({
       keyboardShouldPersistTaps="handled"
     >
       <Text style={styles.title} accessibilityRole="header">
-        {existing ? 'Edit this panelist' : 'Write a panelist'}
+        {existing ? 'Edit this panelist' : 'Write one panelist'}
       </Text>
 
+      {/*
+        **"What do you call them?" was here and it asked for a nickname.**
+        Reported as unclear, and it was: the field is the *role* — what the card,
+        the transcript and the Library call this panelist — and "what do you call
+        them" is the question you ask about somebody you already know.
+
+        It was also a near-duplicate of the next one. "What do you call them?"
+        and "Who are they?" both read as identity, with nothing saying the first
+        is one line and the second a paragraph. Role, then character, is a
+        ladder; two questions about identity is a form asking twice.
+
+        **And it made a form for one person read as a form for several.** Every
+        question here says "they" — correctly, because a panelist has no gender
+        to assume — but four of them in a row, one screen away from "Your
+        panelists", reads as configuring a group. Naming one role in the first
+        question gives every pronoun after it an antecedent that is obviously
+        one person.
+      */}
       <Field
-        label="What do you call them?"
-        hint="A role, the way the others are — The Board Chair, The Regulator."
+        label="What is their role?"
+        // The examples, plus where it turns up. The hint used to say "a role,
+        // the way the others are", which restated the label — helper text
+        // answers the question the control raises, and the question here is
+        // whether this is a private note or something you will be reading later.
+        hint="One person: The Board Chair, The Regulator. It is what the transcript will call them."
         value={title}
         onChange={setTitle}
         busy={busy}
@@ -120,11 +142,14 @@ export function PanelistForm({
 
       <Field
         label="Who are they?"
-        // The register is the whole guard here (§6): a role, not a person. The
-        // placeholder teaches that shape without a rule, which is the call
-        // `TablePlan` made about listing situations — "a picker option is a
-        // promise".
-        hint="How they behave in a room. The panel is built from roles, not from people."
+        // The register is the whole guard here (§6), and the placeholder is what
+        // carries it — a manner, in the shape the shipped eight are written in.
+        //
+        // The second sentence used to read "the panel is built from roles, not
+        // from people", which is a rule about the product rather than help with
+        // the field, and naming people is a poor way to stop somebody thinking
+        // about one. What replaces it says why the field is worth effort.
+        hint="How they behave in a room. It is all they will know about who they are."
         placeholder="Unimpressed by anything that isn't a number. Asks one question at a time."
         value={persona}
         onChange={setPersona}

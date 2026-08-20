@@ -64,7 +64,7 @@ async function fill(
   over: { title?: string; persona?: string; domain?: string } = {}
 ) {
   await user.type(
-    screen.getByLabelText('What do you call them?'),
+    screen.getByLabelText('What is their role?'),
     over.title ?? 'The Board Chair'
   );
   await user.type(
@@ -94,7 +94,7 @@ it('will not save a panelist with nothing to go after', async () => {
   // so the form refuses before the server has to.
   const { user, onSave } = await show();
 
-  await user.type(screen.getByLabelText('What do you call them?'), 'X');
+  await user.type(screen.getByLabelText('What is their role?'), 'X');
   await user.type(screen.getByLabelText('Who are they?'), 'Y');
   await user.press(screen.getByLabelText('Save this panelist'));
 
@@ -164,9 +164,12 @@ it('says what is still missing rather than sitting there disabled', async () => 
   // saying nothing at all.
   const { user } = await show();
 
-  await user.type(screen.getByLabelText('What do you call them?'), 'The Chair');
+  await user.type(screen.getByLabelText('What is their role?'), 'The Chair');
 
-  expect(screen.getByText(/who they are/i)).toBeTruthy();
+  // Exact, not a substring: the second field's hint ends "...all they will know
+  // about who they are", and a loose match would pass on the helper text while
+  // the shortfall line was missing entirely.
+  expect(screen.getByText('Say who they are.')).toBeTruthy();
 });
 
 it('stops saying it the moment there is nothing missing', async () => {
@@ -200,7 +203,7 @@ it('reopens an existing panelist with its own words in it', async () => {
     },
   });
 
-  expect(screen.getByLabelText('What do you call them?').props.value).toBe(
+  expect(screen.getByLabelText('What is their role?').props.value).toBe(
     'The Regulator'
   );
   expect(screen.getByLabelText('Who are they?').props.value).toBe(
@@ -239,4 +242,16 @@ it('never asks a question this product does not have', async () => {
   await show();
 
   expect(screen.queryByText(/investment|stage|tone|template/i)).toBeNull();
+});
+
+it('reads as one person rather than as a group', async () => {
+  // Every question here says "they", which is right — a panelist has no gender
+  // to assume. But four of them in a row, one screen away from "Your
+  // panelists", reads as configuring several. The heading and the first
+  // question carry the singular so every pronoun after them has an antecedent
+  // that is obviously one person.
+  await show();
+
+  expect(screen.getByText('Write one panelist')).toBeTruthy();
+  expect(screen.getByText(/One person:/)).toBeTruthy();
 });
