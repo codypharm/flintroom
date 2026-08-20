@@ -318,6 +318,14 @@ export default function HomeScreen() {
         onAttach={attach}
         onRemoveMaterial={() => void detach()}
         onDifficultyChange={chooseDifficulty}
+        // Pro only, and the row states rather than refuses on any other plan
+        // — `AuthorRow` draws the difference. Pushed rather than presented as
+        // a modal: writing a panelist is considered work with several fields,
+        // not a one-time interruption before entering a room, which is what
+        // `disclosure` is and why that one is a sheet.
+        onAuthor={
+          room?.mayAuthor ? () => router.push('/panelists/new') : null
+        }
         onStart={() => {
           // The seating and the deck travel as params rather than being read
           // back from the server, because nothing persists them: `seated` is

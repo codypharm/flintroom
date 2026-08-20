@@ -39,6 +39,7 @@ async function setup(overrides: Partial<PanelSetupProps> = {}) {
     onRemoveMaterial: jest.fn(),
     onDifficultyChange: jest.fn(),
     onStart: jest.fn(),
+    onAuthor: jest.fn(),
     ...overrides,
   };
   await render(<PanelSetup {...props} />);
@@ -276,4 +277,25 @@ it('puts writing your own outside the rail, where nothing must be swiped', async
 
   expect(screen.getByText('Write your own')).toBeTruthy();
   expect(rail.queryByText('Write your own')).toBeNull();
+});
+
+it('opens the author when the plan includes it', async () => {
+  // It has been drawn but inert since it was built, deliberately: "authoring
+  // has no endpoint yet (#65), and a control that opens nothing is worse than a
+  // statement." The endpoint exists now, so on Pro it becomes a control — and
+  // on a plan without it, it stays exactly the statement it was.
+  const props = await setup({ room: { ...ROOM, mayAuthor: true } });
+
+  await userEvent.press(screen.getByLabelText('Write your own panelist'));
+
+  expect(props.onAuthor).toHaveBeenCalled();
+});
+
+it('never puts a price on the row', async () => {
+  // §4.5 keeps the upsell out of the way of a rehearsal. A fact and a plan
+  // name, never a locked door with a number on it.
+  await setup({ room: { ...ROOM, mayAuthor: false } });
+
+  expect(screen.getByText('On Pro')).toBeTruthy();
+  expect(screen.queryByText(/\$|month|upgrade now/i)).toBeNull();
 });

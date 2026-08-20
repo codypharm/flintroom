@@ -110,6 +110,15 @@ export interface PanelSetupProps {
    */
   header?: React.ReactNode;
   onStart: () => void;
+  /**
+   * Open the panelist author, or null where it cannot be opened.
+   *
+   * Null keeps `AuthorRow` the statement it was built as. It is not the same as
+   * a disabled button: a plan without authoring should read as a capability
+   * that exists elsewhere, not as a locked door — §4.5 keeps the upsell out of
+   * the way of a rehearsal.
+   */
+  onAuthor: (() => void) | null;
 }
 
 /**
@@ -155,6 +164,7 @@ export function PanelSetup({
   onDifficultyChange,
   header,
   onStart,
+  onAuthor,
 }: PanelSetupProps) {
   const full = seated.length >= room.seats;
 
@@ -282,7 +292,7 @@ export function PanelSetup({
         a full-width row after the horizontal scroll ends is where the eye lands
         without anything having to be swiped. See `AuthorRow`.
       */}
-      <AuthorRow yours={room.mayAuthor} />
+      <AuthorRow yours={room.mayAuthor} onPress={onAuthor} />
 
       <Text style={styles.field} accessibilityRole="header">
         How hard they push

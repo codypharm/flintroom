@@ -51,6 +51,8 @@ it('fetches the roster and the caps in one request', async () => {
     upgradeSeats: 5,
     difficulty: 2,
     hardest: 3,
+    domains: [],
+    voices: [],
   });
 
   expect(calls).toEqual([
@@ -98,4 +100,34 @@ it('reads a server that has not shipped the reveal yet as an empty room', async 
   const { api } = apiReturning(200, withoutSeated);
 
   await expect(api.catalogue()).resolves.toMatchObject({ seated: [] });
+});
+
+
+it('carries the vocabulary the authoring form has to offer', async () => {
+  // Domains are the Auditor's routing key and the server refuses one it does
+  // not route on, so the form cannot invent this list — a hardcoded copy is a
+  // picker offering choices the API rejects, with the refusal landing on
+  // somebody who chose what we showed them.
+  const { api } = apiReturning(200, {
+    ...CATALOGUE,
+    domains: ['margin', 'runway'],
+    voices: [{ name: 'brisk', sounds: 'Clipped and impatient.' }],
+  });
+
+  const room = await api.catalogue();
+
+  expect(room.domains).toEqual(['margin', 'runway']);
+  expect(room.voices).toEqual([{ name: 'brisk', sounds: 'Clipped and impatient.' }]);
+});
+
+it('renders an older server as nothing to choose from, not a crash', async () => {
+  // Defaulted like `seated`. A server one release behind offers no vocabulary,
+  // and the form shows an empty list rather than taking down the screen that
+  // opened it.
+  const { api } = apiReturning(200, CATALOGUE);
+
+  const room = await api.catalogue();
+
+  expect(room.domains).toEqual([]);
+  expect(room.voices).toEqual([]);
 });

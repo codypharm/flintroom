@@ -305,10 +305,30 @@ const styles = StyleSheet.create({
  * (#65), and a control that opens nothing is worse than a statement. A fact and
  * a plan name, never a locked door with a price on it — §4.5 keeps the upsell
  * out of the way of a rehearsal.
+ *
+ * **It became a control on 2026-08-20**, when the endpoint it was waiting for
+ * landed. On a plan without it, it stays exactly the statement it was — not a
+ * disabled button, which is a door with a sign on it, but a row that says what
+ * exists and which plan has it. The upsell stays a fact.
  */
-export function AuthorRow({ yours }: { yours: boolean }) {
+export function AuthorRow({
+  yours,
+  onPress,
+}: {
+  yours: boolean;
+  /** Null wherever authoring is not reachable — the row states instead. */
+  onPress: (() => void) | null;
+}) {
+  const open = yours && onPress !== null;
+
   return (
-    <View style={styles.authorRow} accessibilityRole="summary">
+    <Pressable
+      accessibilityRole={open ? 'button' : 'summary'}
+      accessibilityLabel={open ? 'Write your own panelist' : undefined}
+      disabled={!open}
+      onPress={open ? onPress : undefined}
+      style={({ pressed }) => [styles.authorRow, pressed && open && styles.pressed]}
+    >
       {/*
         The same blank face the rail's cards carry, at row scale: it says "a
         person who is not here yet" in the visual language already established
@@ -324,6 +344,6 @@ export function AuthorRow({ yours }: { yours: boolean }) {
       </View>
 
       <Text style={styles.rowAside}>{yours ? 'Yours' : 'On Pro'}</Text>
-    </View>
+    </Pressable>
   );
 }

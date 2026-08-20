@@ -36,6 +36,18 @@ export interface Catalogue {
   seats: number;
   mayAuthor: boolean;
   upgradeSeats: number | null;
+  /**
+   * Every claim domain a panelist may own, sorted.
+   *
+   * Carried on this response rather than fetched by the authoring form,
+   * because the form is opened from the screen that already made this request.
+   * Never a constant in the app: these are the Auditor's routing key and the
+   * server refuses one it does not route on, so a copied list is a form
+   * offering choices the API rejects.
+   */
+  domains: string[];
+  /** The voices a panelist may be cast in, and what each sounds like. */
+  voices: { name: string; sounds: string }[];
   difficulty: number;
   hardest: number;
 }
@@ -55,6 +67,8 @@ export interface PanelsApiOptions {
 /** The catalogue as the wire spells it, before the app renames it. */
 interface CatalogueBody {
   archetypes: ArchetypeOffered[];
+  domains?: string[];
+  voices?: { name: string; sounds: string }[];
   seated?: string[];
   seats: number;
   may_author: boolean;
@@ -100,6 +114,12 @@ export function createPanelsApi({
         seats: body.seats,
         mayAuthor: body.may_author,
         upgradeSeats: body.upgrade_seats,
+        // Defaulted rather than required, matching `seated` above: a server one
+        // release behind simply offers nothing to choose from, which the form
+        // renders as an empty list rather than crashing the screen that opened
+        // it.
+        domains: body.domains ?? [],
+        voices: body.voices ?? [],
         difficulty: body.difficulty,
         hardest: body.hardest,
       };
