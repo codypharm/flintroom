@@ -1,5 +1,5 @@
 import * as DocumentPicker from 'expo-document-picker';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,6 +11,8 @@ import {
   type MaterialLimits,
 } from '../../lib/api/materialsApi';
 import { createPanelsApi, type Catalogue } from '../../lib/api/panelsApi';
+import { createArchetypesApi, type MyArchetype } from '../../lib/api/archetypesApi';
+import { railFor } from '../../lib/panel/rail';
 import { API_BASE_URL, auth } from '../../lib/auth';
 import { SignedOut } from '../../lib/auth/session';
 import { color, space, type } from '../../theme/tokens';
@@ -39,6 +41,11 @@ import { color, space, type } from '../../theme/tokens';
  */
 
 const panels = createPanelsApi({
+  baseUrl: API_BASE_URL,
+  accessToken: () => auth.accessToken(),
+});
+
+const archetypes = createArchetypesApi({
   baseUrl: API_BASE_URL,
   accessToken: () => auth.accessToken(),
 });
@@ -74,6 +81,7 @@ export default function HomeScreen() {
   }>();
   const revealing = reveal === '1';
   const [room, setRoom] = useState<Catalogue | null>(null);
+  const [mine, setMine] = useState<MyArchetype[]>([]);
   const [refused, setRefused] = useState<string | null>(null);
   const [seated, setSeated] = useState<string[]>([]);
 
@@ -122,6 +130,36 @@ export default function HomeScreen() {
       live = false;
     };
   }, [sameDeck]);
+
+  /**
+   * The panelists this account wrote, re-read every time this screen is looked
+   * at.
+   *
+   * On focus rather than on mount, because the authoring form is *pushed from
+   * here*: somebody writes one, comes back, and the card has to be in the rail.
+   * A mount effect would leave them staring at a rail that does not contain the
+   * thing they just made.
+   *
+   * Failures are silent, like the balance above. An account that cannot reach
+   * this simply has the eight we ship, which is a smaller room rather than a
+   * broken screen.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      let live = true;
+
+      archetypes
+        .mine()
+        .then((written) => {
+          if (live) setMine(written);
+        })
+        .catch(() => undefined);
+
+      return () => {
+        live = false;
+      };
+    }, [])
+  );
 
   useEffect(() => {
     let live = true;
@@ -310,7 +348,11 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={[]}>
       <PanelSetup
-        room={room}
+        // Merged here rather than by the API, because they are two resources
+        // with different lifecycles: the catalogue is what we ship, and this is
+        // what somebody wrote a minute ago. `railFor` owns the ordering and
+        // says why the shipped eight never move.
+        room={{ ...room, archetypes: railFor(room.archetypes, mine) }}
         seated={seated}
         onSeatedChange={setSeated}
         material={material}
