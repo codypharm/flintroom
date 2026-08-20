@@ -190,6 +190,42 @@ class Session(Base):
         SmallInteger, nullable=True
     )
 
+    #: The lineage of rooms this one belongs to — the thing being rehearsed.
+    #:
+    #: Set from `SessionStart.repeats` when somebody taps "Run it again" in the
+    #: Library, which is the user stating that this is the same argument as
+    #: before. Progress groups on it to answer "am I getting better at *this*",
+    #: which is a different question from "am I getting better" and the one a
+    #: rehearsal product exists to answer.
+    #:
+    #: **The group, never the parent.** A chain of repeats would have to be
+    #: walked to be grouped, and walking it in SQL is a recursive CTE for
+    #: something that is one column. Every room in a lineage carries the same
+    #: value, so grouping is a `GROUP BY`.
+    #:
+    #: **Null means a group of one.** No backfill was needed: every room that
+    #: already existed became its own rehearsal the moment this landed, and
+    #: `coalesce(rehearsal_id, id)` is the group everywhere it is read.
+    #:
+    #: Not a foreign key, deliberately. It names a session that may be deleted
+    #: while its descendants remain, and a cascade would take a lineage with it
+    #: — the later rooms are still rooms, and still about the same argument.
+    rehearsal_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True, index=True
+    )
+
+    @property
+    def rehearsal(self) -> uuid.UUID:
+        """The lineage, with the null-means-itself rule already applied.
+
+        Read by `SessionRead` through a validation alias so the wire never
+        carries the null. The column stays nullable because a NOT NULL one
+        could not have landed without breaking inserts from the previously
+        deployed build, which knows nothing about this field — `CLAUDE.md`
+        requires every migration to be backwards-compatible with it.
+        """
+        return self.rehearsal_id or self.id
+
     #: When this room's weak answers were read, or null if nobody has opened
     #: the debrief.
     #:

@@ -143,6 +143,7 @@ class SessionService:
         user_id: uuid.UUID,
         material_ids: Sequence[uuid.UUID] = (),
         archetypes: Sequence[str] = (),
+        repeats: uuid.UUID | None = None,
     ) -> Session:
         """Open a session in `provisioning`, grounded in whatever it was handed.
 
@@ -221,7 +222,11 @@ class SessionService:
                 error=NoMinutesRemaining(user_id=str(user_id)),
             )
 
-        session = Session(user_id=user_id, state=SessionState.PROVISIONING)
+        session = Session(
+            user_id=user_id,
+            state=SessionState.PROVISIONING,
+            rehearsal_id=await self._rehearsal_of(user_id, repeats),
+        )
         self._db.add(session)
         try:
             # Flush, not commit. The insert has to reach the database so the row
@@ -394,6 +399,39 @@ class SessionService:
             user_id=str(user_id),
             session_id=str(blocked_by) if blocked_by else None,
         )
+
+    async def _rehearsal_of(
+        self, user_id: uuid.UUID, repeats: uuid.UUID | None
+    ) -> uuid.UUID | None:
+        """The lineage a new room joins, or None for a fresh argument.
+
+        **Read from the named room, never taken from the client.** A group id
+        supplied directly would let a caller file their room into somebody
+        else's lineage — or into one that does not exist — and Progress would
+        then average two people's rehearsals together. What the client may say
+        is *which room this repeats*, which is a claim code can check.
+
+        Answered 404 rather than 403 for a room they do not own. As far as they
+        are entitled to know it is not there, and a 403 is the difference
+        between a guessed id and a real one.
+
+        `coalesce` is the whole flattening rule: repeating a room that already
+        belongs to a lineage joins *that* lineage rather than starting a chain
+        below it, so A -> B -> C is one group and grouping stays a `GROUP BY`.
+        """
+        if repeats is None:
+            return None
+
+        found = await self._db.execute(
+            select(func.coalesce(Session.rehearsal_id, Session.id)).where(
+                Session.id == repeats, Session.user_id == user_id
+            )
+        )
+        lineage = found.scalar_one_or_none()
+        if lineage is None:
+            raise SessionNotFound(session_id=str(repeats))
+
+        return lineage
 
     async def activate(self, *, session_id: uuid.UUID) -> Session:
         """The voice channel is up. From here the meter runs."""

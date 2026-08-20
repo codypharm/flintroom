@@ -2210,6 +2210,10 @@ components:
           type: string
           format: uuid
           title: User Id
+        rehearsal_id:
+          type: string
+          format: uuid
+          title: Rehearsal Id
         state:
           $ref: '#/components/schemas/SessionState'
         started_at:
@@ -2243,6 +2247,7 @@ components:
       required:
       - id
       - user_id
+      - rehearsal_id
       - state
       - started_at
       title: SessionRead
@@ -2274,6 +2279,12 @@ components:
           type: array
           maxItems: 10
           title: Material Ids
+        repeats:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Repeats
         archetypes:
           items:
             type: string
@@ -2302,6 +2313,10 @@ components:
           type: string
           format: uuid
           title: User Id
+        rehearsal_id:
+          type: string
+          format: uuid
+          title: Rehearsal Id
         state:
           $ref: '#/components/schemas/SessionState'
         started_at:
@@ -2338,6 +2353,7 @@ components:
       required:
       - id
       - user_id
+      - rehearsal_id
       - state
       - started_at
       - stream_ticket

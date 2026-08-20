@@ -1380,6 +1380,11 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+            /**
+             * Rehearsal Id
+             * Format: uuid
+             */
+            rehearsal_id: string;
             state: components["schemas"]["SessionState"];
             /**
              * Started At
@@ -1406,6 +1411,8 @@ export interface components {
         SessionStart: {
             /** Material Ids */
             material_ids?: string[];
+            /** Repeats */
+            repeats?: string | null;
             /** Archetypes */
             archetypes?: string[];
         };
@@ -1430,6 +1437,11 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+            /**
+             * Rehearsal Id
+             * Format: uuid
+             */
+            rehearsal_id: string;
             state: components["schemas"]["SessionState"];
             /**
              * Started At

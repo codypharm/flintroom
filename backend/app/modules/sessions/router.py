@@ -132,6 +132,7 @@ async def start_session(
         user_id=user_id,
         material_ids=body.material_ids if body else [],
         archetypes=body.archetypes if body else [],
+        repeats=body.repeats if body else None,
     )
     return SessionStarted(
         **(await _read(session, sessions)).model_dump(),

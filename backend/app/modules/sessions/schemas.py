@@ -175,6 +175,13 @@ class SessionStart(BaseModel):
         default_factory=list, max_length=MAX_SESSION_MATERIALS
     )
 
+    #: The room this one repeats, or null for a fresh argument.
+    #:
+    #: Sent by "Run it again" in the Library. The server reads that room's
+    #: lineage rather than trusting a group id from the client — see
+    #: `SessionService.start`.
+    repeats: uuid.UUID | None = None
+
     #: Archetype names, in the order they should be seated. Empty means the
     #: shipped mixed default — a champion, a skeptic and a neutral — rather than
     #: an empty room, on the same reasoning as material above.
@@ -281,10 +288,22 @@ class SessionRead(BaseModel):
     running either way; the user has no decision to make from it.
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    # `populate_by_name` because `rehearsal_id` is aliased off a model
+    # property, and `model_copy(update=...)` in the router addresses it by field
+    # name — without this, every constructed copy would drop it.
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: uuid.UUID
     user_id: uuid.UUID
+
+    #: The lineage this room belongs to — the argument being rehearsed across
+    #: several attempts. Its own id for a room that repeats nothing, so a client
+    #: groups on one field with no null case.
+    #:
+    #: Aliased off `Session.rehearsal`, which applies the null-means-itself
+    #: rule. Reading the column directly would put the null on the wire and
+    #: hand every client the same branch to get wrong.
+    rehearsal_id: uuid.UUID = Field(validation_alias="rehearsal")
     state: SessionState
     started_at: datetime
     end_reason: EndReason | None = None
