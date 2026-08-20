@@ -63,6 +63,28 @@ class DebriefService:
         if await self._read_already(session_id):
             return await self._kept(session_id)
 
+        # **The rows outrank the marker, and this is the second gate rather
+        # than a belt on the first.** `debriefed_at` and these rows are two
+        # records of one fact, and on 2026-08-20 they disagreed on a live room:
+        # the marker had been cleared and the rows had not. The service then
+        # bought a fresh reasoning reading, claimed the marker, and tried to
+        # insert rank 0 over a rank 0 that was already there —
+        # `UniqueViolationError`, unhandled, 500. Every later open would have
+        # repeated it, and paid for another reading each time.
+        #
+        # The kept rows win because they are what the user was SHOWN. A second
+        # reading of the same transcript reorders, which is precisely the
+        # failure `test_a_room_is_read_once_and_the_answer_is_kept` exists to
+        # prevent — and the prep sheet somebody screenshotted was built from
+        # these.
+        #
+        # One extra SELECT on the cold path only. The warm path returns at the
+        # marker above and never reaches here.
+        if kept := await self._kept(session_id):
+            await self._mark_read(session_id)
+            log.info("weak_answers_marker_repaired", session_id=str(session_id))
+            return kept
+
         session = await self._settled(session_id)
 
         if session.end_reason is EndReason.PROVIDER_FAILURE:
@@ -108,6 +130,25 @@ class DebriefService:
             select(Session.debriefed_at).where(Session.id == session_id)
         )
         return mark.scalar_one_or_none() is not None
+
+    async def _mark_read(self, session_id: uuid.UUID) -> None:
+        """Put back a marker whose rows outlived it.
+
+        Answering is not enough. Left null, every open would take the recovery
+        path above forever — and `progress.py` counts *assessed* rooms by this
+        column, so the room would stay missing from somebody's record while
+        plainly having been debriefed.
+
+        Guarded on `IS NULL` like the claim in `_keep`, so a device that reaches
+        here at the same moment as a real first read cannot overwrite the
+        winner's timestamp.
+        """
+        await self._db.execute(
+            update(Session)
+            .where(Session.id == session_id, Session.debriefed_at.is_(None))
+            .values(debriefed_at=func.now())
+        )
+        await self._db.commit()
 
     async def _kept(self, session_id: uuid.UUID) -> tuple[WeakAnswer, ...]:
         """The stored list, in the order the model put it in."""

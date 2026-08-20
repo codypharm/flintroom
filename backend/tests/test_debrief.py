@@ -627,3 +627,89 @@ async def test_reading_a_room_twice_keeps_the_first_reading_time(
     await service.weak_answers(session_id=session.id)
 
     assert (await sessions.get(session_id=session.id)).debriefed_at == first
+
+
+async def test_a_marker_lost_without_its_rows_costs_nothing_and_answers(
+    db, engine, sessions, settlement, funded_account
+):
+    """Reported as a 500 from a phone on 2026-08-20, and it is a real hole.
+
+    `debriefed_at` and the stored rows are two records of one fact, and this is
+    what happens when they disagree: the marker was null, the rows were there,
+    so the service ran the reasoning model again — a real Gemini call, billed —
+    claimed the marker, and then tried to insert rank 0 over a rank 0 that
+    already existed. `UniqueViolationError`, unhandled, 500. Every subsequent
+    open would have done the same, forever, and each one would have cost
+    another reading.
+
+    I put that room into that state by clearing `debriefed_at` so its opening
+    would speak again, which is exactly the kind of thing an operator or a
+    restored backup does.
+
+    **The kept rows are the truth.** They are what the user was shown and what
+    the prep sheet they screenshotted was built from. A fresh reading would
+    reorder under somebody working through it — the failure
+    `test_a_room_is_read_once_and_the_answer_is_kept` exists to prevent — so the
+    fix is to answer from the rows and never open the model at all.
+    """
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    reader = CountingReader(
+        Judgement(
+            ordinal=1,
+            quote="Off what base, and at what cost?",
+            weakness=Weakness.EVASIVE,
+            why="You answered with a feeling about the trend, not a base.",
+        )
+    )
+    service = DebriefService(db, reader=reader)
+    first = await service.weak_answers(session_id=session.id)
+
+    # The marker goes, the rows stay — an operator, or a partly restored backup.
+    await db.execute(
+        update(Session).where(Session.id == session.id).values(debriefed_at=None)
+    )
+    await db.commit()
+
+    again = await service.weak_answers(session_id=session.id)
+
+    assert again == first
+    assert reader.calls == 1, "a lost marker must not buy a second reading"
+
+
+async def test_the_marker_is_put_back_when_the_rows_outlive_it(
+    db, engine, sessions, settlement, funded_account
+):
+    """Answering is not enough — the state has to stop being wrong.
+
+    Leaving `debriefed_at` null would make every open take the recovery path
+    forever, and Progress counts assessed rooms by that column, so the room
+    would stay missing from somebody's record.
+    """
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    service = DebriefService(
+        db,
+        reader=CountingReader(
+            Judgement(
+                ordinal=1,
+                quote="Off what base, and at what cost?",
+                weakness=Weakness.EVASIVE,
+                why="You answered with a feeling about the trend, not a base.",
+            )
+        ),
+    )
+    await service.weak_answers(session_id=session.id)
+    await db.execute(
+        update(Session).where(Session.id == session.id).values(debriefed_at=None)
+    )
+    await db.commit()
+
+    await service.weak_answers(session_id=session.id)
+
+    mark = await db.scalar(
+        select(Session.debriefed_at).where(Session.id == session.id)
+    )
+    assert mark is not None
