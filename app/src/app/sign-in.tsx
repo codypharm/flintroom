@@ -77,21 +77,20 @@ export default function SignInRoute() {
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       {/*
-        **Not centred, and that was my mistake.** `SignInSheet` is built
-        anchored — framing at the top, the ways in at the bottom under the
-        thumb — and its own note defends that at length: centring "put the one
-        thing to tap in the middle of the screen with three hundred points of
-        nothing on either side of it, which reads as a screen that failed to
-        load rather than as a deliberately quiet one". Wrapping it in a centring
-        view undid exactly that, on the first screen anybody sees.
+        No layout here. The sheet centres its own group — the architect's call
+        on 2026-08-20 — and it has to, because the back control sits outside
+        that group and the scroll view sits inside it. A centring wrapper at
+        this level is what was tried before and it produced the composition the
+        sheet's own note argues against: a centred box still pushing its
+        children to its two ends.
       */}
       <SignInSheet
-          appleAvailable={appleAvailable}
-          busy={busy}
-          refusal={refusal}
-          onApple={() => void enter(apple)}
-          onGoogle={() => void enter(google)}
-          onBack={null}
+        appleAvailable={appleAvailable}
+        busy={busy}
+        refusal={refusal}
+        onApple={() => void enter(apple)}
+        onGoogle={() => void enter(google)}
+        onBack={null}
       />
     </SafeAreaView>
   );
