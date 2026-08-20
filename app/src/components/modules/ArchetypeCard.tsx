@@ -334,13 +334,21 @@ const styles = StyleSheet.create({
  * So it is a full-width row under the rail, where the eye lands after the
  * horizontal scroll ends and where nothing has to be swiped to reach it.
  *
- * **The line under it used to be about us.** "Somebody this product has never
- * met, described in your words" states what we do not know — true, and written
- * from our side of the screen. Nobody writes a panelist because our library has
- * a gap; they write one because a particular person will be in the room on
- * Thursday and none of our eight is them. "The person you are actually
- * preparing for" is the same fact told from the only side that matters, and it
- * names the motive rather than the mechanism.
+ * **The line under it used to be about us, and then it was only a fact.**
+ *
+ * "Somebody this product has never met, described in your words" states what we
+ * do not know — true, and written from our side of the screen. Nobody writes a
+ * panelist because our library has a gap.
+ *
+ * "The person you are actually preparing for" fixed the direction and stopped
+ * there: it describes the thing without saying what it buys. The row is an
+ * offer, and an offer should name the payoff — so it now says what a better
+ * panel is *for*. **Make the room closer to the one that matters.**
+ *
+ * "The room that matters" rather than "a more personalised session", which was
+ * the shape of the note asking for this. Same promise; the first is this
+ * product's own sentence, from the front door, and the second is a word every
+ * app uses about itself.
  *
  * Still not pressable, at either plan value. Authoring has no endpoint yet
  * (#65), and a control that opens nothing is worse than a statement. A fact and
@@ -411,12 +419,12 @@ export function AuthorRow({
 
       <View style={styles.rowWords}>
         <Text style={styles.rowTitle}>
-          {some ? 'Your panelists' : 'Write your own'}
+          {some ? 'Your panelists' : 'Add your own'}
         </Text>
         <Text style={styles.rowBlurb}>
           {some
             ? 'Add another, or change one.'
-            : 'The person you are actually preparing for.'}
+            : 'Make the room closer to the one that matters.'}
         </Text>
       </View>
 

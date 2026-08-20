@@ -100,7 +100,7 @@ it('shows that writing your own exists, even where the plan cannot', async () =>
   // not as a locked door with a price on it.
   await setup();
 
-  expect(screen.getByText('Write your own')).toBeTruthy();
+  expect(screen.getByText('Add your own')).toBeTruthy();
   expect(screen.getByText('On Pro')).toBeTruthy();
 });
 
@@ -275,7 +275,7 @@ it('puts writing your own outside the rail, where nothing must be swiped', async
 
   const rail = within(screen.getByLabelText('Panelists to choose from'));
 
-  expect(screen.getByText('Write your own')).toBeTruthy();
+  expect(screen.getByText('Add your own')).toBeTruthy();
   expect(rail.queryByText('Write your own')).toBeNull();
 });
 
@@ -334,7 +334,7 @@ it('starts happily once one of ours is beside them', async () => {
 it('offers to write one when there are none of yours yet', async () => {
   await setup({ room: { ...ROOM, mayAuthor: true } });
 
-  expect(screen.getByText('Write your own')).toBeTruthy();
+  expect(screen.getByText('Add your own')).toBeTruthy();
 });
 
 it('becomes the way into your own panel once you have written one', async () => {
@@ -350,7 +350,7 @@ it('becomes the way into your own panel once you have written one', async () => 
   });
 
   expect(screen.getByText('Your panelists')).toBeTruthy();
-  expect(screen.queryByText('Write your own')).toBeNull();
+  expect(screen.queryByText('Add your own')).toBeNull();
 });
 
 it('shows an affordance only when the row opens something', async () => {
@@ -413,6 +413,11 @@ it('says what somebody gets rather than what we lack', async () => {
   // and none of our eight is them.
   await setup({ room: { ...ROOM, mayAuthor: true } });
 
-  expect(screen.getByText('The person you are actually preparing for.')).toBeTruthy();
+  // And says what it buys rather than only what it is. A row offering a
+  // capability should name the payoff — the reason to spend five minutes
+  // writing somebody is that the rehearsal gets closer to the real thing.
+  expect(
+    screen.getByText('Make the room closer to the one that matters.')
+  ).toBeTruthy();
   expect(screen.queryByText(/this product has never met/i)).toBeNull();
 });
