@@ -6,7 +6,7 @@ import { StyleSheet } from 'react-native';
 import { createBalanceApi, type Held } from '../../lib/api/balanceApi';
 import { API_BASE_URL, auth } from '../../lib/auth';
 import { TopBar } from '../../components/ui/TopBar';
-import { color, space, type } from '../../theme/tokens';
+import { color, type } from '../../theme/tokens';
 
 const balance = createBalanceApi({
   baseUrl: API_BASE_URL,
