@@ -81,7 +81,12 @@ it('stands in with initials until there is a photograph', async () => {
 
 it.each([
   ['The CFO', 'CFO'],
-  ['The Champion', 'Ch'],
+  // 'Ch' until 2026-08-20, and the only shipped title that was not capitals.
+  // "The Champion" is one word once the article goes, and the single-word path
+  // returned a raw slice — so this card sat in a rail of BC, TS and DE looking
+  // like a typo. Nobody noticed for as long as it was the only one, which is
+  // what a user-typed title changed.
+  ['The Champion', 'CH'],
   ['The Technical Skeptic', 'TS'],
   ['The Distracted Executive', 'DE'],
 ])('drops the article when it abbreviates %s', (title, expected) => {
@@ -100,4 +105,27 @@ it('does not move the badge for somebody who asked it not to', async () => {
   // The badge is present and fully settled rather than mid-spring: what the
   // setting buys is arriving, not arriving slowly.
   expect(await screen.findByText('1')).toBeTruthy();
+});
+
+it('draws initials in capitals whatever somebody typed', async () => {
+  // Reported from a phone. The multi-word branch uppercases each initial, so
+  // every shipped title was fine — "The Board Chair" is BC. A ONE-WORD title
+  // fell through to a raw two-character slice, and a user can type one: "The
+  // Regulator" rendered as "Re" and "chairman" as "ch".
+  //
+  // Impossible to hit before custom archetypes, because every shipped title is
+  // an article plus two words. The moment a user types the title, it is one
+  // keystroke away.
+  expect(initialsOf('The Regulator')).toBe('RE');
+  expect(initialsOf('Regulator')).toBe('RE');
+  expect(initialsOf('chairman')).toBe('CH');
+  expect(initialsOf('my boss')).toBe('MB');
+});
+
+it('still keeps an acronym whole', async () => {
+  // "The CFO" reduced to a lone "C" was worse than useless — it is the one
+  // archetype a presenter is most likely to be looking for, rendered as the
+  // least identifiable card. Unchanged.
+  expect(initialsOf('The CFO')).toBe('CFO');
+  expect(initialsOf('CFO')).toBe('CFO');
 });

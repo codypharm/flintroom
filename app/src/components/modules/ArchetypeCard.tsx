@@ -126,12 +126,28 @@ export function ArchetypeCard({
  *
  * The article is dropped because every archetype has one, and eight cards all
  * beginning T would defeat the point of showing initials at all.
+ *
+ * **Always capitals, and uppercased once at the end rather than per branch.**
+ * The multi-word path capitalised each initial, so every shipped title was
+ * fine — they are all an article plus two words. A ONE-WORD title fell through
+ * to a raw slice: "The Regulator" drew "Re", "chairman" drew "ch". Unreachable
+ * until a user could type the title, and one keystroke away from the moment
+ * they could. Reported from a phone.
+ *
+ * Uppercasing the result closes the branch that leaked and any branch added
+ * later, which is worth more here than fixing the one that was wrong: this
+ * function has three exits and every one of them is a label on a face.
  */
 export function initialsOf(title: string): string {
   const words = title
     .split(/\s+/)
     .filter((word) => word.length > 0 && word.toLowerCase() !== 'the');
 
+  return shortened(words).toUpperCase();
+}
+
+/** The letters, before the one place that capitalises them. */
+function shortened(words: string[]): string {
   if (words.length === 1) {
     const [only] = words;
 
@@ -141,10 +157,7 @@ export function initialsOf(title: string): string {
     return only === only.toUpperCase() ? only.slice(0, 3) : only.slice(0, 2);
   }
 
-  return words
-    .map((word) => word[0].toUpperCase())
-    .join('')
-    .slice(0, 2);
+  return words.map((word) => word[0]).join('').slice(0, 2);
 }
 
 /**

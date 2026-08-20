@@ -1,14 +1,23 @@
-import { render, screen, userEvent } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 /**
- * `userEvent` rather than `fireEvent`, and it is not a preference.
+ * **Interactions go inside `act`, and the reason is not the one I first wrote.**
  *
- * This form holds its own state, and under React 19 a `fireEvent` update is
- * scheduled but not flushed before the next assertion — so every interaction
- * appeared to do nothing and the save button stayed disabled through a
- * completely filled form. `fireEvent` still works where a press only calls a
- * prop, which is why `TablePlan` uses it; anything that has to *see* the result
- * of its own typing needs the async one.
+ * This file originally said `userEvent` was required because "a `fireEvent`
+ * update is scheduled but not flushed before the next assertion". Half true and
+ * misleading: `fireEvent` does not flush *on its own*, and inside
+ * `await act(...)` it flushes perfectly well. `userEvent` is a wrapper that
+ * does exactly that — once per keystroke.
+ *
+ * Which is why it was also slow. Typing a sentence is one `act` flush per
+ * character, and two tests here timed out at five seconds under full-suite
+ * parallel load while passing alone in under one — the signature of a slow test
+ * rather than a broken one. The same interactions inside a single `act` run in
+ * about a tenth of a second.
+ *
+ * So: `changeText` for text, because no assertion here cares how the characters
+ * arrived, only what the form does with them. `userEvent` is still right where
+ * the *gesture* is the thing under test.
  */
 
 import { PanelistForm } from './PanelistForm';
@@ -39,7 +48,6 @@ const VOICES = [
 ];
 
 async function show(over: Partial<Parameters<typeof PanelistForm>[0]> = {}) {
-  const user = userEvent.setup();
   const onSave = jest.fn();
   const onCancel = jest.fn();
 
@@ -56,33 +64,40 @@ async function show(over: Partial<Parameters<typeof PanelistForm>[0]> = {}) {
     />
   );
 
-  return { user, onSave, onCancel };
+  return { onSave, onCancel };
 }
 
 async function fill(
-  user: ReturnType<typeof userEvent.setup>,
   over: { title?: string; persona?: string; domain?: string } = {}
 ) {
-  await user.type(
-    screen.getByLabelText('Role'),
-    over.title ?? 'The Board Chair'
-  );
-  await user.type(
-    screen.getByLabelText('Manner'),
-    over.persona ?? 'Unimpressed by anything that is not a number.'
-  );
-  await user.press(screen.getByLabelText(over.domain ?? 'Margin'));
+  // One flush for the whole form. Every field and the chip together, because
+  // nothing here is testing the order they were filled in.
+  await act(async () => {
+    fireEvent.changeText(screen.getByLabelText('Role'), over.title ?? 'Chair');
+    fireEvent.changeText(
+      screen.getByLabelText('Manner'),
+      over.persona ?? 'Unimpressed.'
+    );
+    fireEvent.press(screen.getByLabelText(over.domain ?? 'Margin'));
+  });
+}
+
+/** A press that has to be seen by the next assertion. */
+async function press(label: string) {
+  await act(async () => {
+    fireEvent.press(screen.getByLabelText(label));
+  });
 }
 
 it('sends what was typed, with the domains that were tapped', async () => {
-  const { user, onSave } = await show();
+  const { onSave } = await show();
 
-  await fill(user);
-  await user.press(screen.getByLabelText('Save this panelist'));
+  await fill();
+  await press('Save this panelist');
 
   expect(onSave).toHaveBeenCalledWith({
-    title: 'The Board Chair',
-    persona: 'Unimpressed by anything that is not a number.',
+    title: 'Chair',
+    persona: 'Unimpressed.',
     domains: ['margin'],
     voice: null,
   });
@@ -92,19 +107,21 @@ it('will not save a panelist with nothing to go after', async () => {
   // Domains are the Auditor's routing key. One with none can never be the
   // panelist an interruption reaches, and its author would never find out why —
   // so the form refuses before the server has to.
-  const { user, onSave } = await show();
+  const { onSave } = await show();
 
-  await user.type(screen.getByLabelText('Role'), 'X');
-  await user.type(screen.getByLabelText('Manner'), 'Y');
-  await user.press(screen.getByLabelText('Save this panelist'));
+  await act(async () => {
+    fireEvent.changeText(screen.getByLabelText('Role'), 'X');
+    fireEvent.changeText(screen.getByLabelText('Manner'), 'Y');
+  });
+  await press('Save this panelist');
 
   expect(onSave).not.toHaveBeenCalled();
 });
 
 it('will not save one with no name or nobody in it', async () => {
-  const { user, onSave } = await show();
+  const { onSave } = await show();
 
-  await user.press(screen.getByLabelText('Save this panelist'));
+  await press('Save this panelist');
 
   expect(onSave).not.toHaveBeenCalled();
 });
@@ -112,10 +129,10 @@ it('will not save one with no name or nobody in it', async () => {
 it('offers a voice but never demands one', async () => {
   // "Pick one for me" is the default, and it is what an untouched form sends.
   // Casting is a decision tax on the feature's main path.
-  const { user, onSave } = await show();
+  const { onSave } = await show();
 
-  await fill(user);
-  await user.press(screen.getByLabelText('Save this panelist'));
+  await fill();
+  await press('Save this panelist');
 
   expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ voice: null }));
 });
@@ -127,11 +144,11 @@ it('says what a voice sounds like, because the names do not', async () => {
 });
 
 it('carries a chosen voice through', async () => {
-  const { user, onSave } = await show();
+  const { onSave } = await show();
 
-  await fill(user);
-  await user.press(screen.getByLabelText('Brisk. Clipped and impatient.'));
-  await user.press(screen.getByLabelText('Save this panelist'));
+  await fill();
+  await press('Brisk. Clipped and impatient.');
+  await press('Save this panelist');
 
   expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ voice: 'brisk' }));
 });
@@ -162,9 +179,11 @@ it('says what is still missing rather than sitting there disabled', async () => 
   // because a disabled button with no reason is the failure this exists to
   // prevent." The same product had one screen explaining itself and this one
   // saying nothing at all.
-  const { user } = await show();
+  await show();
 
-  await user.type(screen.getByLabelText('Role'), 'The Chair');
+  await act(async () => {
+    fireEvent.changeText(screen.getByLabelText('Role'), 'The Chair');
+  });
 
   // Exact, not a substring: the second field's hint ends "...all they will know
   // about who they are", and a loose match would pass on the helper text while
@@ -173,9 +192,9 @@ it('says what is still missing rather than sitting there disabled', async () => 
 });
 
 it('stops saying it the moment there is nothing missing', async () => {
-  const { user } = await show();
+  await show();
 
-  await fill(user);
+  await fill();
 
   expect(screen.queryByText(/still needs/i)).toBeNull();
 });
@@ -212,10 +231,10 @@ it('reopens an existing panelist with its own words in it', async () => {
 });
 
 it('locks the form while it is being saved', async () => {
-  const { user, onSave } = await show({ busy: true });
+  const { onSave } = await show({ busy: true });
 
-  await fill(user);
-  await user.press(screen.getByLabelText('Save this panelist'));
+  await fill();
+  await press('Save this panelist');
 
   expect(onSave).not.toHaveBeenCalled();
 });
