@@ -16,7 +16,9 @@ import pytest
 
 from app.agents.archetypes import LIBRARY, by_name
 from app.agents.authored import CUSTOM_PREFIX, mint_name, seated_as
+from app.agents.panel import assemble
 from app.agents.voices import CASTABLE, Voice
+from app.core.errors import ArchetypeNotFound, PanelWithoutAShippedVoice
 from app.modules.panels.models import CustomArchetype
 
 
@@ -158,3 +160,69 @@ def test_the_prefix_is_the_same_string_in_both_places():
     from app.agents.archetypes import _AUTHORED_PREFIX
 
     assert _AUTHORED_PREFIX == CUSTOM_PREFIX
+
+
+def test_a_room_may_seat_one_a_user_wrote_beside_the_shipped_ones():
+    """The ordinary case, and the reason the feature exists."""
+    mine = seated_as(a_row())
+
+    panel = assemble(tier="pro", chosen=["cfo", mine.name], authored={mine.name: mine})
+
+    assert [one.name for one in panel] == ["cfo", mine.name]
+
+
+def test_a_room_of_nothing_but_authored_panelists_is_refused():
+    """§3 — enforced at composition, and two things break without it.
+
+    It opens in silence: `opening.NoOneToOpen` exists for exactly this and says
+    so, *"reachable only by a room seated entirely from custom archetypes"*.
+
+    And nobody warns them at sixty seconds. `nudges` is hand-written per
+    archetype and is what the room says before the ninety-second idle timeout
+    reaps and refunds (#24). A room with nobody to say it reaps in silence, for
+    somebody who *"has stopped looking at the phone"* — the second failure is
+    the quiet one, and it costs them a room.
+    """
+    mine = seated_as(a_row())
+    yours = seated_as(a_row(title="The Regulator"))
+
+    with pytest.raises(PanelWithoutAShippedVoice):
+        assemble(
+            tier="pro",
+            chosen=[mine.name, yours.name],
+            authored={mine.name: mine, yours.name: yours},
+        )
+
+
+def test_the_missing_name_is_answered_before_the_missing_anchor():
+    """A typo is more actionable than a rule about composition.
+
+    Told about both at once somebody fixes the rule and hits the typo next,
+    which is two round trips to learn one thing. Same reasoning as
+    `test_the_size_check_answers_before_the_names_do`, one rung further in.
+    """
+    mine = seated_as(a_row())
+
+    with pytest.raises(ArchetypeNotFound):
+        assemble(
+            tier="pro",
+            chosen=[mine.name, "the_ghost_of_warren_buffett"],
+            authored={mine.name: mine},
+        )
+
+
+def test_an_authored_name_nobody_loaded_is_a_defect_rather_than_a_typo():
+    """`by_name` raising is what makes this loud.
+
+    A caller that forgot to load the row would otherwise have its user told the
+    panelist they just wrote does not exist.
+    """
+    with pytest.raises(ValueError):
+        assemble(tier="pro", chosen=["cfo", f"{CUSTOM_PREFIX}0191d4c2"], authored={})
+
+
+def test_seating_none_of_your_own_is_still_a_room():
+    """The floor is a floor, not a requirement to bring one."""
+    panel = assemble(tier="free", chosen=["cfo", "champion"])
+
+    assert len(panel) == 2

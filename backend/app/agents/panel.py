@@ -13,9 +13,10 @@ perfectly well in a transcript and feels flat in a room.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from app.agents.archetypes import Archetype, by_name
+from app.agents.authored import is_authored
 from app.agents.difficulty import STANDARD_PRESSURE, Pressure
 from app.agents.dispute import contested
 from app.agents.context import (
@@ -35,6 +36,7 @@ from app.core.errors import (
     DuplicatePanelist,
     FlintroomError,
     PanelTooLarge,
+    PanelWithoutAShippedVoice,
 )
 from app.core.logging import get_logger
 from app.modules.billing.tiers import UPGRADE_LADDER, max_panel_size
@@ -42,7 +44,12 @@ from app.modules.billing.tiers import UPGRADE_LADDER, max_panel_size
 log = get_logger(__name__, tag="panel")
 
 
-def assemble(*, tier: str, chosen: Sequence[str]) -> tuple[Archetype, ...]:
+def assemble(
+    *,
+    tier: str,
+    chosen: Sequence[str],
+    authored: Mapping[str, Archetype] | None = None,
+) -> tuple[Archetype, ...]:
     """The room this caller asked for, if their plan seats it.
 
     The cap is checked before anything is resolved, so an over-large request is
@@ -54,18 +61,35 @@ def assemble(*, tier: str, chosen: Sequence[str]) -> tuple[Archetype, ...]:
     a name given twice is refused rather than deduped. Both would otherwise seat
     a smaller room than the user assembled, and they would find out by noticing
     somebody never spoke.
+
+    **`authored` is how rows get in, and the caller loads them.** This function
+    stays synchronous and free of a database, which is what keeps it testable
+    against a plain dict and keeps `agents/` from importing a session — the same
+    property `composition.compose()` has and the reason a custom archetype can
+    never be seated automatically. A `custom:` name absent from the mapping is a
+    caller that forgot to load it, and `by_name` raises rather than letting the
+    user be told their own panelist does not exist.
+
+    The floor is checked last, after every name has resolved. A room that is
+    both all-authored and contains a typo should hear about the typo: it is the
+    more actionable of the two, and answering the rule first costs a second
+    round trip to learn about the first.
     """
     if len(chosen) > max_panel_size(tier):
         raise PanelTooLarge(_too_large_message(tier, len(chosen)), tier=tier, asked=len(chosen))
 
-    panel = []
+    rows = authored or {}
+    panel: list[Archetype] = []
     for name in chosen:
-        archetype = by_name(name)
+        archetype = rows.get(name) or by_name(name)
         if archetype is None:
             raise ArchetypeNotFound(archetype=name)
         if archetype in panel:
             raise DuplicatePanelist(archetype=name)
         panel.append(archetype)
+
+    if panel and all(is_authored(one.name) for one in panel):
+        raise PanelWithoutAShippedVoice()
 
     return tuple(panel)
 

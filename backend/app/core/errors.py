@@ -430,6 +430,36 @@ class ArchetypeNotFound(NotFound):
     message = "No such panelist."
 
 
+class PanelWithoutAShippedVoice(BusinessRuleViolation):
+    """Every seat filled by a panelist the user wrote themselves.
+
+    Refused at composition rather than at start, because two things break and
+    one of them breaks quietly.
+
+    **The room opens in silence.** `openers` are hand-written per archetype and
+    a row a user typed carries none, so `opening.NoOneToOpen` is raised — an
+    exception whose own docstring says it is *"reachable only by a room seated
+    entirely from custom archetypes"*.
+
+    **And nobody warns them at sixty seconds.** `nudges` is the same shape, and
+    is what the room says before the ninety-second idle timeout reaps and
+    refunds (#24). A room with nobody to say it reaps in silence, for somebody
+    who by then *"has stopped looking at the phone"*. That one costs them a
+    room and never explains why.
+
+    Here rather than at `POST /v1/sessions` deliberately. A refusal at Start is
+    a constraint discovered on a screen somebody has already committed to, and
+    the metering rules are explicit that a room in progress is never where that
+    happens. Better it is simply not an arrangement the picker will build.
+
+    422, like `DuplicatePanelist`: nothing is in conflict and no permission is
+    missing — the request is not a room.
+    """
+
+    code = "panel_without_a_shipped_voice"
+    message = "A room needs at least one of our panelists in it."
+
+
 class DuplicatePanelist(BusinessRuleViolation):
     """The same archetype seated twice in one room.
 
