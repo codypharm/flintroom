@@ -26,6 +26,7 @@ import { RecordingDisclosure } from '../components/modules/RecordingDisclosure';
 import { createDisclosureRecord } from '../lib/consent/disclosure';
 import { enterRoom } from '../lib/consent/entry';
 import { createPanelsApi } from '../lib/api/panelsApi';
+import { closeRoom } from '../lib/room/closing';
 import { createSessionsApi, type StartedRoom } from '../lib/api/sessionsApi';
 import { API_BASE_URL, auth } from '../lib/auth';
 import { joinRoom, type Room } from '../lib/voice/room';
@@ -388,14 +389,25 @@ export default function InterrogationScreen() {
   const end = useCallback(() => {
     const settled = session.current;
 
-    // The intent first, then the socket. A room ended by closing the connection
-    // settles as `client_disconnect` — a dropped line — and the server's own
-    // enum says that is not the same event to the business as somebody deciding
-    // they are done.
-    if (settled !== null) {
-      void sessions.end(settled).catch(() => undefined);
+    // **The intent first, then the socket — and now it actually is.** This said
+    // the same thing and did not do it: `void sessions.end(...)` does not wait,
+    // so the `leave()` on the next line raced a network round trip and won
+    // every time. Every room in the dev database had settled as
+    // `client_disconnect`, five of five (#82).
+    //
+    // `closeRoom` owns the order and is tested on it. The screen moves on
+    // immediately either way — `finish` is not awaited, because a presenter who
+    // has tapped End should not watch a spinner while we file the paperwork.
+    if (settled === null) {
+      room.current?.leave();
+      finish('ended');
+      return;
     }
-    room.current?.leave();
+
+    void closeRoom({
+      tell: () => sessions.end(settled),
+      hangUp: () => room.current?.leave(),
+    });
     finish('ended');
   }, [finish]);
 
