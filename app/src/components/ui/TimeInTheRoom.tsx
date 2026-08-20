@@ -6,13 +6,25 @@ import { color, radius, space, type } from '../../theme/tokens';
  * How much time this account has in the room.
  *
  * **The wording is the product rule, not a preference.** §4.6 forbids a
- * depleting counter and asks for minutes "framed generously". So it says
- * *"55 minutes in the room"* — the product's own noun for the thing the minutes
- * buy — and never "available", "remaining", "left", or "of your allowance".
- * Those four words are the counter arriving one adjective at a time: each one
- * frames the number as a quantity being consumed rather than one being held.
- * `TablePlan` set the same register on the first screen anybody sees — "15
- * minutes in the room, on us".
+ * depleting counter and asks for minutes "framed generously", so this never
+ * says "available", "remaining", "left", or "of your allowance". Those four are
+ * the counter arriving one adjective at a time: each frames the number as a
+ * quantity being consumed rather than one being held.
+ *
+ * **"You have" is what the rule leaves open, and it is what this was missing.**
+ * The chip read *"55 minutes in the room"* and was reported from a phone as
+ * uninformative — correctly. Standing alone in a bar on every screen, it can be
+ * read three ways: how long a room lasts, how long you have been in one, or
+ * what you hold. Only the third is true. A possessive says it outright, and says
+ * the opposite of depletion while doing it.
+ *
+ * **"in the room" does not fit here, and the reason is measured rather than
+ * assumed.** The bar leaves about 162pt for this text beside the wordmark. The
+ * full sentence needs 258 and the old text needed 183 — so the phrase this
+ * replaces was already overflowing on a 393pt phone. "You have 55 minutes" is
+ * 158. The product's noun keeps its home on `TablePlan` and the sign-in sheet,
+ * which have a sentence to spend on it; here the clock and the surrounding app
+ * carry what the minutes are for.
  *
  * **A chip rather than a sentence**, because it is a standing fact about the
  * account rather than something being said. It needs to be readable at a
@@ -41,21 +53,25 @@ export function TimeInTheRoom({ minutes, any }: TimeInTheRoomProps) {
     <View
       style={styles.chip}
       accessibilityRole="text"
+      // Word for word what is drawn. These used to disagree — the label said
+      // "until your next top-up" while the screen said "right now" — which is
+      // the same defect as a button whose visible and spoken names differ.
       accessibilityLabel={
-        any
-          ? `${minutes} minutes in the room`
-          : 'No time in the room until your next top-up'
+        any ? `You have ${minutes} minutes` : 'No minutes right now'
       }
     >
       <Clock />
       <Text style={styles.said}>
         {any ? (
           <>
+            {/* The figure carries the weight and the words around it stay
+                quiet, so the number is what the eye finds at a glance. */}
+            <Text style={styles.unit}>You have </Text>
             <Text style={styles.figure}>{minutes}</Text>
-            <Text style={styles.unit}> minutes in the room</Text>
+            <Text style={styles.unit}> minutes</Text>
           </>
         ) : (
-          <Text style={styles.unit}>No time in the room right now</Text>
+          <Text style={styles.unit}>No minutes right now</Text>
         )}
       </Text>
     </View>

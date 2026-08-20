@@ -62,7 +62,7 @@ it('holds the time in the room where the mockup puts the token pill', async () =
   // `CLAUDE.md` forbids a depleting counter outright.
   await show({ held: { minutes: 55, any: true } });
 
-  expect(screen.getByLabelText('55 minutes in the room')).toBeTruthy();
+  expect(screen.getByLabelText('You have 55 minutes')).toBeTruthy();
 });
 
 it('never counts down, whatever the balance says', async () => {
@@ -97,7 +97,7 @@ it('sits the time on the wordmark line, not against the top of the bar', async (
   await show({ held: { minutes: 55, any: true } });
 
   const chip = StyleSheet.flatten(
-    screen.getByLabelText('55 minutes in the room').props.style
+    screen.getByLabelText('You have 55 minutes').props.style
   ) as { alignSelf?: string };
 
   expect(chip.alignSelf).toBeUndefined();
@@ -119,4 +119,21 @@ it('sits on its own plane rather than sharing the content ground', async () => {
 
   expect(bar.backgroundColor).toBeTruthy();
   expect(bar.backgroundColor).not.toBe(color.surface);
+});
+
+it('says whose the minutes are, not just how many there are', async () => {
+  // Reported from a phone: "the text 54 mins in the room is not informative".
+  // It is not — "55 minutes in the room" can be read three ways. How long a
+  // room lasts. How long you have been in one. What you hold. Only the third
+  // is true, and the chip sits in a bar on every screen where none of the
+  // other two would even make sense.
+  //
+  // "You have" is what fixes it, and it is the one word §4.6 leaves open. The
+  // four it forbids — available, remaining, left, of your allowance — are the
+  // depleting counter arriving one adjective at a time. A possessive says the
+  // opposite: these are held, not draining.
+  await show({ held: { minutes: 55, any: true } });
+
+  expect(screen.getByText(/You have/)).toBeTruthy();
+  expect(screen.queryByText(/remaining|left|available|allowance/i)).toBeNull();
 });
