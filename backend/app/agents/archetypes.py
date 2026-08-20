@@ -466,8 +466,37 @@ DEFAULT_PANEL: tuple[Archetype, ...] = tuple(
 
 
 def by_name(name: str) -> Archetype | None:
-    """One archetype from the library, or nothing."""
+    """One archetype from the library, or nothing.
+
+    **Refuses a name a user owns rather than answering "nothing".** Rows carry
+    the `custom:` prefix (`docs/custom-archetypes.md` §5) and this function
+    cannot resolve one — but `assemble()` turns `None` into `ArchetypeNotFound`,
+    so returning it would report a panelist that exists to its own author as a
+    name nobody answers to. It is a defect in the caller, which forgot to load
+    the row, and it is raised as one.
+
+    It is also the guard that keeps two authorities out of one namespace. Doing
+    it here rather than at each call site is deliberate: this codebase has twice
+    shipped a collision that nothing reported — `retention` claimed by two
+    archetypes so the Risk Officer's `data` domain silently never fired, and
+    `vocabulary.ts` mapping `distracted` against a server shipping
+    `distracted_executive`. Both were namespaces without a guard.
+    """
+    if name.startswith(_AUTHORED_PREFIX):
+        raise ValueError(
+            f"{name!r} names a row, not a shipped archetype — load it and pass "
+            "it in rather than looking it up here"
+        )
+
     for archetype in LIBRARY:
         if archetype.name == name:
             return archetype
     return None
+
+
+#: Duplicated from `agents/authored.CUSTOM_PREFIX`, and deliberately.
+#:
+#: `authored` imports `Archetype` from this module, so importing it back would
+#: be a cycle. A four-character constant repeated once, with a test pinning the
+#: two together, is cheaper than restructuring the module boundary to avoid it.
+_AUTHORED_PREFIX = "custom:"
