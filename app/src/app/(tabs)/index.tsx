@@ -13,6 +13,7 @@ import {
 import { createPanelsApi, type Catalogue } from '../../lib/api/panelsApi';
 import { createArchetypesApi, type MyArchetype } from '../../lib/api/archetypesApi';
 import { railFor } from '../../lib/panel/rail';
+import { intendRoom } from '../../lib/room/intent';
 import { API_BASE_URL, auth } from '../../lib/auth';
 import { SignedOut } from '../../lib/auth/session';
 import { color, space, type } from '../../theme/tokens';
@@ -377,18 +378,23 @@ export default function HomeScreen() {
             : null
         }
         onStart={() => {
-          // The seating and the deck travel as params rather than being read
-          // back from the server, because nothing persists them: `seated` is
-          // this screen's own state, so a room started from whatever was last
+          // The seating and the deck are handed over in memory rather than in
+          // the URL. Not persisted, for the reason they never were: `seated` is
+          // this screen's own state, and a room started from whatever was last
           // saved would seat a panel the person in front of it did not
           // assemble.
-          router.push({
-            pathname: '/interrogation',
-            params: {
-              archetypes: seated.join(','),
-              material: material?.state === 'ready' ? material.id : '',
-            },
+          //
+          // In memory rather than in params is #76. `/interrogation` mints a
+          // metered room on mount, so an address that names the seating is an
+          // address that starts a paid room — and `app.json` declares the
+          // `flintroom` scheme, which made `flintroom://interrogation` exactly
+          // that. The order now exists only here, and `takeIntent` spends it on
+          // arrival.
+          intendRoom({
+            archetypes: seated,
+            materialId: material?.state === 'ready' ? material.id : null,
           });
+          router.push('/interrogation');
         }}
       />
     </SafeAreaView>

@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, StyleSheet, Text, View } from 'react-native';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
@@ -27,6 +27,7 @@ import { createDisclosureRecord } from '../lib/consent/disclosure';
 import { enterRoom } from '../lib/consent/entry';
 import { createPanelsApi } from '../lib/api/panelsApi';
 import { closeRoom } from '../lib/room/closing';
+import { takeIntent } from '../lib/room/intent';
 import { createSessionsApi, type StartedRoom } from '../lib/api/sessionsApi';
 import { API_BASE_URL, auth } from '../lib/auth';
 import { joinRoom, type Room } from '../lib/voice/room';
@@ -95,11 +96,6 @@ const KEEP_AWAKE = 'flintroom-interrogation';
 const BEAT_MS = 2500;
 
 export default function InterrogationScreen() {
-  const { archetypes, material } = useLocalSearchParams<{
-    archetypes?: string;
-    material?: string;
-  }>();
-
   const [panel, setPanel] = useState<Seat[]>([]);
   const [speaking, setSpeaking] = useState<string | null>(null);
   const [line, setLine] = useState<PanelLine | null>(null);
@@ -216,6 +212,27 @@ export default function InterrogationScreen() {
     void open();
 
     async function open() {
+      /**
+       * #76: what this screen does on mount is spend money, so it does nothing
+       * until it has been asked to.
+       *
+       * Taken before the disclosure sheet, not after. Everything below this
+       * line costs somebody something — a modal, a system permission prompt,
+       * then a metered room — and none of it should happen to a person who
+       * merely arrived here.
+       *
+       * Null is not a refusal. It means nobody tapped Start: a deep link on the
+       * `flintroom` scheme, a cold start onto a restored route, or a remount
+       * after `Stack.Protected` re-evaluated its guard. The answer is the
+       * screen where rooms are actually started, silently — there is no error
+       * to report to somebody who has not done anything wrong.
+       */
+      const order = takeIntent();
+      if (order === null) {
+        router.replace('/');
+        return;
+      }
+
       // A box rather than a bare `let`: the assignment happens inside a
       // callback, and TypeScript's flow analysis cannot see across one — it
       // would narrow a plain local to `null` at every use below.
@@ -244,8 +261,8 @@ export default function InterrogationScreen() {
           // ordering goes to be accidentally rearranged.
           mint: async () => {
             minted.room = await sessions.start({
-              archetypes: split(archetypes),
-              materialIds: split(material),
+              archetypes: order.archetypes,
+              materialIds: order.materialId === null ? [] : [order.materialId],
             });
           },
         });
@@ -523,10 +540,6 @@ const REFUSED: Record<string, string> = {
 };
 
 /** Route params arrive as strings; an absent one is an empty list, not `['']`. */
-function split(csv: string | undefined): string[] {
-  return (csv ?? '').split(',').filter((one) => one.length > 0);
-}
-
 /**
  * A readable stand-in until the catalogue lands.
  *
