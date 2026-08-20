@@ -59,6 +59,27 @@ export function RoomRead({ when, who, lines, onDebrief }: RoomReadProps) {
         <Text style={styles.title}>{when}</Text>
         <Text style={styles.who}>{who}</Text>
 
+        {/*
+          **Above the transcript, and it used to be under all of it.** Reported
+          from a phone. On a forty-turn room the one thing this screen is for
+          was forty scrolls away — and somebody opening a past room either wants
+          to re-read it or to work on it, of which only the second is worth a
+          tap.
+
+          The words changed with the position. "What the room found" is a noun
+          phrase for a destination; it does not say that anybody is waiting, and
+          since the coach got its voice back that is the whole of what happens
+          next. `clarify`'s rule: a label describes what will happen.
+        */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Go through it with the coach"
+          onPress={onDebrief}
+          style={({ pressed }) => [styles.through, pressed && styles.pressed]}
+        >
+          <Text style={styles.throughLabel}>Go through it with the coach</Text>
+        </Pressable>
+
         {lines.length === 0 ? (
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>Nothing was said in this room</Text>
@@ -71,14 +92,6 @@ export function RoomRead({ when, who, lines, onDebrief }: RoomReadProps) {
           lines.map((line) => <Line key={line.ordinal} line={line} opened={opened} />)
         )}
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="What the room found"
-          onPress={onDebrief}
-          style={({ pressed }) => [styles.through, pressed && styles.pressed]}
-        >
-          <Text style={styles.throughLabel}>What the room found</Text>
-        </Pressable>
       </ScrollView>
     </View>
   );
@@ -163,6 +176,10 @@ const styles = StyleSheet.create({
   },
 
   through: {
+    // Was `marginTop: space.section` under the last line. Above the transcript
+    // it needs air on both sides — it is the break between what this room WAS
+    // and what to do about it.
+    marginBottom: space.section,
     alignSelf: 'flex-start',
     marginTop: space.major,
     paddingVertical: space.snug,

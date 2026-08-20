@@ -25,8 +25,9 @@ async function setup(overrides: Partial<RoomReadProps> = {}) {
     ...overrides,
   };
 
-  await render(<RoomRead {...props} />);
-  return props;
+  // The render result too, so a test can ask what order things came out in.
+  const drawn = await render(<RoomRead {...props} />);
+  return { ...props, ...drawn };
 }
 
 it('reads back as a script, with every line attributed', async () => {
@@ -70,12 +71,12 @@ it('draws no back control of its own, because the stack draws a real one', async
   expect(screen.queryByLabelText(/^Back to/)).toBeNull();
 });
 
-it('offers the way to what the room found', async () => {
+it('offers the way to the coach', async () => {
   // The transcript is the record; the debrief is the work. Somebody who has
   // just re-read a bad answer wants the finding, not a back gesture.
   const { onDebrief } = await setup();
 
-  await userEvent.press(screen.getByLabelText('What the room found'));
+  await userEvent.press(screen.getByLabelText('Go through it with the coach'));
 
   expect(onDebrief).toHaveBeenCalled();
 });
@@ -93,4 +94,35 @@ it('puts no grade, mark, or verdict on a room', async () => {
 
   expect(screen.queryByText(/^[A-F][+-]?$/)).toBeNull();
   expect(screen.queryByText(/score/i)).toBeNull();
+});
+
+it('offers the coach before the transcript, not after all of it', async () => {
+  // Reported from a phone. The control sat below every line, so on a
+  // forty-turn room you scrolled the whole thing to reach the one thing this
+  // screen is for. Somebody opening a past room either wants to re-read it or
+  // to work on it, and only the second is worth a tap.
+  //
+  // Asserted on order rather than on a style, because "above the transcript"
+  // is the property — a margin would not hold it.
+  const drawn = await setup({});
+  const shown = JSON.stringify(drawn.toJSON());
+  const control = shown.indexOf('Go through it with the coach');
+  const firstLine = shown.indexOf('Off what base');
+
+  // Both found first. `indexOf` answers -1 for missing text, which is trivially
+  // less than anything — this assertion passed while the control did not exist
+  // at all, which is the whole failure mode of comparing positions.
+  expect(control).toBeGreaterThan(-1);
+  expect(firstLine).toBeGreaterThan(-1);
+  expect(control).toBeLessThan(firstLine);
+});
+
+it('says what the tap does rather than naming where it lands', async () => {
+  // "What the room found" is a noun phrase for a destination. It does not say
+  // that somebody is waiting to talk it through — which, now that the coach
+  // has a voice, is the whole of what happens next.
+  await setup({});
+
+  expect(screen.getByLabelText('Go through it with the coach')).toBeTruthy();
+  expect(screen.queryByText('What the room found')).toBeNull();
 });

@@ -119,7 +119,10 @@ export default function PrepSheetRoute() {
           // point of that decision was what leaves the phone.
           Alert.alert('Not yet built', 'Sharing this sheet as an image is still to come.');
         }}
-        back={{ where: 'What the room found', onPress: () => router.back() }}
+        // The same destination the Library's room screen now names. `BackTo` wants
+        // a place rather than a verb, and "the coach" is who is on that screen —
+        // which is also what the control that opens it says.
+        back={{ where: 'The coach', onPress: () => router.back() }}
       />
     </SafeAreaView>
   );
