@@ -330,3 +330,25 @@ it('starts happily once one of ours is beside them', async () => {
 
   expect(screen.queryByText(/at least one of ours/i)).toBeNull();
 });
+
+it('offers to write one when there are none of yours yet', async () => {
+  await setup({ room: { ...ROOM, mayAuthor: true } });
+
+  expect(screen.getByText('Write your own')).toBeTruthy();
+});
+
+it('becomes the way into your own panel once you have written one', async () => {
+  // One row, two jobs, and the second is what makes edit and retire reachable
+  // at all. A first-time Pro user tapping "Write your own" and landing on an
+  // empty list with another button is one tap too many; somebody with three of
+  // their own needs a way back to them, and tapping a card in the rail seats it
+  // rather than opening it.
+  const mine = { name: 'custom:0191d4c2', title: 'The Board Chair', blurb: 'Mine.' };
+
+  await setup({
+    room: { ...ROOM, mayAuthor: true, archetypes: [...LIBRARY, mine] },
+  });
+
+  expect(screen.getByText('Your panelists')).toBeTruthy();
+  expect(screen.queryByText('Write your own')).toBeNull();
+});

@@ -366,7 +366,15 @@ export default function HomeScreen() {
         // not a one-time interruption before entering a room, which is what
         // `disclosure` is and why that one is a sheet.
         onAuthor={
-          room?.mayAuthor ? () => router.push('/panelists/new') : null
+          room?.mayAuthor
+            ? () =>
+                router.push(
+                  // Straight to the form when there is nothing to list. An
+                  // empty list with one button in it charges a tap for nothing,
+                  // and `AuthorRow` says "Write your own" in exactly that case.
+                  mine.length > 0 ? '/panelists' : '/panelists/new'
+                )
+            : null
         }
         onStart={() => {
           // The seating and the deck travel as params rather than being read

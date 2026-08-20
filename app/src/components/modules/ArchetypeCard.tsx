@@ -310,21 +310,38 @@ const styles = StyleSheet.create({
  * landed. On a plan without it, it stays exactly the statement it was — not a
  * disabled button, which is a door with a sign on it, but a row that says what
  * exists and which plan has it. The upsell stays a fact.
+ *
+ * **One row, two jobs, and the second is what makes edit and retire reachable
+ * at all.** With none of your own it offers to write one. With some, it becomes
+ * the way back to them — because tapping a card in the rail *seats* that
+ * panelist, so there is no gesture left on the card for opening it, and a
+ * first-time Pro user sent to an empty list with another button in it has been
+ * charged a tap for nothing.
  */
 export function AuthorRow({
   yours,
+  written,
   onPress,
 }: {
   yours: boolean;
+  /** How many this account has written. Decides which of the two jobs it does. */
+  written: number;
   /** Null wherever authoring is not reachable — the row states instead. */
   onPress: (() => void) | null;
 }) {
+  const some = written > 0;
   const open = yours && onPress !== null;
 
   return (
     <Pressable
       accessibilityRole={open ? 'button' : 'summary'}
-      accessibilityLabel={open ? 'Write your own panelist' : undefined}
+      accessibilityLabel={
+        open
+          ? some
+            ? 'Your panelists'
+            : 'Write your own panelist'
+          : undefined
+      }
       disabled={!open}
       onPress={open ? onPress : undefined}
       style={({ pressed }) => [styles.authorRow, pressed && open && styles.pressed]}
@@ -337,9 +354,13 @@ export function AuthorRow({
       <View style={[styles.rowFace, styles.authorFace]} />
 
       <View style={styles.rowWords}>
-        <Text style={styles.rowTitle}>Write your own</Text>
+        <Text style={styles.rowTitle}>
+          {some ? 'Your panelists' : 'Write your own'}
+        </Text>
         <Text style={styles.rowBlurb}>
-          Somebody this product has never met, described in your words.
+          {some
+            ? `${written} you wrote. Add another, or change one.`
+            : 'Somebody this product has never met, described in your words.'}
         </Text>
       </View>
 

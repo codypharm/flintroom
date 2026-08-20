@@ -293,7 +293,14 @@ export function PanelSetup({
         a full-width row after the horizontal scroll ends is where the eye lands
         without anything having to be swiped. See `AuthorRow`.
       */}
-      <AuthorRow yours={room.mayAuthor} onPress={onAuthor} />
+      <AuthorRow
+        yours={room.mayAuthor}
+        // Counted off the rail rather than passed separately: `railFor` already
+        // merged them in, and a second source for the same fact is a second
+        // thing to keep in step.
+        written={room.archetypes.filter((one) => isAuthored(one.name)).length}
+        onPress={onAuthor}
+      />
 
       <Text style={styles.field} accessibilityRole="header">
         How hard they push
