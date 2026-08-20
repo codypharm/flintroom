@@ -141,6 +141,55 @@ coach's prompt is likewise unchanged; it gets the better model's delivery
 without being told it may perform. Both are follow-ons, and both are tone
 decisions rather than plumbing.
 
+## A room killed under one tick — computed 2026-08-20
+
+`#73` was raised on the premise that a room ending before the meter's first
+tick is free to the user and expensive to us. `meter.py` floors elapsed time
+into ticks, so a room under `TICK_INTERVAL` (15s) charges nothing, and a room
+abandoned to the idle reap is refunded from tick zero — `settlement.py`'s
+`_first_unserved_tick` returns 0 when the presenter never spoke, because "no
+part of this room was received."
+
+**The premise no longer holds, and #79 is why.** It was written when the panel
+opened the room, so an abandoned room burned a synthesised opener — the 88%
+line in the table above. Since the presenter holds the floor, no panelist
+speaks until they have spoken and paused, so an abandoned room synthesises
+nothing at all and routes nothing.
+
+What is left, computed from the rates above rather than observed:
+
+| | Scribe | Panel speech | Total |
+| --- | --- | --- | --- |
+| Ended by hand under one tick (15s) | $0.0016 | none — nobody spoke | **~$0.0016** |
+| Abandoned to the 90s idle reap | $0.0098 | one nudge, ~3s | **~$0.012** |
+
+The nudge is the only synthesis an abandoned room can reach, and it fires once
+at `NUDGE_AFTER_SECS = 60` against a reap at `IDLE_LIMIT = 90`.
+
+**The abuse ceiling is set by the one-active-session rule, not by the meter.**
+A user holds one room at a time — `ActiveSessionExists`, 409, audited — so the
+loop is start, end, start rather than ten in parallel. At the
+`SESSION_START_LIMIT` of 10/minute that is on the order of a dollar an hour per
+account, against a daily spend ceiling that exists to catch exactly that. And
+it buys the abuser nothing: the panel never speaks, so there are no free
+questions to farm.
+
+**Decided: no minimum charge.** It would be a metering-boundary change, which
+`CLAUDE.md` reserves to the architect, and it would trade a deliberate
+user-favouring rounding rule — stated in `settlement.py` as rounding "in the
+user's favour by at most one interval, matching how the ledger rounds
+everywhere else" — for about one cent.
+
+**Reopen if** the observed median of `session_costs` rows with
+`interrogation_seconds < 15` stops being a rounding error against the rooms
+that ran, or if anything is ever added that synthesises speech before the
+presenter has spoken. The rows are already there: `_record_cost` writes one on
+every settle regardless of ticks, so this is answerable from data the moment
+there is traffic worth querying.
+
+These figures are arithmetic over the published rates, not observations. §4.3
+still wants them reconciled against an invoice.
+
 ## Still open
 
 - **No invoice has been compared to anything.** §4.3's acceptance criterion is
