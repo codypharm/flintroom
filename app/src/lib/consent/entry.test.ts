@@ -40,6 +40,10 @@ function trace() {
         steps.push('microphone');
         return 'granted' as const;
       },
+      order: () => {
+        steps.push('order');
+        return { archetypes: ['cfo'], materialId: null };
+      },
       mint: async () => void steps.push('mint'),
     },
   };
@@ -50,7 +54,7 @@ it('discloses, then asks for the microphone, then mints', async () => {
 
   await enterRoom(deps);
 
-  expect(steps).toEqual(['window', 'disclose', 'microphone', 'mint']);
+  expect(steps).toEqual(['order', 'window', 'disclose', 'microphone', 'mint']);
 });
 
 it('does not disclose twice to the same person', async () => {
@@ -60,7 +64,7 @@ it('does not disclose twice to the same person', async () => {
   steps.length = 0;
   await enterRoom(deps);
 
-  expect(steps).toEqual(['microphone', 'mint']);
+  expect(steps).toEqual(['order', 'microphone', 'mint']);
 });
 
 it('does not fetch the retention window it is not going to show', async () => {
@@ -132,4 +136,43 @@ it('remembers the disclosure only once the person has actually continued', async
   ).rejects.toThrow();
 
   expect(await deps.record.wasShownTo(ADA)).toBe(false);
+});
+
+it('does nothing at all when nobody asked for a room', async () => {
+  // #76. `/interrogation` mints a metered session on mount, and until
+  // 2026-08-20 the only thing gating that was an empty dependency array.
+  // `app.json` declares the `flintroom` scheme and the route sits inside
+  // `Stack.Protected guard={who === 'ready'}`, so `flintroom://interrogation`
+  // opened a billed room for any signed-in person who followed a link — and a
+  // remount did the same, because that guard re-evaluates whenever `who`
+  // changes.
+  //
+  // The check belongs here rather than in the screen for the reason the rest of
+  // this sequence does: it is an ordering rule, and it is the first one. Not
+  // merely "do not mint" — do not present a sheet, and do not raise a system
+  // permission prompt, at somebody who has not asked for anything.
+  const { steps, deps } = trace();
+
+  const outcome = await enterRoom({ ...deps, order: () => null });
+
+  expect(outcome).toBe('unasked');
+  expect(steps).toEqual([]);
+});
+
+it('hands the mint the seating it was asked for', async () => {
+  // The seating used to travel as query params, which made the panel forgeable:
+  // `flintroom://interrogation?archetypes=cfo` chose somebody's room for them,
+  // and the bare link chose nothing, so the server seated a default panel the
+  // presenter never picked. It rides in the order now, where no address can
+  // reach it.
+  const { deps } = trace();
+  const seated: string[][] = [];
+
+  await enterRoom({
+    ...deps,
+    order: () => ({ archetypes: ['champion', 'cfo'], materialId: 'deck-9' }),
+    mint: async (order) => void seated.push(order.archetypes),
+  });
+
+  expect(seated).toEqual([['champion', 'cfo']]);
 });

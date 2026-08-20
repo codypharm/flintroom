@@ -212,27 +212,6 @@ export default function InterrogationScreen() {
     void open();
 
     async function open() {
-      /**
-       * #76: what this screen does on mount is spend money, so it does nothing
-       * until it has been asked to.
-       *
-       * Taken before the disclosure sheet, not after. Everything below this
-       * line costs somebody something — a modal, a system permission prompt,
-       * then a metered room — and none of it should happen to a person who
-       * merely arrived here.
-       *
-       * Null is not a refusal. It means nobody tapped Start: a deep link on the
-       * `flintroom` scheme, a cold start onto a restored route, or a remount
-       * after `Stack.Protected` re-evaluated its guard. The answer is the
-       * screen where rooms are actually started, silently — there is no error
-       * to report to somebody who has not done anything wrong.
-       */
-      const order = takeIntent();
-      if (order === null) {
-        router.replace('/');
-        return;
-      }
-
       // A box rather than a bare `let`: the assignment happens inside a
       // callback, and TypeScript's flow analysis cannot see across one — it
       // would narrow a plain local to `null` at every use below.
@@ -240,14 +219,21 @@ export default function InterrogationScreen() {
 
       try {
         // The order here is `enterRoom`'s, and it is the reason that module
-        // exists rather than these three steps living in a screen: the sheet
-        // before the system prompt, because it is the prompt's reason; the
-        // microphone before the session, because a ticket lives seconds and
+        // exists rather than these four steps living in a screen: the tap
+        // before anything at all, because a sheet and a permission prompt are
+        // things that should not happen to somebody who asked for nothing; the
+        // sheet before the system prompt, because it is the prompt's reason;
+        // the microphone before the session, because a ticket lives seconds and
         // minting first leaves somebody who tapped "don't allow" holding a dead
         // one against a live room; and the sheet remembered whatever happens
         // next, because they were told.
         const entered = await enterRoom({
           userId: await auth.userId(),
+          // #76. Handed in rather than read here, so the rule that nothing
+          // happens for an unasked-for room lives beside the rest of the
+          // sequence in `enterRoom` — where it is tested, and where a screen
+          // cannot reorder it in front of the sheet or the permission prompt.
+          order: takeIntent,
           record: told,
           retentionDays: () => account.recordingWindow().catch(() => SHORTEST_WINDOW),
           disclose: (days) =>
@@ -259,7 +245,7 @@ export default function InterrogationScreen() {
           // below would keep today's order by luck rather than by structure —
           // and the whole reason that module exists is that a screen is where
           // ordering goes to be accidentally rearranged.
-          mint: async () => {
+          mint: async (order) => {
             minted.room = await sessions.start({
               archetypes: order.archetypes,
               materialIds: order.materialId === null ? [] : [order.materialId],
@@ -269,6 +255,16 @@ export default function InterrogationScreen() {
 
         if (!alive) return;
         setDisclosing(null);
+
+        if (entered === 'unasked') {
+          // Not a refusal, so not a refusal screen. Nobody tapped anything —
+          // a link on the `flintroom` scheme, a cold start onto this route, or
+          // a remount after `Stack.Protected` re-evaluated its guard. The
+          // answer is where rooms are started, silently: there is nothing to
+          // report to somebody who has not done anything wrong.
+          router.replace('/');
+          return;
+        }
 
         if (entered !== 'entered' || minted.room === null) {
           throw new Error(entered);
