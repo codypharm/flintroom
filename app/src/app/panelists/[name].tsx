@@ -3,7 +3,11 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { PanelistForm, type VoiceOffer } from '../../components/modules/PanelistForm';
+import {
+  PanelistForm,
+  type DomainOffer,
+  type VoiceOffer,
+} from '../../components/modules/PanelistForm';
 import {
   NotYourPlan,
   TitleAlreadyUsed,
@@ -50,7 +54,7 @@ export default function PanelistRoute() {
   const { name } = useLocalSearchParams<{ name: string }>();
   const writing = name === WRITING;
 
-  const [domains, setDomains] = useState<string[] | null>(null);
+  const [domains, setDomains] = useState<DomainOffer[] | null>(null);
   const [voices, setVoices] = useState<VoiceOffer[]>([]);
   const [existing, setExisting] = useState<MyArchetype | null>(null);
   const [busy, setBusy] = useState(false);

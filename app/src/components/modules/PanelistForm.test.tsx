@@ -23,10 +23,19 @@ import { PanelistForm } from './PanelistForm';
  * the long field, small choices as segmented rows, one action at the foot.
  */
 
-const DOMAINS = ['margin', 'runway', 'cost', 'feasibility'];
+const DOMAINS = [
+  { name: 'margin', label: 'Margin' },
+  { name: 'runway', label: 'Runway' },
+  { name: 'defensibility', label: 'What stops a copy' },
+  { name: 'feasibility', label: 'Whether it works' },
+];
 const VOICES = [
-  { name: 'measured', sounds: 'Unhurried and formal. Says less than it could.' },
-  { name: 'brisk', sounds: 'Clipped and impatient.' },
+  {
+    name: 'measured',
+    label: 'Measured',
+    sounds: 'Unhurried and formal. Says less than it could.',
+  },
+  { name: 'brisk', label: 'Brisk', sounds: 'Clipped and impatient.' },
 ];
 
 async function show(over: Partial<Parameters<typeof PanelistForm>[0]> = {}) {
@@ -62,7 +71,7 @@ async function fill(
     screen.getByLabelText('Who are they?'),
     over.persona ?? 'Unimpressed by anything that is not a number.'
   );
-  await user.press(screen.getByLabelText(over.domain ?? 'margin'));
+  await user.press(screen.getByLabelText(over.domain ?? 'Margin'));
 }
 
 it('sends what was typed, with the domains that were tapped', async () => {
@@ -121,7 +130,7 @@ it('carries a chosen voice through', async () => {
   const { user, onSave } = await show();
 
   await fill(user);
-  await user.press(screen.getByLabelText('brisk. Clipped and impatient.'));
+  await user.press(screen.getByLabelText('Brisk. Clipped and impatient.'));
   await user.press(screen.getByLabelText('Save this panelist'));
 
   expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ voice: 'brisk' }));
@@ -133,9 +142,51 @@ it('offers only domains the server routes on', async () => {
   await show();
 
   for (const domain of DOMAINS) {
-    expect(screen.getByLabelText(domain)).toBeTruthy();
+    expect(screen.getByLabelText(domain.label)).toBeTruthy();
   }
   expect(screen.queryByLabelText(/Core Focus/i)).toBeNull();
+});
+
+it('names a domain in words rather than showing its identifier', async () => {
+  // `defensibility` on a chip is a column name on a screen. The audience knows
+  // `margin` and `runway` — flattening those would be worse — but nobody can
+  // rank `proof`, `references` and `resilience` against each other on sight.
+  await show();
+
+  expect(screen.getByText('What stops a copy')).toBeTruthy();
+  expect(screen.queryByText('defensibility')).toBeNull();
+});
+
+it('says what is still missing rather than sitting there disabled', async () => {
+  // The setup screen already does this: "a sentence rather than a boolean,
+  // because a disabled button with no reason is the failure this exists to
+  // prevent." The same product had one screen explaining itself and this one
+  // saying nothing at all.
+  const { user } = await show();
+
+  await user.type(screen.getByLabelText('What do you call them?'), 'The Chair');
+
+  expect(screen.getByText(/who they are/i)).toBeTruthy();
+});
+
+it('stops saying it the moment there is nothing missing', async () => {
+  const { user } = await show();
+
+  await fill(user);
+
+  expect(screen.queryByText(/still needs/i)).toBeNull();
+});
+
+it('says the length limit before it is hit, not after', async () => {
+  // The server caps the persona and answers 422. Without a limit here that
+  // arrives as "that did not save", which names neither the field nor the
+  // reason — a requirement stated after submission, which is the thing forms
+  // are supposed to avoid.
+  await show();
+
+  const field = screen.getByLabelText('Who are they?');
+
+  expect(field.props.maxLength).toBe(400);
 });
 
 it('reopens an existing panelist with its own words in it', async () => {

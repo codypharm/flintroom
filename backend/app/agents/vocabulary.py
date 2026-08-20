@@ -125,3 +125,48 @@ def terms_for(domain: str) -> tuple[str, ...]:
     will add one before they add its vocabulary.
     """
     return DOMAIN_TERMS.get(domain, (domain,))
+
+
+#: What each domain is called on a screen.
+#:
+#: The keys are routing identifiers and read like column names — `defensibility`,
+#: `resourcing`, `proof`. Shown raw in the authoring picker they ask somebody to
+#: guess at the thing that decides when their panelist interrupts.
+#:
+#: **Not a wholesale rewrite.** `Margin`, `Runway` and `Retention` are the words
+#: this audience uses, and replacing them would flatten terminology they
+#: genuinely know — `clarify`'s rule, and the reason most of these are simply the
+#: key with a capital. What earns different words are the handful nobody can
+#: rank against each other on sight.
+#:
+#: Same move as `VOICE_BLURBS`: the words that make a thing choosable stop being
+#: a comment the moment a user has to choose between them.
+DOMAIN_LABELS: dict[str, str] = {
+    "adoption": "Adoption",
+    "capacity": "Capacity at scale",
+    "competition": "Competitors",
+    "compliance": "Compliance",
+    "cost": "Costs",
+    "customers": "Customers",
+    "data": "Data handling",
+    "defensibility": "What stops a copy",
+    "dependencies": "Dependencies",
+    "feasibility": "Whether it works",
+    "growth": "Growth",
+    "headcount": "Headcount",
+    "legal": "Legal exposure",
+    "margin": "Margin",
+    "market": "Market size",
+    "ownership": "Who owns what",
+    "privacy": "Privacy",
+    "proof": "Evidence",
+    "references": "References",
+    "resilience": "What breaks",
+    "resourcing": "Who does the work",
+    "retention": "Retention",
+    "revenue": "Revenue",
+    "runway": "Runway",
+    "timing": "Timing",
+    "usability": "Usability",
+    "valuation": "Valuation",
+}

@@ -25,9 +25,14 @@ from app.modules.billing.tiers import (
     next_tier_above,
 )
 from app.modules.onboarding.service import OnboardingService
-from app.agents.vocabulary import DOMAIN_TERMS
+from app.agents.vocabulary import DOMAIN_LABELS, DOMAIN_TERMS
 from app.agents.voices import CASTABLE, VOICE_BLURBS
-from app.modules.panels.schemas import ArchetypeCatalogue, ArchetypeRead, VoiceRead
+from app.modules.panels.schemas import (
+    ArchetypeCatalogue,
+    ArchetypeRead,
+    DomainRead,
+    VoiceRead,
+)
 
 log = get_logger(__name__, tag="panel")
 
@@ -81,9 +86,22 @@ class PanelCatalogueService:
                     user_id=user_id, seats=seats
                 )
             ],
-            domains=sorted(DOMAIN_TERMS),
+            # Sorted by what a person reads, not by the identifier underneath
+            # it. A picker ordered by key puts "What breaks" between "Retention"
+            # and "Revenue" for reasons visible only in the database.
+            domains=sorted(
+                (
+                    DomainRead(name=name, label=DOMAIN_LABELS[name])
+                    for name in DOMAIN_TERMS
+                ),
+                key=lambda one: one.label,
+            ),
             voices=[
-                VoiceRead(name=voice.value, sounds=VOICE_BLURBS[voice])
+                VoiceRead(
+                    name=voice.value,
+                    label=voice.value.capitalize(),
+                    sounds=VOICE_BLURBS[voice],
+                )
                 for voice in sorted(CASTABLE, key=lambda one: one.value)
             ],
             may_author=may_author_archetypes(tier),

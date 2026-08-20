@@ -20,7 +20,7 @@ import pytest
 
 from app.agents.archetypes import DEFAULT_PANEL, LIBRARY, by_name
 from app.agents.routing import _domain_hits
-from app.agents.vocabulary import DOMAIN_TERMS, terms_for
+from app.agents.vocabulary import DOMAIN_LABELS, DOMAIN_TERMS, terms_for
 from app.agents.voices import CASTABLE, VOICE_BLURBS
 from app.agents.panel import assemble
 from app.core.errors import ArchetypeNotFound, PanelTooLarge
@@ -316,3 +316,33 @@ def test_every_voice_says_how_it_sounds():
     """
     for voice in CASTABLE:
         assert VOICE_BLURBS.get(voice), voice
+
+
+def test_every_domain_says_what_it_is_in_words():
+    """A chip reading `defensibility` is a column name on a screen.
+
+    The audience knows `margin` and `runway` — flattening those would be worse
+    than leaving them. What it does not know is which of `proof`, `references`
+    and `resilience` is which, and a picker that offers all three unlabelled is
+    asking somebody to guess at the thing that decides when their panelist
+    interrupts.
+
+    Same shape as `VOICE_BLURBS`: the sentence that made a voice choosable moved
+    from a comment to data the moment a user had to choose between them.
+    """
+    for domain in DOMAIN_TERMS:
+        assert DOMAIN_LABELS.get(domain), domain
+
+
+def test_no_label_is_just_the_key_with_a_capital_letter():
+    """At least the ambiguous ones earn their words.
+
+    Not all of them: `Margin` and `Runway` are the words this audience uses, and
+    dressing them up would flatten terminology they genuinely know. But if every
+    label were a capitalisation, this table would be doing nothing.
+    """
+    said_differently = [
+        one for one, label in DOMAIN_LABELS.items() if label.lower() != one
+    ]
+
+    assert len(said_differently) >= 5, said_differently

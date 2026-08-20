@@ -1451,7 +1451,7 @@ components:
           default: 3
         domains:
           items:
-            type: string
+            $ref: '#/components/schemas/DomainRead'
           type: array
           title: Domains
         voices:
@@ -1764,6 +1764,21 @@ components:
         choosing, and quietly handing them level 3 when they asked for 7 is a
 
         control that lies about what it did.'
+    DomainRead:
+      properties:
+        name:
+          type: string
+          title: Name
+        label:
+          type: string
+          title: Label
+      type: object
+      required:
+      - name
+      - label
+      title: DomainRead
+      description: One claim domain a panelist may own, and what it is called on a
+        screen.
     EndReason:
       type: string
       enum:
@@ -2574,12 +2589,16 @@ components:
         name:
           type: string
           title: Name
+        label:
+          type: string
+          title: Label
         sounds:
           type: string
           title: Sounds
       type: object
       required:
       - name
+      - label
       - sounds
       title: VoiceRead
       description: One voice a panelist may be cast in, and what it sounds like.

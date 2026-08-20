@@ -902,7 +902,7 @@ export interface components {
              */
             hardest: number;
             /** Domains */
-            domains?: string[];
+            domains?: components["schemas"]["DomainRead"][];
             /** Voices */
             voices?: components["schemas"]["VoiceRead"][];
         };
@@ -1071,6 +1071,16 @@ export interface components {
         DifficultyChoice: {
             /** Difficulty */
             difficulty: number;
+        };
+        /**
+         * DomainRead
+         * @description One claim domain a panelist may own, and what it is called on a screen.
+         */
+        DomainRead: {
+            /** Name */
+            name: string;
+            /** Label */
+            label: string;
         };
         /**
          * EndReason
@@ -1603,6 +1613,8 @@ export interface components {
         VoiceRead: {
             /** Name */
             name: string;
+            /** Label */
+            label: string;
             /** Sounds */
             sounds: string;
         };

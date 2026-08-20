@@ -45,9 +45,9 @@ export interface Catalogue {
    * server refuses one it does not route on, so a copied list is a form
    * offering choices the API rejects.
    */
-  domains: string[];
+  domains: { name: string; label: string }[];
   /** The voices a panelist may be cast in, and what each sounds like. */
-  voices: { name: string; sounds: string }[];
+  voices: { name: string; label: string; sounds: string }[];
   difficulty: number;
   hardest: number;
 }
@@ -67,8 +67,8 @@ export interface PanelsApiOptions {
 /** The catalogue as the wire spells it, before the app renames it. */
 interface CatalogueBody {
   archetypes: ArchetypeOffered[];
-  domains?: string[];
-  voices?: { name: string; sounds: string }[];
+  domains?: { name: string; label: string }[];
+  voices?: { name: string; label: string; sounds: string }[];
   seated?: string[];
   seats: number;
   may_author: boolean;

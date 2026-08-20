@@ -187,8 +187,15 @@ async def test_the_catalogue_publishes_the_domains_a_panelist_may_own(
 
     published = catalogue.json()["domains"]
 
-    assert set(published) == set(DOMAIN_TERMS)
-    assert published == sorted(published)
+    assert {one["name"] for one in published} == set(DOMAIN_TERMS)
+    # Every one says what it is. `defensibility` on a chip is a column name on a
+    # screen, and this audience cannot rank `proof`, `references` and
+    # `resilience` against each other on sight.
+    assert all(one["label"] for one in published)
+    # Ordered by what is read, not by the identifier underneath it.
+    assert [one["label"] for one in published] == sorted(
+        one["label"] for one in published
+    )
 
 
 async def test_the_catalogue_publishes_the_voices_and_says_how_each_sounds(
@@ -206,3 +213,6 @@ async def test_the_catalogue_publishes_the_voices_and_says_how_each_sounds(
 
     assert {one["name"] for one in published} == {one.value for one in CASTABLE}
     assert all(one["sounds"] for one in published)
+    # `measured` is an identifier; "Measured" is a label. A picker showing the
+    # first is showing its own database.
+    assert all(one["label"][0].isupper() for one in published)

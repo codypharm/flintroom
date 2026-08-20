@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { type ArchetypeDraft, type MyArchetype } from '../../lib/api/archetypesApi';
+
+/** The server's cap on a persona, mirrored so it is stated before submission. */
+const PERSONA_LIMIT = 400;
 import { color, radius, space, type } from '../../theme/tokens';
 
 /**
@@ -30,14 +33,32 @@ import { color, radius, space, type } from '../../theme/tokens';
  */
 
 export interface VoiceOffer {
+  /** The stored value — an identifier, never shown. */
   name: string;
+  /** What a person reads. */
+  label: string;
   /** What it sounds like. The names alone are unchoosable. */
   sounds: string;
 }
 
+export interface DomainOffer {
+  /** The routing key. What the API takes back. */
+  name: string;
+  /**
+   * What a person reads.
+   *
+   * `defensibility` on a chip is a column name on a screen. The audience knows
+   * `margin` and `runway` — flattening those would be worse than leaving them —
+   * but nobody can rank `proof`, `references` and `resilience` against each
+   * other on sight, which is the choice that decides when their panelist
+   * interrupts.
+   */
+  label: string;
+}
+
 export interface PanelistFormProps {
   /** Every claim domain the server routes on, from the catalogue. */
-  domains: string[];
+  domains: DomainOffer[];
   voices: VoiceOffer[];
   /** The one being edited, or null when writing a new one. */
   existing: MyArchetype | null;
@@ -68,7 +89,7 @@ export function PanelistForm({
   // Checked here as well as by the server, and the domain rule is the one worth
   // catching early: a panelist with none can never be the one an interruption
   // reaches, and nothing downstream would ever say so.
-  const ready = title.trim() !== '' && persona.trim() !== '' && owned.length > 0;
+  const missing = whatIsMissing(title, persona, owned);
 
   const toggle = (domain: string) =>
     setOwned((held) =>
@@ -109,22 +130,31 @@ export function PanelistForm({
         onChange={setPersona}
         busy={busy}
         long
+        // Stated by the control rather than by a refusal. Without it, going over
+        // arrives as a 422 rendered as "that did not save", which names neither
+        // the field nor the reason — a requirement announced after submission.
+        limit={PERSONA_LIMIT}
       />
 
       <Text style={styles.label} accessibilityRole="header">
         What do they go after?
       </Text>
+      {/* What it is, then the cap. A constraint stated before somebody knows
+          what they are choosing is a number with nothing to attach to. */}
       <Text style={styles.hint}>
-        Up to {MOST_DOMAINS}. This is what decides when they interrupt.
+        This is what decides when they interrupt. Pick up to {MOST_DOMAINS}.
       </Text>
       <View style={styles.chips}>
         {domains.map((domain) => (
           <Chip
-            key={domain}
-            label={domain}
-            chosen={owned.includes(domain)}
-            disabled={busy || (owned.length >= MOST_DOMAINS && !owned.includes(domain))}
-            onPress={() => toggle(domain)}
+            key={domain.name}
+            label={domain.label}
+            chosen={owned.includes(domain.name)}
+            disabled={
+              busy ||
+              (owned.length >= MOST_DOMAINS && !owned.includes(domain.name))
+            }
+            onPress={() => toggle(domain.name)}
           />
         ))}
       </View>
@@ -146,7 +176,7 @@ export function PanelistForm({
         {voices.map((offer) => (
           <VoiceRow
             key={offer.name}
-            label={offer.name}
+            label={offer.label}
             sounds={offer.sounds}
             chosen={voice === offer.name}
             disabled={busy}
@@ -161,18 +191,32 @@ export function PanelistForm({
         </Text>
       )}
 
+      {/* Said, not implied. `PanelSetup.holdingUpStart` already worked this
+          way — "a disabled button with no reason is the failure this exists to
+          prevent" — and this form was the one screen in the product still
+          leaving somebody to guess which field it was waiting on.
+
+          Polite rather than an alert: nothing has failed, and interrupting a
+          screen reader mid-form to say a field is still empty would be the app
+          nagging somebody who is still typing. */}
+      {missing !== null && (
+        <Text style={styles.missing} accessibilityLiveRegion="polite">
+          {missing}
+        </Text>
+      )}
+
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Save this panelist"
-        accessibilityState={{ disabled: busy || !ready }}
-        disabled={busy || !ready}
+        accessibilityState={{ disabled: busy || missing !== null }}
+        disabled={busy || missing !== null}
         onPress={() =>
           onSave({ title: title.trim(), persona: persona.trim(), domains: owned, voice })
         }
         style={({ pressed }) => [
           styles.save,
           pressed && styles.pressed,
-          (busy || !ready) && styles.dim,
+          (busy || missing !== null) && styles.dim,
         ]}
       >
         <Text style={styles.saveLabel}>
@@ -187,10 +231,40 @@ export function PanelistForm({
         onPress={onCancel}
         style={({ pressed }) => [styles.cancel, pressed && styles.pressed]}
       >
-        <Text style={styles.cancelLabel}>Cancel</Text>
+        {/* Named, and named the same way twice: the visible label and the
+            accessible one must not disagree about what a control does. */}
+        <Text style={styles.cancelLabel}>Leave without saving</Text>
       </Pressable>
     </ScrollView>
   );
+}
+
+/**
+ * Why Save cannot be pressed yet, or null when it can.
+ *
+ * A sentence rather than a boolean, exactly as `PanelSetup.holdingUpStart`
+ * decided: *"a disabled button with no reason is the failure this exists to
+ * prevent."* One product should not have one screen that explains itself and
+ * another that does not.
+ *
+ * One thing at a time, in the order the form asks for it. Listing all three
+ * shortfalls at once is a screen telling somebody who has filled in nothing
+ * that they have filled in nothing.
+ */
+function whatIsMissing(
+  title: string,
+  persona: string,
+  owned: string[]
+): string | null {
+  if (title.trim() === '') return 'Give them a name to be called by.';
+  if (persona.trim() === '') return 'Say who they are.';
+  if (owned.length === 0) {
+    // The one worth explaining rather than naming. A panelist with no domains
+    // would be seated and simply never catch anything, and its author would
+    // have no way to find out why.
+    return 'Pick what they go after, or they will never interrupt.';
+  }
+  return null;
 }
 
 function Field({
@@ -201,6 +275,7 @@ function Field({
   onChange,
   busy,
   long = false,
+  limit,
 }: {
   label: string;
   hint: string;
@@ -209,6 +284,8 @@ function Field({
   onChange: (next: string) => void;
   busy: boolean;
   long?: boolean;
+  /** The server's cap, enforced here so it is never news after a save. */
+  limit?: number;
 }) {
   return (
     <View style={styles.field}>
@@ -224,8 +301,15 @@ function Field({
         placeholder={placeholder}
         placeholderTextColor={color.onSurfaceVariant}
         multiline={long}
+        maxLength={limit}
         style={[styles.input, long && styles.long]}
       />
+      {/* Only near the end. A counter from the first keystroke turns a
+          description into a word budget, and this field wants somebody
+          thinking about a person rather than about a number. */}
+      {limit !== undefined && value.length > limit * 0.8 && (
+        <Text style={styles.hint}>{limit - value.length} characters left.</Text>
+      )}
     </View>
   );
 }
@@ -367,6 +451,10 @@ const styles = StyleSheet.create({
   picked: { backgroundColor: color.primary, borderColor: color.primary },
 
   refusal: { ...type.bodyMd, color: color.danger, marginBottom: space.snug },
+  // Not `danger`. Nothing has failed — a form still being filled in is not an
+  // error, and colouring it as one is how an interface teaches people to
+  // distrust its own red.
+  missing: { ...type.bodyMd, color: color.onSurfaceVariant, marginBottom: space.snug },
 
   save: {
     minHeight: 44,

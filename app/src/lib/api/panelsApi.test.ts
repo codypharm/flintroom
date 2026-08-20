@@ -110,14 +110,18 @@ it('carries the vocabulary the authoring form has to offer', async () => {
   // somebody who chose what we showed them.
   const { api } = apiReturning(200, {
     ...CATALOGUE,
-    domains: ['margin', 'runway'],
-    voices: [{ name: 'brisk', sounds: 'Clipped and impatient.' }],
+    domains: [{ name: 'margin', label: 'Margin' }],
+    voices: [{ name: 'brisk', label: 'Brisk', sounds: 'Clipped and impatient.' }],
   });
 
   const room = await api.catalogue();
 
-  expect(room.domains).toEqual(['margin', 'runway']);
-  expect(room.voices).toEqual([{ name: 'brisk', sounds: 'Clipped and impatient.' }]);
+  // The label travels with the identifier. Without it the picker draws its own
+  // database — `defensibility` on a chip is a column name on a screen.
+  expect(room.domains).toEqual([{ name: 'margin', label: 'Margin' }]);
+  expect(room.voices).toEqual([
+    { name: 'brisk', label: 'Brisk', sounds: 'Clipped and impatient.' },
+  ]);
 });
 
 it('renders an older server as nothing to choose from, not a crash', async () => {

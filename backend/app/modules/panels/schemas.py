@@ -38,6 +38,16 @@ class ArchetypeRead(BaseModel):
     blurb: str
 
 
+class DomainRead(BaseModel):
+    """One claim domain a panelist may own, and what it is called on a screen."""
+
+    #: The routing identifier. What is stored and what the API takes back.
+    name: str
+    #: What a person reads — see `DOMAIN_LABELS` for why these are not all
+    #: simply the key with a capital letter.
+    label: str
+
+
 class VoiceRead(BaseModel):
     """One voice a panelist may be cast in, and what it sounds like."""
 
@@ -45,6 +55,9 @@ class VoiceRead(BaseModel):
 
     #: The stored value — `measured`, `brisk`. A character, never a vendor id.
     name: str
+    #: What a person reads. The stored value is lowercase because it is an
+    #: identifier; a picker showing it raw is a screen full of column names.
+    label: str
     #: The sentence somebody chooses by.
     sounds: str
 
@@ -108,7 +121,7 @@ class ArchetypeCatalogue(BaseModel):
     #: Auditor's routing key, the server refuses one it does not route on, and a
     #: hardcoded copy in the app is a form offering choices the API rejects —
     #: the failure this endpoint already exists to prevent for the roster.
-    domains: list[str] = Field(default_factory=list)
+    domains: list[DomainRead] = Field(default_factory=list)
 
     #: Every voice a panelist may be cast in, with how each sounds.
     voices: list[VoiceRead] = Field(default_factory=list)
