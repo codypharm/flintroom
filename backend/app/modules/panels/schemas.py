@@ -8,9 +8,12 @@ rehearse against the room in advance.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.agents.difficulty import GENTLE, RELENTLESS
+from app.agents.vocabulary import DOMAIN_TERMS
+from app.agents.voices import CASTABLE
+from app.modules.panels.models import PERSONA_LIMIT, TITLE_LIMIT
 
 
 class ArchetypeRead(BaseModel):
@@ -100,3 +103,84 @@ class DifficultyChoice(BaseModel):
     """
 
     difficulty: int = Field(ge=GENTLE, le=RELENTLESS)
+
+
+class ArchetypeDraft(BaseModel):
+    """What somebody types to write a panelist.
+
+    Four fields, and `docs/custom-archetypes.md` §0 says who supplies each.
+    Everything absent from here is absent on purpose: `cadence`, `openers` and
+    `nudges` are hand-written per archetype and a row carries none, the attack
+    strategy is composed by us from `domains`, and the name is minted.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: "The Board Chair". Theirs, and never an identifier — it may duplicate a
+    #: shipped title without consequence.
+    title: str = Field(min_length=1, max_length=TITLE_LIMIT)
+
+    #: Who this person is, in their words. **The only text of theirs that
+    #: reaches a prompt**, and it is fenced as data when it does (§2). Capped
+    #: far below `Archetype.persona`'s 2000 as part of that fencing rather than
+    #: for storage: a paragraph describes somebody, and a page is room to argue
+    #: with the instructions underneath it.
+    persona: str = Field(min_length=1, max_length=PERSONA_LIMIT)
+
+    #: From the shipped vocabulary, never typed (§1). These are the Auditor's
+    #: routing key — a panelist with none can never be the one a targeted
+    #: interruption reaches, which would make it a second-class member of the
+    #: room in a way nothing would report.
+    domains: list[str] = Field(min_length=1, max_length=4)
+
+    #: One of ours, or null for "pick one for me". Optional by decision rather
+    #: than oversight — casting is a decision tax on the feature's main path.
+    voice: str | None = None
+
+    @field_validator("domains")
+    @classmethod
+    def _known(cls, domains: list[str]) -> list[str]:
+        """Refused rather than dropped.
+
+        Silently discarding an unknown domain would seat a panelist that never
+        catches anything, and its author would have no way to find out why — the
+        same failure `ArchetypeNotFound` exists to prevent one level up.
+        """
+        unknown = [one for one in domains if one not in DOMAIN_TERMS]
+        if unknown:
+            raise ValueError(f"not domains we route on: {', '.join(sorted(unknown))}")
+        if len(set(domains)) != len(domains):
+            raise ValueError("the same domain twice")
+        return domains
+
+    @field_validator("voice")
+    @classmethod
+    def _castable(cls, voice: str | None) -> str | None:
+        if voice is not None and voice not in {one.value for one in CASTABLE}:
+            raise ValueError("not a voice we cast")
+        return voice
+
+    @field_validator("title", "persona")
+    @classmethod
+    def _not_only_spaces(cls, text: str) -> str:
+        stripped = text.strip()
+        if not stripped:
+            raise ValueError("cannot be blank")
+        return stripped
+
+
+class AuthoredArchetypeRead(BaseModel):
+    """One panelist somebody wrote, as their own device sees it.
+
+    Their own words go back out, unlike a shipped archetype where `persona` is
+    prompt text that never leaves the server. There is nothing to protect here:
+    they wrote it, and the form has to be able to reopen it.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    title: str
+    persona: str
+    domains: list[str]
+    voice: str | None

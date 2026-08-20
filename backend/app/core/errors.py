@@ -418,6 +418,23 @@ class PanelTooLarge(BusinessRuleViolation):
     message = "That is more panelists than your plan seats."
 
 
+class TitleAlreadyUsed(BusinessRuleViolation):
+    """Two live panelists on one account with the same name on them.
+
+    Refused rather than allowed, because the picker shows titles and two of one
+    word is a list that cannot be read — and the Library, the transcript and the
+    debrief all name panelists the same way.
+
+    Scoped to the account and to the living. Another user's identical title is
+    none of this account's business, and a retired one frees the word: the
+    retired row keeps its own for the rooms that used it, which is what the
+    partial index on `archived_at IS NULL` expresses.
+    """
+
+    code = "title_already_used"
+    message = "You already have a panelist with that name."
+
+
 class ArchetypeNotFound(NotFound):
     """A panelist nobody in the library answers to.
 
