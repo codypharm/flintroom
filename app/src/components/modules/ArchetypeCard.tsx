@@ -267,8 +267,41 @@ const styles = StyleSheet.create({
     gap: space.base,
     marginTop: space.base,
     paddingTop: space.base,
+    // Symmetrical, which it was not. With padding only above, the pressed state
+    // dimmed a region with sixteen points of air over the content and none
+    // under it — a highlight that looks misaligned rather than like the row
+    // being touched. It also lifts the target well past the 44pt floor.
+    paddingBottom: space.base,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: color.hairline,
+  },
+  /**
+   * How many of your own exist, where the empty seat goes when there are none.
+   *
+   * Hairline rather than dashed: a solid edge says these are real, and the
+   * dashed one next door says the opposite on purpose.
+   */
+  rowCount: {
+    borderWidth: 1,
+    borderColor: color.hairline,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countLabel: { ...type.labelLg, color: color.onSurfaceVariant },
+  /**
+   * Drawn from a View, like every other mark in this app.
+   *
+   * Ten points rotated onto its corner with two sides showing — the same
+   * chevron `TablePlan`'s date row and `SignInSheet`'s back control draw, at the
+   * same size, so one shape means "this opens" throughout.
+   */
+  rowChevron: {
+    width: 10,
+    height: 10,
+    borderRightWidth: 2,
+    borderTopWidth: 2,
+    borderColor: color.onSurfaceVariant,
+    transform: [{ rotate: '45deg' }],
   },
   rowFace: {
     width: 40,
@@ -347,11 +380,26 @@ export function AuthorRow({
       style={({ pressed }) => [styles.authorRow, pressed && open && styles.pressed]}
     >
       {/*
-        The same blank face the rail's cards carry, at row scale: it says "a
-        person who is not here yet" in the visual language already established
-        two inches above.
+        **The dashed circle means "a person who is not here yet", and it stopped
+        being true.** Right above "Write your own" it is exactly the visual
+        language the rail established two inches up. Above "Your panelists",
+        with three of them written, it draws an empty seat over a full one.
+
+        So the empty seat belongs to the empty case only. With some written, the
+        circle holds the count — a fact rather than a face, and it stops the
+        blurb having to carry the number, which is why that line lost "3 you
+        wrote" and kept the part that says what a tap does.
       */}
-      <View style={[styles.rowFace, styles.authorFace]} />
+      {some ? (
+        <View style={[styles.rowFace, styles.rowCount]}>
+          <Text style={styles.countLabel}>{written}</Text>
+        </View>
+      ) : (
+        <View
+          testID="author-empty-seat"
+          style={[styles.rowFace, styles.authorFace]}
+        />
+      )}
 
       <View style={styles.rowWords}>
         <Text style={styles.rowTitle}>
@@ -359,12 +407,32 @@ export function AuthorRow({
         </Text>
         <Text style={styles.rowBlurb}>
           {some
-            ? `${written} you wrote. Add another, or change one.`
+            ? 'Add another, or change one.'
             : 'Somebody this product has never met, described in your words.'}
         </Text>
       </View>
 
-      <Text style={styles.rowAside}>{yours ? 'Yours' : 'On Pro'}</Text>
+      {/*
+        **The trailing slot holds whichever of the two is load-bearing.**
+
+        A chevron where the row opens something. `TablePlan` decided this in the
+        other direction — its date row "grows a chevron only when there is
+        something to open", because "a chevron on a statement is a lie about
+        what a tap does" — and the inverse is the same lie: this row became a
+        control and kept looking like a caption, with a hairline above it and
+        nothing at all saying it could be pressed.
+
+        "Yours" used to sit here on exactly the plan where the row is tappable,
+        telling somebody what the interaction already tells them, in the one
+        position an affordance belongs in. "On Pro" stays, because where the row
+        is a statement it is the only thing carrying the fact — and it is a fact,
+        never a locked door with a price on it (§4.5).
+      */}
+      {open ? (
+        <View testID="author-open" style={styles.rowChevron} />
+      ) : (
+        <Text style={styles.rowAside}>{yours ? 'Yours' : 'On Pro'}</Text>
+      )}
     </Pressable>
   );
 }

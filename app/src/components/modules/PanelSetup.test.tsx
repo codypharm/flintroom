@@ -352,3 +352,56 @@ it('becomes the way into your own panel once you have written one', async () => 
   expect(screen.getByText('Your panelists')).toBeTruthy();
   expect(screen.queryByText('Write your own')).toBeNull();
 });
+
+it('shows an affordance only when the row opens something', async () => {
+  // `TablePlan` decided this in the other direction: the date row "grows a
+  // chevron only when there is something to open", because "a chevron on a
+  // statement is a lie about what a tap does". The inverse is the same lie —
+  // this row became a control and still looked like a caption, with a hairline
+  // above it and nothing at all saying it could be pressed.
+  await setup({ room: { ...ROOM, mayAuthor: true } });
+
+  expect(screen.getByTestId('author-open')).toBeTruthy();
+});
+
+it('draws no affordance where the row is a statement', async () => {
+  // On a plan without authoring it is a fact and a plan name, never a locked
+  // door — §4.5 keeps the upsell out of the way of a rehearsal.
+  await setup({ room: { ...ROOM, mayAuthor: false } });
+
+  expect(screen.queryByTestId('author-open')).toBeNull();
+  expect(screen.getByText('On Pro')).toBeTruthy();
+});
+
+it('stops saying Yours once the row itself says it', async () => {
+  // "Yours" sat in the trailing slot on the one plan where the row is tappable,
+  // telling somebody what the interaction already tells them — and occupying
+  // the position an affordance belongs in. "On Pro" stays, because on that plan
+  // it is the only thing carrying the fact.
+  await setup({ room: { ...ROOM, mayAuthor: true } });
+
+  expect(screen.queryByText('Yours')).toBeNull();
+});
+
+it('stops drawing an empty seat once the seats are filled', async () => {
+  // The dashed circle means "a person who is not here yet" — right above "Write
+  // your own", and false above "Your panelists", where three of them exist.
+  const mine = { name: 'custom:0191d4c2', title: 'The Board Chair', blurb: 'Mine.' };
+
+  await setup({
+    room: { ...ROOM, mayAuthor: true, archetypes: [...LIBRARY, mine] },
+  });
+
+  expect(screen.getByText('1')).toBeTruthy();
+  expect(screen.queryByTestId('author-empty-seat')).toBeNull();
+});
+
+it('says the count once, not twice', async () => {
+  const mine = { name: 'custom:0191d4c2', title: 'The Board Chair', blurb: 'Mine.' };
+
+  await setup({
+    room: { ...ROOM, mayAuthor: true, archetypes: [...LIBRARY, mine] },
+  });
+
+  expect(screen.getByText('Add another, or change one.')).toBeTruthy();
+});
