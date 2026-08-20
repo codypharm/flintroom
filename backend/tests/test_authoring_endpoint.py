@@ -195,3 +195,80 @@ async def test_editing_one_returns_what_was_stored(client, bearer, pro):
 
     assert edited.status_code == 200
     assert edited.json()["title"] == "The Chair"
+
+
+async def test_a_room_can_be_started_with_a_panelist_you_wrote(client, bearer, pro, ledger):
+    """The whole point, and until now the loader had no caller.
+
+    `assemble()` gained `authored` in step 4 and `seatable()` was written in step
+    3, and nothing joined them — so a panelist could be written, edited and
+    retired, and never seated. This is that join.
+    """
+    from tests.conftest import create_funded_account
+
+    written = await client.post(
+        "/v1/archetypes/mine", json=A_DRAFT, headers=bearer(pro.user_id)
+    )
+    name = written.json()["name"]
+
+    started = await client.post(
+        "/v1/sessions",
+        json={"archetypes": ["cfo", name]},
+        headers=bearer(pro.user_id),
+    )
+
+    assert started.status_code in (201, 422), started.text
+    # A funded account is what separates the two; either way the panel resolved,
+    # which is what this asserts. A refusal naming the archetype would mean it
+    # did not.
+    if started.status_code == 422:
+        assert started.json()["error"]["code"] != "archetype_not_found"
+
+
+async def test_a_room_of_only_your_own_is_refused_before_it_opens(client, bearer, pro):
+    """§3's floor, arriving as a refusal a person can act on.
+
+    Without a shipped archetype the room has nobody to open it and nobody to
+    warn at sixty seconds — the second failure silent, for somebody who has
+    stopped looking at the phone.
+    """
+    first = await client.post(
+        "/v1/archetypes/mine", json=A_DRAFT, headers=bearer(pro.user_id)
+    )
+    second = await client.post(
+        "/v1/archetypes/mine",
+        json={**A_DRAFT, "title": "The Regulator"},
+        headers=bearer(pro.user_id),
+    )
+
+    started = await client.post(
+        "/v1/sessions",
+        json={"archetypes": [first.json()["name"], second.json()["name"]]},
+        headers=bearer(pro.user_id),
+    )
+
+    assert started.status_code == 422
+    assert started.json()["error"]["code"] == "panel_without_a_shipped_voice"
+
+
+async def test_somebody_elses_panelist_cannot_be_seated_by_name(client, bearer, pro, db):
+    """Knowing a name is not owning one. `seatable()` is scoped to the owner, so
+    the name simply does not resolve — and `assemble()` refuses it the way it
+    refuses a typo, which is the honest answer to a caller who has no business
+    with it.
+    """
+    other = Account(user_id=uuid.uuid4(), entitlement_tier="pro")
+    db.add(other)
+    await db.commit()
+    mine = await client.post(
+        "/v1/archetypes/mine", json=A_DRAFT, headers=bearer(pro.user_id)
+    )
+
+    started = await client.post(
+        "/v1/sessions",
+        json={"archetypes": ["cfo", mine.json()["name"]]},
+        headers=bearer(other.user_id),
+    )
+
+    assert started.status_code == 404
+    assert started.json()["error"]["code"] == "archetype_not_found"

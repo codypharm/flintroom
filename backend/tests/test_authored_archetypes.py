@@ -211,13 +211,20 @@ def test_the_missing_name_is_answered_before_the_missing_anchor():
         )
 
 
-def test_an_authored_name_nobody_loaded_is_a_defect_rather_than_a_typo():
-    """`by_name` raising is what makes this loud.
+def test_an_authored_name_nobody_owns_is_not_found(): 
+    """Not a defect — a panelist that is not this account's, or one retired.
 
-    A caller that forgot to load the row would otherwise have its user told the
-    panelist they just wrote does not exist.
+    I first wrote this expecting `ValueError`, on the reasoning that a `custom:`
+    name reaching `assemble` without its row meant a caller had forgotten to
+    load it. An endpoint test proved otherwise: `seatable` is scoped to the
+    owner, so somebody naming another account's panelist produces exactly this
+    shape, and it is a 404 rather than a crash. The lookup ran; the row is not
+    theirs.
+
+    `by_name` still raises on the prefix, which now catches only a caller that
+    bypassed `assemble` entirely.
     """
-    with pytest.raises(ValueError):
+    with pytest.raises(ArchetypeNotFound):
         assemble(tier="pro", chosen=["cfo", f"{CUSTOM_PREFIX}0191d4c2"], authored={})
 
 

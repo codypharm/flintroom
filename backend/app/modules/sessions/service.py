@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.archetypes import DEFAULT_PANEL, Archetype, by_name
 from app.agents.difficulty import GENTLE
+from app.agents.authored import is_authored
 from app.agents.panel import assemble
 from app.core.actors import ActorContext
 from app.core.database import db_now
@@ -43,6 +44,7 @@ from app.modules.sessions.models import (
     TranscriptLine,
 )
 from app.modules.billing.models import Account
+from app.modules.panels.authoring import AuthoringService
 from app.modules.billing.tiers import FREE_TIER, RECORDING_RETENTION_DAYS
 from app.modules.sessions.models import SessionRecording
 from app.modules.sessions.schemas import (
@@ -169,9 +171,28 @@ class SessionService:
         # The panel goes first because it is the cheaper question — one column on
         # the account against a join across materials — and because a room with
         # nobody in it is a more basic failure than a room with nothing to attack.
+        chosen = list(archetypes) or [seat.name for seat in DEFAULT_PANEL]
+
+        # Rows this account owns, resolved before the shipped library is
+        # consulted. Scoped to the owner by `seatable`, so knowing another
+        # account's panelist name is not enough to seat it — the name simply
+        # does not resolve, and `assemble` refuses it exactly as it refuses a
+        # typo. That is the honest answer to a caller with no business with it,
+        # and it avoids a 403 confirming the row exists.
+        #
+        # Skipped entirely when nothing is asked for by name, which is the
+        # common path: a default room is shipped archetypes and this would be a
+        # query answering a question nobody posed.
+        authored = (
+            await AuthoringService(self._db).seatable(user_id=user_id, names=chosen)
+            if any(is_authored(name) for name in chosen)
+            else {}
+        )
+
         panel = assemble(
             tier=await self._tier_of(user_id),
-            chosen=list(archetypes) or [seat.name for seat in DEFAULT_PANEL],
+            chosen=chosen,
+            authored=authored,
         )
         await confirm_ready(self._db, user_id=user_id, material_ids=attaching)
 

@@ -81,7 +81,19 @@ def assemble(
     rows = authored or {}
     panel: list[Archetype] = []
     for name in chosen:
-        archetype = rows.get(name) or by_name(name)
+        # An authored name never falls through to the shipped library, and the
+        # distinction is one a test found rather than one I designed. `by_name`
+        # raises on the prefix because a caller that forgot to load a row is a
+        # defect — but a row absent *after* the loader ran is not a defect at
+        # all. It is somebody asking for a panelist that is not theirs, or one
+        # they retired, and the honest answer is the same as for a typo.
+        #
+        # It is also what keeps the ownership check quiet: `seatable` is scoped
+        # to the owner, so another account's panelist is simply not found, and
+        # nothing here confirms that the row exists.
+        archetype = (
+            rows.get(name) if is_authored(name) else rows.get(name) or by_name(name)
+        )
         if archetype is None:
             raise ArchetypeNotFound(archetype=name)
         if archetype in panel:
