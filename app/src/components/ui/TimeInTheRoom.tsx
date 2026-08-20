@@ -15,9 +15,13 @@ import { color, radius, space, type } from '../../theme/tokens';
  * minutes in the room, on us".
  *
  * **A chip rather than a sentence**, because it is a standing fact about the
- * account rather than something being said. It sits above the control that
- * spends it, so it needs to be readable at a glance and to stop reading like
- * prose the moment the eye moves on.
+ * account rather than something being said. It needs to be readable at a
+ * glance and to stop reading like prose the moment the eye moves on.
+ *
+ * It used to sit above the control that spends it, on Home. It lives in the
+ * shared `TopBar` now — the slot the design guide's `TopAppBar` fills with a
+ * token pill — so it is on every top-level screen rather than only the one
+ * where minutes are spent.
  *
  * The mark is drawn from Views, following every other mark in this app: there
  * is no icon library here, `expo-symbols` is iOS-only, and a Unicode glyph
@@ -71,11 +75,25 @@ function Clock() {
 const FACE = 16;
 
 const styles = StyleSheet.create({
+  /**
+   * **No `alignSelf`, and its absence is the fix for a reported defect.**
+   *
+   * This carried `alignSelf: 'flex-start'`, written when the chip lived in a
+   * column above the control that spends the minutes — where the cross axis is
+   * horizontal and it meant "do not stretch across the screen". Moved into
+   * `TopBar`'s row the cross axis becomes vertical, so the identical
+   * declaration meant "pin to the top", and it beat the bar's own
+   * `alignItems: 'center'` because a child's `alignSelf` always does. Reported
+   * as *"the remaining time is close to the top"*.
+   *
+   * So the chip no longer has an opinion about where it sits. A container that
+   * wants it hugging one edge of a column says `alignSelf` at the call site,
+   * where the axis it is talking about is visible.
+   */
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.tight,
-    alignSelf: 'flex-start',
     paddingVertical: space.tight,
     paddingHorizontal: space.snug,
     borderRadius: radius.pill,

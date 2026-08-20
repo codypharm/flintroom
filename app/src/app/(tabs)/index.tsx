@@ -1,5 +1,5 @@
 import * as DocumentPicker from 'expo-document-picker';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,9 +11,7 @@ import {
   type MaterialLimits,
 } from '../../lib/api/materialsApi';
 import { createPanelsApi, type Catalogue } from '../../lib/api/panelsApi';
-import { createBalanceApi, type Held } from '../../lib/api/balanceApi';
 import { API_BASE_URL, auth } from '../../lib/auth';
-import { TimeInTheRoom } from '../../components/ui/TimeInTheRoom';
 import { SignedOut } from '../../lib/auth/session';
 import { color, space, type } from '../../theme/tokens';
 
@@ -65,11 +63,6 @@ const ACCEPTS = ['application/pdf', 'application/vnd.openxmlformats-officedocume
  */
 const ASK_AGAIN_MS = 3000;
 
-const balance = createBalanceApi({
-  baseUrl: API_BASE_URL,
-  accessToken: () => auth.accessToken(),
-});
-
 export default function HomeScreen() {
   // Set once by onboarding, and never by a link, a back gesture or a fresh
   // launch. A string because route params are strings; the comparison is
@@ -84,7 +77,6 @@ export default function HomeScreen() {
   const [refused, setRefused] = useState<string | null>(null);
   const [seated, setSeated] = useState<string[]>([]);
 
-  const [held, setHeld] = useState<Held | null>(null);
   const [material, setMaterial] = useState<AttachedMaterial | null>(null);
   const [limits, setLimits] = useState<MaterialLimits | null>(null);
   const polling = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -282,33 +274,6 @@ export default function HomeScreen() {
     }
   }, [material]);
 
-  /**
-   * How much time is available.
-   *
-   * `useFocusEffect` rather than a mount effect: a tab is not unmounted when
-   * somebody leaves it, and the walk that changes this number is exactly the
-   * one that leaves this screen — into a room, and back.
-   *
-   * Failures are silent, and here that is right. This is not how somebody
-   * starts a room; a refusal drawn over the panel picker would break the
-   * screen's actual job over a line nobody asked for.
-   */
-  useFocusEffect(
-    useCallback(() => {
-      let live = true;
-
-      balance
-        .read()
-        .then((left) => {
-          if (live) setHeld(left);
-        })
-        .catch(() => undefined);
-
-      return () => {
-        live = false;
-      };
-    }, [])
-  );
 
   const chooseDifficulty = useCallback(
     (level: number) => {
@@ -343,7 +308,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
+    <SafeAreaView style={styles.screen} edges={[]}>
       <PanelSetup
         room={room}
         seated={seated}
@@ -353,7 +318,6 @@ export default function HomeScreen() {
         onAttach={attach}
         onRemoveMaterial={() => void detach()}
         onDifficultyChange={chooseDifficulty}
-        header={<Standing held={held} />}
         onStart={() => {
           // The seating and the deck travel as params rather than being read
           // back from the server, because nothing persists them: `seated` is
@@ -373,30 +337,9 @@ export default function HomeScreen() {
   );
 }
 
-/**
- * How much time is available, above the room about to spend it.
- *
- * One line. How the last room *went* used to be here too and has moved to its
- * own tab — a run of rooms is the one thing in this product that cannot be said
- * in a sentence, and it was being said in one, above a form.
- *
- * Silent until known. An absent line is a screen still loading; a zero is a
- * claim, and this one is a claim about somebody's money sitting directly above
- * the control that spends it.
- */
-function Standing({ held }: { held: Held | null }) {
-  if (!held) return null;
-
-  return (
-    <View style={styles.standing}>
-      <TimeInTheRoom minutes={held.minutes} any={held.any} />
-    </View>
-  );
-}
-
 function Ground({ children }: { children: React.ReactNode }) {
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
+    <SafeAreaView style={styles.screen} edges={[]}>
       <View style={styles.centred}>{children}</View>
     </SafeAreaView>
   );

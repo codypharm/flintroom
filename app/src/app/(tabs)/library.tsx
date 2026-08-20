@@ -95,7 +95,7 @@ export default function LibraryRoute() {
 
   if (refused !== null) {
     return (
-      <SafeAreaView style={styles.screen} edges={['top']}>
+      <SafeAreaView style={styles.screen} edges={[]}>
         <View style={styles.centred}>
           <Text style={styles.refusalTitle}>That did not load</Text>
           <Text style={styles.refusalBody}>{refused}</Text>
@@ -116,7 +116,7 @@ export default function LibraryRoute() {
 
   if (rooms === null) {
     return (
-      <SafeAreaView style={styles.screen} edges={['top']}>
+      <SafeAreaView style={styles.screen} edges={[]}>
         <View style={styles.centred}>
           <ActivityIndicator color={color.primary} />
         </View>
@@ -125,7 +125,7 @@ export default function LibraryRoute() {
   }
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
+    <SafeAreaView style={styles.screen} edges={[]}>
       <Library
         rooms={rooms}
         // Read once per render rather than held in state. Nothing here ticks —

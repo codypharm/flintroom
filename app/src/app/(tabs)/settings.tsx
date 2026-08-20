@@ -69,7 +69,7 @@ const FIRST_RUN: Holdings = {
 export default function SettingsRoute() {
   const { recheck } = useGateway();
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: color.surface }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: color.surface }} edges={[]}>
       <SettingsScreen
         holdings={FIRST_RUN}
         onRecordingChange={() => {

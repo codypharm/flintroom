@@ -103,7 +103,7 @@ export default function ProgressRoute() {
   }
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
+    <SafeAreaView style={styles.screen} edges={[]}>
       <Progress
         rooms={read.rooms}
         habits={read.habits}
@@ -121,7 +121,7 @@ export default function ProgressRoute() {
 
 function Centred({ children }: { children: React.ReactNode }) {
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
+    <SafeAreaView style={styles.screen} edges={[]}>
       <View style={styles.centred}>{children}</View>
     </SafeAreaView>
   );

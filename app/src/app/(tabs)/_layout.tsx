@@ -1,7 +1,16 @@
-import { Tabs } from 'expo-router';
+import { Tabs, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { StyleSheet, View, type ColorValue } from 'react-native';
 
+import { createBalanceApi, type Held } from '../../lib/api/balanceApi';
+import { API_BASE_URL, auth } from '../../lib/auth';
+import { TopBar } from '../../components/ui/TopBar';
 import { color, space, type } from '../../theme/tokens';
+
+const balance = createBalanceApi({
+  baseUrl: API_BASE_URL,
+  accessToken: () => auth.accessToken(),
+});
 
 /**
  * The three places you can be.
@@ -42,12 +51,53 @@ import { color, space, type } from '../../theme/tokens';
  * ship in.
  */
 export default function TabsLayout() {
+  const [held, setHeld] = useState<Held | null>(null);
+
+  /**
+   * The balance, read once for four screens.
+   *
+   * It used to be Home's alone, because Home was the only screen that drew it.
+   * The bar is on all four now, so the fetch belongs here — the alternative is
+   * four screens asking the same question and disagreeing for a beat whenever
+   * one of them is stale.
+   *
+   * On focus rather than on mount: a room spends minutes and returns here, and
+   * a bar still showing the pre-room figure is worse than one showing none.
+   * Failures stay silent, as they were on Home. A refusal drawn across the app
+   * bar would break every screen under it over a line nobody asked for.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      let live = true;
+
+      balance
+        .read()
+        .then((left) => {
+          if (live) setHeld(left);
+        })
+        .catch(() => undefined);
+
+      return () => {
+        live = false;
+      };
+    }, [])
+  );
+
   return (
     <Tabs
       screenOptions={{
-        // Every screen draws its own title, exactly as the root stack decided.
-        // A bar header here would stack a second one above each.
-        headerShown: false,
+        /**
+         * The app's own bar, on every top-level screen.
+         *
+         * `header` rather than `headerShown: false` plus a view inside each
+         * screen: handed to the navigator it is pinned above the content, so it
+         * survives scrolling — which is the entire defect it fixes. Every
+         * screen here begins with a title inside its own ScrollView, and those
+         * titles stay: this bar carries the *product*, and they carry the
+         * *screen*. `design-guide/library/code.html` draws exactly that pair.
+         */
+        header: () => <TopBar held={held} />,
+        headerShown: true,
         tabBarActiveTintColor: color.primary,
         tabBarInactiveTintColor: color.onSurfaceVariant,
         tabBarStyle: styles.bar,
