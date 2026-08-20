@@ -39,6 +39,7 @@ from app.modules.auth.models import AuthIdentity, RefreshToken
 from app.modules.billing.models import Account, LedgerEntry
 from app.modules.ingestion.models import ExtractionCost, Material
 from app.modules.onboarding.models import Situation
+from app.modules.panels.models import CustomArchetype
 from app.modules.sessions.models import Session, SessionRecording, UserPreference
 from app.modules.voice.costs import SessionCost
 from app.modules.voice.recording import recording_key
@@ -89,6 +90,7 @@ PURGED = (
     Situation,
     RefreshToken,
     AuthIdentity,
+    CustomArchetype,
 )
 
 #: Destroyed by their parent rather than by name.

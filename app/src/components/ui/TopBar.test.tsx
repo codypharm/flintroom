@@ -1,5 +1,7 @@
 import { StyleSheet } from 'react-native';
 
+import { color } from '../../theme/tokens';
+
 import { render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
@@ -99,4 +101,22 @@ it('sits the time on the wordmark line, not against the top of the bar', async (
   ) as { alignSelf?: string };
 
   expect(chip.alignSelf).toBeUndefined();
+});
+
+it('sits on its own plane rather than sharing the content ground', async () => {
+  // Asked for as "a slight different color". Flat-on-the-same-ground is what
+  // the mockups draw and what this shipped as, and on a phone it read as no bar
+  // at all — the wordmark just floated above the screen's first line.
+  //
+  // Asserted as a relationship, not a hex: the bar must not be the ground. A
+  // test naming the colour would have to be edited every time the palette
+  // moves, and would still pass if both were changed to the same new value.
+  await show({ held: null });
+
+  const bar = StyleSheet.flatten(
+    screen.getByTestId('bar').props.style
+  ) as { backgroundColor?: string };
+
+  expect(bar.backgroundColor).toBeTruthy();
+  expect(bar.backgroundColor).not.toBe(color.surface);
 });

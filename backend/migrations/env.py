@@ -40,6 +40,7 @@ from app.modules.auth import models as auth_models  # noqa: F401
 from app.modules.billing import models as billing_models  # noqa: F401
 from app.modules.ingestion import models as ingestion_models  # noqa: F401
 from app.modules.onboarding import models as onboarding_models  # noqa: F401
+from app.modules.panels import models as panels_models  # noqa: F401
 from app.modules.sessions import models as sessions_models  # noqa: F401
 from app.modules.voice import costs as voice_costs  # noqa: F401
 from app.modules.voice import models as voice_models  # noqa: F401

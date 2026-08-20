@@ -97,7 +97,10 @@ const styles = StyleSheet.create({
     paddingVertical: space.tight,
     paddingHorizontal: space.snug,
     borderRadius: radius.pill,
-    backgroundColor: color.card,
+    // `surface`, because the bar it sits in became `card`. Two whites would
+    // have made the chip a floating clock and a number with no pill around
+    // them — the fill is what says "a standing fact" rather than a sentence.
+    backgroundColor: color.surface,
   },
 
   face: {

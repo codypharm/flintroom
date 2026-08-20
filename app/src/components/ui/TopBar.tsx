@@ -56,7 +56,7 @@ export function TopBar({ held }: TopBarProps) {
   const inset = useSafeAreaInsets();
 
   return (
-    <View style={[styles.bar, { paddingTop: inset.top }]}>
+    <View testID="bar" style={[styles.bar, { paddingTop: inset.top }]}>
       <View style={styles.row}>
         <View style={styles.lockup}>
           <Image
@@ -86,7 +86,20 @@ export function TopBar({ held }: TopBarProps) {
 const BAR = 52;
 
 const styles = StyleSheet.create({
-  bar: { backgroundColor: color.surface },
+  /**
+   * `card`, not `surface` — the bar is its own plane above the content.
+   *
+   * It shipped flat on the same ground, which is what the mockups draw, and on
+   * a phone that read as no bar at all: the wordmark floated above the screen's
+   * first line with nothing saying where one ended and the other began.
+   *
+   * White on the warm off-white is the system's existing paper-on-surface
+   * relationship, borrowed rather than invented — `CLAUDE.md` forbids new
+   * values, and every card in this app already sits in exactly this pair. It is
+   * a shade, not a rule: no hairline and no shadow, so the bar separates without
+   * being a piece of furniture.
+   */
+  bar: { backgroundColor: color.card },
   /**
    * Fixed height, so the chip arriving late does not shift the screen.
    *

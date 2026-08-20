@@ -17,6 +17,9 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+import importlib
+import pkgutil
+
 import pytest
 from botocore.exceptions import ClientError
 from sqlalchemy import func, select, update
@@ -44,6 +47,30 @@ from tests.materials import uploaded
 from tests.pdfs import minimal_pdf
 
 
+def _import_every_model_module() -> None:
+    """Declaring a table is not registering one.
+
+    `Base.metadata` is populated as a side effect of import, so a module nothing
+    has imported contributes nothing — and the first thing anybody does with a
+    new table is declare it before wiring it up. Walking the packages makes the
+    guard independent of whether some other test happened to import the right
+    thing.
+
+    A missing `models` is ordinary — not every module has one. A
+    `ModuleNotFoundError` naming anything *else* is a genuine broken import
+    inside a models file, and is re-raised rather than swallowed as absence.
+    """
+    import app.modules as modules
+
+    for found in pkgutil.iter_modules(modules.__path__):
+        target = f"app.modules.{found.name}.models"
+        try:
+            importlib.import_module(target)
+        except ModuleNotFoundError as missing:
+            if missing.name != target:
+                raise
+
+
 def test_every_table_carrying_a_user_is_accounted_for():
     """The guard that makes the plain-UUID decision safe rather than only cheap.
 
@@ -56,7 +83,17 @@ def test_every_table_carrying_a_user_is_accounted_for():
     Fixing a failure means deciding destroy-or-anonymise for the new table and
     saying so in `docs/account-deletion.md`, not appending a name to make the
     red go away.
+
+    **The sentence above was a promise the code did not keep**, found on
+    2026-08-20 while adding `custom_archetypes`: the new table declared its
+    `user_id`, joined no deletion path, and this test passed. `Base.metadata`
+    holds what has been *imported*, not what exists, and a fresh `models.py`
+    that nothing imports yet is invisible to it — which is precisely the silent
+    retention this guard exists to prevent, arriving through the guard itself.
+    Every models module is imported first now.
     """
+    _import_every_model_module()
+
     carrying = {
         name
         for name, table in Base.metadata.tables.items()
