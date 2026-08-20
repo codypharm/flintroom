@@ -2,9 +2,6 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { type ArchetypeDraft, type MyArchetype } from '../../lib/api/archetypesApi';
-
-/** The server's cap on a persona, mirrored so it is stated before submission. */
-const PERSONA_LIMIT = 400;
 import { color, radius, space, type } from '../../theme/tokens';
 
 /**
@@ -69,6 +66,12 @@ export interface PanelistFormProps {
   onCancel: () => void;
 }
 
+/**
+ * The server's cap on the manner, mirrored so the limit is stated by the control
+ * rather than announced by a refusal.
+ */
+const PERSONA_LIMIT = 400;
+
 /** As many domains as one panelist may own — the server's own cap. */
 const MOST_DOMAINS = 4;
 
@@ -107,49 +110,56 @@ export function PanelistForm({
       keyboardShouldPersistTaps="handled"
     >
       <Text style={styles.title} accessibilityRole="header">
-        {existing ? 'Edit this panelist' : 'Write one panelist'}
+        {existing ? 'Edit this panelist' : 'Write a panelist'}
       </Text>
 
       {/*
-        **"What do you call them?" was here and it asked for a nickname.**
-        Reported as unclear, and it was: the field is the *role* — what the card,
-        the transcript and the Library call this panelist — and "what do you call
-        them" is the question you ask about somebody you already know.
+        **Nouns, not questions — and that is what fixed the pronoun.**
 
-        It was also a near-duplicate of the next one. "What do you call them?"
-        and "Who are they?" both read as identity, with nothing saying the first
-        is one line and the second a paragraph. Role, then character, is a
-        ladder; two questions about identity is a form asking twice.
+        This form asked four questions in a row: "What do you call them?", "Who
+        are they?", "What do they go after?", "How do they sound?". Two problems
+        at once. The first asked for a nickname when the field is a *role*. And
+        four "they"s, one screen from "Your panelists", read as configuring a
+        group rather than writing one person.
 
-        **And it made a form for one person read as a form for several.** Every
-        question here says "they" — correctly, because a panelist has no gender
-        to assume — but four of them in a row, one screen away from "Your
-        panelists", reads as configuring a group. Naming one role in the first
-        question gives every pronoun after it an antecedent that is obviously
-        one person.
+        I first tried to keep the questions and anchor the singular elsewhere.
+        The architect's answer was better and simpler: **a noun label needs no
+        pronoun.** Role, Manner, Focus, Voice — nothing to disambiguate, and
+        four words to scan rather than four sentences to read, which is what an
+        Operate surface wants.
+
+        The register loss is real and worth naming: `TablePlan` asks questions,
+        and this now does not. That is the right split. `TablePlan` is a survey,
+        where a question is the content; this is a form that makes an object,
+        where a label is a field name and a question is a costume on one.
+
+        **"Focus" is the mockup's word, reclaimed.** `create_custom_panelist`
+        asks for "Core Focus" and `docs/custom-archetypes.md` wrote that off with
+        the rest of its fields. What was retired was its free-text *input* — a
+        typed focus routes nothing — not the noun. As the label on a closed list
+        it was right all along.
       */}
       <Field
-        label="What is their role?"
-        // The examples, plus where it turns up. The hint used to say "a role,
-        // the way the others are", which restated the label — helper text
-        // answers the question the control raises, and the question here is
-        // whether this is a private note or something you will be reading later.
-        hint="One person: The Board Chair, The Regulator. It is what the transcript will call them."
+        label="Role"
+        // Where the words turn up, which is the question a label this short
+        // leaves open. No pronoun: "this panelist" costs two syllables and buys
+        // a sentence nobody has to resolve.
+        hint="What the transcript will call this panelist. The Board Chair, The Regulator."
         value={title}
         onChange={setTitle}
         busy={busy}
       />
 
       <Field
-        label="Who are they?"
+        label="Manner"
         // The register is the whole guard here (§6), and the placeholder is what
         // carries it — a manner, in the shape the shipped eight are written in.
         //
-        // The second sentence used to read "the panel is built from roles, not
-        // from people", which is a rule about the product rather than help with
-        // the field, and naming people is a poor way to stop somebody thinking
-        // about one. What replaces it says why the field is worth effort.
-        hint="How they behave in a room. It is all they will know about who they are."
+        // This once read "the panel is built from roles, not from people", which
+        // is a rule about the product rather than help with the field — and
+        // naming people is a poor way to stop somebody thinking about one. What
+        // replaces it says why the field is worth the effort of writing well.
+        hint="How this panelist behaves in a room. It is everything the room will know about them."
         placeholder="Unimpressed by anything that isn't a number. Asks one question at a time."
         value={persona}
         onChange={setPersona}
@@ -162,12 +172,12 @@ export function PanelistForm({
       />
 
       <Text style={styles.label} accessibilityRole="header">
-        What do they go after?
+        Focus
       </Text>
       {/* What it is, then the cap. A constraint stated before somebody knows
           what they are choosing is a number with nothing to attach to. */}
       <Text style={styles.hint}>
-        This is what decides when they interrupt. Pick up to {MOST_DOMAINS}.
+        What decides when this panelist interrupts. Pick up to {MOST_DOMAINS}.
       </Text>
       <View style={styles.chips}>
         {domains.map((domain) => (
@@ -185,7 +195,7 @@ export function PanelistForm({
       </View>
 
       <Text style={styles.label} accessibilityRole="header">
-        How do they sound?
+        Voice
       </Text>
       <View style={styles.voices}>
         {/* First and default. Casting is optional by decision — most people
@@ -281,13 +291,13 @@ function whatIsMissing(
   persona: string,
   owned: string[]
 ): string | null {
-  if (title.trim() === '') return 'Give them a name to be called by.';
-  if (persona.trim() === '') return 'Say who they are.';
+  if (title.trim() === '') return 'Name the role.';
+  if (persona.trim() === '') return 'Describe the manner.';
   if (owned.length === 0) {
     // The one worth explaining rather than naming. A panelist with no domains
     // would be seated and simply never catch anything, and its author would
     // have no way to find out why.
-    return 'Pick what they go after, or they will never interrupt.';
+    return 'Pick a focus, or this panelist will never interrupt.';
   }
   return null;
 }

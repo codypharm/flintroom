@@ -64,11 +64,11 @@ async function fill(
   over: { title?: string; persona?: string; domain?: string } = {}
 ) {
   await user.type(
-    screen.getByLabelText('What is their role?'),
+    screen.getByLabelText('Role'),
     over.title ?? 'The Board Chair'
   );
   await user.type(
-    screen.getByLabelText('Who are they?'),
+    screen.getByLabelText('Manner'),
     over.persona ?? 'Unimpressed by anything that is not a number.'
   );
   await user.press(screen.getByLabelText(over.domain ?? 'Margin'));
@@ -94,8 +94,8 @@ it('will not save a panelist with nothing to go after', async () => {
   // so the form refuses before the server has to.
   const { user, onSave } = await show();
 
-  await user.type(screen.getByLabelText('What is their role?'), 'X');
-  await user.type(screen.getByLabelText('Who are they?'), 'Y');
+  await user.type(screen.getByLabelText('Role'), 'X');
+  await user.type(screen.getByLabelText('Manner'), 'Y');
   await user.press(screen.getByLabelText('Save this panelist'));
 
   expect(onSave).not.toHaveBeenCalled();
@@ -164,12 +164,12 @@ it('says what is still missing rather than sitting there disabled', async () => 
   // saying nothing at all.
   const { user } = await show();
 
-  await user.type(screen.getByLabelText('What is their role?'), 'The Chair');
+  await user.type(screen.getByLabelText('Role'), 'The Chair');
 
   // Exact, not a substring: the second field's hint ends "...all they will know
   // about who they are", and a loose match would pass on the helper text while
   // the shortfall line was missing entirely.
-  expect(screen.getByText('Say who they are.')).toBeTruthy();
+  expect(screen.getByText('Describe the manner.')).toBeTruthy();
 });
 
 it('stops saying it the moment there is nothing missing', async () => {
@@ -187,7 +187,7 @@ it('says the length limit before it is hit, not after', async () => {
   // are supposed to avoid.
   await show();
 
-  const field = screen.getByLabelText('Who are they?');
+  const field = screen.getByLabelText('Manner');
 
   expect(field.props.maxLength).toBe(400);
 });
@@ -203,10 +203,10 @@ it('reopens an existing panelist with its own words in it', async () => {
     },
   });
 
-  expect(screen.getByLabelText('What is their role?').props.value).toBe(
+  expect(screen.getByLabelText('Role').props.value).toBe(
     'The Regulator'
   );
-  expect(screen.getByLabelText('Who are they?').props.value).toBe(
+  expect(screen.getByLabelText('Manner').props.value).toBe(
     'Asks which approval you skipped.'
   );
 });
@@ -244,14 +244,15 @@ it('never asks a question this product does not have', async () => {
   expect(screen.queryByText(/investment|stage|tone|template/i)).toBeNull();
 });
 
-it('reads as one person rather than as a group', async () => {
-  // Every question here says "they", which is right — a panelist has no gender
-  // to assume. But four of them in a row, one screen away from "Your
-  // panelists", reads as configuring several. The heading and the first
-  // question carry the singular so every pronoun after them has an antecedent
-  // that is obviously one person.
+it('labels the fields with nouns rather than questions', async () => {
+  // Four questions in a row said "they" four times, one screen from "Your
+  // panelists", and read as configuring a group rather than writing one person.
+  // A noun label needs no pronoun at all — which also makes the form four words
+  // to scan instead of four sentences to read.
   await show();
 
-  expect(screen.getByText('Write one panelist')).toBeTruthy();
-  expect(screen.getByText(/One person:/)).toBeTruthy();
+  for (const label of ['Role', 'Manner', 'Focus', 'Voice']) {
+    expect(screen.getByText(label)).toBeTruthy();
+  }
+  expect(screen.queryByText(/\?$/)).toBeNull();
 });
