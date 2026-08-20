@@ -144,10 +144,27 @@ it('reads the plan back to nobody', async () => {
 });
 
 it('claims nothing it is not showing', async () => {
+  // The intent is unchanged and the words are not. This read "Sign in to keep
+  // this plan" while the sheet sat *after* five questions, where "this plan"
+  // pointed at something on the screen behind it. Sign-in moved in front of the
+  // survey on 2026-08-20, and a promise about a plan nobody has made yet is
+  // exactly the claim this test exists to forbid.
   await show();
 
-  expect(screen.getByText(/Sign in to keep this plan/)).toBeTruthy();
+  expect(screen.getByText(/Sign in to begin/)).toBeTruthy();
+  expect(screen.queryByText(/this plan/i)).toBeNull();
   expect(screen.queryByText(/Your panel is ready/)).toBeNull();
+});
+
+it('says what the product is, on the first screen anybody sees', async () => {
+  // Reported as "the sign in page is too basic". It was not basic so much as
+  // addressed to somebody who was not there: the words assumed a survey had
+  // just been answered. This is now the front door, so it says the name and
+  // what the room is for before asking for anything.
+  await show();
+
+  expect(screen.getByText('Flintroom')).toBeTruthy();
+  expect(screen.getByText(/grills you before the room that matters/)).toBeTruthy();
 });
 
 it('puts nothing in the middle of the screen', async () => {

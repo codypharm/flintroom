@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SignInSheet } from '../components/modules/SignInSheet';
@@ -76,22 +76,27 @@ export default function SignInRoute() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-      <View style={styles.middle}>
-        <SignInSheet
+      {/*
+        **Not centred, and that was my mistake.** `SignInSheet` is built
+        anchored — framing at the top, the ways in at the bottom under the
+        thumb — and its own note defends that at length: centring "put the one
+        thing to tap in the middle of the screen with three hundred points of
+        nothing on either side of it, which reads as a screen that failed to
+        load rather than as a deliberately quiet one". Wrapping it in a centring
+        view undid exactly that, on the first screen anybody sees.
+      */}
+      <SignInSheet
           appleAvailable={appleAvailable}
           busy={busy}
           refusal={refusal}
           onApple={() => void enter(apple)}
           onGoogle={() => void enter(google)}
           onBack={null}
-        />
-      </View>
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.surface },
-  /** Centred, because there is nothing else on this screen to sit above. */
-  middle: { flex: 1, justifyContent: 'center' },
 });

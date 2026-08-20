@@ -15,11 +15,22 @@ const mockSignIn = jest.fn();
 const mockConfigure = jest.fn();
 const mockHasPlayServices = jest.fn();
 
+/**
+ * The SDK's own session, which is not ours.
+ *
+ * Cleared before every sign-in so the account chooser actually appears. Named
+ * `mockSdkSignOut` rather than `mockSignOut` because `auth.signOut()` is a
+ * different thing entirely — one ends a Flintroom session, the other forgets
+ * which Google account a phone used last.
+ */
+const mockSdkSignOut = jest.fn();
+
 jest.mock('@react-native-google-signin/google-signin', () => ({
   GoogleSignin: {
     configure: (...args: unknown[]) => mockConfigure(...args),
     signIn: (...args: unknown[]) => mockSignIn(...args),
     hasPlayServices: (...args: unknown[]) => mockHasPlayServices(...args),
+    signOut: (...args: unknown[]) => mockSdkSignOut(...args),
   },
   statusCodes: { SIGN_IN_CANCELLED: 'SIGN_IN_CANCELLED' },
 }));
@@ -29,6 +40,7 @@ beforeEach(() => {
   mockSignIn.mockReset();
   mockConfigure.mockReset();
   mockHasPlayServices.mockReset().mockResolvedValue(true);
+  mockSdkSignOut.mockReset().mockResolvedValue(undefined);
 });
 
 function google(env: Record<string, string | undefined> = {}) {
@@ -103,4 +115,34 @@ describe('the Google provider', () => {
       /EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID/
     );
   });
+});
+
+
+it('makes Google ask which account, every single time', async () => {
+  // Reported from a phone: "google automatically logged me in into
+  // williamikeji@gmail.com instead of for me to choose". The SDK keeps its own
+  // session, so `signIn()` on a device that has signed in before resolves
+  // silently with the last account and never shows a picker.
+  //
+  // That is worse here than an annoyance. Choosing the wrong Google account
+  // does not just show the wrong name — it puts somebody into a different
+  // Flintroom account, with different rooms and a different balance, and until
+  // there was a sign-out control there was no way back out of it.
+  mockSignIn.mockResolvedValue({ data: { idToken: 'id-token' } });
+
+  await google().signIn();
+
+  expect(mockSdkSignOut).toHaveBeenCalled();
+  expect(mockSdkSignOut.mock.invocationCallOrder[0]).toBeLessThan(
+    mockSignIn.mock.invocationCallOrder[0]
+  );
+});
+
+it('signs in anyway when there was no cached session to clear', async () => {
+  // A first launch, and the commonest case. `signOut` rejecting there would be
+  // the SDK complaining about the state we were trying to reach.
+  mockSdkSignOut.mockRejectedValue(new Error('no user signed in'));
+  mockSignIn.mockResolvedValue({ data: { idToken: 'id-token' } });
+
+  await expect(google().signIn()).resolves.toBe('id-token');
 });

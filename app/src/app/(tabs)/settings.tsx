@@ -1,13 +1,12 @@
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Link } from 'expo-router';
 
 import { SettingsScreen, type Holdings } from '../../components/modules/SettingsScreen';
 import { confirmDeletion } from '../../lib/account/deletion';
 import { createAccountApi } from '../../lib/api/accountApi';
 import { useGateway } from '../../lib/auth/gateway';
 import { API_BASE_URL, auth } from '../../lib/auth';
-import { color, space, type } from '../../theme/tokens';
+import { color } from '../../theme/tokens';
 
 /**
  * Settings, on the state an account has before it has done anything.
@@ -112,52 +111,6 @@ export default function SettingsRoute() {
           });
         }}
       />
-      <Bench />
     </SafeAreaView>
   );
 }
-
-/**
- * The instruments, and only in a development build.
- *
- * They lived on Home while Home was a scaffold, and they do not belong on the
- * product's front door now that it is a real destination. They cannot simply be
- * deleted either: `/echo-spike` is the only way to measure acoustic echo on a
- * handset and #78 is open, `/disclosure` shows a sheet that appears once per
- * account in the real flow, and `/onboarding` is a destination the app does not
- * yet route to on a first launch.
- *
- * `__DEV__` rather than a build flag or a hidden gesture. It is the condition
- * the bundler already strips on, so a release build does not carry the markup
- * at all — which is stronger than a screen that merely declines to draw it.
- */
-function Bench() {
-  if (!__DEV__) {
-    return null;
-  }
-
-  return (
-    <View style={bench.block}>
-      <Text style={bench.heading}>On the bench</Text>
-      <Link href="/onboarding" style={bench.link}>
-        Onboarding
-      </Link>
-      <Link href="/echo-spike" style={bench.link}>
-        Echo spike
-      </Link>
-      <Link href="/disclosure" style={bench.link}>
-        Recording disclosure
-      </Link>
-    </View>
-  );
-}
-
-const bench = StyleSheet.create({
-  block: { paddingHorizontal: space.screen, paddingBottom: space.loose },
-  heading: {
-    ...type.labelLg,
-    color: color.onSurfaceVariant,
-    marginBottom: space.tight,
-  },
-  link: { ...type.bodyMd, color: color.primary, paddingVertical: space.tight },
-});

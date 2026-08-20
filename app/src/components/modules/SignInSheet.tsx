@@ -97,19 +97,28 @@ export function SignInSheet({
         </Pressable>
         )}
 
+        {/*
+          **The front door's copy, not the survey's.** This read "Keep this
+          room" / "Sign in to keep this plan" for as long as it sat *after* five
+          questions, where "this plan" pointed at something on the screen behind
+          it. Sign-in moved in front of the survey on 2026-08-20 and the words
+          did not, so the first thing anybody saw referred to a plan that did
+          not exist. Reported as "the sign in page is too basic": it was not
+          basic so much as addressed to somebody who was not there.
+
+          The name, then what the product does, then what happens if you sign
+          in. Nothing else — this screen is still crossed in a few seconds on
+          the way to a provider sheet, and the empty middle is still the
+          decision it always was.
+        */}
+        <Text style={styles.brand}>Flintroom</Text>
         <Text style={styles.title} accessibilityRole="header">
-          Keep this room
+          The room that grills you before the room that matters.
         </Text>
         <Text style={styles.body}>
-          {/* Names what signing in *does*, and claims nothing the screen is not
-              showing. It opened "Your panel is ready" for a while, which was an
-              assertion about an unseen thing in a word nothing around it used —
-              the heading says room, and Panel is what the server casts from
-              these answers.
-
-              §4.6 wants the minutes stated as the largest honest unit and given
+          {/* §4.6 wants the minutes stated as the largest honest unit and given
               generously, which is why they are here and first-person. */}
-          Sign in to keep this plan. Your first 15 minutes in the room are on us.
+          Sign in to begin. Your first 15 minutes in the room are on us.
         </Text>
       </View>
 
@@ -203,6 +212,8 @@ const styles = StyleSheet.create({
   },
   backLabel: { ...type.labelLg, color: color.onSurfaceVariant },
 
+  /** Quiet, above the promise: a name earns less space than what it does. */
+  brand: { ...type.labelLg, color: color.primary, marginBottom: space.tight },
   title: { ...type.headlineLg, color: color.onSurface },
   body: { ...type.bodyLg, color: color.onSurfaceVariant },
 

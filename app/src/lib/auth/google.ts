@@ -68,6 +68,20 @@ export function createGoogleProvider(): IdentityProvider {
         // the user can do nothing about.
         await GoogleSignin.hasPlayServices();
 
+        // **The chooser has to appear every time.** The SDK keeps its own
+        // session, so `signIn()` on a phone that has signed in before resolves
+        // silently with the last account and never shows a picker — which is
+        // how somebody with two Google accounts gets put into the wrong
+        // Flintroom account without being asked, and cannot get out of it.
+        //
+        // This clears the SDK's cached session only. It does not sign anybody
+        // out of Google on the device, and it has nothing to do with our own
+        // tokens — `auth.signOut()` is that.
+        //
+        // Swallowed, because there is nothing to recover from: no cached
+        // session is the state we were trying to reach.
+        await GoogleSignin.signOut().catch(() => undefined);
+
         const { data } = await GoogleSignin.signIn();
 
         if (!data?.idToken) {
