@@ -18,11 +18,32 @@ Three things in the codebase were written in advance of this feature and are
 inherited rather than re-decided:
 
 - `agents/archetypes.py` — `cadence` is nullable *"only for a custom archetype,
-  which a user writes without one"*, and `voice` is nullable because *"panel
-  assembly assigns the first voice unused by the seated room"*. So the system
-  supplies both. `voices.py` ships eight voices against eight shipped
-  archetypes, and assignment is per room from whatever is unused, so a seated
-  custom panelist always finds one.
+  which a user writes without one"*, so the system supplies it.
+- **Voice is auto-assigned by default, with an optional override from the same
+  eight.** `docs/panel-orchestration.md:436` settled this on 2026-08-16 and the
+  reasoning is worth keeping: *"Decided rather than defaulted: most users
+  writing a custom archetype care about the argument it makes, not its timbre,
+  and making them cast it is a decision tax on the feature's main path."*
+
+  So the form carries a voice picker that is **optional and defaulted**, never a
+  required field — the eight, plus "pick one for me", which is what an untouched
+  form does.
+
+  `voices.py` is built for exactly this. Voices are *characters* rather than
+  people — `MEASURED` describes how somebody sounds, so *"a custom archetype can
+  be cast in it without inheriting anything about the shipped archetype that
+  happens to share it"* — and `CASTABLE` is deliberately one set: *"a custom
+  archetype chooses from exactly what the shipped ones use, so nothing about a
+  user's room sounds second-class."* That vocabulary was written to be shown to
+  a user.
+
+  **The uniqueness constraint is per-room, not per-library.** Two custom
+  archetypes may share a voice safely if never seated together, so the check
+  belongs in `assemble()` beside the tier cap — not in a database constraint,
+  which would forbid a legal arrangement. Eight voices against eight shipped
+  archetypes means a seated custom panelist always finds a free one, and an
+  override that collides with a seated panelist falls back to auto rather than
+  refusing the room.
 - `agents/opening.py:173` — *"An archetype with no openers is skipped rather
   than fatal. Custom archetypes are rows a user typed and carry none."* A custom
   panelist never holds the floor first, and that is settled.
@@ -229,7 +250,8 @@ is drawn but deliberately not pressable today.
 1. Close #63. It is the standing proof that persona text can beat a prohibition.
 2. Table + migration, carrying `user_id` as a plain UUID, deny-all RLS, and a
    row in the account-deletion path in the same change.
-3. The loader: row → `Archetype`, with the `custom:` prefix guard in `by_name`.
+3. The loader: row → `Archetype`, with the `custom:` prefix guard in `by_name`,
+   and voice resolution — stored override if set and free, else first unused.
 4. Composition refusal — the shipped-archetype floor, with its typed error.
 5. `POST` / `PATCH` / archive endpoints, authenticated and rate-limited.
 6. `contracts/openapi.yaml`, then regenerate the client.
