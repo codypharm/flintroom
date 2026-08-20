@@ -12,6 +12,10 @@ this suite was green through.
 from __future__ import annotations
 
 import pytest
+
+from app.agents.archetypes import LIBRARY
+from app.agents.voices import CASTABLE
+from app.modules.sessions.coaching import COACH_VOICE
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -578,3 +582,51 @@ async def test_nobody_is_greeted_into_the_middle_of_a_conversation(
     )
 
     assert await coaching(db, coach=OpeningCoach()).open(session_id=session.id) is None
+
+
+def test_the_coach_is_cast_rather_than_left_to_the_house_voice():
+    """The coach was mute in every debrief, and nothing said so.
+
+    `_voice` asked for synthesis with `voice=None`, which `ElevenLabsSpeaker`
+    resolves through `self._default_voice_id` — and that comes from
+    `ELEVENLABS_DEFAULT_VOICE_ID`, unset in a working `.env`. So the fallback
+    fell back to nothing: the adapter logged `voice_uncast`, refused, and the
+    endpoint answered 502.
+
+    The failure was invisible because the debrief READ still succeeded and
+    returned the opening with `speech: ""` — text with silence attached, rather
+    than an error anybody could see. Verified against the running server on
+    2026-08-20: five settled rooms, every one of them a silent debrief.
+
+    Casting the coach explicitly is the fix rather than setting the variable.
+    A house voice is a deployment concern that fails quietly; a cast one is
+    configuration in a file, tested, and the same mechanism every panelist
+    already uses.
+    """
+    assert COACH_VOICE in CASTABLE
+
+
+def test_the_coach_shares_a_voice_and_that_is_a_known_cost():
+    """**I asserted the opposite first, and the suite proved me wrong.**
+
+    The claim was that WARM is the one voice no archetype is cast in. It is not:
+    all eight voices are cast to the eight shipped archetypes, so a ninth
+    speaker cannot avoid a collision. `voices.py` says why the roster is that
+    size — *"Eight, matching the eight shipped archetypes, because casting them
+    established the vocabulary. Adding a ninth means adding a vendor voice
+    behind it in every adapter."*
+
+    So the coach shares with the Customer Advocate, and the cost is real: in a
+    room that seated the Advocate, the person helping afterwards sounds like one
+    of the people who just pressed them. WARM is still the best of the eight for
+    the job — *"open and direct, the easiest of them to listen to"* — and the
+    Advocate is among the less commonly seated.
+
+    **The fix is a ninth voice, and it is the architect's to authorise**: it
+    needs a real vendor identifier added to `ELEVENLABS_VOICES`, which cannot be
+    invented here without calling the provider. Recorded as a test rather than a
+    comment so the collision is a stated position rather than an oversight.
+    """
+    seated = {archetype.voice for archetype in LIBRARY}
+
+    assert COACH_VOICE in seated, "a ninth voice landed — give the coach its own"

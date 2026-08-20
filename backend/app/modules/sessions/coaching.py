@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.voices import Voice
 from app.agents.coach import COACH, CoachModel, CoachReply, Grounds, Spoken, held, spoken
 from app.agents.weakness import WeakAnswer
 from app.agents.context import USER
@@ -97,6 +98,32 @@ class CoachedTurn:
     text: str
     speech: bytes
     heard: str
+
+
+#: How the coach sounds.
+#:
+#: **Cast, rather than left to the house voice — and the difference was a bug
+#: nobody could see.** This asked for `voice=None`, which `ElevenLabsSpeaker`
+#: resolves through `ELEVENLABS_DEFAULT_VOICE_ID`. That is unset in a working
+#: `.env`, so the fallback fell back to nothing: the adapter logged
+#: `voice_uncast`, refused, and the endpoint answered 502.
+#:
+#: It was invisible because the debrief READ still succeeded, returning the
+#: opening with `speech: ""` — text with silence attached rather than an error.
+#: Verified against the running server on 2026-08-20: five settled rooms, five
+#: silent debriefs, and the architect reporting that the debrief "is just texts
+#: and I am the only one speaking".
+#:
+#: `WARM` because the coach has a different job from the panel. *"Open and
+#: direct. The easiest of them to listen to."*
+#:
+#: **It collides with the Customer Advocate, and that is known rather than
+#: overlooked.** All eight voices are cast to the eight shipped archetypes, so
+#: a ninth speaker cannot avoid sharing — `voices.py` sized the roster to the
+#: library on purpose. In a room that seated the Advocate, the coach sounds like
+#: somebody who was just at the table. The fix is a ninth voice, which needs a
+#: real vendor identifier in `ELEVENLABS_VOICES` and is the architect's call.
+COACH_VOICE = Voice.WARM
 
 
 class CoachService:
@@ -494,7 +521,7 @@ class CoachService:
         await self._db.commit()
 
     async def _voice(self, text: str) -> bytes:
-        """The reply, spoken.
+        """The reply, spoken in the coach's own voice.
 
         Collected rather than streamed, and this is the one place the debrief
         deliberately differs from the room. There, streaming is the barge-in
@@ -503,4 +530,6 @@ class CoachService:
         already over — so a whole answer over one request is simpler than a
         socket held open for four seconds of speech.
         """
-        return b"".join([frame async for frame in self._speaker.speak(text=text, voice=None)])
+        return b"".join(
+            [frame async for frame in self._speaker.speak(text=text, voice=COACH_VOICE)]
+        )
