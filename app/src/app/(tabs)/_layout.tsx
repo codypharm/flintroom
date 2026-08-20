@@ -108,7 +108,7 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color: tint }) => <Table tint={tint} />,
+          tabBarIcon: ({ color: tint }) => <House tint={tint} />,
         }}
       />
       <Tabs.Screen
@@ -146,11 +146,25 @@ interface Mark {
   tint: ColorValue;
 }
 
-/** The table, seen from above: a ring with the presenter's seat at its edge. */
-function Table({ tint }: Mark) {
+/**
+ * A house, because this tab is called Home and a tab bar is not the place to
+ * be clever.
+ *
+ * It was a ring until 2026-08-20 — "the table seen from above, with the
+ * presenter's seat at its edge". The seat was never drawn, so what shipped was
+ * a bare circle beside three marks that read, and the architect asked for a
+ * proper home icon. `design-guide/home/code.html` had it right all along: the
+ * mockup's bottom nav uses Material Symbols `home`, a house.
+ *
+ * Outline rather than filled, unlike the mockup's `FILL 1`. The active tab is
+ * already carrying tint; filling it as well would make Home the only mark that
+ * changes weight and not just colour.
+ */
+function House({ tint }: Mark) {
   return (
     <View style={styles.mark}>
-      <View style={[styles.ring, { borderColor: tint }]} />
+      <View style={[styles.roof, { borderColor: tint }]} />
+      <View style={[styles.walls, { borderColor: tint }]} />
     </View>
   );
 }
@@ -211,11 +225,33 @@ const styles = StyleSheet.create({
     gap: space.hair,
   },
 
-  ring: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+  /**
+   * Two adjacent borders on a square, turned to stand on its point.
+   *
+   * A transform does not change layout, so this still occupies 12pt in the
+   * column while the drawn peak spans 12√2 ≈ 17pt corner to corner. That is
+   * deliberate: the arms overhang `walls` by two points on each side, which is
+   * an eave, and it is what stops the shape reading as a triangle balanced on
+   * a box.
+   */
+  roof: {
+    width: 12,
+    height: 12,
+    borderTopWidth: 2,
+    borderLeftWidth: 2,
+    transform: [{ rotate: '45deg' }],
+    // The arm ends fall ~2.5pt below the un-rotated box. Without this the
+    // walls start level with the box instead of level with the eaves, and the
+    // roof floats.
+    marginBottom: 2,
+  },
+
+  /** No top edge: the roof already closes it, and drawing both doubles it. */
+  walls: {
+    width: 13,
+    height: 8,
     borderWidth: 2,
+    borderTopWidth: 0,
   },
 
   /** The bars sit on a shared baseline, which is what makes them a climb. */
