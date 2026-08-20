@@ -287,13 +287,29 @@ function Choice({
       onPress={onPress}
       style={({ pressed }) => [styles.choice, pressed && styles.pressed]}
     >
+      {/*
+        **Drawn in both states, and that is the fix.** This rendered nothing at
+        all until an option was chosen, so an unanswered question was a column
+        of bare sentences with no sign that any of them was a control. Reported
+        from a phone: "people will not know they are to click to select".
+        Feedback after the fact is not an affordance — something has to be there
+        before the tap to invite it.
+
+        Leading rather than trailing, and a ring rather than a dot, so it is the
+        same object the chairs below already use. That also answers the
+        complaint the old style carried in its own comment: a 10pt mark at the
+        far right of a 390pt row is nowhere near where the eye starts.
+      */}
+      <View testID="pick" style={[styles.pick, chosen && styles.picked]} />
       <Text style={[styles.choiceLabel, chosen && styles.choiceChosen]}>{label}</Text>
-      {chosen && <View style={styles.chosenMark} />}
     </Pressable>
   );
 }
 
 export { labelFor };
+
+/** The chairs' marker, matched exactly: one language for choosing. */
+const PICK = 14;
 
 const styles = StyleSheet.create({
   sheet: { flex: 1, backgroundColor: color.surface },
@@ -345,6 +361,24 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: space.snug,
   },
+  /**
+   * The same ring the chairs use, at the same size and on the same edge.
+   *
+   * One visual language for "a thing you choose" across the whole sheet: an
+   * empty ring is available, a filled one is taken. A different shape here
+   * would say these two lists work differently, and they do not.
+   */
+  pick: {
+    width: PICK,
+    height: PICK,
+    borderRadius: PICK / 2,
+    borderWidth: 2,
+    borderColor: color.hairline,
+    backgroundColor: color.surface,
+    marginRight: space.base,
+  },
+  picked: { backgroundColor: color.primary, borderColor: color.primary },
+
   choiceLabel: { ...type.bodyLg, color: color.onSurfaceVariant, flex: 1 },
   // Brand colour, not merely darker. The only feedback this sheet gives was a
   // 10pt dot at the far right of a 390pt row and a shift from warm brown to
@@ -354,14 +388,6 @@ const styles = StyleSheet.create({
   // thesis refuses. It also matches the seated chair, whose marker and position
   // number are already `primary`, so one colour means "chosen" throughout.
   choiceChosen: { color: color.primary },
-  chosenMark: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: color.primary,
-    marginLeft: space.base,
-  },
-
   /**
    * A line, not a card.
    *

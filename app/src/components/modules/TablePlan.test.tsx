@@ -175,3 +175,23 @@ describe('TablePlan, the date', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 });
+
+it('marks every option as choosable before any of them is chosen', async () => {
+  // Reported from a phone: "people will not know they are to click to select".
+  // The mark rendered only once an option WAS chosen, so an unanswered question
+  // was a column of bare sentences with nothing saying any of them was
+  // tappable. Feedback after the fact is not an affordance — something has to
+  // be there before the tap to invite it.
+  //
+  // Counted rather than inspected: the property is that a mark is *not
+  // conditional on being chosen*, so one per option is the whole assertion.
+  //
+  // The screen-reader side was never broken — these have always published
+  // `radio` with a `selected` state — which is exactly why this failure was
+  // invisible to every test in this file until somebody held a phone.
+  await show();
+
+  expect(screen.getAllByTestId('pick')).toHaveLength(
+    screen.getAllByRole('radio').length
+  );
+});

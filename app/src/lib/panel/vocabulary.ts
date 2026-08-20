@@ -37,7 +37,12 @@ const PANEL: Record<string, string> = {
   technical_skeptic: 'The Technical Skeptic',
   champion: 'The Champion',
   growth_maximalist: 'The Growth Maximalist',
-  distracted: 'The Distracted Executive',
+  // `distracted_executive`, which is what the server ships. It read
+  // `distracted` for as long as nothing rendered this archetype's name, and
+  // `panelistName` falls back to the raw key rather than blanking — so the
+  // Library, the transcript, the debrief and Progress were all one seating away
+  // from showing somebody the string "distracted_executive".
+  distracted_executive: 'The Distracted Executive',
   internal_blocker: 'The Internal Blocker',
   customer_advocate: 'The Customer Advocate',
   risk_officer: 'The Risk Officer',
