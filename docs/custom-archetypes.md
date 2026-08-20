@@ -66,7 +66,7 @@ the difference. **`Archetype` is the boundary.**
 | Title — "The Board Chair" | **User.** Free text. May duplicate a shipped title. |
 | Who they are | **User.** One short fenced field — see §2. |
 | Domains | **User**, from the shipped vocabulary — see §1. |
-| Voice | **User, optionally.** Eight, defaulting to "pick one for me". |
+| Voice | **User, optionally** — one of our eight, defaulting to "pick one for me". Never supplied; see §6. |
 | Avatar | Nobody — their initials, see below. |
 | `name` | Server. `custom:{uuid}` — see §5. |
 | `attack_strategy` | Us, composed from their domains — see §2. |
@@ -273,16 +273,60 @@ anyone reads, so this is not a loss.
 
 ---
 
+## 6. Impersonation: the copy sets the register, the voice carries the rest
+
+No classifier and no blocklist.
+
+**The rule is narrower than it looks.** `CLAUDE.md` rejected *"dynamic
+social-profile **scraping** of real people (LinkedIn/X)"* and says in the same
+breath that *"user-supplied free-text context is the only permitted
+enrichment."* Somebody writing *"our CFO always opens with churn"* is therefore
+on the sanctioned path, not around it — it is the product's actual use case,
+and #66 is that feature.
+
+**One defence is already structural, and it is load-bearing rather than
+incidental.** A user picks a voice from our eight characters and cannot supply
+one; `ELEVENLABS_VOICES` in the adapter is the only place in the codebase that
+knows a vendor identifier. **So no persona, however written, can make the panel
+sound like a named person.** The output is `MEASURED` or `BRISK` in our casting.
+
+> Anything that adds a way to supply a voice — a vendor id, a cloned sample, a
+> URL — removes this defence. That is the thing to refuse, not the prose.
+
+The residue is text: transcript lines written in a named person's manner,
+synthesised and stored in a recording for the retention window. Handled with
+**copy rather than enforcement**, the way `TablePlan` handles the same class of
+problem — that screen refuses to list v2 situations because *"a picker option is
+a promise."* The field is labelled and placeholdered in **role** terms
+("Unimpressed by anything that isn't a number. Asks one question at a time."),
+never in person terms. The mockup's `e.g. The Skeptical VC` teaches nothing.
+
+**Why not detect it.** A classifier deciding whether a name is a real person is
+a judgement in the graph, which `docs/debrief-and-sparring.md` keeps out on
+purpose, and it fails on exactly the legitimate case — a user's real colleague
+is a real person too. A blocklist of famous names annoys the honest and stops
+nobody.
+
+**The cost, stated plainly:** somebody determined to write "you are Warren
+Buffett" will, it will work in our voice, and it will be in their recording. The
+architect accepted that on 2026-08-20 against the voice constraint and the
+private, self-directed use. Reopen it if the store asks, or if rooms ever become
+shareable — the calculus changes the moment a recording can leave the account.
+
+---
+
 ## Not decided, and deliberately
 
-Both are the architect's and neither blocks the build:
+**A per-account cap**, and only that. Not a cost concern — a custom archetype
+costs nothing until seated, and seating is metered like any room. It is a picker
+that stops being usable somewhere north of a dozen. Counts live panelists, per
+§4.
 
-- **A per-account cap.** Not a cost concern — a custom archetype costs nothing
-  until seated, and seating is metered like any room. It is a picker that stops
-  being usable somewhere north of a dozen. Counts live panelists, per §4.
-- **Which tier this belongs to.** `ArchetypeCard.AuthorRow` already takes a
-  `yours: boolean` plan flag, so the surface anticipates gating. Pricing and
-  tier structure are `Product.md` §4.4–4.5 and are not the agent's to set.
+**Tier is already decided and I was wrong to list it as open.**
+`billing/tiers.may_author_archetypes` exists and `test_panel_limits.py` pins it:
+free and starter refused, `pro` and `pro_annual` allowed, per `Product.md` §4.4.
+That test's own docstring is what raised §6 — *"a user-authored persona is where
+the removed real-person simulation could walk back in through the front door."*
 
 ## Build order
 
