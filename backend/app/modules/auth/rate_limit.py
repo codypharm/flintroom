@@ -95,6 +95,17 @@ ONBOARDING_LIMIT = 20
 #: those has a bound — what this stops is a loop, not a person.
 DIFFICULTY_LIMIT = 30
 
+#: Writes to an account's own panelists per minute.
+#:
+#: Tighter than the difficulty slider because these are considered acts rather
+#: than a dragged control: somebody writes a panelist, reads it back, and edits
+#: it a few times. Ten a minute is well past that and well short of a script.
+#:
+#: One budget across writing, editing and retiring, deliberately. Splitting them
+#: would let a loop alternate between two endpoints and stay under both, which
+#: is the shape a per-verb limit always has.
+AUTHORING_LIMIT = 10
+
 #: How long a finished window is kept before deletion.
 #:
 #: Not zero, and not "anything not current". A pass that deleted every window

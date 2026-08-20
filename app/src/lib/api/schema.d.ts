@@ -16,7 +16,12 @@ export interface paths {
          * @description Answer whether the credential the app is holding is still good.
          *
          *     The mobile client calls this on launch. A 200 means go straight in; a 401
-         *     means sign in again.
+         *     means sign in again — and since 2026-08-20 that is not a description of an
+         *     intention but of the app's actual gate, which had none before #86.
+         *
+         *     It also answers whether this account has ever described a room, because the
+         *     same launch has to decide whether to ask. Two questions, one round trip, on
+         *     the slowest screen in the product.
          */
         get: operations["auth_read_current_identity"];
         put?: never;
@@ -44,6 +49,44 @@ export interface paths {
          *     failure, on the screen where a confusing answer costs the most trust.
          */
         delete: operations["auth_delete_current_account"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Describe The Room
+         * @description Say what you are preparing for, after signing in rather than before.
+         *
+         *     **This endpoint is a reversal, and it should be read as one.**
+         *     `docs/onboarding.md` settled survey-first and had the answers ride on the
+         *     sign-in request in a single call, because "a partially-created account with
+         *     no configuration is a state worth not having". The architect reordered it on
+         *     2026-08-20: a signed-out launch (#86) has no way in under survey-first, and a
+         *     returning user is not the stranger that argument was about.
+         *
+         *     So the refused state is now reachable on purpose, and this is what makes it
+         *     survivable — an account can describe its room at any later moment, and
+         *     `/v1/me` tells the client whether to ask.
+         *
+         *     The user comes from the credential, never from the body. Both writes still
+         *     happen in one transaction inside the service, because they are one answer.
+         *
+         *     Rate-limited like every authenticated write. Nothing here is expensive, but
+         *     it is the only endpoint that appends a row per call, and a client re-opened
+         *     mid-survey will send it more than once.
+         */
+        post: operations["auth_describe_the_room"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -716,6 +759,88 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/archetypes/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read My Archetypes
+         * @description The panelists this account wrote, live ones only.
+         *
+         *     Empty rather than 404 for an account that has written none: nothing is
+         *     missing, they simply have no panel yet, and a client that had to branch on
+         *     404 to render an empty list would treat "no panelists" as an error state.
+         *
+         *     Their own `persona` comes back, unlike a shipped archetype's, whose prompt
+         *     text never leaves the server. There is nothing to protect — they wrote it,
+         *     and the form has to be able to reopen it. What stays ours is the attack
+         *     strategy composed around it, which is absent from the schema entirely.
+         *
+         *     Not rate-limited. It is a read, and the setup screen makes it on open.
+         */
+        get: operations["panels_read_my_archetypes"];
+        put?: never;
+        /**
+         * Write Archetype
+         * @description Write a panelist.
+         *
+         *     201 with the row, because the client needs the minted name: it is what
+         *     `SessionStart.archetypes` takes, and without it the form would have to
+         *     re-read the roster to find what it just created.
+         */
+        post: operations["panels_write_archetype"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/archetypes/mine/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Revise Archetype
+         * @description Edit a panelist, whole.
+         *
+         *     PUT rather than PATCH: the form holds every field and sends every field, so
+         *     a partial update would be a shape the client never produces and a second
+         *     merge rule to get wrong.
+         *
+         *     **The returned `name` may not be the one in the path.** A panelist that has
+         *     been seated is replaced rather than mutated, so old rooms keep pointing at
+         *     the text that was actually in them (`docs/custom-archetypes.md` §4) — which
+         *     is exactly why the row comes back rather than a 204. A client that assumed
+         *     the name survived would hold a stale one.
+         */
+        put: operations["panels_revise_archetype"];
+        post?: never;
+        /**
+         * Retire Archetype
+         * @description Take a panelist out of the panel.
+         *
+         *     **DELETE, and it archives.** The verb is the client's, the behaviour is
+         *     ours: the row stays so every past room can still say who was in it, and
+         *     §4 requires the *control* to read "remove from your panel" rather than
+         *     "delete" for the same reason. `docs/privacy-policy.md` has to say what
+         *     actually happens — account deletion is the real delete.
+         *
+         *     Idempotent, so a retried request whose response was lost still answers 204
+         *     rather than telling somebody their panelist has vanished.
+         */
+        delete: operations["panels_retire_archetype"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -778,6 +903,25 @@ export interface components {
             hardest: number;
         };
         /**
+         * ArchetypeDraft
+         * @description What somebody types to write a panelist.
+         *
+         *     Four fields, and `docs/custom-archetypes.md` §0 says who supplies each.
+         *     Everything absent from here is absent on purpose: `cadence`, `openers` and
+         *     `nudges` are hand-written per archetype and a row carries none, the attack
+         *     strategy is composed by us from `domains`, and the name is minted.
+         */
+        ArchetypeDraft: {
+            /** Title */
+            title: string;
+            /** Persona */
+            persona: string;
+            /** Domains */
+            domains: string[];
+            /** Voice */
+            voice?: string | null;
+        };
+        /**
          * ArchetypeRead
          * @description One panelist, as offered.
          *
@@ -793,6 +937,26 @@ export interface components {
             title: string;
             /** Blurb */
             blurb: string;
+        };
+        /**
+         * AuthoredArchetypeRead
+         * @description One panelist somebody wrote, as their own device sees it.
+         *
+         *     Their own words go back out, unlike a shipped archetype where `persona` is
+         *     prompt text that never leaves the server. There is nothing to protect here:
+         *     they wrote it, and the form has to be able to reopen it.
+         */
+        AuthoredArchetypeRead: {
+            /** Name */
+            name: string;
+            /** Title */
+            title: string;
+            /** Persona */
+            persona: string;
+            /** Domains */
+            domains: string[];
+            /** Voice */
+            voice: string | null;
         };
         /**
          * BalanceRead
@@ -924,9 +1088,10 @@ export interface components {
          * Identity
          * @description What the API will admit about the caller to the caller.
          *
-         *     Deliberately only the identifier. `CLAUDE.md` requires minimum necessary
-         *     fields, and this endpoint's job is answering "is this credential still
-         *     good", not returning a profile.
+         *     Still not a profile. `CLAUDE.md` requires minimum necessary fields, and this
+         *     endpoint's job is answering "is this credential still good" — plus, since
+         *     2026-08-20, the one other thing the launch gate has to know before it can
+         *     draw anything.
          */
         Identity: {
             /**
@@ -934,6 +1099,11 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+            /**
+             * Onboarded
+             * @default false
+             */
+            onboarded: boolean;
         };
         /**
          * MaterialDeclaration
@@ -1490,6 +1660,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeletionScheduled"];
+                };
+            };
+        };
+    };
+    auth_describe_the_room: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Answers"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2208,6 +2409,123 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DifficultyChoice"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    panels_read_my_archetypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthoredArchetypeRead"][];
+                };
+            };
+        };
+    };
+    panels_write_archetype: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchetypeDraft"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthoredArchetypeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    panels_revise_archetype: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchetypeDraft"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthoredArchetypeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    panels_retire_archetype: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
