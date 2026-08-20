@@ -84,7 +84,18 @@ export function TalkControl({ listening, refusal, at, onTalk, onStop }: TalkCont
           style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
         >
           <Text style={styles.buttonLabel}>
-            {listening.state === 'listening' ? 'Done' : 'Talk to me'}
+            {/*
+              **Second person, because the first person inverted.** This read
+              "Talk to me" — the coach's own voice inviting somebody to speak —
+              and the architect read it as the coach about to speak, asking "so
+              after clicking talk to me will I be the one to speak?". On the one
+              control that opens a microphone, that is the exact ambiguity a
+              label exists to close.
+
+              "Talk to the coach" says who acts and who receives, and matches
+              "Answer again" on each finding: both are things the user does.
+            */}
+            {listening.state === 'listening' ? 'Done' : 'Talk to the coach'}
           </Text>
         </Pressable>
       )}

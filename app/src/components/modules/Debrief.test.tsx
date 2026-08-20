@@ -182,7 +182,7 @@ it('lets somebody talk without picking a question first', async () => {
   // entry is exactly how a sheet becomes a form.
   const props = await setup();
 
-  await userEvent.press(screen.getByText('Talk to me'));
+  await userEvent.press(screen.getByText('Talk to the coach'));
 
   expect(props.onTalk).toHaveBeenCalledWith(null);
 });
@@ -259,7 +259,7 @@ it('says a clean room went well instead of drawing an empty list', async () => {
   await setup({ answers: [] });
 
   expect(screen.getByText('Nothing came loose')).toBeTruthy();
-  expect(screen.getByText('Talk to me')).toBeTruthy();
+  expect(screen.getByText('Talk to the coach')).toBeTruthy();
 });
 
 it('offers a way back to a reply that was missed', async () => {
@@ -373,4 +373,19 @@ it('leaves the way back to the stack, in both directions', async () => {
   await setup({});
 
   expect(screen.queryByLabelText(/^Back to/)).toBeNull();
+});
+
+it('says who is about to speak, and it is not the coach', async () => {
+  // "Talk to me" is the coach's first person, and it inverts. The architect
+  // read it as the coach about to speak and asked "so after clicking talk to me
+  // will I be the one to speak?" — which is the question a label should never
+  // leave open, on the one control that opens a microphone.
+  //
+  // Second person about the user's own action, matching "Answer again" on each
+  // finding: both are things YOU do. And it names the coach, because the other
+  // control on this screen sends a clip to a panelist's question instead.
+  await setup();
+
+  expect(screen.getByText('Talk to the coach')).toBeTruthy();
+  expect(screen.queryByText('Talk to me')).toBeNull();
 });
