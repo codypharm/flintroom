@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrepSheet } from '../../components/modules/PrepSheet';
 import { createDebriefApi, type WeakAnswer } from '../../lib/api/debriefApi';
 import { API_BASE_URL, auth } from '../../lib/auth';
+import { useGateway } from '../../lib/auth/gateway';
 import { SignedOut } from '../../lib/auth/session';
 import { refusedRoom, type RoomRefusal } from '../../lib/debrief/refusals';
 import { color, radius, space, type } from '../../theme/tokens';
@@ -36,6 +37,7 @@ const debriefs = createDebriefApi({
 });
 
 export default function PrepSheetRoute() {
+  const { recheck } = useGateway();
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const [answers, setAnswers] = useState<WeakAnswer[] | null>(null);
@@ -53,7 +55,12 @@ export default function PrepSheetRoute() {
       .catch((error) => {
         if (!live) return;
         if (error instanceof SignedOut) {
-          router.replace('/');
+          // The gate decides where a signed-out person goes, not this screen.
+          // `Stack.Protected` moves them the moment the answer changes, and a
+          // `router.replace` here would be a second opinion about the same
+          // thing — one that used to send them to Home, which is the screen
+          // that cannot work without an account.
+          recheck();
           return;
         }
         // The debrief's own refusal vocabulary, reused rather than re-worded.

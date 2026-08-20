@@ -5,6 +5,7 @@ import { Link } from 'expo-router';
 import { SettingsScreen, type Holdings } from '../../components/modules/SettingsScreen';
 import { confirmDeletion } from '../../lib/account/deletion';
 import { createAccountApi } from '../../lib/api/accountApi';
+import { useGateway } from '../../lib/auth/gateway';
 import { API_BASE_URL, auth } from '../../lib/auth';
 import { color, space, type } from '../../theme/tokens';
 
@@ -67,6 +68,7 @@ const FIRST_RUN: Holdings = {
 };
 
 export default function SettingsRoute() {
+  const { recheck } = useGateway();
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: color.surface }} edges={['top']}>
       <SettingsScreen
@@ -77,6 +79,19 @@ export default function SettingsRoute() {
           // recordings were off when the next room would still be saved — the
           // one failure this screen exists to prevent.
           Alert.alert('Not yet connected', 'This needs sign-in, which has no screen yet.');
+        }}
+        onSignOut={() => {
+          void (async () => {
+            // Ends the session here and, if reachable, everywhere — and never
+            // rejects, so there is nothing to catch. A sign-out that could fail
+            // would leave somebody looking at a signed-in screen having asked
+            // to leave.
+            await auth.signOut();
+            // The gate decides what comes next. It will read `signed out` and
+            // `Stack.Protected` moves them, which is one opinion about where
+            // somebody goes rather than two.
+            recheck();
+          })();
         }}
         onDeleteAccount={() => {
           // Not awaited: this is a button handler, and `confirmDeletion` never

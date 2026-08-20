@@ -27,6 +27,7 @@ async function show(holdings: Partial<Holdings> = {}, props = {}) {
       holdings={{ ...NOTHING, ...holdings }}
       onRecordingChange={jest.fn()}
       onDeleteAccount={jest.fn()}
+      onSignOut={jest.fn()}
       {...props}
     />
   );
@@ -114,4 +115,21 @@ it('asks before destroying an account', async () => {
   await userEvent.press(screen.getByText(/delete account/i));
 
   expect(onDeleteAccount).toHaveBeenCalledTimes(1);
+});
+
+it('offers a way out of the account that is not a way to destroy it', async () => {
+  // There was no sign-out control at all until 2026-08-20, which is why a
+  // signed-out state was unreachable except by a token expiring on its own —
+  // and why #86 could sit undiscovered.
+  //
+  // Drawn as an ordinary control rather than a destructive one, because it
+  // destroys nothing: the rooms, the transcripts and the minutes are all still
+  // there next time. Two red buttons side by side is how somebody taps the
+  // wrong one.
+  const onSignOut = jest.fn();
+  await show({}, { onSignOut });
+
+  await userEvent.press(screen.getByLabelText('Sign out'));
+
+  expect(onSignOut).toHaveBeenCalled();
 });

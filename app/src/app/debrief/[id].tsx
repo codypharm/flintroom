@@ -12,6 +12,7 @@ import {
 import { createDebriefApi, type Pressed, type WeakAnswer } from '../../lib/api/debriefApi';
 import { collectClip, type Clip } from '../../lib/audio/clip';
 import { API_BASE_URL, auth } from '../../lib/auth';
+import { useGateway } from '../../lib/auth/gateway';
 import { SignedOut } from '../../lib/auth/session';
 import { refusedRoom, refusedTurn, type RoomRefusal } from '../../lib/debrief/refusals';
 import { createCoachVoice, type CoachVoice } from '../../lib/debrief/voice';
@@ -48,6 +49,7 @@ const debriefs = createDebriefApi({
 const CAPTURE = { sampleRate: 16_000, bufferLength: 1600, channelCount: 1 };
 
 export default function DebriefRoute() {
+  const { recheck } = useGateway();
   const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
 
   const [answers, setAnswers] = useState<WeakAnswer[] | null>(null);
@@ -127,7 +129,12 @@ export default function DebriefRoute() {
       .catch((error) => {
         if (!live) return;
         if (error instanceof SignedOut) {
-          router.replace('/');
+          // The gate decides where a signed-out person goes, not this screen.
+          // `Stack.Protected` moves them the moment the answer changes, and a
+          // `router.replace` here would be a second opinion about the same
+          // thing — one that used to send them to Home, which is the screen
+          // that cannot work without an account.
+          recheck();
           return;
         }
         setRefusal(refusedRoom(error));
@@ -194,7 +201,12 @@ export default function DebriefRoute() {
       await speak(again.speech);
     } catch (error) {
       if (error instanceof SignedOut) {
-        router.replace('/');
+        // The gate decides where a signed-out person goes, not this screen.
+          // `Stack.Protected` moves them the moment the answer changes, and a
+          // `router.replace` here would be a second opinion about the same
+          // thing — one that used to send them to Home, which is the screen
+          // that cannot work without an account.
+          recheck();
         return;
       }
       setTurnRefusal(refusedTurn(error));
@@ -239,7 +251,12 @@ export default function DebriefRoute() {
       void speak(turn.speech);
     } catch (error) {
       if (error instanceof SignedOut) {
-        router.replace('/');
+        // The gate decides where a signed-out person goes, not this screen.
+          // `Stack.Protected` moves them the moment the answer changes, and a
+          // `router.replace` here would be a second opinion about the same
+          // thing — one that used to send them to Home, which is the screen
+          // that cannot work without an account.
+          recheck();
         return;
       }
       setTurnRefusal(refusedTurn(error));

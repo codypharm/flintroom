@@ -54,13 +54,18 @@ export interface SignInSheetProps {
   onApple: () => void;
   onGoogle: () => void;
   /**
-   * Back to the plan, with every answer still in it.
+   * Back to the plan, with every answer still in it — or null.
    *
-   * The plan is held in the route's state and posted only with sign-up, so
-   * until this existed a back gesture left onboarding altogether and took five
-   * answers with it that had never reached the server.
+   * Null on the launch gate, which is where this sheet now appears first: there
+   * is genuinely nothing behind it, and a control offering to return to nowhere
+   * is worse than no control.
+   *
+   * Non-null on the path it was built for. The plan used to be held in the
+   * route's state and posted with sign-up, so until this existed a back gesture
+   * left onboarding altogether and took five answers with it that had never
+   * reached the server.
    */
-  onBack: () => void;
+  onBack: (() => void) | null;
 }
 
 export function SignInSheet({
@@ -74,6 +79,7 @@ export function SignInSheet({
   return (
     <View style={styles.sheet}>
       <View style={styles.said}>
+        {onBack !== null && (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Back to your plan"
@@ -89,6 +95,7 @@ export function SignInSheet({
           <View style={styles.chevron} />
           <Text style={styles.backLabel}>Your plan</Text>
         </Pressable>
+        )}
 
         <Text style={styles.title} accessibilityRole="header">
           Keep this room

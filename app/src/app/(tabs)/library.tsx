@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Library } from '../../components/modules/Library';
 import { createSessionsApi, type PastRoom } from '../../lib/api/sessionsApi';
 import { API_BASE_URL, auth } from '../../lib/auth';
+import { useGateway } from '../../lib/auth/gateway';
 import { SignedOut } from '../../lib/auth/session';
 import { color, radius, space, type } from '../../theme/tokens';
 
@@ -32,6 +33,7 @@ const sessions = createSessionsApi({
 });
 
 export default function LibraryRoute() {
+  const { recheck } = useGateway();
   const [rooms, setRooms] = useState<PastRoom[] | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -47,7 +49,12 @@ export default function LibraryRoute() {
       .catch((error) => {
         if (!live) return;
         if (error instanceof SignedOut) {
-          router.replace('/');
+          // The gate decides where a signed-out person goes, not this screen.
+          // `Stack.Protected` moves them the moment the answer changes, and a
+          // `router.replace` here would be a second opinion about the same
+          // thing — one that used to send them to Home, which is the screen
+          // that cannot work without an account.
+          recheck();
           return;
         }
         // Distinct from an empty library, and the difference matters: one says

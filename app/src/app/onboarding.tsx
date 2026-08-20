@@ -1,47 +1,42 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { SignInSheet } from '../components/modules/SignInSheet';
 import { TablePlan, type Plan } from '../components/modules/TablePlan';
 import { WhenPicker } from '../components/modules/WhenPicker';
-import { createAppleProvider, isAppleAvailable } from '../lib/auth/apple';
-import { createGoogleProvider } from '../lib/auth/google';
-import { refusalFor } from '../lib/auth/refusal';
-import { auth } from '../lib/auth';
-import { CancelledByUser, type IdentityProvider } from '../lib/auth/provider';
-import { color } from '../theme/tokens';
+import { createMeApi } from '../lib/api/meApi';
+import { API_BASE_URL, auth } from '../lib/auth';
+import { useGateway } from '../lib/auth/gateway';
+import { color, space, type } from '../theme/tokens';
+
+const me = createMeApi({
+  baseUrl: API_BASE_URL,
+  accessToken: () => auth.accessToken(),
+});
 
 /**
- * First launch: describe the room, then keep it.
+ * Describe the room, once the account exists.
  *
- * `docs/onboarding.md`, with the ordering amended on 2026-08-18 — the plan is
- * filled in, then identity is asked for, then the reveal arrives on the setup
- * screen as the room the answers built. The doc's diagram put the reveal before
- * sign-in; its argument only ever established that the *survey* comes first,
- * and moving the reveal after removed a preview that could disagree with the
- * room a session actually builds.
+ * **Sign-in moved in front of this on 2026-08-20**, reversing the ordering
+ * `docs/onboarding.md` settled and recording the reversal there. The old
+ * argument — "identity is asked for once there is something to lose, rather
+ * than a toll gate in front of a stranger" — was about a *first* launch. A
+ * signed-out launch is a different case, and under survey-first it had no way
+ * in at all.
  *
- * **The answers are held here and posted once, with sign-up.** Nothing about
- * this plan exists on the server until there is a user to attach it to, which
- * is what keeps `CLAUDE.md`'s rule that a `user_id` exists only for a real
- * person: no anonymous account rows, no orphan per bounced install, no merge
- * path. The cost is accepted and stated in the doc — no per-question drop-off
- * analytics for somebody who leaves before signing in.
+ * So the answers no longer ride on the sign-in request. They are posted to
+ * `POST /v1/onboarding` by an account that already exists, which is the state
+ * that document once refused — "a partially-created account with no
+ * configuration is a state worth not having". It is reachable on purpose now,
+ * and survivable because `/v1/me` publishes `onboarded`: somebody who abandons
+ * here is asked again next launch rather than left half-made.
  *
  * The microphone is deliberately not asked for here. `docs/onboarding.md`:
  * a refusal on iOS is sticky and unrecoverable in-app, so the prompt belongs at
  * the moment its reason is self-evident — they have tapped to enter the room
  * and the panel is waiting.
  */
-
-/**
- * Built once, at module load, because `GoogleSignin.configure` is process-wide
- * and re-running it per render would reconfigure the SDK under an open sheet.
- */
-const google: IdentityProvider = createGoogleProvider();
-const apple: IdentityProvider = createAppleProvider();
 
 const BLANK: Plan = {
   situation: null,
@@ -55,111 +50,77 @@ const BLANK: Plan = {
 };
 
 export default function OnboardingRoute() {
+  const { recheck } = useGateway();
   const [plan, setPlan] = useState<Plan>(BLANK);
-  const [asking, setAsking] = useState(false);
   // The route owns the picker because it is a native host component and this
   // screen has to stay renderable without one — the same seam the microphone
   // uses in `debrief/[id].tsx`.
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
-  const [appleAvailable, setAppleAvailable] = useState(false);
 
-  useEffect(() => {
-    let live = true;
-    void isAppleAvailable().then((can) => live && setAppleAvailable(can));
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  const enter = async (provider: IdentityProvider) => {
+  const describe = async () => {
     setBusy(true);
     setRefusal(null);
 
     try {
-      await auth.signIn(provider.id, await provider.signIn(), {
-        // Posted with sign-up rather than after it: an account that exists and
-        // has been asked nothing is a user who described a board review and
-        // gets asked about it again on their next launch.
+      await me.describeTheRoom({
         situation: plan.situation,
         happensOn: plan.happensOn,
         role: plan.role,
         audience: plan.audience,
       });
 
-      // `replace`, not `push`. Onboarding runs once and there is nothing behind
-      // it worth a back gesture — returning here would offer to build a plan
-      // for an account that already has one.
-      // `reveal` is the whole reason this parameter exists. `docs/onboarding.md`
-      // promised a "here's your room" moment, and the server derives a seating
-      // from the survey answers to deliver it — but that is a reveal *earned by
-      // answering five questions*, and it is only ever right on this one path.
-      // Every other way into setup opens on an empty roster, because a room
-      // somebody did not choose is a room they have to undo.
-      // The Home tab, which is now where a room is assembled. `replace` rather
-      // than `push`, so the back gesture does not return somebody to a survey
-      // they have already answered.
+      // `reveal` is the whole reason this parameter exists.
+      // `docs/onboarding.md` promised a "here's your room" moment, and the
+      // server derives a seating from these answers to deliver it — but that is
+      // a reveal *earned by answering five questions*, and it is only ever
+      // right on this one path. Every other way into Home opens on an empty
+      // roster, because a room somebody did not choose is a room they have to
+      // undo.
       router.replace({ pathname: '/', params: { reveal: '1' } });
-    } catch (error) {
-      if (error instanceof CancelledByUser) {
-        // Not a failure. Somebody deliberately made nothing happen, and saying
-        // "something went wrong" immediately afterwards is how an app teaches
-        // people not to trust what it says.
-        return;
-      }
 
-      // One sentence per cause, decided in `refusal.ts` and tested there. The
-      // string this replaced was said to every failure alike, which sent
-      // somebody whose account had been refused off to check their signal.
-      setRefusal(refusalFor(error));
+      // And tell the gate, which is what actually decides whether this screen
+      // is reachable at all. Without it the guard still reads `undescribed` and
+      // would put the survey straight back in front of them.
+      recheck();
+    } catch {
+      // One sentence, because there is one cause worth distinguishing here and
+      // it is not reachable: the account already exists and the credential was
+      // good a moment ago, so a failure is the network or us.
+      setRefusal('That did not save. Try again in a moment.');
     } finally {
       setBusy(false);
     }
   };
 
-  if (!asking) {
-    return (
-      <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-        <TablePlan
-          seats={FREE_SEATS}
-          hardest={RUNGS}
-          plan={plan}
-          busy={busy}
-          onChange={setPlan}
-          onPickDate={() => setPicking(true)}
-          onContinue={() => setAsking(true)}
-        />
-
-        {picking && (
-          <WhenPicker
-            value={plan.happensOn}
-            onPick={(happensOn) => {
-              setPlan({ ...plan, happensOn });
-              setPicking(false);
-            }}
-            onClose={() => setPicking(false)}
-          />
-        )}
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-      <ScrollView contentContainerStyle={styles.filled}>
-        <SignInSheet
-          appleAvailable={appleAvailable}
-          busy={busy}
-          refusal={refusal}
-          onApple={() => void enter(apple)}
-          onGoogle={() => void enter(google)}
-          // Back to the plan with every answer still in it, because the plan
-          // lives in this component's state and has been posted nowhere. The
-          // sheet refuses this itself while a sign-in is in flight.
-          onBack={() => setAsking(false)}
+      <TablePlan
+        seats={FREE_SEATS}
+        hardest={RUNGS}
+        plan={plan}
+        busy={busy}
+        onChange={setPlan}
+        onPickDate={() => setPicking(true)}
+        onContinue={() => void describe()}
+      />
+
+      {/* Said here rather than inside `TablePlan`, which has no slot for a
+          failure and should not grow one: the only thing that can fail on this
+          screen is the save, and the save belongs to this route. */}
+      {refusal !== null && <Text style={styles.refusal}>{refusal}</Text>}
+
+      {picking && (
+        <WhenPicker
+          value={plan.happensOn}
+          onPick={(happensOn) => {
+            setPlan({ ...plan, happensOn });
+            setPicking(false);
+          }}
+          onClose={() => setPicking(false)}
         />
-      </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -182,4 +143,10 @@ const styles = StyleSheet.create({
   // Grows to the full height so the sheet can anchor its two ends, and scrolls
   // instead when the largest Dynamic Type sizes make it taller than the screen.
   filled: { flexGrow: 1 },
+  refusal: {
+    ...type.bodyMd,
+    color: color.onSurfaceVariant,
+    paddingHorizontal: space.screen,
+    paddingBottom: space.base,
+  },
 });

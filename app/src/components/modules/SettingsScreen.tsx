@@ -36,6 +36,18 @@ export interface SettingsScreenProps {
   holdings: Holdings;
   onRecordingChange: (records: boolean) => void;
   onDeleteAccount: () => void;
+  /**
+   * Leave this account on this device.
+   *
+   * Separate from deleting, and drawn as an ordinary control rather than a
+   * destructive one, because it destroys nothing — the rooms, the transcripts
+   * and the minutes are all still there on the next sign-in. Putting the two
+   * side by side in the same red is how somebody taps the wrong one.
+   *
+   * It had no control at all until 2026-08-20, which is why a signed-out state
+   * was unreachable except by a token expiring on its own.
+   */
+  onSignOut: () => void;
 }
 
 /**
@@ -71,6 +83,7 @@ export function SettingsScreen({
   holdings,
   onRecordingChange,
   onDeleteAccount,
+  onSignOut,
 }: SettingsScreenProps) {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -151,6 +164,15 @@ export function SettingsScreen({
       */}
       <Pressable
         accessibilityRole="button"
+        accessibilityLabel="Sign out"
+        onPress={onSignOut}
+        style={({ pressed }) => [styles.leave, pressed && styles.pressed]}
+      >
+        <Text style={styles.leaveLabel}>Sign out</Text>
+      </Pressable>
+
+      <Pressable
+        accessibilityRole="button"
         onPress={onDeleteAccount}
         style={({ pressed }) => [styles.destructive, pressed && styles.pressed]}
       >
@@ -202,6 +224,18 @@ const styles = StyleSheet.create({
   rowDetail: { ...type.bodySm, color: color.onSurfaceVariant },
 
   hairline: { height: 1, backgroundColor: color.hairline, opacity: 0.5 },
+
+  /** An ordinary control. Nothing is destroyed and nothing should look like it. */
+  leave: {
+    alignSelf: 'flex-start',
+    marginTop: space.section,
+    paddingVertical: space.snug,
+    paddingHorizontal: space.loose,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: color.hairline,
+  },
+  leaveLabel: { ...type.labelLg, color: color.onSurface },
 
   destructive: {
     marginTop: space.major,
