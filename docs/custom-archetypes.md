@@ -59,6 +59,49 @@ the difference. **`Archetype` is the boundary.**
 
 ---
 
+## 0. What the user supplies, at a glance
+
+| Field | Who writes it |
+| --- | --- |
+| Title — "The Board Chair" | **User.** Free text. May duplicate a shipped title. |
+| Who they are | **User.** One short fenced field — see §2. |
+| Domains | **User**, from the shipped vocabulary — see §1. |
+| Voice | **User, optionally.** Eight, defaulting to "pick one for me". |
+| Avatar | Nobody — their initials, see below. |
+| `name` | Server. `custom:{uuid}` — see §5. |
+| `attack_strategy` | Us, composed from their domains — see §2. |
+| `cadence`, `openers`, `nudges` | Nobody. Null, and the room copes. |
+
+### The avatar is their initials, and that is already built
+
+`ArchetypeCard.tsx:79` branches on `portrait === null` and draws
+`initialsOf(title)` — "The Board Chair" becomes "BC". `portraits.ts` names this
+as the intended degradation: *"an archetype added on the server without artwork
+degrades to initials instead of crashing."* `initialsOf` drops the article
+because every archetype has one, and keeps acronyms whole because *"'The CFO'
+reduced to a lone 'C' was worse than useless"*.
+
+Initials rather than a silhouette, per the comment at the branch: *"a generic
+head icon repeated eight times is furniture, and tells you nothing about which
+card you are looking at from the corner of your eye."*
+
+It also earns its keep against §3. Every room must seat a shipped archetype, and
+**photograph versus initials** tells somebody at a glance whether theirs does,
+without a badge or a label.
+
+**Not a portrait from the shipped eight.** `portraits.ts` carries the rule in
+capitals — *"THE FACE MUST AGREE WITH THE VOICE, AND THE VOICE DECIDES"* —
+written after six portraits shipped hung on the wrong archetype. A custom
+panelist wearing the CFO's face also puts one face in a room twice whenever both
+are seated.
+
+**Not a generated or uploaded one.** The eight are *"generated people, not
+photographs of anyone"*, which `portraits.ts` calls *"the whole reason they are
+permissible"* — `CLAUDE.md` locks archetypes to pre-built personas so no real
+person's likeness is involved. A per-archetype image call adds cost and a
+moderation surface and drifts toward likeness; upload-your-own is the
+right-of-publicity exposure the project rejected wholesale.
+
 ## 1. Domains are chosen from the shipped list, never typed
 
 `domains` is not descriptive metadata. It is the routing key for §3.3 targeted
