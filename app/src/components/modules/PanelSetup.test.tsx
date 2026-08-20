@@ -405,3 +405,14 @@ it('says the count once, not twice', async () => {
 
   expect(screen.getByText('Add another, or change one.')).toBeTruthy();
 });
+
+it('says what somebody gets rather than what we lack', async () => {
+  // "Somebody this product has never met" is a fact about our library, told
+  // from our side of the screen. Nobody writes a panelist to fill our gap —
+  // they write one because a particular person will be in the room on Thursday
+  // and none of our eight is them.
+  await setup({ room: { ...ROOM, mayAuthor: true } });
+
+  expect(screen.getByText('The person you are actually preparing for.')).toBeTruthy();
+  expect(screen.queryByText(/this product has never met/i)).toBeNull();
+});

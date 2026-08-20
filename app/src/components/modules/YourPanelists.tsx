@@ -49,9 +49,13 @@ export function YourPanelists({
       <Text style={styles.title} accessibilityRole="header">
         Your panelists
       </Text>
+      {/* Theirs, said from their side. This read "people this product has
+          never met, described in your words", which is a fact about our
+          library — nobody writes a panelist to fill our gap. See `AuthorRow`,
+          where the same line was rewritten for the same reason. */}
       <Text style={styles.standfirst}>
-        People this product has never met, described in your words. They sit
-        beside ours in any room.
+        The people you are actually preparing for. They sit beside ours in any
+        room.
       </Text>
 
       {refusal !== null && (

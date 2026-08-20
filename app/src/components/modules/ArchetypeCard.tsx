@@ -334,6 +334,14 @@ const styles = StyleSheet.create({
  * So it is a full-width row under the rail, where the eye lands after the
  * horizontal scroll ends and where nothing has to be swiped to reach it.
  *
+ * **The line under it used to be about us.** "Somebody this product has never
+ * met, described in your words" states what we do not know — true, and written
+ * from our side of the screen. Nobody writes a panelist because our library has
+ * a gap; they write one because a particular person will be in the room on
+ * Thursday and none of our eight is them. "The person you are actually
+ * preparing for" is the same fact told from the only side that matters, and it
+ * names the motive rather than the mechanism.
+ *
  * Still not pressable, at either plan value. Authoring has no endpoint yet
  * (#65), and a control that opens nothing is worse than a statement. A fact and
  * a plan name, never a locked door with a price on it — §4.5 keeps the upsell
@@ -408,7 +416,7 @@ export function AuthorRow({
         <Text style={styles.rowBlurb}>
           {some
             ? 'Add another, or change one.'
-            : 'Somebody this product has never met, described in your words.'}
+            : 'The person you are actually preparing for.'}
         </Text>
       </View>
 
