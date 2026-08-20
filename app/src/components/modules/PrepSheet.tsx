@@ -263,6 +263,19 @@ function Question({ answer, onSpar }: { answer: WeakAnswer; onSpar: () => void }
 
           <Text style={styles.why}>{answer.why}</Text>
 
+          {/*
+            The sentence worth having in the corridor. A sheet that lists what
+            went wrong and stops is a record of a bad afternoon; the reason
+            these six are here at all is that the questions are still coming.
+
+            Under `why` and in the reading colour rather than the muted one:
+            what was missing is context for it, and this is the part somebody
+            re-reads on the way in.
+          */}
+          {answer.nextTime ? (
+            <Text style={styles.reach}>{answer.nextTime}</Text>
+          ) : null}
+
           <Pressable
             accessibilityRole="button"
             onPress={onSpar}
@@ -339,6 +352,7 @@ const styles = StyleSheet.create({
     color: color.onSurface,
     marginTop: space.hair,
   },
+  reach: { ...type.bodyMd, color: color.onSurface, marginTop: space.snug },
   why: {
     ...type.bodyMd,
     color: color.onSurfaceVariant,

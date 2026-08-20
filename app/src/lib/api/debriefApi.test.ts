@@ -49,6 +49,7 @@ describe('read', () => {
           answer: 'We are excited about the roadmap.',
           weakness: 'evasive',
           why: 'You deflected to the roadmap.',
+          next_time: 'Say what breaks first, and at what number.',
         },
       ],
       pressed: 'harder',
@@ -64,9 +65,34 @@ describe('read', () => {
       answer: 'We are excited about the roadmap.',
       weakness: 'evasive',
       why: 'You deflected to the roadmap.',
+      nextTime: 'Say what breaks first, and at what number.',
     });
   });
 
+  it('reads a missing suggestion as null rather than as undefined', async () => {
+    // A finding whose suggestion the server dropped — it named a figure the
+    // room never said — or one from a room read before suggestions existed.
+    // Null is a real answer here and the screen branches on it; `undefined`
+    // would branch the same way today and stop doing so the moment anybody
+    // writes `in` or `hasOwnProperty` against it.
+    const fetcher = answering(200, {
+      weak_answers: [
+        {
+          ordinal: 3,
+          question: 'What happens at ten times the load?',
+          asked_by: 'technical_skeptic',
+          answer: null,
+          weakness: 'evasive',
+          why: 'You deflected to the roadmap.',
+        },
+      ],
+      pressed: null,
+    });
+
+    const debrief = await api(fetcher).read(SESSION);
+
+    expect(debrief.weakAnswers[0].nextTime).toBeNull();
+  });
 
   it('keeps an empty list as a list, not as an absence', async () => {
     // `DebriefRead` says this in as many words: an empty list is "this room had

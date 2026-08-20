@@ -165,6 +165,7 @@ class DebriefService:
                 answer=row.answer,
                 weakness=Weakness(row.weakness),
                 why=row.why,
+                next_time=row.next_time,
             )
             for row in rows.scalars()
         )
@@ -219,6 +220,7 @@ class DebriefService:
                 answer=answer.answer,
                 weakness=answer.weakness.value,
                 why=answer.why,
+                next_time=answer.next_time,
             )
             for rank, answer in enumerate(answers)
         )

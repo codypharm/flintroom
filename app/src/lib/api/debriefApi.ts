@@ -41,6 +41,14 @@ export interface WeakAnswer {
   weakness: WeaknessKind;
   /** The coach's sentence about what was missing. */
   why: string;
+  /**
+   * What to reach for when this comes up again, or null.
+   *
+   * The half of a finding that faces forward — an entry that stops at `why`
+   * diagnoses and stops. Null when the model offered none, or when what it
+   * offered named a figure the room never said and the server dropped it.
+   */
+  nextTime: string | null;
 }
 
 /**
@@ -137,6 +145,7 @@ interface WeakAnswerBody {
   answer: string | null;
   weakness: WeaknessKind;
   why: string;
+  next_time: string | null;
 }
 
 export function createDebriefApi({
@@ -235,6 +244,7 @@ export function createDebriefApi({
           answer: weak.answer,
           weakness: weak.weakness,
           why: weak.why,
+          nextTime: weak.next_time ?? null,
         })),
         pressed: body.pressed ?? null,
       };

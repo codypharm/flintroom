@@ -407,6 +407,7 @@ async def read_debrief(
                 answer=answer.answer,
                 weakness=answer.weakness.value,
                 why=answer.why,
+                next_time=answer.next_time,
             )
             for answer in await debrief.weak_answers(session_id=session.id)
         ],

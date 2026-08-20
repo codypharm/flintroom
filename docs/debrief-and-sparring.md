@@ -361,6 +361,47 @@ and the debrief says so plainly rather than refusing.
 
 ---
 
+### 8. A finding says what to reach for, and never supplies a figure
+
+Added 2026-08-20, after the architect read six findings on a device and asked
+where the suggestion was. Until then an entry gave the question, what was said,
+what was thin about it, and a button. It diagnosed and stopped, and a list that
+only accuses is the version of this screen that produces churn rather than
+resilience — Open Risk #1 arriving as a layout.
+
+**Written by the pass that finds the weakness, not fetched on a tap.** That pass
+has already read the whole transcript, so `next_time` is one more field on a
+reply that was coming anyway rather than a second inference — and it is on
+screen before the reader gets there, which a round trip cannot be. The first
+design put a *control* on each finding instead, sending "what should I have
+said?" to the coach; the architect's objection was that the model had already
+been there, and it was right.
+
+**The suggestion asks for the missing thing and never supplies it.** "Name the
+base you grew from", not "tell him you grew from two million". The coach knows
+the transcript and the attached material; it does not know the presenter's
+business, and a figure invented here is one somebody may repeat to a real
+board — which is #45 one layer up, where the composer put invented numbers in a
+panelist's mouth.
+
+That is enforced rather than requested. `weakness._invents_a_figure` compares
+digits *and* written magnitudes against what the room actually said, and a
+suggestion carrying either without a source is dropped. Scale words count
+because the first draft compared numerals only and "you grew from two million"
+sailed through it; the small number words do not, because "name the one figure
+he asked for" is a good sentence with no figure in it.
+
+**The suggestion is dropped alone, never with the finding.** The weakness was
+verified by its own quote and is true whatever happened to the sentence after
+it. The entry falls back to diagnosis, which is what every entry was until this
+existed — and the screen renders nothing rather than a labelled blank, because a
+labelled blank advertises a drop to somebody who has no idea one happened.
+
+**This does not replace the conversation.** It is the opening of what the coach
+can say, not the whole of it. Asking out loud still goes deeper, and still
+argues back — which is decision 4's point, and the reason sparring is a loop
+rather than a page.
+
 ## What this does not decide
 
 - **Difficulty calibration (#55)** stays sequenced after this phase. It reads

@@ -90,6 +90,32 @@ export function DebriefEntry({
       */}
       <Text style={styles.why}>{answer.why}</Text>
 
+      {/*
+        The half of the finding that faces forward.
+
+        Until 2026-08-20 an entry ended at `why` — the question, what was said,
+        what was thin about it, and then a button. It diagnosed and stopped, and
+        the architect read six of those in silence and asked for a suggestion.
+        A list that only accuses is the version of this screen that produces
+        churn rather than resilience, which is Open Risk #1 as a layout.
+
+        Written by the pass that found the weakness rather than fetched on a
+        tap: that pass has read the whole transcript already, so this is one
+        more field on a reply that was coming anyway, and it is on screen before
+        the reader arrives. Asking the coach out loud still goes deeper — this
+        is the opening, not the whole of what it can say.
+
+        Absent rather than empty when there is none. The server drops a
+        suggestion that named a figure the room never said, and a labelled blank
+        would advertise the drop to somebody who has no idea one happened.
+      */}
+      {answer.nextTime ? (
+        <View style={styles.forward}>
+          <Text style={styles.slot}>Next time</Text>
+          <Text style={styles.said}>{answer.nextTime}</Text>
+        </View>
+      ) : null}
+
       <View style={styles.now}>
         <Text style={styles.slot}>Now</Text>
         {attempts.length === 0 ? (
@@ -154,6 +180,14 @@ const styles = StyleSheet.create({
     marginTop: space.hair,
   },
   why: { ...type.bodyMd, color: color.onSurfaceVariant, marginTop: space.snug },
+
+  /**
+   * Set apart from `why` but inside the same slot, because it is the other half
+   * of one thought rather than a third section. No rule above it — that is what
+   * divides "then" from "now", and borrowing it here would read as a third
+   * record and flatten the one division that carries meaning.
+   */
+  forward: { marginTop: space.snug },
 
   /**
    * The second slot is divided from the first by a rule rather than by a card.

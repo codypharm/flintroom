@@ -20,6 +20,7 @@ function answer(over: Partial<WeakAnswer> = {}): WeakAnswer {
     answer: 'We are really pleased with the trajectory.',
     weakness: 'evasive',
     why: 'You answered with a feeling about the trend, not a base.',
+    nextTime: 'Lead with the base, then the cost.',
     ...over,
   };
 }
@@ -154,4 +155,16 @@ it('renders a room where nothing was theirs without an empty accusation', async 
 
   expect(screen.getByText(/^not on you$/i)).toBeOnTheScreen();
   expect(screen.queryByText(/^on you$/i)).toBeNull();
+});
+
+it('carries what to reach for into the room, not only what went wrong', async () => {
+  // The sheet somebody has open on their phone in the corridor. §3.5 calls it
+  // "the 6 questions you will get, and where your answers are thin" — and the
+  // sentence worth having there at that moment is the one that says what to do
+  // about it, which until 2026-08-20 existed nowhere.
+  await show([answer()]);
+
+  await userEvent.press(screen.getAllByRole('button')[0]);
+
+  expect(screen.getAllByText('Lead with the base, then the cost.').length).toBeGreaterThan(0);
 });

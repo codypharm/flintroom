@@ -365,3 +365,99 @@ def test_a_room_that_opened_with_a_question_marks_nothing():
     )
 
     assert all(OPENED_THE_ROOM not in line.notes for line in room)
+
+
+def test_a_finding_says_what_to_reach_for_next_time():
+    """The half of a finding that faces forward.
+
+    Until 2026-08-20 an entry ended at `why` — the question, what was said, what
+    was missing, and then a button. It diagnosed and stopped. Six of those read
+    in silence is the version of this product that produces churn rather than
+    resilience, which is Open Risk #1 stated as a screen.
+
+    Written by the same pass that finds the weakness rather than fetched when
+    somebody asks for it. That pass has already read the whole transcript, so
+    this is one more field on a reply that was coming anyway — not a second
+    inference, and on screen before the reader gets there.
+    """
+    room = (
+        Said(speaker=USER, text="We grew forty percent."),
+        Said(speaker="cfo", text="Off what base?"),
+        Said(speaker=USER, text="The trajectory is strong."),
+    )
+    judged = (
+        Judgement(
+            ordinal=1,
+            quote="Off what base?",
+            weakness=Weakness.EVASIVE,
+            why="A rate with no base attached. He asked for one and got a mood.",
+            next_time="Name the number you grew from before he has to ask twice.",
+        ),
+    )
+
+    assert [answer.next_time for answer in verified(judged, room)] == [
+        "Name the number you grew from before he has to ask twice."
+    ]
+
+
+def test_a_suggestion_that_invents_a_figure_is_dropped_but_the_finding_is_kept():
+    """The guard that lets a suggestion exist at all.
+
+    The coach knows the transcript and the attached material. It does not know
+    the presenter's business, and the failure this must not have is a made-up
+    number read off the debrief and repeated to a real board — #45, arriving on
+    a different path. So a suggestion asks for the missing figure and never
+    supplies one: any number in it that the room never said is invention.
+
+    The *finding* survives. It was verified by its own quote and is true
+    independently, and throwing away a real weakness because the sentence after
+    it drifted would cost the user more than the sentence was worth. What is
+    dropped is the suggestion alone — the entry falls back to diagnosis, which
+    is what it was before this existed.
+    """
+    room = (
+        Said(speaker=USER, text="We grew forty percent."),
+        Said(speaker="cfo", text="Off what base?"),
+    )
+    judged = (
+        Judgement(
+            ordinal=1,
+            quote="Off what base?",
+            weakness=Weakness.EVASIVE,
+            why="A rate with no base attached.",
+            # Nobody in this room said two million. Said out loud on a debrief it
+            # becomes a figure the presenter believes they have.
+            next_time="Tell him you grew from two million.",
+        ),
+    )
+
+    (answer,) = verified(judged, room)
+
+    assert answer.why == "A rate with no base attached."
+    assert answer.next_time is None
+
+
+def test_a_suggestion_may_repeat_a_figure_the_room_actually_heard():
+    """The other side of the guard, which a blunt no-digits rule would fail.
+
+    "Forty percent is the rate; he asked for the base" is the *right* sentence,
+    and it needs the number to be about the number at all. What is forbidden is
+    a figure with no source, not arithmetic in general.
+    """
+    room = (
+        Said(speaker=USER, text="We grew forty percent."),
+        Said(speaker="cfo", text="Off what base?"),
+    )
+    judged = (
+        Judgement(
+            ordinal=1,
+            quote="Off what base?",
+            weakness=Weakness.EVASIVE,
+            why="A rate with no base attached.",
+            next_time="Forty percent is the rate. Give him what it is forty percent of.",
+        ),
+    )
+
+    (answer,) = verified(judged, room)
+
+    assert answer.next_time is not None

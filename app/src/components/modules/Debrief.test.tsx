@@ -21,6 +21,7 @@ const ANSWERS = [
       'Acquisition cost is twelve hundred dollars, and a customer pays us a hundred and eighty a month, so payback lands around four months.',
     weakness: 'contradicted' as const,
     why: 'At $180 a month, recovering $1,200 takes nearly seven months rather than four.',
+    nextTime: 'Do the division out loud before he does it for you.',
   },
   {
     ordinal: 5,
@@ -29,6 +30,10 @@ const ANSWERS = [
     answer: null,
     weakness: 'dismissed' as const,
     why: 'Another panelist interrupted with a question about burn before you could answer.',
+    // Phrased forward rather than corrective, because nothing here was their
+    // fault. #56's split is about blame, and a suggestion that read as a
+    // correction would undo it in a sentence.
+    nextTime: 'It will come round again. Have the time-to-value ready for it.',
   },
 ];
 
@@ -388,4 +393,30 @@ it('says who is about to speak, and it is not the coach', async () => {
 
   expect(screen.getByText('Talk to the coach')).toBeTruthy();
   expect(screen.queryByText('Talk to me')).toBeNull();
+});
+
+it('says what to reach for, not only what was missing', async () => {
+  // The gap the architect found on a device: an entry gave the question, the
+  // answer, what was thin about it, and then a button. It diagnosed and
+  // stopped. Six of those read in silence is the version of this screen that
+  // produces churn rather than resilience — Open Risk #1, as a layout.
+  //
+  // Written by the pass that found the weakness rather than fetched on a tap.
+  // That pass has read the whole transcript already, so this is one more field
+  // on a reply that was coming anyway, and it is on screen before the reader
+  // gets there.
+  await setup();
+
+  expect(screen.getByText('Do the division out loud before he does it for you.')).toBeTruthy();
+});
+
+it('still draws a finding whose suggestion the server dropped', async () => {
+  // Null is a real answer here, not missing data: the model offered nothing, or
+  // offered something that named a figure the room never said and the server
+  // refused it. The finding was verified by its own quote and survives either
+  // way — the entry falls back to diagnosis, which is what every entry was
+  // until today.
+  await setup({ answers: [{ ...ANSWERS[0], nextTime: null }] });
+
+  expect(screen.getByText(/recovering \$1,200 takes nearly seven months/)).toBeTruthy();
 });

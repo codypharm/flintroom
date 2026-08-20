@@ -679,6 +679,14 @@ class SessionWeakAnswer(Base):
     #: answer.
     why: Mapped[str] = mapped_column(Text, nullable=False)
 
+    #: What to reach for when this comes up again, or null.
+    #:
+    #: Nullable because it genuinely may not exist: a reply that omitted it, or
+    #: one whose suggestion named a figure the room never said and was dropped
+    #: by `weakness._suggestion`. The finding survives either way — it was
+    #: verified by its own quote — and the entry falls back to diagnosis.
+    next_time: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     found_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

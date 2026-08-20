@@ -2604,6 +2604,11 @@ components:
         why:
           type: string
           title: Why
+        next_time:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Time
       type: object
       required:
       - ordinal

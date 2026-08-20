@@ -370,6 +370,11 @@ class WeakAnswerRead(BaseModel):
     weakness: str
     why: str
 
+    #: What to reach for next time, or null when the model offered none — or
+    #: offered one that invented a figure and was dropped before it got here.
+    #: The forward half of a finding; `why` alone diagnoses and stops.
+    next_time: str | None = None
+
 
 class DebriefRead(BaseModel):
     """What the coach and the prep sheet are both grounded in.

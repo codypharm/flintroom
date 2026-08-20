@@ -1625,6 +1625,7 @@ export interface components {
             /** Why */
             why: string;
             /** Next Time */
+            next_time?: string | null;
         };
     };
     responses: never;

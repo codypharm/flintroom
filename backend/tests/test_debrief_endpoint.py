@@ -37,6 +37,9 @@ FOUND = Judgement(
     quote="Off what base, and at what cost?",
     weakness=Weakness.EVASIVE,
     why="You answered with a feeling about the trend, not a base.",
+    # Asks for the missing figure rather than supplying one, which is what makes
+    # a suggestion safe to print at all — see `weakness._invents_a_figure`.
+    next_time="Have the base and the cost ready before he asks a second time.",
 )
 
 
@@ -70,6 +73,9 @@ async def test_a_debrief_hands_back_what_the_room_got_wrong(
             "answer": "We are really pleased with the trajectory.",
             "weakness": "evasive",
             "why": "You answered with a feeling about the trend, not a base.",
+            "next_time": (
+                "Have the base and the cost ready before he asks a second time."
+            ),
         }
     ]
 

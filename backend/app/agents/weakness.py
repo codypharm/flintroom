@@ -33,6 +33,8 @@ allowed to lose.
 
 from __future__ import annotations
 
+import re
+
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
@@ -295,6 +297,17 @@ class Judgement:
     #: reads, and a category cannot tell somebody what was thin about an answer.
     why: str
 
+    #: What to reach for next time, or None when the model offered nothing.
+    #:
+    #: The half of a finding that faces forward. An entry that stops at `why`
+    #: diagnoses and stops, and six of those read in silence is the version of
+    #: this product that produces churn rather than resilience.
+    #:
+    #: Asks for the missing thing; never supplies it. `_invents_a_figure` is
+    #: what holds that line — see the note there for why it is the whole reason
+    #: this field is safe to have.
+    next_time: str | None = None
+
 
 @dataclass(frozen=True)
 class WeakAnswer:
@@ -314,6 +327,10 @@ class WeakAnswer:
 
     weakness: Weakness
     why: str
+
+    #: What to reach for, or None — either because the model offered nothing or
+    #: because what it offered invented a figure and was dropped.
+    next_time: str | None = None
 
 
 def verified(
@@ -361,10 +378,88 @@ def verified(
                 answer=_answer_to(transcript, judgement.ordinal),
                 weakness=judgement.weakness,
                 why=judgement.why,
+                next_time=_suggestion(judgement, transcript),
             )
         )
 
     return tuple(kept)
+
+
+def _suggestion(judgement: Judgement, transcript: Sequence[Said]) -> str | None:
+    """The forward half of a finding, or None if it invented a figure.
+
+    Dropped alone, never with the finding. The weakness was verified by its own
+    quote and is true whatever happened to the sentence after it — throwing away
+    a real fumble because the suggestion drifted would cost the user more than
+    the suggestion was worth. The entry falls back to diagnosis.
+    """
+    if not judgement.next_time or not judgement.next_time.strip():
+        return None
+
+    if _invents_a_figure(judgement.next_time, transcript):
+        # Never the text itself. It is a sentence about transcript content, and
+        # `CLAUDE.md` forbids that in logs without exception.
+        log.warning(
+            "weak_answer_suggestion_dropped",
+            ordinal=judgement.ordinal,
+            weakness=judgement.weakness.value,
+        )
+        return None
+
+    return judgement.next_time
+
+
+def _invents_a_figure(suggestion: str, transcript: Sequence[Said]) -> bool:
+    """Whether the suggestion states a number the room never heard.
+
+    The one guard that makes this field safe to have at all. The coach knows the
+    transcript and the attached material; it does not know the presenter's
+    business. A suggestion reading "tell him you grew from two million" hands
+    somebody a figure they do not have, on a screen they are reading precisely
+    in order to prepare — and #45 is the same failure one layer up, where the
+    composer put invented numbers in a panelist's mouth.
+
+    So a suggestion asks for the missing figure and never supplies one. What is
+    forbidden is a number with no source, not arithmetic: "forty percent is the
+    rate, give him what it is forty percent of" is the *right* sentence and
+    needs the number to be about the number at all. Hence containment against
+    what was actually said rather than a rule against digits.
+
+    Scale words count as figures alongside digits, because the first draft of
+    this compared numerals only and "tell him you grew from two million" sailed
+    through it — the exact sentence the guard exists to stop, written the way a
+    model actually writes prose.
+
+    Only *scale* words, though, never the small ones. "One" and "two" are
+    ordinary English — "name the one figure he asked for" is a good sentence
+    with no figure in it — and forbidding them would drop the suggestions this
+    is meant to protect. A conjured number nearly always carries a scale.
+
+    Deliberately crude beyond that. It compares tokens, not meaning: a room that
+    said "2,000,000" does not license "two million" here, and that direction of
+    failure is the right one. This is a floor under the worst case, not a proof
+    of groundedness.
+    """
+    said = " ".join(line.text for line in transcript).lower().replace(",", "")
+    spoken = set(_NUMERALS.findall(said)) | {
+        scale for scale in _SCALES if scale in said
+    }
+
+    lowered = suggestion.lower().replace(",", "")
+    found = set(_NUMERALS.findall(lowered)) | {
+        scale for scale in _SCALES if scale in lowered
+    }
+
+    return bool(found - spoken)
+
+
+#: Digit runs, which is all `_invents_a_figure` compares. Decimals kept whole so
+#: "4.5" is one figure rather than a 4 that the room happens to have said.
+_NUMERALS = re.compile(r"\d+(?:\.\d+)?")
+
+#: Written magnitudes, treated as figures. Not the small number words: "one" and
+#: "two" are ordinary English and banning them would drop good sentences.
+_SCALES = ("hundred", "thousand", "million", "billion", "trillion")
 
 
 def _quotes_the_room(judgement: Judgement, transcript: Sequence[Said]) -> bool:
@@ -528,7 +623,20 @@ def _judgement(entry: Any) -> Judgement | None:
         # one finding fewer.
         return None
 
-    return Judgement(ordinal=ordinal, quote=quote, weakness=named, why=why)
+    # Optional, unlike every field above. A reply that omits it — or offers a
+    # non-string — loses the suggestion and keeps the finding, which is the same
+    # trade `_suggestion` makes when a suggestion invents a figure.
+    next_time = entry.get("next_time")
+    if not isinstance(next_time, str) or not next_time.strip():
+        next_time = None
+
+    return Judgement(
+        ordinal=ordinal,
+        quote=quote,
+        weakness=named,
+        why=why,
+        next_time=next_time,
+    )
 
 
 def render(room: Sequence[Annotated]) -> str:
@@ -579,6 +687,14 @@ For each one:
 - `quote` must be words copied exactly from that line.
 - `why` speaks to the presenter, in one or two sentences, about what was \
 missing from what they actually said. Never generic advice.
+- `next_time` is one sentence about what to reach for when this comes up again: \
+the figure to have ready, the order to say things in, or the way to hold the \
+line. Speak to them directly.
+
+  NEVER put a figure in `next_time` that the presenter did not already say. You \
+do not know their business, and a number you invent here is one they may repeat \
+to a real board. Ask for the missing figure instead of supplying it: "name the \
+base you grew from", not "tell him you grew from two million".
 
 Do not blame the presenter for a question a note says they were never given the \
 chance to answer. It still belongs on the list — they will face it again — but \
