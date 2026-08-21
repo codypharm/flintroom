@@ -291,8 +291,25 @@ export function PanelSetup({
         twice, and the accessibility label carries the question once the
         placeholder is gone.
 
-        The line underneath is a disclosure, not a hint. "Shaped, never spoken"
-        is invisible from the outside — somebody who writes a sentence and never
+        **IT MUST NOT ASK WHO IS IN THE ROOM.** It did — "Who are you presenting
+        to?" — and the first person to see it on a device asked what the
+        panelists were for if this existed. They were right: the rail below
+        answers that, and it is the decision the whole screen is for. Two
+        questions for one answer reads as a second picker.
+
+        What the box is for is the thing an archetype structurally cannot carry.
+        The eight are shipped constants shared by every user, so "The CFO" knows
+        to attack cost and margin and *cannot* know that in this company
+        headcount is the third rail. The panel is the kind of person; this is
+        the particular room. So it asks for what we could not have guessed.
+
+        Two supporting lines rather than one, matching the density of the deck
+        card above, and the example goes first. Nobody knows what belongs in an
+        empty box, and one concrete line does more work than a paragraph of
+        instruction — `Product.md` §3.1's own example, verbatim.
+
+        The second line is a disclosure, not a hint. "Shaped, never spoken" is
+        invisible from the outside — somebody who writes a sentence and never
         hears it back cannot tell a panel that used it from one that ignored it,
         so the screen says which. It also sets the expectation before the room
         opens rather than leaving it as a surprise, and it is the only place the
@@ -303,9 +320,9 @@ export function PanelSetup({
           style={styles.audience}
           value={audience}
           onChangeText={onAudienceChange}
-          placeholder="Who are you presenting to?"
+          placeholder="What should they know about this room?"
           placeholderTextColor={color.onSurfaceVariant}
-          accessibilityLabel="Who you are presenting to"
+          accessibilityLabel="What they should know about this room"
           // Bounded here as well as at the server, so a long paste stops under
           // the thumb rather than becoming a room that will not open for a
           // reason nobody can see.
@@ -317,6 +334,9 @@ export function PanelSetup({
           autoCapitalize="sentences"
         />
       </View>
+      <Text style={styles.audienceExample}>
+        e.g. my VP hates anything that adds headcount
+      </Text>
       <Text style={styles.audienceNote}>
         Shapes what they press on. It is never read out.
       </Text>
@@ -694,11 +714,18 @@ const styles = StyleSheet.create({
    * as belonging to the field above it — the hanging indent `DeckAttach` uses
    * for its constraints line, for the same reason.
    */
-  audienceNote: {
+  audienceExample: {
     ...type.bodySm,
     color: color.onSurfaceVariant,
     paddingHorizontal: space.base,
     paddingTop: space.tight,
+  },
+
+  audienceNote: {
+    ...type.bodySm,
+    color: color.onSurfaceVariant,
+    paddingHorizontal: space.base,
+    paddingTop: space.hair,
   },
 
   rehearsal: {

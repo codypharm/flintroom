@@ -64,6 +64,34 @@ used it from one that ignored it. The setup screen says *"Shapes what they press
 on. It is never read out."* under the field, and `docs/privacy-policy.md` says
 the same thing at greater length.
 
+## 1a. It must not ask who is in the room
+
+**Corrected 2026-08-21, the same day, by the architect on first sight of a
+device.** The field shipped asking *"Who are you presenting to?"* and the
+question back was immediate and correct: *"why would a user provide text stating
+who they are presenting to — what is the panelist for then?"*
+
+The rail directly below answers that question already, and seating it is the
+decision the whole screen exists for. Two questions with one answer reads as a
+second picker, and it makes the box look redundant at exactly the moment
+somebody decides whether to fill it in.
+
+**What the box is actually for is the thing an archetype structurally cannot
+carry.** The eight are shipped constants shared by every user, so "The CFO"
+knows to attack cost, margin and runway and *cannot* know that in this company
+headcount is the third rail. The panel is the *kind* of person; this is the
+*particular* room.
+
+So it asks **"What should they know about this room?"**, and it carries
+`Product.md` §3.1's own example verbatim underneath — nobody knows what belongs
+in an empty box, and one concrete line does more than a paragraph of
+instruction.
+
+The server-side fence label is unchanged. It describes the text to a model that
+has no picker to duplicate, it was written to be accurate about the content
+rather than about the screen, and changing measured prompt text without a reason
+is churn.
+
 ## 2. It enters at the composer, and nowhere else
 
 `TurnContext.audience`, beside `pressure`. **Not `Grounding`**, and the

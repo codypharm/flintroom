@@ -467,19 +467,48 @@ describe('naming what is being rehearsed', () => {
  * #66 — the permitted substitute for the profile scraping `Product.md` §3.1
  * refused. The user describes the room; nothing is fetched about anybody.
  */
-describe('who they are presenting to', () => {
+describe('what the room is like', () => {
   it('asks, and hands back what was typed', async () => {
     const onAudienceChange = jest.fn();
     await setup({ onAudienceChange });
 
     fireEvent.changeText(
-      screen.getByLabelText('Who you are presenting to'),
+      screen.getByLabelText('What they should know about this room'),
       'my VP hates anything that adds headcount',
     );
 
     expect(onAudienceChange).toHaveBeenCalledWith(
       'my VP hates anything that adds headcount',
     );
+  });
+
+  it('does not ask again who is in the room', async () => {
+    // The panel rail below already answers "who are you presenting to" — it is
+    // the decision this whole screen is for. A box asking it a second time
+    // reads as a second picker, and the first person to see it on a device
+    // asked what the panelists were for if this existed.
+    //
+    // What the box is actually for is the thing an archetype *cannot* carry:
+    // the eight are shipped constants shared by every user, so "The CFO" knows
+    // to attack cost and cannot know that in this company headcount is the
+    // third rail. So it asks for what we could not have guessed.
+    await setup();
+
+    expect(screen.queryByLabelText('Who you are presenting to')).toBeNull();
+    expect(
+      screen.getByLabelText('What they should know about this room'),
+    ).toBeOnTheScreen();
+  });
+
+  it('shows what to write, because nobody knows what goes in an empty box', async () => {
+    // Product.md §3.1's own example, verbatim. Measured against nothing, but
+    // the feature is worthless if people cannot tell what belongs here, and one
+    // concrete line does more than a paragraph of instruction.
+    await setup();
+
+    expect(
+      screen.getByText(/my VP hates anything that adds headcount/),
+    ).toBeOnTheScreen();
   });
 
   it('says what the room does with it, and what it will not do', async () => {
@@ -499,7 +528,7 @@ describe('who they are presenting to', () => {
     // so the refusal is not a room that will not open for an invisible reason
     // — the same rule the rehearsal name already follows.
     expect(
-      screen.getByLabelText('Who you are presenting to').props.maxLength,
+      screen.getByLabelText('What they should know about this room').props.maxLength,
     ).toBe(400);
   });
 });
