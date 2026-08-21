@@ -61,6 +61,22 @@ D-U-N-S number, which is free but takes days to issue, and that is the trade: a
 few days now against a fortnight later, plus not having to migrate an account
 whose name is on the store listing.
 
+**Decided 2026-08-21: individual, not organisation.** Flintroom is a personal
+project that may become a company later, and a D-U-N-S number presupposes a
+registered business — so the organisation path is not deferred paperwork, it is
+incorporating, which is a larger decision than a store account should force.
+
+So **the fourteen-day closed test is on the launch path**, and the point of
+writing it here is that it should be planned rather than discovered. Twelve
+testers, opted in *continuously*, for fourteen days, before production access can
+even be applied for — and the clock starts only once there is something worth
+testing. `Product.md` §7 puts store submission in Week 8 with "a week of slack";
+this does not fit inside that week, it runs alongside the ones before it.
+
+Revisit if Flintroom incorporates before launch. Google supports moving apps
+between developer accounts, so this is reversible at a cost rather than a
+one-way door — but the fourteen days are not recovered by switching late.
+
 ### Google — a release on a track
 
 Play Console will not show the Monetise section until the app exists and at least
