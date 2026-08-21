@@ -122,3 +122,46 @@ describe('a material a past room was grounded in', () => {
     await expect(api.read('m-7')).rejects.toThrow();
   });
 });
+
+describe('what this account still has attached', () => {
+  function listing(rows: unknown[]) {
+    const fetcher = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => rows,
+    });
+
+    return {
+      fetcher,
+      materials: createMaterialsApi({
+        baseUrl: 'https://flintroom.test',
+        accessToken: async () => 'a-token',
+        fetch: fetcher as unknown as typeof fetch,
+      }),
+    };
+  }
+
+  it('lists it, narrowed to what a screen can draw', async () => {
+    const { fetcher, materials } = listing([
+      { id: 'm1', filename: 'q3-board-deck.pdf', state: 'ready' },
+      { id: 'm2', filename: 'notes.pdf', state: 'pending' },
+    ]);
+
+    const mine = await materials.list();
+
+    expect(fetcher.mock.calls[0][0]).toBe('https://flintroom.test/v1/materials');
+    // `pending` collapses to `extracting` here as it does everywhere else —
+    // three server states are one fact to somebody waiting, and the mapping
+    // lives in this file rather than in each screen that reads it.
+    expect(mine).toEqual([
+      { id: 'm1', filename: 'q3-board-deck.pdf', state: 'ready' },
+      { id: 'm2', filename: 'notes.pdf', state: 'extracting' },
+    ]);
+  });
+
+  it('reports nothing attached as an empty list rather than a failure', async () => {
+    const { materials } = listing([]);
+
+    await expect(materials.list()).resolves.toEqual([]);
+  });
+});

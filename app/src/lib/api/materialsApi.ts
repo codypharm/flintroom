@@ -67,6 +67,14 @@ export interface MaterialsApi {
   read(id: string): Promise<AttachedMaterial>;
   limits(): Promise<MaterialLimits>;
   /**
+   * Everything this account still has attached, newest first.
+   *
+   * Settings owes somebody a straight answer to "what do you hold", and until
+   * the endpoint existed the only way to name a material was to have kept the
+   * response that registered it. An empty list is a real answer, not a failure.
+   */
+  list(): Promise<AttachedMaterial[]>;
+  /**
    * Destroy a material and everything extracted from it.
    *
    * Local state is not enough. `docs/ingestion.md` has the source document
@@ -215,6 +223,20 @@ export function createMaterialsApi({
         state: string;
       };
       return drawable(body.state);
+    },
+
+    list: async () => {
+      const rows = (await (await send('/v1/materials')).json()) as {
+        id: string;
+        filename: string;
+        state: string;
+      }[];
+
+      return rows.map((row) => ({
+        id: row.id,
+        filename: row.filename,
+        state: drawable(row.state),
+      }));
     },
   };
 }

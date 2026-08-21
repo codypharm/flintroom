@@ -338,3 +338,66 @@ async def test_the_signed_url_reaches_the_thumbnail_and_not_the_deck(
     url = read.json()["thumbnail_url"]
     assert material.thumbnail_key in url
     assert material.storage_key not in url
+
+
+async def test_the_list_carries_only_this_account_s_material(client, db, account, bearer):
+    """Scoped by the credential, like `/v1/sessions`, and never by a parameter.
+
+    Added for the Settings screen, which owes somebody a straight answer to
+    "what do you hold". Until this existed the API could return one material by
+    id and destroy one by id, and offered no way to learn an id — so the delete
+    control was reachable only by a caller who had kept the registration
+    response.
+    """
+    stranger = Account(user_id=uuid.uuid4(), entitlement_tier="free")
+    db.add(stranger)
+    await db.commit()
+
+    mine = await client.post(
+        "/v1/materials", json=declaration(), headers=bearer(account.user_id)
+    )
+    await client.post(
+        "/v1/materials", json=declaration(), headers=bearer(stranger.user_id)
+    )
+
+    listed = await client.get("/v1/materials", headers=bearer(account.user_id))
+
+    assert listed.status_code == 200, listed.text
+    assert [row["id"] for row in listed.json()] == [mine.json()["id"]]
+
+
+async def test_the_list_is_newest_first(client, account, bearer):
+    """The order a person reads their own things in, and the order `/v1/sessions`
+    already uses. Two endpoints disagreeing about what "first" means is how a
+    screen ends up sorting a list it was handed sorted."""
+    headers = bearer(account.user_id)
+
+    first = await client.post("/v1/materials", json=declaration(), headers=headers)
+    second = await client.post("/v1/materials", json=declaration(), headers=headers)
+
+    listed = await client.get("/v1/materials", headers=headers)
+
+    assert [row["id"] for row in listed.json()] == [
+        second.json()["id"],
+        first.json()["id"],
+    ]
+
+
+async def test_a_destroyed_material_is_not_listed(client, account, bearer):
+    """Deleted is gone, including to the caller who deleted it — the same answer
+    `get` gives. A settings screen counting a destroyed deck would be telling
+    somebody we still hold what they asked us to throw away."""
+    headers = bearer(account.user_id)
+
+    registered = await client.post("/v1/materials", json=declaration(), headers=headers)
+    await client.delete(f"/v1/materials/{registered.json()['id']}", headers=headers)
+
+    listed = await client.get("/v1/materials", headers=headers)
+
+    assert listed.json() == []
+
+
+async def test_the_list_refuses_an_unauthenticated_caller(client):
+    listed = await client.get("/v1/materials")
+
+    assert listed.status_code == 401

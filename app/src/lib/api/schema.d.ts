@@ -616,7 +616,20 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Materials
+         * @description Everything this account still has attached, newest first.
+         *
+         *     The gap this closes is smaller than it sounds and worse than it sounds: the
+         *     module could return one material by id and destroy one by id, and offered no
+         *     way to *learn* an id. So the delete control was reachable only by a caller
+         *     still holding the registration response, and a screen could not answer "what
+         *     do you hold" without guessing.
+         *
+         *     Carries a signed thumbnail per row, like the single read — signing is an
+         *     HMAC and touches no network, so a list of ten costs one query.
+         */
+        get: operations["materials_list_materials"];
         put?: never;
         /**
          * Register Material
@@ -2281,6 +2294,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MaterialLimits"];
+                };
+            };
+        };
+    };
+    materials_list_materials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRead"][];
                 };
             };
         };

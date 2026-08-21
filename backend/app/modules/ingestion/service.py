@@ -1160,6 +1160,25 @@ class IngestionService:
             update={"thumbnail_url": self._storage.presign_get(material.thumbnail_key)}
         )
 
+    async def mine(self, *, user_id: uuid.UUID) -> list[Material]:
+        """Everything this account still has attached, newest first.
+
+        Scoped by the caller's own id and never by a parameter, for the reason
+        `/v1/sessions` gives: a list that took a user id is an authorisation
+        check waiting to be forgotten.
+
+        `deleted_at IS NULL` rather than a state filter, so this agrees with
+        `get` about what exists. A destroyed material is not found even to the
+        caller who destroyed it, and a screen that counted one would be telling
+        somebody we still hold what they asked us to throw away.
+        """
+        rows = await self._db.scalars(
+            select(Material)
+            .where(Material.user_id == user_id, Material.deleted_at.is_(None))
+            .order_by(Material.created_at.desc(), Material.id.desc())
+        )
+        return list(rows)
+
     async def get(self, material_id: uuid.UUID, *, user_id: uuid.UUID) -> Material:
         """The caller's material, or `MaterialNotFound`.
 

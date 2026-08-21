@@ -1,4 +1,12 @@
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from 'react-native';
 
 import { color, radius, space, type } from '../../theme/tokens';
 
@@ -29,11 +37,43 @@ export interface Holdings {
   materials: number;
   recordsRooms: boolean;
   retentionDays: number;
-  minutesRemaining: number;
+  /**
+   * Whole minutes of interrogation available, or null when that is not known.
+   *
+   * Nullable separately from the rest because it arrives separately: the app
+   * bar owns the balance read for all four tabs, and it swallows its own
+   * failures rather than drawing a refusal across every screen. So this row can
+   * be unknown while the inventory beside it is fine, and a `0` written in that
+   * gap would tell somebody they have run out.
+   */
+  minutesRemaining: number | null;
 }
 
 export interface SettingsScreenProps {
-  holdings: Holdings;
+  /**
+   * What the account actually holds, or null when that is not known.
+   *
+   * Nullable since #85, and the null is the honest half. Every figure here was
+   * a module-level literal until then, so there was no such thing as not
+   * knowing yet — the screen stated `0 rooms` and `15 minutes` to everybody.
+   * A zero is a claim, and the claim it makes is the reassuring one.
+   */
+  holdings: Holdings | null;
+  /** Whether the answer is still in flight, as opposed to having failed. */
+  reading?: boolean;
+  /** Offered only when the read failed and the route can make another. */
+  onRetry?: () => void;
+  /**
+   * Whether a change to the recording preference is still in flight.
+   *
+   * The switch disables rather than moving, which the surface brief asks for in
+   * as many words: *"controls disable rather than lie; a toggle that appears to
+   * have flipped and did not is the worst failure this screen has"*. An
+   * optimistic flip is precisely that shape for the length of the request, and
+   * on a phone that is not a short window — so the position stays a fact about
+   * the account, and the greyed control is the feedback.
+   */
+  writing?: boolean;
   onRecordingChange: (records: boolean) => void;
   onDeleteAccount: () => void;
   /**
@@ -81,10 +121,56 @@ function rooms({ rooms, oldestExpiry, recordsRooms, retentionDays }: Holdings): 
 
 export function SettingsScreen({
   holdings,
+  reading = false,
+  onRetry,
+  writing = false,
   onRecordingChange,
   onDeleteAccount,
   onSignOut,
 }: SettingsScreenProps) {
+  /**
+   * Sign-out and deletion below stay reachable whatever the reads did.
+   *
+   * They need a credential, not an inventory, and an account whose reads are
+   * failing is precisely the one somebody wants out of. Putting either behind a
+   * successful fetch traps them — and in-app deletion is an App Store
+   * requirement rather than a screen detail.
+   */
+  if (holdings === null) {
+    return (
+      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+        <Text style={styles.title} accessibilityRole="header">
+          What we hold
+        </Text>
+
+        <View style={styles.group}>
+          <View style={styles.row}>
+            {reading ? (
+              <ActivityIndicator color={color.primary} />
+            ) : (
+              <View style={styles.rowText}>
+                <Text style={styles.rowDetail}>
+                  I could not read your account just now.
+                </Text>
+                {onRetry === undefined ? null : (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={onRetry}
+                    style={({ pressed }) => [styles.again, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.againLabel}>Try again</Text>
+                  </Pressable>
+                )}
+              </View>
+            )}
+          </View>
+        </View>
+
+        <Leaving onSignOut={onSignOut} onDeleteAccount={onDeleteAccount} />
+      </ScrollView>
+    );
+  }
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title} accessibilityRole="header">
@@ -106,6 +192,7 @@ export function SettingsScreen({
           <Switch
             accessibilityLabel="Save rooms"
             value={holdings.recordsRooms}
+            disabled={writing}
             onValueChange={onRecordingChange}
             trackColor={{ true: color.primary, false: color.hairline }}
           />
@@ -151,17 +238,32 @@ export function SettingsScreen({
               existence.
             */}
             <Text style={styles.rowDetail}>
-              {holdings.minutesRemaining} minutes of interrogation available.
+              {holdings.minutesRemaining === null
+                ? 'I could not read this just now.'
+                : `${holdings.minutesRemaining} minutes of interrogation available.`}
             </Text>
           </View>
         </View>
       </View>
 
-      {/*
-        Last, and separated from everything reversible above it. The gap is the
-        design doing the work a confirmation dialog cannot: nothing here should
-        be reachable by a thumb that meant to hit the switch.
-      */}
+      <Leaving onSignOut={onSignOut} onDeleteAccount={onDeleteAccount} />
+    </ScrollView>
+  );
+}
+
+/**
+ * The two ways out, drawn once and rendered under every state of the screen.
+ *
+ * Last, and separated from everything reversible above it. The gap is the
+ * design doing the work a confirmation dialog cannot: nothing here should be
+ * reachable by a thumb that meant to hit the switch.
+ */
+function Leaving({
+  onSignOut,
+  onDeleteAccount,
+}: Pick<SettingsScreenProps, 'onSignOut' | 'onDeleteAccount'>) {
+  return (
+    <>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Sign out"
@@ -183,7 +285,7 @@ export function SettingsScreen({
         Deleting your account removes your rooms, what was said in them, and any
         material you attached.
       </Text>
-    </ScrollView>
+    </>
   );
 }
 
@@ -224,6 +326,19 @@ const styles = StyleSheet.create({
   rowDetail: { ...type.bodySm, color: color.onSurfaceVariant },
 
   hairline: { height: 1, backgroundColor: color.hairline, opacity: 0.5 },
+
+  /** Inside the group rather than centred on the screen: the failure is one
+   * row's worth of the account, not the whole destination. */
+  again: {
+    alignSelf: 'flex-start',
+    marginTop: space.snug,
+    paddingVertical: space.hair,
+    paddingHorizontal: space.snug,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: color.hairline,
+  },
+  againLabel: { ...type.labelLg, color: color.onSurface },
 
   /** An ordinary control. Nothing is destroyed and nothing should look like it. */
   leave: {

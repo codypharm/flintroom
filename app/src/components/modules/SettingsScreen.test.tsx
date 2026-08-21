@@ -133,3 +133,111 @@ it('offers a way out of the account that is not a way to destroy it', async () =
 
   expect(onSignOut).toHaveBeenCalled();
 });
+
+describe('before the account has been read, and when it cannot be', () => {
+  /**
+   * This screen fetched nothing until #85 — every figure on it was a literal,
+   * so there was no such thing as not knowing yet. Now there is, and the rule
+   * is the same one the rest of the screen follows: state facts, and when there
+   * is no fact, say that rather than draw a zero.
+   */
+
+  async function unread(props = {}) {
+    await render(
+      <SettingsScreen
+        holdings={null}
+        onRecordingChange={jest.fn()}
+        onDeleteAccount={jest.fn()}
+        onSignOut={jest.fn()}
+        {...props}
+      />
+    );
+  }
+
+  it('states no figure it does not have', async () => {
+    await unread({ reading: true });
+
+    // The dangerous shape is a zero, because a zero is a claim. "No rooms
+    // saved" while the request is still in flight tells somebody we hold
+    // nothing of theirs, which is the reassuring direction to be wrong in.
+    expect(screen.queryByText(/no rooms saved/i)).not.toBeOnTheScreen();
+    expect(screen.queryByText(/minutes/i)).not.toBeOnTheScreen();
+  });
+
+  it('never draws the recording switch in a position it cannot vouch for', async () => {
+    /**
+     * A switch has no third position. Drawn while the answer is unknown it
+     * states one — and off would say recordings are not being saved when the
+     * next room may well be. So there is no switch until there is an answer.
+     */
+    await unread({ reading: true });
+
+    expect(screen.queryByRole('switch')).not.toBeOnTheScreen();
+  });
+
+  it('says the read failed rather than showing an empty account', async () => {
+    await unread({ reading: false });
+
+    expect(screen.getByText(/could not/i)).toBeOnTheScreen();
+  });
+
+  it('offers another go when one was handed to it', async () => {
+    const onRetry = jest.fn();
+    await unread({ reading: false, onRetry });
+
+    await userEvent.press(screen.getByText(/try again/i));
+
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets somebody leave or delete an account it could not read', async () => {
+    /**
+     * The one thing this screen must never do. Sign-out and deletion need a
+     * credential, not an inventory — and an account whose reads are failing is
+     * exactly the account somebody wants to get out of. Putting both behind a
+     * successful fetch traps them, and deletion is an App Store requirement.
+     */
+    const onSignOut = jest.fn();
+    const onDeleteAccount = jest.fn();
+    await unread({ reading: false, onSignOut, onDeleteAccount });
+
+    await userEvent.press(screen.getByLabelText('Sign out'));
+    await userEvent.press(screen.getByText(/delete account/i));
+
+    expect(onSignOut).toHaveBeenCalledTimes(1);
+    expect(onDeleteAccount).toHaveBeenCalledTimes(1);
+  });
+});
+
+it('does not write a zero over a balance it has not read', async () => {
+  /**
+   * The balance arrives separately from the inventory — the app bar owns that
+   * read for all four tabs and swallows its own failures — so this row can be
+   * unknown while everything beside it is fine. A `0` written into that gap
+   * tells somebody they have run out of minutes, which is both a claim about
+   * their money and the one that stops them starting a room.
+   */
+  await show({ minutesRemaining: null });
+
+  expect(screen.queryByText(/0 minutes/i)).not.toBeOnTheScreen();
+  expect(screen.getByText(/could not read this/i)).toBeOnTheScreen();
+});
+
+it('will not move the switch until the server has agreed', async () => {
+  /**
+   * The surface brief names this the worst failure the screen has: "a toggle
+   * that appears to have flipped and did not". An optimistic flip is exactly
+   * that shape for as long as the request is in flight, and on a phone that is
+   * not a short window.
+   *
+   * So the switch stays where it is and disables while the write is out. The
+   * greyed control is the feedback; the position stays a fact about the
+   * account rather than a guess about it.
+   */
+  await show({ recordsRooms: true }, { writing: true });
+
+  const control = screen.getByRole('switch');
+
+  expect(control.props.value).toBe(true);
+  expect(control.props.disabled).toBe(true);
+});

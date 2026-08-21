@@ -41,6 +41,27 @@ async def read_limits(
     return await ingestion.limits(user_id=user_id)
 
 
+@router.get("/materials", response_model=list[MaterialRead])
+async def list_materials(
+    user_id: CurrentUser, ingestion: IngestionServiceDep
+) -> list[MaterialRead]:
+    """Everything this account still has attached, newest first.
+
+    The gap this closes is smaller than it sounds and worse than it sounds: the
+    module could return one material by id and destroy one by id, and offered no
+    way to *learn* an id. So the delete control was reachable only by a caller
+    still holding the registration response, and a screen could not answer "what
+    do you hold" without guessing.
+
+    Carries a signed thumbnail per row, like the single read — signing is an
+    HMAC and touches no network, so a list of ten costs one query.
+    """
+    return [
+        ingestion.presented(material)
+        for material in await ingestion.mine(user_id=user_id)
+    ]
+
+
 @router.post(
     "/materials",
     response_model=MaterialUpload,
