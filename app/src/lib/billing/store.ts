@@ -58,17 +58,18 @@ export interface Sellable {
   kind: 'topup' | 'plan';
 
   /**
-   * Which rung this sells, for a plan. Absent on a top-up.
+   * Which of our products this sells — a rung's `name`, or a pack's.
    *
-   * The join between what the store charges and what we grant. It cannot be
-   * inferred from `id`, because the product identifiers are the console's to
-   * name and neither store lets one be renamed once created — so the mapping is
-   * carried explicitly rather than guessed from a string.
+   * The join between what the store charges and what we grant, and it is
+   * carried explicitly because it cannot be inferred: the product identifiers
+   * belong to the console and neither store lets one be renamed once created,
+   * so `id` is theirs and this is ours.
    *
-   * `/v1/plans` is the authority on what a rung *is*; this only says which one
-   * a given product buys.
+   * `/v1/plans` and `/v1/packs` are the authority on what each *is*; this only
+   * says which one a given store product buys. Absent on a product that maps to
+   * neither, which is a misconfigured console rather than a state to render.
    */
-  tier?: string;
+  grants?: string;
 }
 
 export interface Store {

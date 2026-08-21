@@ -15,6 +15,7 @@ from app.modules.billing.schemas import (
     Bucket,
     EntryReason,
     LedgerEntryRead,
+    PackRead,
     PlanRead,
     PurchaseOptions,
 )
@@ -25,6 +26,7 @@ from app.modules.billing.tiers import (
     MONTHLY_ALLOWANCE_SECONDS,
     RECORDING_RETENTION_DAYS,
     TIER_TITLE,
+    TOPUP_PACKS,
     UPGRADE_LADDER,
     allowance_minutes,
     may_author_archetypes,
@@ -577,6 +579,20 @@ class LedgerService:
                 current=account.entitlement_tier == tier,
             )
             for tier in UPGRADE_LADDER
+        ]
+
+    def packs(self) -> list[PackRead]:
+        """§4.5's top-ups, smallest first.
+
+        No account read: a pack grants the same minutes to everybody, and what
+        differs between people is only what they are charged — which is the
+        store's. Not `async` for the same reason, and it stays a service method
+        rather than a constant the router reaches for so that the one home for
+        the tier table stays one home.
+        """
+        return [
+            PackRead(name=name, title=title, minutes=minutes)
+            for name, title, minutes in TOPUP_PACKS
         ]
 
     async def purchase_options(self, *, user_id: uuid.UUID) -> PurchaseOptions:

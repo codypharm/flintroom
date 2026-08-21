@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react-native';
 
-import type { Plan } from '../../lib/api/purchaseApi';
+import type { Pack, Plan } from '../../lib/api/purchaseApi';
 import type { Sellable } from '../../lib/billing/store';
 import { MoreMinutes, type MoreMinutesProps } from './MoreMinutes';
 
@@ -22,10 +22,14 @@ import { MoreMinutes, type MoreMinutesProps } from './MoreMinutes';
  */
 
 const PACK: Sellable = {
-  id: 'topup_20',
+  id: 'com.flintroom.topup20',
   title: 'Quick top-up',
   price: '$9.00',
   kind: 'topup',
+  // The console's id and ours are deliberately different here: `id` is the
+  // store's to name and `grants` is the join we carry, so a fixture where they
+  // matched would hide a lookup done on the wrong one.
+  grants: 'topup_20',
 };
 
 const PLAN: Sellable = {
@@ -53,12 +57,18 @@ const PLANS: Plan[] = [
   },
 ];
 
+const PACKS: Pack[] = [
+  { name: 'topup_20', title: 'Quick top-up', minutes: 20 },
+  { name: 'topup_90', title: 'Demo-day pack', minutes: 90 },
+];
+
 async function setup(overrides: Partial<MoreMinutesProps> = {}) {
   const props: MoreMinutesProps = {
     holding: 12,
     options: { upgradeFirst: false, nextTier: 'pro' },
     sells: [PACK, PLAN],
     plans: PLANS,
+    packs: PACKS,
     onBuy: jest.fn(),
     onRestore: jest.fn(),
     state: 'idle',
@@ -89,7 +99,7 @@ it('leads with the plan on a repeat, and still sells the pack', async () => {
   // be the farming the whole rule exists to prevent.
   await setup({
     options: { upgradeFirst: true, nextTier: 'pro' },
-    sells: [PACK, { ...PLAN, tier: 'pro' }],
+    sells: [PACK, { ...PLAN, grants: 'pro' }],
   });
 
   // The pack is still there. Which is *first* is asserted below, on the tree
@@ -136,7 +146,7 @@ it('pushes nothing when there is no rung above', async () => {
   await setup({
     plans: PLANS.map((plan) => ({ ...plan, current: plan.name === 'pro' })),
     options: { upgradeFirst: false, nextTier: null },
-    sells: [PACK, { ...PLAN, tier: 'pro' }],
+    sells: [PACK, { ...PLAN, grants: 'pro' }],
   });
 
   expect(screen.getByText('Pro')).toBeOnTheScreen();
@@ -265,8 +275,57 @@ describe('what a plan gets you', () => {
     // §4.4's table is our pricing *intent*. What somebody is charged is the
     // console's, in their currency. A screen holding its own states one number
     // and charges another.
-    await setup({ sells: [{ ...PLAN, tier: 'pro', price: '€55,00' }] });
+    await setup({ sells: [{ ...PLAN, grants: 'pro', price: '€55,00' }] });
 
     expect(screen.getByText('€55,00')).toBeOnTheScreen();
+  });
+});
+
+/**
+ * The packs, and the last of #90's gaps.
+ *
+ * The plans were fixed in #95 and the packs left store-driven, so a build with
+ * no offering showed three real plan cards and no way to buy twenty minutes.
+ * The architect found it by asking where the top-up was.
+ */
+describe('buying time just this once', () => {
+  it('names every pack with no store configured at all', async () => {
+    await setup({ sells: [] });
+
+    expect(screen.getByText('Quick top-up')).toBeOnTheScreen();
+    expect(screen.getByText('Demo-day pack')).toBeOnTheScreen();
+  });
+
+  it('says how long a pack buys, since that is the part we know', async () => {
+    await setup({ sells: [] });
+
+    expect(screen.getByText(/20 minutes/)).toBeOnTheScreen();
+  });
+
+  it('promises the minutes survive an upgrade', async () => {
+    // §4.5 point 3 — "the minutes are the credit". The 2026-08-16 revision
+    // retired the price-discount version of this rule precisely because the
+    // ledger already keeps top-up minutes in their own bucket, so this sentence
+    // is the whole of what remains and it has to be on the screen.
+    await setup({ sells: [] });
+
+    expect(screen.getByText(/never expire/i)).toBeOnTheScreen();
+  });
+
+  it('does not pretend a purchase failed when there was no store to try', async () => {
+    // What the architect saw: tapping Restore against `unconfiguredStore()`
+    // produced "That did not go through. Your store will have the details."
+    // There was no store and no attempt — the sentence blamed a till that does
+    // not exist, and sent somebody to look for details nobody has.
+    await setup({ sells: [], state: 'failed' });
+
+    expect(screen.queryByText(/did not go through/i)).toBeNull();
+    expect(screen.getByText(/not available on this build/i)).toBeOnTheScreen();
+  });
+
+  it('still says a real purchase failed when there was a store', async () => {
+    await setup({ sells: [{ ...PACK }], state: 'failed' });
+
+    expect(screen.getByText(/did not go through/i)).toBeOnTheScreen();
   });
 });

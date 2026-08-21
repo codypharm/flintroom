@@ -12,7 +12,12 @@ from app.modules.billing.dependencies import (
     WebhookSecret,
 )
 from app.modules.billing.revenuecat import SIGNATURE_HEADER
-from app.modules.billing.schemas import BalanceRead, PlanRead, PurchaseOptions
+from app.modules.billing.schemas import (
+    BalanceRead,
+    PackRead,
+    PlanRead,
+    PurchaseOptions,
+)
 
 router = APIRouter(tags=["billing"])
 
@@ -41,6 +46,17 @@ async def read_plans(user_id: CurrentUser, ledger: LedgerServiceDep) -> list[Pla
     charge another.
     """
     return await ledger.plans(user_id=user_id)
+
+
+@router.get("/packs", response_model=list[PackRead])
+async def read_packs(user_id: CurrentUser, ledger: LedgerServiceDep) -> list[PackRead]:
+    """§4.5's top-up packs, by what they grant rather than what they cost.
+
+    Authenticated even though the answer is the same for everybody: this is part
+    of the buy screen, and an unauthenticated price list is a surface nobody
+    asked for. The minutes are ours; the price is the store's.
+    """
+    return ledger.packs()
 
 
 @router.get("/purchase-options", response_model=PurchaseOptions)

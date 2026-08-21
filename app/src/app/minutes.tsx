@@ -7,6 +7,7 @@ import { MoreMinutes } from '../components/modules/MoreMinutes';
 import { createBalanceApi } from '../lib/api/balanceApi';
 import {
   createPurchaseApi,
+  type Pack,
   type Plan,
   type PurchaseOptions,
 } from '../lib/api/purchaseApi';
@@ -55,6 +56,7 @@ export default function MoreMinutesRoute() {
   // a plan *is* comes from us, so a store that never answers must not blank
   // the plans.
   const [plans, setPlans] = useState<Plan[] | null>(null);
+  const [packs, setPacks] = useState<Pack[] | null>(null);
   const [state, setState] = useState<'idle' | 'buying' | 'waiting' | 'failed'>('idle');
 
   const gone = useCallback(
@@ -75,6 +77,10 @@ export default function MoreMinutesRoute() {
       balance
         .read()
         .then((held) => live && setHolding(held.minutes))
+        .catch(gone);
+      purchases
+        .packs()
+        .then((offered) => live && setPacks(offered))
         .catch(gone);
       purchases
         .plans()
@@ -160,6 +166,7 @@ export default function MoreMinutesRoute() {
         holding={holding}
         options={options}
         plans={plans}
+        packs={packs}
         sells={sells}
         onBuy={(what) => void buy(what)}
         onRestore={() => void restore()}

@@ -968,6 +968,33 @@ paths:
                 title: Response Billing Read Plans
       security:
       - HTTPBearer: []
+  /v1/packs:
+    get:
+      tags:
+      - billing
+      summary: Read Packs
+      description: '§4.5''s top-up packs, by what they grant rather than what they
+        cost.
+
+
+        Authenticated even though the answer is the same for everybody: this is part
+
+        of the buy screen, and an unauthenticated price list is a surface nobody
+
+        asked for. The minutes are ours; the price is the store''s.'
+      operationId: billing_read_packs
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/PackRead'
+                type: array
+                title: Response Billing Read Packs
+      security:
+      - HTTPBearer: []
   /v1/purchase-options:
     get:
       tags:
@@ -2114,6 +2141,31 @@ components:
         credential for a single object at a single size — short-lived by
 
         construction, and not the kind of thing to hand back on every GET.'
+    PackRead:
+      properties:
+        name:
+          type: string
+          title: Name
+        title:
+          type: string
+          title: Title
+        minutes:
+          type: integer
+          title: Minutes
+      type: object
+      required:
+      - name
+      - title
+      - minutes
+      title: PackRead
+      description: 'One top-up, by what it grants — never by what it costs.
+
+
+        §4.5''s packs, published for the same reason `PlanRead` is: the minutes are
+
+        ours and the price is the store''s, so a screen can describe a pack before
+
+        any offering exists.'
     PlanRead:
       properties:
         name:

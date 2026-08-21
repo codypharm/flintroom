@@ -1,6 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import type { Plan, PurchaseOptions } from '../../lib/api/purchaseApi';
+import type { Pack, Plan, PurchaseOptions } from '../../lib/api/purchaseApi';
 import type { Sellable } from '../../lib/billing/store';
 import { color, radius, space, type } from '../../theme/tokens';
 import { PlanCard } from './PlanCard';
@@ -55,6 +55,16 @@ export interface MoreMinutesProps {
   plans: Plan[] | null;
 
   /**
+   * The top-up packs, from `/v1/packs`. Null while unknown.
+   *
+   * Ours like the plans, for the same reason and after the same mistake: the
+   * minutes a pack grants need no offering to be true, and leaving them
+   * store-driven meant a build with no store could describe three plans and no
+   * way at all to buy twenty minutes.
+   */
+  packs: Pack[] | null;
+
+  /**
    * What the store will sell, or null while it has not answered.
    *
    * The empty array and null differ and must stay so: nothing to sell is a shop
@@ -79,14 +89,15 @@ export function MoreMinutes({
   holding,
   options,
   plans,
+  packs,
   sells,
   onBuy,
   onRestore,
   state,
 }: MoreMinutesProps) {
   const busy = state === 'buying';
-  const packs = (sells ?? []).filter((what) => what.kind === 'topup');
   const offered = plans ?? [];
+  const shut = sells !== null && sells.length === 0;
   const lead = leading(plans, options);
 
   const Plans = (
@@ -105,29 +116,40 @@ export function MoreMinutes({
     </View>
   );
 
-  const Packs = packs.length === 0 ? null : (
+  const Packs = (packs ?? []).length === 0 ? null : (
     <View style={styles.section}>
       <Text style={styles.heading} accessibilityRole="header">
         Just this once
       </Text>
-      {packs.map((pack) => (
-        <Pressable
-          key={pack.id}
-          testID="sellable"
-          accessibilityRole="button"
-          accessibilityLabel={`${pack.title}, ${pack.price}`}
-          disabled={busy}
-          onPress={() => onBuy(pack)}
-          style={({ pressed }) => [
-            styles.pack,
-            pressed && styles.pressed,
-            busy && styles.busy,
-          ]}
-        >
-          <Text style={styles.packTitle}>{pack.title}</Text>
-          <Text style={styles.packPrice}>{pack.price}</Text>
-        </Pressable>
-      ))}
+      {(packs ?? []).map((pack) => {
+        // Ours describes it; the store prices it. A pack with no price is still
+        // worth naming — it says what could be bought once there is a till.
+        const sold = (sells ?? []).find((what) => what.grants === pack.name) ?? null;
+
+        return (
+          <Pressable
+            key={pack.name}
+            testID="sellable"
+            accessibilityRole="button"
+            accessibilityLabel={
+              sold === null ? pack.title : `${pack.title}, ${sold.price}`
+            }
+            disabled={busy || sold === null}
+            onPress={() => sold !== null && onBuy(sold)}
+            style={({ pressed }) => [
+              styles.pack,
+              pressed && styles.pressed,
+              busy && styles.busy,
+            ]}
+          >
+            <View>
+              <Text style={styles.packTitle}>{pack.title}</Text>
+              <Text style={styles.packDetail}>{`${pack.minutes} minutes`}</Text>
+            </View>
+            {sold !== null && <Text style={styles.packPrice}>{sold.price}</Text>}
+          </Pressable>
+        );
+      })}
       {/*
         §4.5 point 3 — "the minutes are the credit". Beside the packs rather
         than the plans, because it is the answer to "am I wasting this if I
@@ -153,7 +175,13 @@ export function MoreMinutes({
         </Text>
       )}
 
-      {state === 'failed' && (
+      {/*
+        Only where there was a store to fail. Against `unconfiguredStore()` the
+        refusal is ours rather than a till's, and "your store will have the
+        details" sends somebody looking for details nobody has — which is what
+        the architect saw after tapping Restore on a build with no offering.
+      */}
+      {state === 'failed' && !shut && (
         <Text style={styles.wrong} accessibilityLiveRegion="polite">
           That did not go through. Your store will have the details.
         </Text>
@@ -172,9 +200,9 @@ export function MoreMinutes({
         </>
       )}
 
-      {sells !== null && sells.length === 0 && (
+      {shut && (
         <Text style={styles.shut}>
-          Prices are not available on this build yet.
+          Buying is not available on this build yet.
         </Text>
       )}
 
@@ -232,7 +260,7 @@ function above(plans: Plan[], plan: Plan): boolean {
  * join is carried explicitly by whoever configures it.
  */
 function priceFor(plan: Plan, sells: Sellable[] | null): Sellable | null {
-  return (sells ?? []).find((what) => what.tier === plan.name) ?? null;
+  return (sells ?? []).find((what) => what.grants === plan.name) ?? null;
 }
 
 const styles = StyleSheet.create({
@@ -259,6 +287,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   packTitle: { ...type.labelLg, color: color.onSurface },
+  packDetail: { ...type.bodySm, color: color.onSurfaceVariant },
   packPrice: { ...type.bodyLg, color: color.onSurfaceVariant },
   kept: { ...type.bodySm, color: color.onSurfaceVariant },
 

@@ -155,6 +155,28 @@ class PlanRead(BaseModel):
     current: bool = False
 
 
+class PackRead(BaseModel):
+    """One top-up, by what it grants — never by what it costs.
+
+    §4.5's packs, published for the same reason `PlanRead` is: the minutes are
+    ours and the price is the store's, so a screen can describe a pack before
+    any offering exists.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    #: Our key for it, and what a store product declares to say which pack it
+    #: sells. Not the store's product identifier — that belongs to the console.
+    name: str
+
+    #: What it is called. Ours, because the store's title is a marketing string
+    #: and these names carry the occasion each pack is for.
+    title: str
+
+    #: Whole minutes granted.
+    minutes: int
+
+
 class PurchaseOptions(BaseModel):
     """Which control leads on the buy screen, and what there is to lead with.
 

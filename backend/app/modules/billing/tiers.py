@@ -345,3 +345,29 @@ def renews(tier: str) -> bool:
     False for free, and the distinction carries the whole meaning of that tier.
     """
     return tier != FREE_TIER
+
+
+#: The top-up packs, from `Product.md` §4.5 — minutes only, never prices.
+#:
+#: **Here for the reason every other figure on a plan card is here.** These
+#: lived in the spec and in no code at all, so the buy screen could not name a
+#: pack without an offering configured — the same mistake #95 fixed for the
+#: rungs, one section over.
+#:
+#: The names carry the *occasion* rather than the size, which is what §4.5 is
+#: actually about: *"The smallest pack must feel small. $9 for 20 minutes is an
+#: impulse decision; a larger minimum turns a moment of need into a moment of
+#: resentment."* A list reading "20 / 90 / 300 minutes" loses that.
+#:
+#: Ordered smallest first, deliberately. §4.5 point 1 keeps the top-up primary
+#: on a first purchase because somebody out of minutes the night before a board
+#: readout needs twenty minutes rather than a subscription, and leading that
+#: section with the $99 block would misread the same moment.
+#:
+#: No price. `Product.md` §4.4-4.5's figures are our pricing *intent*; what
+#: somebody is charged is the console's, in their currency.
+TOPUP_PACKS: tuple[tuple[str, str, int], ...] = (
+    ("topup_20", "Quick top-up", 20),
+    ("topup_90", "Demo-day pack", 90),
+    ("topup_300", "Cohort block", 300),
+)

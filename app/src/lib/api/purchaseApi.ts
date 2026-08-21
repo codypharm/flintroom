@@ -44,6 +44,7 @@ export interface PurchaseOptions {
 export interface PurchaseApi {
   options(): Promise<PurchaseOptions>;
   plans(): Promise<Plan[]>;
+  packs(): Promise<Pack[]>;
 }
 
 export interface PurchaseApiOptions {
@@ -76,6 +77,21 @@ export function createPurchaseApi({
       };
 
       return { upgradeFirst: body.upgrade_first, nextTier: body.next_tier ?? null };
+    },
+
+    packs: async () => {
+      const response = await fetcher(`${baseUrl}/v1/packs`, {
+        headers: { Authorization: `Bearer ${await accessToken()}` },
+      });
+
+      if (response.status === 401) {
+        throw new SignedOut('refused by /v1/packs');
+      }
+      if (!response.ok) {
+        throw new Error(`/v1/packs failed with ${response.status}`);
+      }
+
+      return (await response.json()) as Pack[];
     },
 
     plans: async () => {
@@ -153,4 +169,24 @@ export interface Plan {
   unmeteredCoaching: boolean;
   /** Whether the caller is on this plan. Nothing is marked for a tier off the ladder. */
   current: boolean;
+}
+
+
+/**
+ * One top-up, by what it grants.
+ *
+ * Same seam as `Plan`: the minutes are ours and the price is the store's. The
+ * packs were left store-driven when the plans were fixed, so a build with no
+ * offering showed three real plan cards and no way at all to buy twenty
+ * minutes — the same mistake one section over.
+ *
+ * The title is ours too. The store's is a marketing string, and §4.5's names
+ * carry the *occasion* each pack is for, which is the reason the smallest one
+ * "must feel small".
+ */
+export interface Pack {
+  /** Our key. What a store product declares to say which pack it sells. */
+  name: string;
+  title: string;
+  minutes: number;
 }

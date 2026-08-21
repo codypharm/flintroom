@@ -609,6 +609,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/packs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Packs
+         * @description §4.5's top-up packs, by what they grant rather than what they cost.
+         *
+         *     Authenticated even though the answer is the same for everybody: this is part
+         *     of the buy screen, and an unauthenticated price list is a surface nobody
+         *     asked for. The minutes are ours; the price is the store's.
+         */
+        get: operations["billing_read_packs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/purchase-options": {
         parameters: {
             query?: never;
@@ -1302,6 +1326,22 @@ export interface components {
             thumbnail_url?: string | null;
             /** Upload Url */
             upload_url: string;
+        };
+        /**
+         * PackRead
+         * @description One top-up, by what it grants — never by what it costs.
+         *
+         *     §4.5's packs, published for the same reason `PlanRead` is: the minutes are
+         *     ours and the price is the store's, so a screen can describe a pack before
+         *     any offering exists.
+         */
+        PackRead: {
+            /** Name */
+            name: string;
+            /** Title */
+            title: string;
+            /** Minutes */
+            minutes: number;
         };
         /**
          * PlanRead
@@ -2448,6 +2488,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlanRead"][];
+                };
+            };
+        };
+    };
+    billing_read_packs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackRead"][];
                 };
             };
         };

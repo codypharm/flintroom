@@ -151,3 +151,41 @@ async def test_every_tier_says_the_unmetered_part_out_loud(
     plans = await read(client, bearer, funded_account)
 
     assert all(plan["unmetered_coaching"] for plan in plans)
+
+
+async def test_it_publishes_the_packs_as_well_as_the_plans(
+    client, bearer, funded_account
+):
+    """§4.5's top-ups, for the same reason as the rungs — #90's last gap.
+
+    The plans were fixed and the packs were left store-driven, so a build with
+    no offering showed three real cards and no way to buy twenty minutes. Same
+    mistake, one section over, and I had written it down as an open question
+    before shipping without it.
+
+    A pack's minutes are ours. Its price is the store's.
+    """
+    packs = (
+        await client.get("/v1/packs", headers=bearer(funded_account.user_id))
+    ).json()
+
+    assert [pack["minutes"] for pack in packs] == [20, 90, 300]
+    assert all("price" not in pack for pack in packs)
+
+
+async def test_a_pack_says_what_it_is_called_and_never_what_it_costs(
+    client, bearer, funded_account
+):
+    """The title is ours because the store's is a marketing string.
+
+    §4.5 names them — Quick top-up, Demo-day pack, Cohort block — and those
+    names carry the *occasion* each is for, which is the reason the smallest
+    "must feel small": *"$9 for 20 minutes is an impulse decision; a larger
+    minimum turns a moment of need into a moment of resentment."*
+    """
+    packs = (
+        await client.get("/v1/packs", headers=bearer(funded_account.user_id))
+    ).json()
+
+    assert packs[0]["title"] == "Quick top-up"
+    assert packs[0]["name"] == "topup_20"
