@@ -15,6 +15,7 @@ import { API_BASE_URL, auth } from '../../lib/auth';
 import { useGateway } from '../../lib/auth/gateway';
 import { SignedOut } from '../../lib/auth/session';
 import { refusedRoom, refusedTurn, type RoomRefusal } from '../../lib/debrief/refusals';
+import { byQuestion, exchanged } from '../../lib/debrief/resumed';
 import { createCoachVoice, type CoachVoice } from '../../lib/debrief/voice';
 import { color, radius, space, type } from '../../theme/tokens';
 
@@ -125,6 +126,26 @@ export default function DebriefRoute() {
           // and `play` says nothing when handed nothing.
           void speak(debrief.opening.speech);
         }
+
+        // #83. Seeded from the read rather than starting empty. Both were held
+        // only here, so backgrounding this screen — or tapping back and
+        // forward — used to empty it of every question the presenter had asked
+        // and every re-answer they had made, while the findings above redrew
+        // perfectly. The conversation was never lost; it simply was not asked
+        // for.
+        //
+        // Assigned, not merged. This *is* the record — `session_coach_turns`
+        // and `session_sparring_attempts` are append-only and the server has
+        // every turn — so anything held here that the read does not carry is
+        // something the server never stored, which is a turn that failed
+        // rather than one worth keeping.
+        //
+        // Nothing is spoken. A recalled turn arrives with empty `speech`, and
+        // `Replay` draws nothing when there is nothing to play — the read is
+        // what a backgrounded phone repeats, and a spoken reply costs about a
+        // minute of live interrogation.
+        setThread(debrief.thread.map(exchanged));
+        setAttempts(byQuestion(debrief.attempts));
       })
       .catch((error) => {
         if (!live) return;

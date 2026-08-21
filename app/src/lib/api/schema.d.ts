@@ -1034,6 +1034,10 @@ export interface components {
             /** Pressed */
             pressed?: ("harder" | "easier") | null;
             opening?: components["schemas"]["CoachTurnRead"] | null;
+            /** Thread */
+            thread?: components["schemas"]["CoachTurnRead"][];
+            /** Attempts */
+            attempts?: components["schemas"]["SparringAttemptRead"][];
         };
         /**
          * DeletionScheduled
@@ -1551,6 +1555,36 @@ export interface components {
              * @default false
              */
             deletion_cancelled: boolean;
+        };
+        /**
+         * SparringAttemptRead
+         * @description One stored re-answer, and which question it answered again. #83.
+         *
+         *     Extends `CoachTurnRead` rather than restating it, because that is exactly
+         *     what a sparring turn is on the wire — `heard` is what the presenter said
+         *     this time and `text` is what the coach said about the difference — and the
+         *     live `spar` endpoint already returns that shape. Two schemas describing one
+         *     thing is how a client comes to render a re-answer differently depending on
+         *     whether it arrived live or on a resume.
+         *
+         *     The two extra fields are the anchor. `weak_rank` is what the client keys
+         *     attempts by (#59), and `attempt` is which go it was, which §3.5 treats as
+         *     content: the second attempt at one question is a different fact from the
+         *     first.
+         *
+         *     `speech` is always empty here — see `DebriefRead.attempts`.
+         */
+        SparringAttemptRead: {
+            /** Text */
+            text: string;
+            /** Speech */
+            speech: string;
+            /** Heard */
+            heard: string;
+            /** Weak Rank */
+            weak_rank: number;
+            /** Attempt */
+            attempt: number;
         };
         /**
          * TallyRead

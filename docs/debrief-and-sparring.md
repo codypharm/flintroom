@@ -77,6 +77,29 @@ including abandoned ones, and abandoned ones will now have none. Accepted — a
 user who walked out of a room is a poor signal for how hard the next one should
 be.
 
+*Amended 2026-08-21 (#83).* "Idempotent on retry" was true of the ranked list
+and false of everything else on the screen. The read returned the findings and
+not the **conversation**, so a phone that backgrounded the debrief came back to
+every question the presenter had asked and every re-answer they had made simply
+gone — while the findings above them redrew perfectly. Nothing was lost:
+`session_coach_turns` and `session_sparring_attempts` are append-only and had
+held it all along. The endpoint never handed it back and the client kept it in
+component state, which is the same mistake as #82 in a different place.
+
+`DebriefRead` now carries `thread` and `attempts`, and the screen seeds itself
+from them rather than starting empty. **Text only** — `speech` is empty on
+every recalled turn, for the reason `opening`'s is: this read is what a
+backgrounded phone repeats, and `docs/voice-cost.md` puts a spoken reply at
+roughly a minute of live interrogation. Recalling words is free and speaking
+them is not, so a resumed screen is readable and silent.
+
+What that leaves: a recalled turn has no "Hear that again", because the control
+draws nothing when there are no bytes to play. Making those audible again wants
+a replay endpoint addressed by ordinal, which `POST /debrief/opening/speech`
+could generalise into rather than being joined by a second one. Deliberately not
+done here — restoring the words fixes the data loss, and adding audio to a turn
+that never had it on resume is a feature rather than a fix.
+
 ### 2. The model judges; code supplies what the transcript does not carry
 
 **Reversed 2026-08-17, hours after it was taken, on the architect's push.** The

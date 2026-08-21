@@ -1708,6 +1708,16 @@ components:
           anyOf:
           - $ref: '#/components/schemas/CoachTurnRead'
           - type: 'null'
+        thread:
+          items:
+            $ref: '#/components/schemas/CoachTurnRead'
+          type: array
+          title: Thread
+        attempts:
+          items:
+            $ref: '#/components/schemas/SparringAttemptRead'
+          type: array
+          title: Attempts
       type: object
       required:
       - weak_answers
@@ -2522,6 +2532,57 @@ components:
         token rotates on use. A client that keeps the old one will be treated as a
 
         replay and lose the session, so "always store both" is the contract.'
+    SparringAttemptRead:
+      properties:
+        text:
+          type: string
+          title: Text
+        speech:
+          type: string
+          title: Speech
+        heard:
+          type: string
+          title: Heard
+        weak_rank:
+          type: integer
+          title: Weak Rank
+        attempt:
+          type: integer
+          title: Attempt
+      type: object
+      required:
+      - text
+      - speech
+      - heard
+      - weak_rank
+      - attempt
+      title: SparringAttemptRead
+      description: 'One stored re-answer, and which question it answered again. #83.
+
+
+        Extends `CoachTurnRead` rather than restating it, because that is exactly
+
+        what a sparring turn is on the wire — `heard` is what the presenter said
+
+        this time and `text` is what the coach said about the difference — and the
+
+        live `spar` endpoint already returns that shape. Two schemas describing one
+
+        thing is how a client comes to render a re-answer differently depending on
+
+        whether it arrived live or on a resume.
+
+
+        The two extra fields are the anchor. `weak_rank` is what the client keys
+
+        attempts by (#59), and `attempt` is which go it was, which §3.5 treats as
+
+        content: the second attempt at one question is a different fact from the
+
+        first.
+
+
+        `speech` is always empty here — see `DebriefRead.attempts`.'
     TallyRead:
       properties:
         name:

@@ -78,6 +78,34 @@ export interface Debrief {
    * middle of a conversation would read as the coach not having listened.
    */
   opening: CoachTurn | null;
+  /**
+   * The coaching conversation so far, oldest first, without the greeting.
+   *
+   * #83. This was held only in the debrief screen's `useState`, so
+   * backgrounding it — or tapping back and forward — emptied the screen of
+   * every question the presenter had asked and every reply. The findings
+   * redrew and the conversation did not, which contradicted what the endpoint
+   * already promised: that resuming re-fetches.
+   *
+   * `speech` is empty on every turn, exactly as it is on `opening` after the
+   * first read, and for the same reason. `Replay` already draws nothing when
+   * there is nothing to play.
+   */
+  thread: CoachTurn[];
+  /**
+   * Every re-answer made in this room, by question and then by attempt.
+   *
+   * Flat and carrying its own `weakRank`, because that is what the wire sends —
+   * JSON has no integer keys. The screen groups by rank, which is one `reduce`.
+   */
+  attempts: SparringAttempt[];
+}
+
+export interface SparringAttempt extends CoachTurn {
+  /** Which ranked weak answer this was a re-answer to. */
+  weakRank: number;
+  /** Which go this was, from zero. §3.5 treats the count as content. */
+  attempt: number;
 }
 
 export interface CoachTurn {
@@ -146,6 +174,15 @@ interface WeakAnswerBody {
   weakness: WeaknessKind;
   why: string;
   next_time: string | null;
+}
+
+/** One stored re-answer, as the wire spells it. */
+interface SparringAttemptBody {
+  weak_rank: number;
+  attempt: number;
+  heard: string;
+  text: string;
+  speech: string;
 }
 
 export function createDebriefApi({
@@ -233,10 +270,24 @@ export function createDebriefApi({
         weak_answers: WeakAnswerBody[];
         pressed: Pressed;
         opening: CoachTurn | null;
+        thread?: CoachTurn[];
+        attempts?: SparringAttemptBody[];
       };
 
       return {
         opening: body.opening ?? null,
+        // Defaulted rather than assumed present, the same way `next_time` is:
+        // a room read by a build older than #83 has neither key, and a screen
+        // that mapped over `undefined` would throw on a resume instead of
+        // showing what it does have.
+        thread: body.thread ?? [],
+        attempts: (body.attempts ?? []).map((made) => ({
+          weakRank: made.weak_rank,
+          attempt: made.attempt,
+          heard: made.heard,
+          text: made.text,
+          speech: made.speech,
+        })),
         weakAnswers: body.weak_answers.map((weak) => ({
           ordinal: weak.ordinal,
           question: weak.question,

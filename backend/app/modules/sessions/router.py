@@ -26,6 +26,7 @@ from app.modules.sessions.dependencies import (
 )
 from app.modules.sessions.schemas import (
     CoachTurnRead,
+    SparringAttemptRead,
     DebriefRead,
     RecordingPreference,
     RecordingPreferenceUpdate,
@@ -420,6 +421,23 @@ async def read_debrief(
         # of it: reading them is what moves the rung, so a comparison taken
         # first would describe the world one calibration out of date.
         pressed=await debrief.pressed(session_id=session.id),
+        # #83. Text only — `speech` stays empty on both, for the reason the
+        # opening's does. This is the read a backgrounded phone repeats, and a
+        # spoken reply costs roughly a minute of live interrogation.
+        thread=[
+            CoachTurnRead(heard=asked, text=answered, speech="")
+            for asked, answered in await coaching.exchanges(session_id=session.id)
+        ],
+        attempts=[
+            SparringAttemptRead(
+                weak_rank=attempt.weak_rank,
+                attempt=attempt.attempt,
+                heard=attempt.said,
+                text=attempt.reply,
+                speech="",
+            )
+            for attempt in await coaching.attempts(session_id=session.id)
+        ],
     )
 
 

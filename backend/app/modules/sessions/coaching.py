@@ -361,6 +361,53 @@ class CoachService:
         return tuple(row.said for row in rows.scalars())
 
 
+    async def exchanges(self, *, session_id: uuid.UUID) -> list[tuple[str, str]]:
+        """The conversation the presenter had with the coach, as asked/answered.
+
+        #83. The thread is stored one *line* per row — `_greeted` writes the
+        greeting alone at ordinal 0, and `_keep` writes a user line and a coach
+        line as a pair — while the screen draws exchanges. Pairing them here
+        rather than on the client keeps one reading of what a turn is: a phone
+        that had to reconstruct it from `who` would be a second implementation
+        of `_keep`'s ordering, free to drift from it.
+
+        **The greeting is excluded**, because it has its own field on the
+        response. A thread carrying it too would render the coach greeting
+        somebody in the middle of their own conversation.
+
+        A trailing user line with no reply is dropped rather than shown half —
+        reachable if a coaching turn failed after recording the question, and a
+        question displayed as though it were answered is worse than one the
+        user can simply ask again.
+        """
+        rows = await self._db.execute(
+            select(CoachTurn)
+            .where(CoachTurn.session_id == session_id, CoachTurn.ordinal > 0)
+            .order_by(CoachTurn.ordinal)
+        )
+        lines = list(rows.scalars())
+
+        return [
+            (asked.text, answered.text)
+            for asked, answered in zip(lines[::2], lines[1::2])
+            if asked.who == USER and answered.who == COACH
+        ]
+
+    async def attempts(self, *, session_id: uuid.UUID) -> list[SparringAttempt]:
+        """Every re-answer in this room, in the order they were made.
+
+        Ordered by `weak_rank` then `attempt` so the client's grouping is stable
+        without sorting: #59 keys attempts by rank, and a list that arrived in a
+        different order on each read would reshuffle a screen that had not
+        changed.
+        """
+        rows = await self._db.execute(
+            select(SparringAttempt)
+            .where(SparringAttempt.session_id == session_id)
+            .order_by(SparringAttempt.weak_rank, SparringAttempt.attempt)
+        )
+        return list(rows.scalars())
+
     async def _spent(
         self, session_id: uuid.UUID, *, heard: Heard, reply: CoachReply, said: str
     ) -> None:

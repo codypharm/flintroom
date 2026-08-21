@@ -107,6 +107,53 @@ describe('read', () => {
     expect(debrief.pressed).toBeNull();
   });
 
+  it('brings back the conversation, so a resumed screen is not a reset', async () => {
+    // #83. The thread and the attempts were held only in the screen's own
+    // state, so backgrounding the debrief emptied it of every question the
+    // presenter asked and every re-answer they made. Both were on disk the
+    // whole time; the read simply never carried them.
+    const debrief = await api(
+      answering(200, {
+        weak_answers: [],
+        pressed: null,
+        thread: [{ heard: 'Why was that weak?', text: 'You gave a feeling.', speech: '' }],
+        attempts: [
+          {
+            weak_rank: 0,
+            attempt: 0,
+            heard: 'We went from four hundred to five sixty.',
+            text: 'That is a base.',
+            speech: '',
+          },
+        ],
+      })
+    ).read(SESSION);
+
+    expect(debrief.thread).toEqual([
+      { heard: 'Why was that weak?', text: 'You gave a feeling.', speech: '' },
+    ]);
+    expect(debrief.attempts).toEqual([
+      {
+        weakRank: 0,
+        attempt: 0,
+        heard: 'We went from four hundred to five sixty.',
+        text: 'That is a base.',
+        speech: '',
+      },
+    ]);
+  });
+
+  it('reads a room nobody talked to as empty rather than missing', async () => {
+    // Same call `weakAnswers` already makes. A screen that had to tell an
+    // absent key from an empty list would get it wrong somewhere.
+    const debrief = await api(answering(200, { weak_answers: [], pressed: null })).read(
+      SESSION
+    );
+
+    expect(debrief.thread).toEqual([]);
+    expect(debrief.attempts).toEqual([]);
+  });
+
   it.each([
     [409, 'session_not_settled'],
     [422, 'room_has_no_questions'],

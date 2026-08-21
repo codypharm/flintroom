@@ -495,6 +495,40 @@ class DebriefRead(BaseModel):
     #: arrival, and hearing it again is a request with its own endpoint.
     opening: CoachTurnRead | None = None
 
+    #: The coaching conversation so far, oldest first, excluding the greeting.
+    #:
+    #: #83. Held only in the client's `useState` until now, so backgrounding the
+    #: debrief — or tapping back and forward — emptied the screen of every
+    #: question the presenter had asked and every reply. The conversation was
+    #: never lost: `session_coach_turns` has held it since #58 and this endpoint
+    #: simply never handed it back, which made the read idempotent for the
+    #: ranked list and a reset for everything the user produced.
+    #:
+    #: The greeting is not in here — it has its own field above, and a thread
+    #: repeating it would render the coach greeting somebody in the middle of
+    #: their own conversation.
+    #:
+    #: **`speech` is empty on every turn**, for the reason it is empty on
+    #: `opening` after the first read: this is what a backgrounded phone
+    #: re-fetches, and `docs/voice-cost.md` puts a spoken reply at roughly a
+    #: minute of live interrogation. Recalling text is free; speaking it is not.
+    thread: list[CoachTurnRead] = Field(default_factory=list)
+
+    #: Every re-answer made in this room, by question and then by attempt.
+    #:
+    #: A flat list carrying its own anchor rather than an object keyed by rank.
+    #: JSON has no integer keys, so a map would put rank numbers in strings on
+    #: the wire and leave the ordering to whatever the client's object iteration
+    #: happens to do — while the grouping the screen wants is one `reduce`
+    #: either way.
+    #:
+    #: Empty rather than absent when nobody sparred, the same call
+    #: `weak_answers` already makes: a client forced to branch on a missing key
+    #: would branch on it wrongly somewhere.
+    #:
+    #: `speech` is empty here too, for the same cost reason as `thread`.
+    attempts: list[SparringAttemptRead] = Field(default_factory=list)
+
 
 class TranscriptLineRead(BaseModel):
     """One line of one room, as it was said.
@@ -666,3 +700,28 @@ class CoachTurnRead(BaseModel):
     #: Not the list-endpoint disclosure `CLAUDE.md` forbids: one turn, to its
     #: owner, in the response to their own speech.
     heard: str
+
+
+class SparringAttemptRead(CoachTurnRead):
+    """One stored re-answer, and which question it answered again. #83.
+
+    Extends `CoachTurnRead` rather than restating it, because that is exactly
+    what a sparring turn is on the wire — `heard` is what the presenter said
+    this time and `text` is what the coach said about the difference — and the
+    live `spar` endpoint already returns that shape. Two schemas describing one
+    thing is how a client comes to render a re-answer differently depending on
+    whether it arrived live or on a resume.
+
+    The two extra fields are the anchor. `weak_rank` is what the client keys
+    attempts by (#59), and `attempt` is which go it was, which §3.5 treats as
+    content: the second attempt at one question is a different fact from the
+    first.
+
+    `speech` is always empty here — see `DebriefRead.attempts`.
+    """
+
+    #: Which ranked weak answer this was a re-answer to.
+    weak_rank: int
+
+    #: Which go this was, from zero.
+    attempt: int
