@@ -73,7 +73,11 @@ removed at the next sweep.
 next room; rooms already saved are not deleted by it, because they were saved
 under a disclosure you accepted — removing them is a separate, deliberate act.
 
-**Delete a room's recording.** Any room, at any time, in Settings.
+**Delete a room's recording.** Any room, at any time. Open it from the Library
+and the control is at the foot of the transcript — which is where it is on
+purpose, because **what was said stays**. Only the audio goes. The two are kept
+separately and deleting one does not take the other, so the room remains
+readable and the coach can still go through it with you.
 
 **Delete attached material.** Any time, in Settings, under Material. It
 destroys the file, everything extracted from it, and the thumbnail. Rooms you
@@ -156,6 +160,8 @@ So that this document can be checked against the system rather than trusted.
 | The source file is deleted after reading | `docs/ingestion.md`, `backend/app/modules/ingestion/service.py` |
 | Recording can be turned off | `backend/app/modules/sessions/preferences.py`, read before a room opens |
 | Attached material can be destroyed | `backend/app/modules/ingestion/service.py` → `delete`, reachable at `app/src/app/material.tsx` |
+| A recording can be destroyed on request | `backend/app/modules/sessions/router.py` → `delete_recording`, reachable at `app/src/app/rooms/[id].tsx` |
+| Deleting a recording keeps the transcript | `backend/app/modules/sessions/retention.py` → `delete` touches `session_recordings` only |
 | The disclosure precedes the microphone prompt | `app/src/lib/consent/entry.ts` |
 
 The full reasoning behind these decisions is in `docs/session-retention.md`.

@@ -319,3 +319,59 @@ describe('reading a room back', () => {
     await expect(sessions.transcript('session-9')).rejects.toBeInstanceOf(SignedOut);
   });
 });
+
+describe('destroying one room’s audio', () => {
+  function deleting(reply: Partial<Response> = {}) {
+    const fetcher = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 204,
+      json: async () => ({}),
+      ...reply,
+    });
+
+    return {
+      fetcher,
+      sessions: createSessionsApi({
+        baseUrl: 'https://flintroom.test',
+        accessToken: async () => 'a-token',
+        fetch: fetcher as unknown as typeof fetch,
+      }),
+    };
+  }
+
+  it('asks the server to destroy it, and nothing else', async () => {
+    const { fetcher, sessions } = deleting();
+
+    await sessions.deleteRecording('s1');
+
+    const [url, init] = fetcher.mock.calls[0];
+    expect(url).toBe('https://flintroom.test/v1/sessions/s1/recording');
+    expect(init.method).toBe('DELETE');
+    // No body. The endpoint takes nothing, and the transcript is deliberately
+    // left alone — a client that could ask for more would be choosing how much
+    // of somebody's room to destroy.
+    expect(init.body).toBeUndefined();
+  });
+
+  it('treats a room with nothing to destroy as already done', async () => {
+    // The server answers 204 whether or not there was audio, and 404 for a
+    // room that is gone. Both mean the thing the caller wanted gone is gone,
+    // and reporting a failure would send somebody back to try again at
+    // something that already succeeded.
+    const { sessions } = deleting({ ok: false, status: 404 });
+
+    await expect(sessions.deleteRecording('s1')).resolves.toBeUndefined();
+  });
+
+  it('reports a signed-out session as such', async () => {
+    const { sessions } = deleting({ ok: false, status: 401 });
+
+    await expect(sessions.deleteRecording('s1')).rejects.toBeInstanceOf(SignedOut);
+  });
+
+  it('refuses to report a failed delete as a successful one', async () => {
+    const { sessions } = deleting({ ok: false, status: 502 });
+
+    await expect(sessions.deleteRecording('s1')).rejects.toThrow(/502/);
+  });
+});

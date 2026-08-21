@@ -39,6 +39,14 @@ export default function RoomRoute() {
   const [refused, setRefused] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
 
+  // The audio, and the one thing that can be done to it. Separate from `room`
+  // because destroying it changes what this screen holds without re-reading
+  // the room — and because "gone because you deleted it just now" is a
+  // different sentence from "gone because it expired".
+  const [deleting, setDeleting] = useState(false);
+  const [deleted, setDeleted] = useState(false);
+  const [audioRefusal, setAudioRefusal] = useState<string | null>(null);
+
   useEffect(() => {
     let live = true;
 
@@ -68,6 +76,34 @@ export default function RoomRoute() {
       live = false;
     };
   }, [id, attempt]);
+
+  const destroyRecording = async () => {
+    setDeleting(true);
+    setAudioRefusal(null);
+
+    try {
+      await sessions.deleteRecording(id);
+      setDeleted(true);
+      // Held locally rather than re-read. The request succeeded, and the whole
+      // screen is otherwise unchanged — a second round trip would only tell us
+      // what we already know, a beat later.
+      setRoom((was) =>
+        was === null
+          ? was
+          : { ...was, recording: { state: 'not_recorded', expiresAt: null } }
+      );
+    } catch (error) {
+      if (error instanceof SignedOut) {
+        recheck();
+      } else {
+        // Deliberately not the whole-screen refusal above. The transcript is
+        // still on the page and still correct; only this one action failed.
+        setAudioRefusal('That did not delete. Try again in a moment.');
+      }
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   if (refused !== null) {
     return (
@@ -130,6 +166,20 @@ export default function RoomRoute() {
         who={room ? whoWasThere(room.archetypes) : ''}
         lines={lines}
         onDebrief={() => router.push(`/debrief/${id}?from=room`)}
+        // Null while the room is not in the list, which is not the same as a
+        // room with nothing to destroy: not knowing is not an answer, and the
+        // control must not be drawn on a guess.
+        recording={
+          room === null
+            ? null
+            : {
+                held: room.recording.state === 'available',
+                deleting,
+                deleted,
+                refusal: audioRefusal,
+                onDelete: () => void destroyRecording(),
+              }
+        }
       />
     </SafeAreaView>
   );

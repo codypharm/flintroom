@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { SaidLine } from '../../lib/api/sessionsApi';
@@ -36,6 +37,34 @@ import { color, radius, space, type } from '../../theme/tokens';
  * it belongs directly under the heading.
  */
 
+/**
+ * The audio of this room, and the one thing that can be done to it.
+ *
+ * `docs/privacy-policy.md` promises *"delete a room's recording, any room, at
+ * any time"*, and until this the control existed nowhere.
+ *
+ * **Here rather than on the Library row**, and the placement is the design.
+ * Deleting a recording is not deleting a room — `DELETE
+ * /v1/sessions/{id}/recording` deliberately leaves the transcript, so a
+ * "Delete" on a Library row would be followed by that row staying exactly where
+ * it was, which reads as a control that failed. On this screen the thing that
+ * survives is on the same page as the button.
+ *
+ * One prop rather than five, because these five facts are one state and a
+ * caller that could set them independently could say `deleted` and `held` at
+ * once.
+ */
+export interface RoomAudio {
+  /** Whether there is anything to destroy. False once expired or never kept. */
+  held: boolean;
+  /** True while the request is out. */
+  deleting: boolean;
+  /** True once this screen destroyed it, which is the only receipt there is. */
+  deleted: boolean;
+  refusal: string | null;
+  onDelete: () => void;
+}
+
 export interface RoomReadProps {
   /** "Today", "Monday", "4 July" — as the Library says it. */
   when: string;
@@ -44,9 +73,17 @@ export interface RoomReadProps {
   /** Every line, in the order it happened. Empty is a real room. */
   lines: SaidLine[];
   onDebrief: () => void;
+  /** Null when the room row was not found, which is not the same as nothing. */
+  recording?: RoomAudio | null;
 }
 
-export function RoomRead({ when, who, lines, onDebrief }: RoomReadProps) {
+export function RoomRead({
+  when,
+  who,
+  lines,
+  onDebrief,
+  recording = null,
+}: RoomReadProps) {
   const opened = lines.length > 0 ? new Date(lines[0].saidAt).getTime() : 0;
 
   return (
@@ -92,7 +129,94 @@ export function RoomRead({ when, who, lines, onDebrief }: RoomReadProps) {
           lines.map((line) => <Line key={line.ordinal} line={line} opened={opened} />)
         )}
 
+        {/*
+          Last, and after the whole transcript. The foot is the wrong place for
+          a primary action — this screen learned that once and moved the coach
+          up — and the right place for a destructive one: nothing here should be
+          reachable by a thumb that meant to scroll.
+        */}
+        {recording === null ? null : <Audio recording={recording} />}
       </ScrollView>
+    </View>
+  );
+}
+
+/**
+ * The recording, and the way to destroy it.
+ *
+ * Confirmed in place rather than in a native alert, as `YourPanelists` and
+ * `YourMaterial` both decided: the sentence worth reading is the one about what
+ * survives, and an alert body is where that goes to be dismissed unread.
+ */
+function Audio({ recording }: { recording: RoomAudio }) {
+  const [confirming, setConfirming] = useState(false);
+
+  if (recording.deleted) {
+    // A destructive control that simply disappears has said nothing — and this
+    // one destroys something nobody can check, since playback does not exist
+    // yet (#68). The sentence is the only receipt there is.
+    return (
+      <View style={styles.audio}>
+        <Text style={styles.gone}>
+          The recording is gone. What was said is still here.
+        </Text>
+      </View>
+    );
+  }
+
+  if (!recording.held) {
+    return null;
+  }
+
+  return (
+    <View style={styles.audio}>
+      {recording.refusal !== null && (
+        <Text style={styles.audioRefusal} accessibilityRole="alert">
+          {recording.refusal}
+        </Text>
+      )}
+
+      {confirming && (
+        <Text style={styles.audioWords}>
+          What was said stays. Only the audio goes, and it cannot be got back.
+        </Text>
+      )}
+
+      <View style={styles.audioActions}>
+        {confirming && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Keep it"
+            onPress={() => setConfirming(false)}
+            style={({ pressed }) => [styles.quiet, pressed && styles.pressed]}
+          >
+            <Text style={styles.quietLabel}>Keep it</Text>
+          </Pressable>
+        )}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={confirming ? 'Yes, delete it' : 'Delete the recording'}
+          accessibilityState={{ disabled: recording.deleting }}
+          disabled={recording.deleting}
+          onPress={() => {
+            if (confirming) {
+              setConfirming(false);
+              recording.onDelete();
+            } else {
+              setConfirming(true);
+            }
+          }}
+          style={({ pressed }) => [
+            styles.quiet,
+            pressed && styles.pressed,
+            recording.deleting && styles.dim,
+          ]}
+        >
+          <Text style={styles.destructiveLabel}>
+            {confirming ? 'Yes, delete it' : 'Delete the recording'}
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -139,6 +263,29 @@ function into(saidAt: string, opened: number): string {
 }
 
 const styles = StyleSheet.create({
+  /** Set well below the last line, so a scroll never lands on it. */
+  audio: {
+    marginTop: space.major,
+    paddingTop: space.loose,
+    borderTopWidth: 1,
+    borderTopColor: color.hairline,
+    gap: space.snug,
+  },
+  audioWords: { ...type.bodySm, color: color.onSurfaceVariant },
+  audioRefusal: { ...type.bodySm, color: color.danger },
+  audioActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: space.snug },
+  gone: { ...type.bodySm, color: color.onSurfaceVariant },
+
+  quiet: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: space.snug,
+    borderRadius: radius.pill,
+  },
+  quietLabel: { ...type.labelLg, color: color.onSurface },
+  destructiveLabel: { ...type.labelLg, color: color.danger },
+  dim: { opacity: 0.4 },
+
   screen: { flex: 1, backgroundColor: color.surface },
   scroll: { flex: 1 },
   content: { padding: space.screen, paddingBottom: space.major },

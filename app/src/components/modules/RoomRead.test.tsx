@@ -126,3 +126,98 @@ it('says what the tap does rather than naming where it lands', async () => {
   expect(screen.getByLabelText('Go through it with the coach')).toBeTruthy();
   expect(screen.queryByText('What the room found')).toBeNull();
 });
+
+describe('destroying this room’s audio', () => {
+  /**
+   * `docs/privacy-policy.md` promises this control and it existed nowhere.
+   * Here rather than on the Library row, and that placement is the design:
+   * deleting a *recording* is not deleting the *room* — the endpoint
+   * deliberately leaves the transcript — so a "Delete" on a row that stays put
+   * afterwards reads as a control that failed. On this screen the transcript
+   * that survives is on the same page as the button.
+   */
+
+  const HELD = {
+    held: true,
+    deleting: false,
+    deleted: false,
+    refusal: null,
+    onDelete: jest.fn(),
+  };
+
+  it('offers nothing when there is no audio to destroy', async () => {
+    // Expired or never recorded. A control for something that is not there is
+    // a promise the tap cannot keep.
+    await setup({ recording: { ...HELD, held: false } });
+
+    expect(screen.queryByLabelText('Delete the recording')).not.toBeOnTheScreen();
+  });
+
+  it('offers nothing when it does not know what the room holds', async () => {
+    // The room row was not found — a deep link, or one deleted since. Not
+    // knowing is not the same as nothing, and drawing the control either way
+    // would be guessing.
+    await setup({ recording: null });
+
+    expect(screen.queryByLabelText('Delete the recording')).not.toBeOnTheScreen();
+  });
+
+  it('asks first, and says what survives', async () => {
+    const onDelete = jest.fn();
+    await setup({ recording: { ...HELD, onDelete } });
+
+    await userEvent.press(screen.getByLabelText('Delete the recording'));
+
+    expect(screen.getByText(/what was said stays/i)).toBeOnTheScreen();
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  it('destroys it only on the second, explicit tap', async () => {
+    const onDelete = jest.fn();
+    await setup({ recording: { ...HELD, onDelete } });
+
+    await userEvent.press(screen.getByLabelText('Delete the recording'));
+    await userEvent.press(screen.getByLabelText('Yes, delete it'));
+
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets somebody back out', async () => {
+    const onDelete = jest.fn();
+    await setup({ recording: { ...HELD, onDelete } });
+
+    await userEvent.press(screen.getByLabelText('Delete the recording'));
+    await userEvent.press(screen.getByLabelText('Keep it'));
+
+    expect(screen.queryByText(/what was said stays/i)).not.toBeOnTheScreen();
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  it('says so once it is gone, rather than letting the control just vanish', async () => {
+    /**
+     * A destructive control that disappears on success has told somebody
+     * nothing — and this one destroys something they cannot check, because
+     * playback does not exist yet (#68). The sentence is the only receipt.
+     */
+    await setup({ recording: { ...HELD, held: false, deleted: true } });
+
+    expect(screen.getByText(/recording is gone/i)).toBeOnTheScreen();
+    expect(screen.getByText(/what was said is still here/i)).toBeOnTheScreen();
+  });
+
+  it('does not let a second tap through while the first is still out', async () => {
+    await setup({ recording: { ...HELD, deleting: true } });
+
+    expect(
+      screen.getByLabelText('Delete the recording').props.accessibilityState
+    ).toMatchObject({ disabled: true });
+  });
+
+  it('carries a refusal rather than swallowing it', async () => {
+    await setup({
+      recording: { ...HELD, refusal: 'That did not delete. Try again in a moment.' },
+    });
+
+    expect(screen.getByText(/did not delete/i)).toBeOnTheScreen();
+  });
+});

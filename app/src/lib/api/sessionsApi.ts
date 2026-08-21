@@ -174,6 +174,20 @@ export interface SessionsApi {
    * and the server's own enum says these are not equivalent to the business.
    */
   end(sessionId: string): Promise<void>;
+  /**
+   * Destroy one room's audio, because the presenter asked.
+   *
+   * **The transcript survives**, and that is the server's decision rather than
+   * this client's — the two artefacts have separate lifetimes by design, and
+   * taking the debrief's grounding along with the audio would be a second,
+   * unasked-for deletion. Nothing here can widen it: the endpoint takes no
+   * body, so a client cannot choose how much of a room to destroy.
+   *
+   * Idempotent. The server answers 204 whether or not there was anything
+   * there, and a room that is gone answers 404 — both mean the thing the caller
+   * wanted gone is gone.
+   */
+  deleteRecording(sessionId: string): Promise<void>;
 }
 
 export interface SessionsApiOptions {
@@ -275,6 +289,18 @@ export function createSessionsApi({
       // could change is the recorded reason, and stranding somebody on a dark
       // screen over that would be the worse outcome.
       await send(`/v1/sessions/${sessionId}/end`, { method: 'POST' });
+    },
+
+    deleteRecording: async (sessionId) => {
+      const path = `/v1/sessions/${sessionId}/recording`;
+      const response = await send(path, { method: 'DELETE' });
+
+      // A 404 is a room that is already gone, which is the state the caller
+      // asked for. Reporting it as a failure sends somebody back to try again
+      // at something that has already succeeded.
+      if (response.ok || response.status === 404) return;
+
+      throw new Error(`${path} failed with ${response.status}`);
     },
   };
 }
