@@ -193,6 +193,18 @@ class Attention(StrEnum):
     #: unplugged microphone are byte-for-byte identical. A room that has heard
     #: a voice once can never send this again, which is what makes it safe to
     #: show at all.
+    #:
+    #: **Shown, not spoken, and that half is still open.** #24 decided the
+    #: opposite for the idle nudge — a seated panelist asks out loud at sixty
+    #: seconds — and `agents/silence.py` names "holding a dead microphone" as
+    #: one of the three people it is for. This shipped visual-only on the
+    #: argument that a dead-microphone presenter has been *talking* and is
+    #: present, where the nudge's user has walked away; a room that speaks to
+    #: somebody sitting right there says it twice.
+    #:
+    #: That argument was the agent's and the architect has not ruled on it.
+    #: It is recorded here rather than in a task because #77 is closed, and an
+    #: open question with nowhere to live stops being a question.
     UNHEARD = "unheard"
 
 
