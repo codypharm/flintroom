@@ -41,6 +41,21 @@ export interface RoomOrder {
 
   /** The attached deck, or null when the room is being run on speech alone. */
   materialId: string | null;
+
+  /**
+   * The room this one is a re-run of, or null when the argument is a new one.
+   *
+   * A room id rather than a lineage id, because the server has to be able to
+   * *check* it: "which room this repeats" is a claim it verifies against
+   * ownership, and a group id taken from a request would let a rehearsal be
+   * filed into somebody else's history. The server resolves the lineage.
+   *
+   * Not part of the forgery surface the rest of this module exists about. A
+   * link that named a room id could only join a lineage the person already
+   * owns — a mis-filed rehearsal, not a room nobody asked for — and it still
+   * takes a tap on Start to spend it.
+   */
+  repeats: string | null;
 }
 
 /**

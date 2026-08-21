@@ -249,6 +249,10 @@ export default function InterrogationScreen() {
             minted.room = await sessions.start({
               archetypes: order.archetypes,
               materialIds: order.materialId === null ? [] : [order.materialId],
+              // Which room this is a re-run of, when it is one. The server
+              // files it under the same rehearsal, so the progress screen can
+              // show a run of attempts at one argument as a run.
+              repeats: order.repeats,
             });
           },
         });

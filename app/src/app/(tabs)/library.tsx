@@ -68,7 +68,8 @@ export default function LibraryRoute() {
   }, [attempt]);
 
   /**
-   * Run this room again — the same panel, the same material, a new session.
+   * Run this room again — the same panel, the same material, a new session,
+   * filed under the same rehearsal.
    *
    * Through `/setup` rather than starting one here. Everything a room needs
    * before it opens lives on that route: the recording disclosure, the
@@ -89,6 +90,11 @@ export default function LibraryRoute() {
         // one to the room — so carrying more here would promise something the
         // next screen cannot honour.
         material: room.materialIds[0] ?? '',
+        // Which room this repeats. Without it a re-run is a room that happens
+        // to share a panel with an earlier one, and Progress has no way to tell
+        // three attempts at one argument from three unrelated rehearsals — the
+        // difference between "am I getting better at this" and a list of dates.
+        repeats: room.id,
       },
     });
   }, []);

@@ -39,7 +39,7 @@ it('starts a room grounded in exactly what the presenter chose', async () => {
   // in front of it did not assemble.
   const { fetcher, sessions } = api({ status: 201, json: async () => STARTED });
 
-  await sessions.start({ archetypes: ['cfo', 'champion'], materialIds: ['m-1'] });
+  await sessions.start({ archetypes: ['cfo', 'champion'], materialIds: ['m-1'], repeats: null });
 
   const [url, init] = fetcher.mock.calls[0];
   expect(url).toBe('https://flintroom.test/v1/sessions');
@@ -50,12 +50,39 @@ it('starts a room grounded in exactly what the presenter chose', async () => {
   });
 });
 
+it('tells the server which room this one repeats, when it repeats one', async () => {
+  // The server groups rehearsals on it: a start carrying `repeats` joins that
+  // room's lineage, and one without starts its own. It names a *room* rather
+  // than a lineage deliberately — "which room this repeats" is a claim the
+  // server can verify against ownership, and a group id taken from the request
+  // would let a room be filed into somebody else's history.
+  const { fetcher, sessions } = api({ status: 201, json: async () => STARTED });
+
+  await sessions.start({ archetypes: ['cfo'], materialIds: [], repeats: 'room-7' });
+
+  expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({
+    archetypes: ['cfo'],
+    material_ids: [],
+    repeats: 'room-7',
+  });
+});
+
+it('omits repeats entirely for a room assembled from scratch', async () => {
+  // Omitted rather than sent as null. The field is optional on the server, and
+  // a start that never repeated anything should not have to say so on the wire.
+  const { fetcher, sessions } = api({ status: 201, json: async () => STARTED });
+
+  await sessions.start({ archetypes: ['cfo'], materialIds: [], repeats: null });
+
+  expect(JSON.parse(fetcher.mock.calls[0][1].body)).not.toHaveProperty('repeats');
+});
+
 it('hands back the ticket and the room it opens, together', async () => {
   // The ticket is single-use and lives for seconds. Returning it separately
   // from the session it belongs to is how one gets spent on the wrong room.
   const { sessions } = api({ status: 201, json: async () => STARTED });
 
-  const room = await sessions.start({ archetypes: [], materialIds: [] });
+  const room = await sessions.start({ archetypes: [], materialIds: [], repeats: null });
 
   expect(room).toEqual({
     id: 'session-1',
@@ -105,7 +132,7 @@ it('treats a session already settled as ended, not as a failure', async () => {
 it('reports a signed-out session as such, rather than as a dead room', async () => {
   const { sessions } = api({ ok: false, status: 401 });
 
-  await expect(sessions.start({ archetypes: [], materialIds: [] })).rejects.toBeInstanceOf(
+  await expect(sessions.start({ archetypes: [], materialIds: [], repeats: null })).rejects.toBeInstanceOf(
     SignedOut
   );
 });
@@ -135,7 +162,7 @@ describe('a room the server will not open', () => {
     });
 
     await expect(
-      sessions.start({ archetypes: ['cfo'], materialIds: [] })
+      sessions.start({ archetypes: ['cfo'], materialIds: [], repeats: null })
     ).rejects.toMatchObject({ code: 'no_minutes_remaining' });
   });
 
@@ -152,7 +179,7 @@ describe('a room the server will not open', () => {
     });
 
     await expect(
-      sessions.start({ archetypes: ['cfo'], materialIds: [] })
+      sessions.start({ archetypes: ['cfo'], materialIds: [], repeats: null })
     ).rejects.toThrow();
   });
 });

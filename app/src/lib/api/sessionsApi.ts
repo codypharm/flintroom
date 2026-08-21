@@ -95,6 +95,19 @@ export interface StartRoom {
   /** Archetype names, as the catalogue spells them. Empty seats the default panel. */
   archetypes: string[];
   materialIds: string[];
+  /**
+   * The room this one is a re-run of, or null when the argument is a new one.
+   *
+   * The server resolves it to a rehearsal and files the new room under the same
+   * one, so a run of attempts at the same argument reads as a run rather than
+   * as unrelated rooms that happen to share a panel.
+   *
+   * A *room* id, never a rehearsal id. The server checks it against ownership
+   * and answers 404 for a room this account did not run — a group id taken
+   * straight from the request would let a rehearsal be filed into somebody
+   * else's history, and a progress screen would then average two people.
+   */
+  repeats: string | null;
 }
 
 export interface SessionsApi {
@@ -166,10 +179,16 @@ export function createSessionsApi({
   };
 
   return {
-    start: async ({ archetypes, materialIds }) => {
+    start: async ({ archetypes, materialIds, repeats }) => {
       const response = await send('/v1/sessions', {
         method: 'POST',
-        body: JSON.stringify({ archetypes, material_ids: materialIds }),
+        body: JSON.stringify({
+          archetypes,
+          material_ids: materialIds,
+          // Omitted rather than sent as null. The field is optional on the
+          // server, and a room that repeats nothing has nothing to say here.
+          ...(repeats === null ? {} : { repeats }),
+        }),
       });
 
       if (!response.ok) {

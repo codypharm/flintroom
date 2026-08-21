@@ -75,10 +75,11 @@ export default function HomeScreen() {
   // Set once by onboarding, and never by a link, a back gesture or a fresh
   // launch. A string because route params are strings; the comparison is
   // explicit so a truthy `'0'` cannot creep in later.
-  const { reveal, archetypes: again, material: sameDeck } = useLocalSearchParams<{
+  const { reveal, archetypes: again, material: sameDeck, repeats } = useLocalSearchParams<{
     reveal?: string;
     archetypes?: string;
     material?: string;
+    repeats?: string;
   }>();
   const revealing = reveal === '1';
   const [room, setRoom] = useState<Catalogue | null>(null);
@@ -393,6 +394,21 @@ export default function HomeScreen() {
           intendRoom({
             archetypes: seated,
             materialId: material?.state === 'ready' ? material.id : null,
+            // The room the Library said to run again, carried through to the
+            // start so the server files this one under the same rehearsal.
+            //
+            // In the address bar rather than in memory, unlike the seating, and
+            // the difference is what each one can do if forged. A seating in a
+            // URL opens a metered room nobody assembled (#76); a room id in a
+            // URL can at worst file a rehearsal under one this account already
+            // owns, and only behind a tap on Start. Wrong shelf, not a charge.
+            //
+            // It survives every change made on this screen after the re-run
+            // seeded it, which is deliberate: "the same argument, a harder
+            // panel" and "the same argument, a rewritten deck" are both still
+            // that argument, and a lineage that broke whenever somebody edited
+            // the room would only ever group rooms nobody improved.
+            repeats: repeats ?? null,
           });
           router.push('/interrogation');
         }}
