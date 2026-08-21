@@ -167,3 +167,27 @@ pythonpath = ["."]
 
 [tool.uv]
 package = false
+
+# The type checker, pinned. Run it with:
+#
+#     uvx ty@0.0.73 check app
+#
+# **The version is pinned deliberately.** `ty` is preview-stage, so an
+# unpinned `uvx ty` can change what it reports between two runs on the same
+# code — which turns "the checker is clean" into a statement about the day
+# rather than about the source. Raising the pin is a deliberate change with a
+# diff, like any other dependency bump.
+#
+# Run through `uvx` rather than as a dev dependency, for the reason the
+# frontend's OpenAPI generator is: a build-time tool has no business sharing
+# the application's resolved environment.
+#
+# **It runs clean, and that is the only state worth keeping it in.** Sixty-eight
+# known diagnostics meant a sixty-ninth was invisible, which is the same failure
+# as the untyped union it replaced. There is no suppression comment anywhere in
+# `app/` and none should be added without a reason written beside it.
+[tool.ty.environment]
+python-version = "3.14"
+
+[tool.ty.src]
+include = ["app"]

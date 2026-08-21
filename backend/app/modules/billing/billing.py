@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -104,12 +105,17 @@ class BillingService:
 
         await self.handle(event)
 
-    async def _reject(self, reason: str = "unknown", **context: object) -> None:
+    async def _reject(self, reason: str = "unknown", **context: Any) -> None:
         """One durable row per refused callback.
 
         No `user_id`: an unverified body's idea of who it is about is not
         evidence of anything, and attaching it would let a forger write rows
         against somebody else's account.
+
+        `**context: Any` rather than `object`, for the reason `Settings.__init__`
+        gives: these are forwarded untouched to a method with typed keyword
+        parameters, and nothing here inspects them. `object` was stricter and
+        also untrue.
         """
         await self._audit.record(
             AuditEventType.WEBHOOK_REJECTED, provider="revenuecat", reason=reason, **context

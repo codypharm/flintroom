@@ -209,6 +209,25 @@ Supabase is the Postgres host, not the application platform. These are the rules
 - **Object storage sits behind an interface**, same pattern as the voice provider. The contract is the presigned URL, not the vendor SDK.
 - **No Supabase-specific SQL.** Standard extensions available on RDS/Cloud SQL (e.g. `pgvector`) are fine; Supabase-only helper schemas are not.
 
+### Types
+
+`uvx ty@0.0.73 check app` runs clean, and that is the only state it is worth
+keeping in — sixty-eight known diagnostics meant a sixty-ninth was invisible.
+Run it before committing backend work; it is fast and needs no environment.
+
+**The version is pinned in `pyproject.toml` on purpose.** `ty` is preview-stage,
+so an unpinned run can report differently on unchanged code, and "the checker is
+clean" would become a statement about the day rather than about the source.
+
+**There is no suppression comment anywhere in `app/`.** Every diagnostic so far
+had a real fix — an annotation that was wrong, a null nobody guarded, a library
+gap worth naming once in a helper. If a suppression ever becomes the right
+answer, it carries the reason beside it; a bare ignore outlives the thing it
+suppressed.
+
+Nothing in CI enforces this yet, because there is no CI — see
+`docs/deployment.md`.
+
 ### Schemas
 
 - All API inputs validated with Pydantic v2. No raw dicts at the router level.

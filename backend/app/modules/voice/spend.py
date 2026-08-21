@@ -119,7 +119,13 @@ class SpendRecorder:
             .join(Account, Account.user_id == Session.user_id)
             .where(Session.id == session_id)
         )
-        return result.one_or_none()
+
+        # Unpacked rather than returned whole. A `Row` behaves like a tuple and
+        # is not one, so returning it satisfies every caller and no annotation —
+        # and the two fields are named here, where a reader can see which is
+        # which, instead of at each unpacking site.
+        owner = result.one_or_none()
+        return None if owner is None else (owner.user_id, owner.entitlement_tier)
 
     async def spent_coaching(
         self,

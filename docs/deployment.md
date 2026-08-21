@@ -510,3 +510,23 @@ screen yet to fail. Closed the same day, with a real Android sign-in reaching
   read every conversation transcript and spend the balance. Blocked until the
   plan is paid, and a launch blocker rather than a nice-to-have.
 - **No health endpoint.** Nothing here needs one yet; a load balancer will.
+
+---
+
+## The type checker is not enforced by anything
+
+`uvx ty@0.0.73 check app` runs clean as of 2026-08-21, and nothing makes it stay
+that way. There is no CI in this repository — no workflow file, no pipeline, no
+pre-commit hook — so the check runs only when somebody runs it.
+
+That places it squarely in this document's remit: a requirement that no test
+enforces and that fails quietly. The failure mode is gradual rather than sudden.
+Diagnostics accumulate one at a time, each individually ignorable, until the
+count is high enough that nobody reads the output — which is exactly the state it
+started in, and the state in which it found a `None` being seated in a live room
+and an annotation naming the wrong `Enum`.
+
+**When CI exists, `ty` belongs in it as a required check**, next to `pytest` and
+the frontend's `tsc --noEmit` (which already runs clean and is already part of
+the loop). Until then it is a habit, and habits are what this document exists to
+write down.

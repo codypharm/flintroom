@@ -23,6 +23,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.agents.context import SelectedBy
 from app.core.database import Base
 from app.modules.sessions.schemas import EndReason, SessionPhase, SessionState
 
@@ -538,7 +539,11 @@ class TranscriptLine(Base):
     #: Nullable rather than defaulted: a default of `"model"` would claim the
     #: selection model had spoken for every sentence the presenter said, and the
     #: room's health metric is a ratio over this column.
-    chosen_by: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    #: Typed as the vocabulary rather than as `str`. The column is a plain
+    #: `String` on purpose — see above — but every reader turns this value back
+    #: into a `SelectedBy`, and a `str` here made each of them a narrowing
+    #: nothing checked.
+    chosen_by: Mapped[SelectedBy | None] = mapped_column(String(16), nullable=True)
 
     said_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

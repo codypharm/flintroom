@@ -132,6 +132,8 @@ class ProgressService:
         # Every line the panel put to them, follow-ups included — the same count
         # `DebriefService` takes for calibration. A second rule about what a
         # challenge is would drift from the one that moves the ladder.
+        # `.tuples()` because a `Row` is tuple-like and is not a tuple, and
+        # `dict` takes pairs.
         asked = dict(
             (
                 await self._db.execute(
@@ -142,7 +144,9 @@ class ProgressService:
                     )
                     .group_by(TranscriptLine.session_id)
                 )
-            ).all()
+            )
+            .tuples()
+            .all()
         )
 
         findings = (

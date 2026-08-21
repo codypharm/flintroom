@@ -141,9 +141,23 @@ def _claim_row(material: Material, extracted: ExtractedClaim) -> MaterialClaim:
 
 
 def _extracted_claim(row: MaterialClaim) -> ExtractedClaim:
-    """A row, back as the typed claim the Auditor can compare."""
+    """A row, back as the typed claim the Auditor can compare.
+
+    **Every column read here is nullable and none of them may be null.** One
+    table stores two claim shapes, so a quantitative claim's `metric`/`value`
+    and an assertion's `subject`/`statement` cannot both be `NOT NULL` — the
+    column definitions can only say "sometimes", and which half applies is
+    decided by `kind`.
+
+    Asserted rather than defaulted, because the failure this replaces was
+    `float(None)`: a `TypeError` from inside a claim reader, surfacing as a 500
+    on a room being grounded, with a traceback instead of a sentence. A default
+    would be worse — a `0.0` here is a figure the Auditor would then hold the
+    presenter to, invented by the code that failed to read it.
+    """
     claim: QuantitativeClaim | AssertionClaim
     if row.kind is ClaimKind.QUANTITATIVE:
+        assert row.metric is not None and row.value is not None
         claim = QuantitativeClaim(
             quote=row.quote,
             metric=row.metric,
@@ -152,6 +166,7 @@ def _extracted_claim(row: MaterialClaim) -> ExtractedClaim:
             period=row.period,
         )
     elif row.kind is ClaimKind.ASSERTION:
+        assert row.subject is not None and row.statement is not None
         claim = AssertionClaim(
             quote=row.quote, subject=row.subject, statement=row.statement
         )
@@ -287,7 +302,9 @@ async def confirm_ready(
             Material.deleted_at.is_(None),
         )
     )
-    found = dict(rows.all())
+    # `.tuples()` because a `Row` is tuple-like and is not a tuple — `dict`
+    # takes pairs, and this is the call that says so.
+    found = dict(rows.tuples().all())
 
     missing = wanted - found.keys()
     if missing:

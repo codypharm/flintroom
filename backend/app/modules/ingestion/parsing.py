@@ -36,6 +36,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Literal
 from zipfile import BadZipFile
 
 import pillow_heif
@@ -128,7 +129,10 @@ class RenderedPage:
     text: str
 
     image: bytes
-    image_media_type: str
+    #: One of the two we render, not any string. The Anthropic SDK's image
+    #: block takes a `Literal` of four media types, and a bare `str` here made
+    #: every call site an unchecked narrowing into it.
+    image_media_type: Literal["image/png", "image/jpeg"]
 
     #: The charts on this page, as the numbers behind them rather than a picture
     #: of them. Only ever populated for PPTX — a PDF has no chart XML left, which

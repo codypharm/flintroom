@@ -128,7 +128,7 @@ class RecordingRetention:
             why, session_id=session_id, stored_bytes=recording.byte_size
         )
 
-    async def _expired(self) -> list[tuple[SessionRecording, object]]:
+    async def _expired(self) -> list[tuple[SessionRecording, uuid.UUID]]:
         """Rooms whose audio is past the window their owner is on *now*.
 
         The tier is read at sweep time and joined per row, which is the whole

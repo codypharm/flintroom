@@ -3,6 +3,8 @@
 The state machine is specified in `docs/minutes-ledger-and-sessions.md` Part 2.
 """
 
+from __future__ import annotations
+
 import uuid
 from datetime import datetime, timedelta
 from enum import Enum

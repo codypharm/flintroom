@@ -21,6 +21,7 @@ matching the screen.
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -90,6 +91,13 @@ class DebriefService:
 
         if session.end_reason is EndReason.PROVIDER_FAILURE:
             raise RoomBroke(session_id=str(session_id))
+
+        # `_settled` above is the guarantee: settlement writes the state and the
+        # reason in one transaction, so a settled room always has one. Asserted
+        # rather than defaulted — inventing `user_ended` here would put a wrong
+        # reason into #56's fault split, which decides whether the presenter is
+        # told they ducked a question or that the room took it away.
+        assert session.end_reason is not None
 
         transcript = await self._transcript(session_id)
 
@@ -297,7 +305,7 @@ class DebriefService:
             for row in rows.scalars()
         )
 
-    async def pressed(self, *, session_id: uuid.UUID) -> str | None:
+    async def pressed(self, *, session_id: uuid.UUID) -> Literal["harder", "easier"] | None:
         """How this room compared to the one before it, or nothing.
 
         The comparison the debrief's one sentence is made of. Reads the rung

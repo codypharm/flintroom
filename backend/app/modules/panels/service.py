@@ -66,6 +66,20 @@ class PanelCatalogueService:
         above = next_tier_above(tier)
         seats = max_panel_size(tier)
 
+        # Sorted by what a person reads, not by the identifier underneath it. A
+        # picker ordered by key puts "What breaks" between "Retention" and
+        # "Revenue" for reasons visible only in the database.
+        #
+        # Built here rather than inline below, and the reason is the annotation:
+        # a Pydantic model's constructor accepts a dict for any nested model, so
+        # `domains=sorted(..., key=lambda one: one.label)` types `one` as
+        # `DomainRead | Mapping[str, Any]` and `.label` is not on the second.
+        # One named list, one obvious type.
+        domains: list[DomainRead] = sorted(
+            (DomainRead(name=name, label=DOMAIN_LABELS[name]) for name in DOMAIN_TERMS),
+            key=lambda one: one.label,
+        )
+
         return ArchetypeCatalogue(
             archetypes=[
                 # Field by field, not `model_validate`. A library entry gains a
@@ -86,16 +100,7 @@ class PanelCatalogueService:
                     user_id=user_id, seats=seats
                 )
             ],
-            # Sorted by what a person reads, not by the identifier underneath
-            # it. A picker ordered by key puts "What breaks" between "Retention"
-            # and "Revenue" for reasons visible only in the database.
-            domains=sorted(
-                (
-                    DomainRead(name=name, label=DOMAIN_LABELS[name])
-                    for name in DOMAIN_TERMS
-                ),
-                key=lambda one: one.label,
-            ),
+            domains=domains,
             voices=[
                 VoiceRead(
                     name=voice.value,
