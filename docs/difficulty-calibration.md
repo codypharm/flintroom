@@ -203,6 +203,101 @@ Risk #1 describes.
 
 ---
 
+## Reopened: where the level lives (#87)
+
+**Status: proposed, 2026-08-21. Not decided, not built.** Decision 3 stands until
+the architect replaces it.
+
+### What changed
+
+Decision 3's stated reason for not going finer than the account was schema:
+*"modules/panels/ has no `models.py` ... there is no durable panel to key
+anything on, so 'per panel' means inventing persistence."*
+
+That objection no longer holds. `sessions.rehearsal_id` (2026-08-20) is a
+durable per-argument key that every room already carries, and #55's own opening
+notes left the question explicitly open: *"Is calibration per account or per
+panel? A user rehearsing a board readout and a demo day is not the same person
+twice."*
+
+### The defect that forced it back open
+
+The dial is one integer per account and every debrief moves it, so a room's rung
+can be set by a rehearsal of an unrelated argument:
+
+1. Board readout, attempt 1, runs at Standard.
+2. Demo day rehearsed badly — the dial drops to Gentle.
+3. Board readout, attempt 2, runs at **Gentle**, for reasons that have nothing
+   to do with the board readout.
+
+Two adjacent attempts at one pitch, made incomparable by a different pitch. Two
+things break: the same-rung comparison (decision 9 in `docs/rehearsals.md`) goes
+silent exactly where it is wanted, and the rung drawn on every room in Progress
+becomes something the reader cannot explain and will read as a fault.
+
+### The tension, stated fairly
+
+**Decision 3's argument still stands and has to be answered, not ignored:** the
+press cap and the dispute budget are how hard the room *pushes*, not what it
+pushes on, and tolerance of pressure plausibly does transfer between a board
+readout and a demo day.
+
+**The counter-argument is about the signal rather than the setting.**
+`calibrate()` reads `faults / questions` — how many answers were weak. That is
+dominated by how well somebody knows *this argument*, not by how much pressure
+they can absorb. So the dial is inferred from a per-argument measurement and
+then stored per person, and the mixing happens at exactly that seam.
+
+There is also an argument from legibility, which may be the strongest one. The
+rung is already drawn on every room in Progress. Per rehearsal, the rung on each
+attempt is caused by the attempt before it, in a lineage the presenter
+remembers — *"it got harder because you handled the last one"* becomes literally
+true and locally checkable. Per account, there is no sentence that explains a
+Gentle board readout to somebody who has not thought about last Tuesday.
+
+### Proposed shape
+
+- **A new argument seeds from the account's current level.** A seasoned user is
+  not dropped back to Gentle on a fresh pitch, which is what decision 3 was
+  really protecting and what Open Risk #1 is about: a *first-timer* needs
+  gentleness because they have never been attacked, not because this deck is new.
+- **From then on, a lineage's rung moves on that lineage's own results only.**
+- **No `rehearsals` table.** `sessions.calibrated_to`, nullable `smallint`,
+  written by the debrief. A lineage's level is the newest non-null in the group,
+  falling back to the account's — the same *"newest non-null in the group wins"*
+  fold `modules/sessions/rehearsals.py` already performs for the name.
+
+### Open before any code
+
+- **The manual control.** `PUT /v1/panels/difficulty` writes the account level
+  today. On a re-run it has to be able to set *this* lineage, or the user loses
+  per-rehearsal control the moment the dial moves. Probably means the chosen
+  level travels in `SessionStart` and the account number becomes purely the seed
+  for new arguments — which is a bigger change than the column.
+- **The debrief's sentence.** `_moved` compares this room's rung against the
+  previous room by `started_at` across the whole account. It has to compare
+  within the lineage, or the same cross-contamination reappears as words.
+- **Fewer readings per dial.** Ten lineages is ten dials, each moving on one or
+  two readings from a model that can be wrong, losing the averaging one account
+  dial gets for free. Bounded by the one-rung-per-move cap and the three-rung
+  ladder — the worst case is a lineage sitting one rung off for one room — but it
+  makes `FUMBLED = 0.5` and `HANDLED = 0.2` matter more than they did, and those
+  are still, by their own comment, *"a judgement with no data behind it"*.
+- **Nothing changes for deletion.** `sessions` and `accounts` are both already
+  destroyed by `billing/deletion.py`.
+
+### What was considered and would be worse
+
+**Dropping the same-rung gate instead** and letting Progress compare across
+rungs. Cheaper, and it restores exactly the comparison the escalating ladder
+makes dishonest — the thing decision 9 exists to prevent.
+
+**Leaving it per account and accepting an occasional comparison.** Defensible
+only if people rehearse one thing at a time, which is the assumption the
+grouping work was built because they do not.
+
+---
+
 ## What must be true when it is built
 
 - **The prompt and the roster still agree.** `_silence_of` stamps the phrases
