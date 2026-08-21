@@ -272,3 +272,36 @@ describe('what the rehearsal is called', () => {
     expect(screen.getByText('Started 11 August')).toBeTruthy();
   });
 });
+
+describe('the one comparison it will make', () => {
+  it('states two attempts that ran at the same rung', async () => {
+    // The architect asked twice to be able to tell whether they are doing well.
+    // Refusing every comparison answers the false-hope constraint by abandoning
+    // the question — and the ladder only makes comparisons across *different*
+    // rungs dishonest. r-2 and r-3 both ran at Standard.
+    await setup();
+
+    expect(screen.getByText('Standard: 1 of 5, then 2 of 6')).toBeTruthy();
+  });
+
+  it('will not compare rooms that ran at different rungs', async () => {
+    // The whole reason this screen has no total. r-1 ran at Gentle and r-3 at
+    // Standard, so a room where more got past somebody may simply be a room
+    // that pressed harder.
+    await setup({
+      rooms: [ROOMS[2], ROOMS[4]],
+    });
+
+    expect(screen.queryByText(/, then /)).toBeNull();
+  });
+
+  it('says which way it went in neither direction', async () => {
+    // Tallies, not a delta, not an arrow, not a verdict. The numbers are the
+    // claim the data supports; what they add up to is the presenter's to read.
+    await setup();
+
+    for (const verdict of [/better/i, /worse/i, /improv/i, /↑/, /↓/, /%/]) {
+      expect(screen.queryByText(verdict)).toBeNull();
+    }
+  });
+});

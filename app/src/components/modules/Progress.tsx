@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { WeaknessKind } from '../../lib/api/debriefApi';
 import type { RoomHeld, Tally } from '../../lib/api/progressApi';
 import { whenItRan } from '../../lib/library/rooms';
+import { atTheSameRung } from '../../lib/progress/rungs';
 import { KINDS, panelistName } from '../../lib/panel/vocabulary';
 import { color, radius, space, type } from '../../theme/tokens';
 
@@ -150,6 +151,25 @@ export function Progress({ rooms, habits, askers, now, onOpenRoom }: ProgressPro
                         : `${oldest.rehearsalName}, oldest first`
                     }
                   />
+
+                  {/*
+                    The one comparison this screen makes, and it is a statement
+                    rather than a reading. Two attempts at the *same* rung hold
+                    the confounder constant — the ladder only makes comparisons
+                    across different rungs dishonest — so the tallies are put
+                    side by side and nothing subtracts them.
+
+                    Silent unless a rehearsal actually ran twice at one rung,
+                    which is the common case early on and the point at which
+                    there is genuinely nothing to say.
+                  */}
+                  {atTheSameRung(run.rooms).map((held) => (
+                    <Text key={held.level} style={styles.against}>
+                      {`${rung(held.level)}: ${held.attempts
+                        .map((attempt) => `${attempt.held} of ${attempt.challenged}`)
+                        .join(', then ')}`}
+                    </Text>
+                  ))}
                 </View>
               );
             })}
@@ -394,6 +414,19 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   of: { ...type.bodySm, color: color.onSurfaceVariant, fontVariant: ['tabular-nums'] },
+
+  /**
+   * Quiet, and below the bars rather than beside them. It is a footnote to the
+   * run — the same numbers the chart already draws, put in an order somebody
+   * can read aloud — and typographic weight here would make it the verdict this
+   * screen refuses to give.
+   */
+  against: {
+    ...type.bodySm,
+    color: color.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
+    marginTop: space.tight,
+  },
 
   section: { marginTop: space.section },
   heading: { ...type.headlineSm, color: color.onSurface, marginBottom: space.tight },

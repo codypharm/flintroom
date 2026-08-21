@@ -13,6 +13,7 @@ import {
 import { createPanelsApi, type Catalogue } from '../../lib/api/panelsApi';
 import { createArchetypesApi, type MyArchetype } from '../../lib/api/archetypesApi';
 import { railFor } from '../../lib/panel/rail';
+import { nameFromDeck } from '../../lib/room/deckName';
 import { intendRoom } from '../../lib/room/intent';
 import { API_BASE_URL, auth } from '../../lib/auth';
 import { SignedOut } from '../../lib/auth/session';
@@ -141,7 +142,12 @@ export default function HomeScreen() {
     materials
       .read(sameDeck)
       .then((deck) => {
-        if (live) setMaterial(deck);
+        if (!live) return;
+        setMaterial(deck);
+        // Same rule on a re-run: a rehearsal nobody ever named, carrying a
+        // deck, gets the deck's name suggested. A lineage that already has one
+        // arrives with it in the field, so this leaves it alone.
+        setRehearsalName((named) => named || nameFromDeck(deck.filename) || '');
       })
       // Silently, and this is the one place that is right. A deck deleted from
       // Settings after the room that used it is ordinary, and the recovery is
@@ -298,6 +304,19 @@ export default function HomeScreen() {
       );
 
       setMaterial(attached);
+      // A name suggested from the deck, and only into an empty field.
+      //
+      // Optional fields get skipped, so without this most rehearsals stay
+      // headed by a date — the heading the name exists to replace. What makes
+      // it allowable is that it lands *here*, in an editable field before
+      // Start, rather than in a heading afterwards: it is accepted, edited or
+      // cleared, so nobody ends up with a label they cannot correct.
+      //
+      // The functional form is load-bearing. It reads what is on screen now,
+      // so a name somebody already typed is never overwritten by attaching a
+      // deck — which is the one way this could become the silent labelling it
+      // is careful not to be.
+      setRehearsalName((named) => named || nameFromDeck(attached.filename) || '');
       if (attached.state === 'extracting') watch(attached.id);
     } catch (error) {
       // Named plainly, and the deck row is left absent rather than shown in a

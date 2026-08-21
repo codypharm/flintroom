@@ -96,12 +96,36 @@ name is typed once per argument rather than once per rehearsal.
 The server never requires it on a re-run. Making the client send back a name it
 was just given is a round trip that exists only to let a client get it wrong.
 
-### Decision 7 — nothing is derived
+### Decision 7 — derived into the field, never into a heading
 
-An unnamed rehearsal is headed by when it started, never by a name inferred from
-the panel or the attached deck. **A label the presenter never chose is one they
-cannot correct**, and the deck's filename is not what anybody calls their
-argument. A date at least says only what is true.
+The first version of this rule was "nothing is derived", and it defeated its own
+purpose. Optional fields get skipped, so the common case was a rehearsal headed
+by "Started 11 August" — exactly the useless heading the name was built to
+replace.
+
+The distinction that matters is not *whether* a name is derived but **where it
+appears**. A label applied silently behind somebody's back is one they cannot
+correct. A suggestion sitting in the field on the setup screen, before Start, is
+one they accept, edit or clear.
+
+So: attaching a deck to a room whose name field is empty fills it with the
+deck's filename, tidied (`lib/room/deckName.ts`). Nothing is ever stored that
+was not on screen when the room opened, and **nothing is derived at render
+time** — an unnamed rehearsal is still headed by when it started, never by the
+panel or the deck.
+
+Two properties keep it honest:
+
+- **Only into an empty field.** The setter uses the functional form so it reads
+  what is on screen now; a name somebody typed is never overwritten by attaching
+  a deck. That is the one route by which this could become silent labelling.
+- **Tidied modestly.** The extension goes and separators become spaces. Version
+  noise — "v4", "FINAL", "(1)" — is deliberately left: "Q4 final" is a real
+  thing to call a rehearsal, and a cleverer rule quietly deletes words somebody
+  meant.
+
+`materials.filename` survives the source document, which `docs/ingestion.md`
+deletes once extraction succeeds, so this still works on a re-run months later.
 
 ### Decision 8 — user text that reaches no model
 
@@ -131,6 +155,32 @@ The attempts are drawn in order with the rung each was earned at, and what they
 add up to is the presenter's to read. Reading a trend out of three points,
 against a room whose difficulty moved underneath them, is exactly the false
 comfort this screen has refused since it was built.
+
+### Decision 9 — one comparison is allowed, and only one
+
+Refusing *every* comparison was the first version and it overcorrected. The
+difficulty argument forbids comparing rooms at **different** rungs; it says
+nothing against comparing two rooms at the **same** one, where the confounder is
+held constant. Refusing that satisfies the false-hope constraint by abandoning
+the question the architect asked twice — *"user needs to know if they are doing
+well in general and in presenting a particular thing."*
+
+So `lib/progress/rungs.ts` gathers a rehearsal's attempts by rung and reports
+only the rungs it ran at more than once: *"Standard: 4 of 7, then 6 of 7."*
+
+What bounds it:
+
+- **Within one rehearsal only.** Two rooms at Standard about different arguments
+  share a number and nothing else. Passing the whole history in would rebuild
+  the average across incomparable rooms.
+- **Tallies, never a delta.** Nothing subtracts, ranks, arrows or annotates.
+  Tests assert the absence of "better", "worse", "improv", arrows and per-cent.
+- **Rooms predating the ladder are excluded**, because a null rung is a
+  difficulty nobody recorded — folding those together as one shared level is the
+  forbidden comparison arriving through the back door.
+- **Rooms where nobody was asked anything are excluded.** No proportion, and
+  pairing a technical failure with a real attempt reads as somebody collapsing.
+- **Silent when there is nothing to say**, which is the common case early on.
 
 **The Library** leads a row with the name when there is one, demoting the date
 to sit beside the panel — what actually distinguishes two rooms is one line of
