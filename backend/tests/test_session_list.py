@@ -75,3 +75,80 @@ async def test_it_never_shows_somebody_else_their_rooms(db, sessions, funded_acc
     await sessions.start(user_id=funded_account.user_id)
 
     assert await SessionService(db).recent(user_id=uuid.uuid4()) == []
+
+
+async def test_a_listed_room_says_who_was_in_it(db, sessions, funded_account):
+    """#94, and the Library was making a false statement about somebody's history.
+
+    `recent()` populated `recording` and `rehearsal_name` and nothing else, so
+    every other field fell to its default — and `archetypes` defaults to the
+    empty list. Every row in the Library therefore read as a room nobody sat in,
+    against a database where all 62 of the architect's sessions had a full panel.
+
+    The single read has always been right, which is what made this invisible:
+    `_read` in the router assembles the same schema and does populate it. Two
+    paths, one shape, and only one of them filled it in.
+    """
+    session = await sessions.start(
+        user_id=funded_account.user_id,
+        archetypes=["technical_skeptic", "champion", "cfo"],
+    )
+    await db.commit()
+
+    (room,) = await SessionService(db).recent(user_id=funded_account.user_id)
+
+    # In seat order, because that is what "Run it again" re-seats from and
+    # `routing.choose` breaks a scoring tie on the panel's own index.
+    assert room.archetypes == ["technical_skeptic", "champion", "cfo"]
+
+
+async def test_a_listed_room_says_what_it_was_grounded_in(
+    db, sessions, ingestion, storage, funded_account
+):
+    """The same hole, one field over, and it costs more than it looks.
+
+    "Run it again" carries `material` from the Library row into the setup
+    screen. Empty, it re-runs a grounded rehearsal with no deck — a different
+    room than the one it names, and the panel loses the claims it was quoting.
+    """
+    from tests.materials import extracted
+
+    # Through the real path: a room refuses material that has not been read
+    # (`MaterialNotReady`), so a half-registered one could never be attached and
+    # would not exercise this at all.
+    material = await extracted(db, ingestion, storage, funded_account)
+    session = await sessions.start(
+        user_id=funded_account.user_id, material_ids=[material.id]
+    )
+    await db.commit()
+
+    (room,) = await SessionService(db).recent(user_id=funded_account.user_id)
+
+    assert room.material_ids == [material.id]
+
+
+async def test_the_list_and_the_single_read_agree_about_a_room(
+    db, client, bearer, sessions, funded_account
+):
+    """Two paths assembling one schema is how they drift, so this pins them.
+
+    The whole class of bug: `SessionRead` has defaults for every field the list
+    forgot, so forgetting one is silent — no error, no empty response, just a
+    plausible room with nobody in it.
+    """
+    session = await sessions.start(
+        user_id=funded_account.user_id, archetypes=["cfo", "champion"]
+    )
+    await db.commit()
+
+    listed = (
+        await client.get("/v1/sessions", headers=bearer(funded_account.user_id))
+    ).json()
+    alone = (
+        await client.get(
+            f"/v1/sessions/{session.id}", headers=bearer(funded_account.user_id)
+        )
+    ).json()
+
+    assert listed[0]["archetypes"] == alone["archetypes"] == ["cfo", "champion"]
+    assert listed[0]["material_ids"] == alone["material_ids"]

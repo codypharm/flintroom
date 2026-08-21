@@ -688,15 +688,84 @@ class SessionService:
         # above, and resolving it per row would be fifty round trips for a list.
         named = await names_of(self._db, user_id=user_id)
 
+        rooms = list(rows.scalars())
+        ours = [session.id for session in rooms]
+
+        # **#94: these were missing, and their absence was silent.** `SessionRead`
+        # defaults `archetypes` and `material_ids` to empty lists, so a list that
+        # simply did not fill them in returned a plausible room that nobody sat
+        # in and nothing grounded. Measured against the architect's dev database:
+        # 62 sessions, 157 `session_panelists` rows, every session seated — and
+        # every row in the Library reading as empty.
+        #
+        # It cost more than a wrong caption. "Run it again" re-seats from exactly
+        # these two fields, so a re-run of a grounded, hand-picked room was
+        # sending no panel and no deck, and the server filled the gap with the
+        # shipped default.
+        #
+        # Batched rather than per row. `_read` pays two queries for one session
+        # and says why that is the right trade there; the same shape here would
+        # be a hundred round trips for a list of fifty.
+        seated = await self._panels_of(ours)
+        grounded = await self._materials_of(ours)
+
         return [
             SessionRead.model_validate(session).model_copy(
                 update={
                     "recording": await self.recording(session_id=session.id),
                     "rehearsal_name": named.get(session.rehearsal),
+                    "archetypes": seated.get(session.id, []),
+                    "material_ids": grounded.get(session.id, []),
                 }
             )
-            for session in rows.scalars()
+            for session in rooms
         ]
+
+    async def _panels_of(
+        self, session_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, list[str]]:
+        """Who sat in each of these rooms, in seat order, in one query.
+
+        Seat order is not presentation. `SessionStart.archetypes` carries order
+        through rather than sorting it, `routing.choose` breaks a scoring tie on
+        the panel's own index, and "Run it again" re-seats from this list — so a
+        room rebuilt in a different order is a different room.
+        """
+        if not session_ids:
+            return {}
+
+        rows = await self._db.execute(
+            select(SessionPanelist.session_id, SessionPanelist.name)
+            .where(SessionPanelist.session_id.in_(session_ids))
+            .order_by(SessionPanelist.session_id, SessionPanelist.seat)
+        )
+
+        seated: dict[uuid.UUID, list[str]] = {}
+        for session_id, name in rows:
+            seated.setdefault(session_id, []).append(name)
+        return seated
+
+    async def _materials_of(
+        self, session_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, list[uuid.UUID]]:
+        """What each of these rooms was grounded in, in attachment order."""
+        if not session_ids:
+            return {}
+
+        rows = await self._db.execute(
+            select(SessionMaterial.session_id, SessionMaterial.material_id)
+            .where(SessionMaterial.session_id.in_(session_ids))
+            .order_by(
+                SessionMaterial.session_id,
+                SessionMaterial.attached_at,
+                SessionMaterial.material_id,
+            )
+        )
+
+        grounded: dict[uuid.UUID, list[uuid.UUID]] = {}
+        for session_id, material_id in rows:
+            grounded.setdefault(session_id, []).append(material_id)
+        return grounded
 
     async def rehearsal_name(self, *, session: Session) -> str | None:
         """What the lineage this room belongs to is called, or null.
