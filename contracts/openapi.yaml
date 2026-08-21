@@ -940,6 +940,34 @@ paths:
                 $ref: '#/components/schemas/BalanceRead'
       security:
       - HTTPBearer: []
+  /v1/plans:
+    get:
+      tags:
+      - billing
+      summary: Read Plans
+      description: 'What each rung gets you, and which one you are on.
+
+
+        Published so the buy screen can describe a plan before any store exists —
+
+        #95. Prices are not here and never will be: they belong to the store, in the
+
+        buyer''s currency, and a screen carrying its own would state one number and
+
+        charge another.'
+      operationId: billing_read_plans
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/PlanRead'
+                type: array
+                title: Response Billing Read Plans
+      security:
+      - HTTPBearer: []
   /v1/purchase-options:
     get:
       tags:
@@ -2086,6 +2114,72 @@ components:
         credential for a single object at a single size — short-lived by
 
         construction, and not the kind of thing to hand back on every GET.'
+    PlanRead:
+      properties:
+        name:
+          type: string
+          title: Name
+        title:
+          type: string
+          title: Title
+        minutes:
+          type: integer
+          title: Minutes
+        renews:
+          type: boolean
+          title: Renews
+        seats:
+          type: integer
+          title: Seats
+        retention_days:
+          type: integer
+          title: Retention Days
+        max_upload_mb:
+          type: integer
+          title: Max Upload Mb
+        may_author:
+          type: boolean
+          title: May Author
+        unmetered_coaching:
+          type: boolean
+          title: Unmetered Coaching
+          default: true
+        current:
+          type: boolean
+          title: Current
+          default: false
+      type: object
+      required:
+      - name
+      - title
+      - minutes
+      - renews
+      - seats
+      - retention_days
+      - max_upload_mb
+      - may_author
+      title: PlanRead
+      description: 'One rung, described by what it gets you — never by what it costs.
+
+
+        **The price is deliberately absent, and that is the whole seam.** What
+
+        somebody is charged is the store''s: in their currency, after whatever
+
+        regional adjustment applies, and changeable in a console without a release.
+
+        What they *get* is ours, and every field here already existed in `tiers.py`
+
+        before this schema did.
+
+
+        Published rather than shipped in the app, on the argument
+
+        `/v1/materials/limits` already made: *"this exists so the tier table has one
+
+        home rather than a second copy shipped in an app release."* A client holding
+
+        its own ladder can offer a plan we retired.'
     ProgressRead:
       properties:
         rooms:

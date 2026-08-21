@@ -12,7 +12,7 @@ from app.modules.billing.dependencies import (
     WebhookSecret,
 )
 from app.modules.billing.revenuecat import SIGNATURE_HEADER
-from app.modules.billing.schemas import BalanceRead, PurchaseOptions
+from app.modules.billing.schemas import BalanceRead, PlanRead, PurchaseOptions
 
 router = APIRouter(tags=["billing"])
 
@@ -29,6 +29,18 @@ async def read_balance(user_id: CurrentUser, ledger: LedgerServiceDep) -> Balanc
     return BalanceRead.model_validate(
         await ledger.ensure_current_period(user_id=user_id)
     )
+
+
+@router.get("/plans", response_model=list[PlanRead])
+async def read_plans(user_id: CurrentUser, ledger: LedgerServiceDep) -> list[PlanRead]:
+    """What each rung gets you, and which one you are on.
+
+    Published so the buy screen can describe a plan before any store exists —
+    #95. Prices are not here and never will be: they belong to the store, in the
+    buyer's currency, and a screen carrying its own would state one number and
+    charge another.
+    """
+    return await ledger.plans(user_id=user_id)
 
 
 @router.get("/purchase-options", response_model=PurchaseOptions)

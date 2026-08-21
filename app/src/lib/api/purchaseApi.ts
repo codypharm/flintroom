@@ -43,6 +43,7 @@ export interface PurchaseOptions {
 
 export interface PurchaseApi {
   options(): Promise<PurchaseOptions>;
+  plans(): Promise<Plan[]>;
 }
 
 export interface PurchaseApiOptions {
@@ -76,5 +77,80 @@ export function createPurchaseApi({
 
       return { upgradeFirst: body.upgrade_first, nextTier: body.next_tier ?? null };
     },
+
+    plans: async () => {
+      const response = await fetcher(`${baseUrl}/v1/plans`, {
+        headers: { Authorization: `Bearer ${await accessToken()}` },
+      });
+
+      if (response.status === 401) {
+        throw new SignedOut('refused by /v1/plans');
+      }
+      if (!response.ok) {
+        throw new Error(`/v1/plans failed with ${response.status}`);
+      }
+
+      return ((await response.json()) as PlanBody[]).map((plan) => ({
+        name: plan.name,
+        title: plan.title,
+        minutes: plan.minutes,
+        renews: plan.renews,
+        seats: plan.seats,
+        retentionDays: plan.retention_days,
+        maxUploadMb: plan.max_upload_mb,
+        mayAuthor: plan.may_author,
+        unmeteredCoaching: plan.unmetered_coaching,
+        current: plan.current,
+      }));
+    },
   };
+}
+
+interface PlanBody {
+  name: string;
+  title: string;
+  minutes: number;
+  renews: boolean;
+  seats: number;
+  retention_days: number;
+  max_upload_mb: number;
+  may_author: boolean;
+  unmetered_coaching: boolean;
+  current: boolean;
+}
+
+/**
+ * One rung, as what it gets you.
+ *
+ * **No price, and that is the seam #95 got wrong the first time.** The store
+ * owns what somebody is charged — in their currency, after regional adjustment,
+ * changeable in a console without a release. We own what they get, and every
+ * figure here already lived in `billing/tiers.py`.
+ *
+ * Read from the server rather than shipped in the app, on the argument the
+ * upload limits already won: the tier table has one home, and a client holding
+ * its own can offer a plan we retired.
+ */
+export interface Plan {
+  /** The tier key — `free`, `starter`, `pro`. */
+  name: string;
+  title: string;
+  /** Whole minutes of interrogation. */
+  minutes: number;
+  /**
+   * Whether those minutes come back each month.
+   *
+   * False for the free tier, whose fifteen are for life — and a card reading
+   * "15 minutes" beside "90 minutes a month" would be read as a smaller
+   * monthly allowance, which is a more generous plan than the one that exists.
+   */
+  renews: boolean;
+  seats: number;
+  retentionDays: number;
+  maxUploadMb: number;
+  mayAuthor: boolean;
+  /** Always true. §4.6 wants it on every card rather than in a footnote. */
+  unmeteredCoaching: boolean;
+  /** Whether the caller is on this plan. Nothing is marked for a tier off the ladder. */
+  current: boolean;
 }

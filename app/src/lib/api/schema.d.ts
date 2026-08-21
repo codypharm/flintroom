@@ -584,6 +584,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Plans
+         * @description What each rung gets you, and which one you are on.
+         *
+         *     Published so the buy screen can describe a plan before any store exists —
+         *     #95. Prices are not here and never will be: they belong to the store, in the
+         *     buyer's currency, and a screen carrying its own would state one number and
+         *     charge another.
+         */
+        get: operations["billing_read_plans"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/purchase-options": {
         parameters: {
             query?: never;
@@ -1277,6 +1302,49 @@ export interface components {
             thumbnail_url?: string | null;
             /** Upload Url */
             upload_url: string;
+        };
+        /**
+         * PlanRead
+         * @description One rung, described by what it gets you — never by what it costs.
+         *
+         *     **The price is deliberately absent, and that is the whole seam.** What
+         *     somebody is charged is the store's: in their currency, after whatever
+         *     regional adjustment applies, and changeable in a console without a release.
+         *     What they *get* is ours, and every field here already existed in `tiers.py`
+         *     before this schema did.
+         *
+         *     Published rather than shipped in the app, on the argument
+         *     `/v1/materials/limits` already made: *"this exists so the tier table has one
+         *     home rather than a second copy shipped in an app release."* A client holding
+         *     its own ladder can offer a plan we retired.
+         */
+        PlanRead: {
+            /** Name */
+            name: string;
+            /** Title */
+            title: string;
+            /** Minutes */
+            minutes: number;
+            /** Renews */
+            renews: boolean;
+            /** Seats */
+            seats: number;
+            /** Retention Days */
+            retention_days: number;
+            /** Max Upload Mb */
+            max_upload_mb: number;
+            /** May Author */
+            may_author: boolean;
+            /**
+             * Unmetered Coaching
+             * @default true
+             */
+            unmetered_coaching: boolean;
+            /**
+             * Current
+             * @default false
+             */
+            current: boolean;
         };
         /**
          * ProgressRead
@@ -2360,6 +2428,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BalanceRead"];
+                };
+            };
+        };
+    };
+    billing_read_plans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanRead"][];
                 };
             };
         };

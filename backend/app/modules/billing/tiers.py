@@ -311,3 +311,37 @@ RECORDING_RETENTION_DAYS: dict[str, int] = {
     "pro_annual": 365,
     "teams": 90,
 }
+
+
+#: What each rung is called on screen.
+#:
+#: Here rather than title-cased in the client, for the same reason every other
+#: figure on a plan card is: the tier table has one home. "Pro" is not
+#: `"pro".title()` by luck — the next rung added may not be.
+TIER_TITLE: dict[str, str] = {
+    "free": "Free",
+    "starter": "Starter",
+    "pro": "Pro",
+    "pro_annual": "Pro Annual",
+    "teams": "Teams",
+}
+
+
+def allowance_minutes(tier: str) -> int:
+    """Whole minutes of interrogation a tier holds.
+
+    The free tier is the exception the rest of this module keeps making: its
+    fifteen minutes are lifetime rather than monthly, so it is deliberately not
+    a key in `MONTHLY_ALLOWANCE_SECONDS` and has to be answered separately.
+    """
+    if tier == FREE_TIER:
+        return FREE_TIER_LIFETIME_SECONDS // 60
+    return MONTHLY_ALLOWANCE_SECONDS.get(tier, 0) // 60
+
+
+def renews(tier: str) -> bool:
+    """Whether those minutes come back each month.
+
+    False for free, and the distinction carries the whole meaning of that tier.
+    """
+    return tier != FREE_TIER

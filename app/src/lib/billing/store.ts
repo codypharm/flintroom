@@ -56,6 +56,19 @@ export interface Sellable {
    * or the screen cannot lay itself out.
    */
   kind: 'topup' | 'plan';
+
+  /**
+   * Which rung this sells, for a plan. Absent on a top-up.
+   *
+   * The join between what the store charges and what we grant. It cannot be
+   * inferred from `id`, because the product identifiers are the console's to
+   * name and neither store lets one be renamed once created — so the mapping is
+   * carried explicitly rather than guessed from a string.
+   *
+   * `/v1/plans` is the authority on what a rung *is*; this only says which one
+   * a given product buys.
+   */
+  tier?: string;
 }
 
 export interface Store {

@@ -5,7 +5,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MoreMinutes } from '../components/modules/MoreMinutes';
 import { createBalanceApi } from '../lib/api/balanceApi';
-import { createPurchaseApi, type PurchaseOptions } from '../lib/api/purchaseApi';
+import {
+  createPurchaseApi,
+  type Plan,
+  type PurchaseOptions,
+} from '../lib/api/purchaseApi';
 import { API_BASE_URL, auth } from '../lib/auth';
 import { useGateway } from '../lib/auth/gateway';
 import { SignedOut } from '../lib/auth/session';
@@ -47,6 +51,10 @@ export default function MoreMinutesRoute() {
   const [holding, setHolding] = useState<number | null>(null);
   const [options, setOptions] = useState<PurchaseOptions | null>(null);
   const [sells, setSells] = useState<Sellable[] | null>(null);
+  // Independent of the store, and that independence is the fix in #95: what
+  // a plan *is* comes from us, so a store that never answers must not blank
+  // the plans.
+  const [plans, setPlans] = useState<Plan[] | null>(null);
   const [state, setState] = useState<'idle' | 'buying' | 'waiting' | 'failed'>('idle');
 
   const gone = useCallback(
@@ -67,6 +75,10 @@ export default function MoreMinutesRoute() {
       balance
         .read()
         .then((held) => live && setHolding(held.minutes))
+        .catch(gone);
+      purchases
+        .plans()
+        .then((rungs) => live && setPlans(rungs))
         .catch(gone);
       purchases
         .options()
@@ -147,6 +159,7 @@ export default function MoreMinutesRoute() {
       <MoreMinutes
         holding={holding}
         options={options}
+        plans={plans}
         sells={sells}
         onBuy={(what) => void buy(what)}
         onRestore={() => void restore()}

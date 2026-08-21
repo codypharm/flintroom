@@ -15,12 +15,21 @@ from app.modules.billing.schemas import (
     Bucket,
     EntryReason,
     LedgerEntryRead,
+    PlanRead,
     PurchaseOptions,
 )
 from app.modules.billing.tiers import (
     FREE_TIER_LIFETIME_SECONDS,
+    MAX_PANEL_SIZE,
+    MAX_UPLOAD_BYTES,
     MONTHLY_ALLOWANCE_SECONDS,
+    RECORDING_RETENTION_DAYS,
+    TIER_TITLE,
+    UPGRADE_LADDER,
+    allowance_minutes,
+    may_author_archetypes,
     next_tier_above,
+    renews,
 )
 
 #: How far back §4.5's Credit-Toward-Upgrade Rule looks for a previous pack.
@@ -537,6 +546,38 @@ class LedgerService:
 
     async def balance(self, *, user_id: uuid.UUID) -> Balance:
         return self._balance_of(await self._load_account(user_id))
+
+    async def plans(self, *, user_id: uuid.UUID) -> list[PlanRead]:
+        """Every rung, described by what it gets rather than what it costs — #95.
+
+        `UPGRADE_LADDER` is the set on purpose. `pro_annual` is the same
+        capability on another billing period and `teams` has a *smaller* upload
+        cap than pro, so listing either as a rung would offer somebody less for
+        more.
+
+        One account read and no other query: everything else is a constant this
+        module already owns. The price is absent because it is the store's.
+        """
+        account = await self._load_account(user_id)
+
+        return [
+            PlanRead(
+                name=tier,
+                title=TIER_TITLE.get(tier, tier),
+                minutes=allowance_minutes(tier),
+                renews=renews(tier),
+                seats=MAX_PANEL_SIZE.get(tier, 0),
+                retention_days=RECORDING_RETENTION_DAYS.get(tier, 0),
+                # Whole megabytes. A byte count on a pricing card is a number
+                # somebody has to divide before it means anything.
+                max_upload_mb=MAX_UPLOAD_BYTES.get(tier, 0) // (1024 * 1024),
+                may_author=may_author_archetypes(tier),
+                # Nothing is marked for a tier off the ladder, which is true:
+                # none of the rungs listed is the plan they hold.
+                current=account.entitlement_tier == tier,
+            )
+            for tier in UPGRADE_LADDER
+        ]
 
     async def purchase_options(self, *, user_id: uuid.UUID) -> PurchaseOptions:
         """Which control the buy screen leads with — §4.5's Credit-Toward-Upgrade Rule.

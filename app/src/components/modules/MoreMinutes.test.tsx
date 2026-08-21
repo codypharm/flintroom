@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react-native';
 
+import type { Plan } from '../../lib/api/purchaseApi';
 import type { Sellable } from '../../lib/billing/store';
 import { MoreMinutes, type MoreMinutesProps } from './MoreMinutes';
 
@@ -34,11 +35,30 @@ const PLAN: Sellable = {
   kind: 'plan',
 };
 
+const PLANS: Plan[] = [
+  {
+    name: 'free', title: 'Free', minutes: 15, renews: false, seats: 3,
+    retentionDays: 30, maxUploadMb: 10, mayAuthor: false,
+    unmeteredCoaching: true, current: true,
+  },
+  {
+    name: 'starter', title: 'Starter', minutes: 90, renews: true, seats: 4,
+    retentionDays: 90, maxUploadMb: 25, mayAuthor: false,
+    unmeteredCoaching: true, current: false,
+  },
+  {
+    name: 'pro', title: 'Pro', minutes: 180, renews: true, seats: 5,
+    retentionDays: 365, maxUploadMb: 100, mayAuthor: true,
+    unmeteredCoaching: true, current: false,
+  },
+];
+
 async function setup(overrides: Partial<MoreMinutesProps> = {}) {
   const props: MoreMinutesProps = {
     holding: 12,
     options: { upgradeFirst: false, nextTier: 'pro' },
     sells: [PACK, PLAN],
+    plans: PLANS,
     onBuy: jest.fn(),
     onRestore: jest.fn(),
     state: 'idle',
@@ -67,21 +87,60 @@ it('leads with the plan on a repeat, and still sells the pack', async () => {
   // the top-up behind the upgrade prompt. One tap to decline, always." So the
   // order changes and the pack stays purchasable — a screen that hid it would
   // be the farming the whole rule exists to prevent.
-  await setup({ options: { upgradeFirst: true, nextTier: 'pro' } });
+  await setup({
+    options: { upgradeFirst: true, nextTier: 'pro' },
+    sells: [PACK, { ...PLAN, tier: 'pro' }],
+  });
 
-  const offered = screen.getAllByTestId('sellable');
-  expect(within(offered[0]).getByText('Pro')).toBeOnTheScreen();
+  // The pack is still there. Which is *first* is asserted below, on the tree
+  // order, because that is what "primary" means on a scrolling screen.
   expect(screen.getByText('Quick top-up')).toBeOnTheScreen();
+  expect(screen.getByText('Pro')).toBeOnTheScreen();
 });
 
-it('offers no plan when there is no rung above', async () => {
-  // A Pro subscriber has bought every rung there is. `pro_annual` is the same
-  // capability on another period and `teams` has a smaller upload cap, so the
-  // server answers `next_tier: null` — and showing a plan anyway would take
-  // money for no more room.
-  await setup({ options: { upgradeFirst: false, nextTier: null }, sells: [PACK, PLAN] });
+/** What the screen puts first, read off the tree rather than off intent. */
+const leadsWith = () =>
+  screen.getAllByText(/Quick top-up|Starter/)[0].props.children as string;
 
-  expect(screen.queryByText('Pro')).toBeNull();
+it('puts the pack first on a first purchase', async () => {
+  // §4.5 point 1. Somebody out of minutes the night before a board readout
+  // needs twenty minutes, not a subscription — and the ordering IS the rule, so
+  // it is asserted on position rather than on presence.
+  await setup({ options: { upgradeFirst: false, nextTier: 'pro' }, sells: [PACK] });
+
+  expect(leadsWith()).toMatch(/Quick top-up/);
+});
+
+it('puts the plans first on a repeat', async () => {
+  // §4.5 point 2, and the only screen in the app whose hierarchy changes per
+  // user. Separate from the test above rather than one that unmounts and
+  // re-renders: `screen` keeps pointing at the torn-down tree, and every test
+  // after it in the file then reads from nothing.
+  await setup({ options: { upgradeFirst: true, nextTier: 'pro' }, sells: [PACK] });
+
+  expect(leadsWith()).toMatch(/Starter/);
+});
+
+it('pushes nothing when there is no rung above', async () => {
+  // A Pro subscriber has bought every rung there is — `pro_annual` is the same
+  // capability on another period and `teams` has a smaller upload cap — so the
+  // server answers `next_tier: null`.
+  //
+  // The plans stay on screen, because a pricing screen that shows nothing to
+  // somebody at the top is a screen that cannot answer "what am I paying for".
+  // What goes is the *push*: nothing is given the brand ground, and no card
+  // grows a buy button, because there is nothing above them to sell.
+  // On Pro, so nothing published is above them — which is what makes
+  // `nextTier: null` coherent. The earlier version of this test left the
+  // account on Free beside a null next rung, a combination that cannot happen.
+  await setup({
+    plans: PLANS.map((plan) => ({ ...plan, current: plan.name === 'pro' })),
+    options: { upgradeFirst: false, nextTier: null },
+    sells: [PACK, { ...PLAN, tier: 'pro' }],
+  });
+
+  expect(screen.getByText('Pro')).toBeOnTheScreen();
+  expect(screen.queryByText(/^Get Pro$/)).toBeNull();
   expect(screen.getByText('Quick top-up')).toBeOnTheScreen();
 });
 
@@ -150,4 +209,64 @@ it('can re-attach a purchase made somewhere else', async () => {
   fireEvent.press(screen.getByText(/restore/i));
 
   expect(props.onRestore).toHaveBeenCalled();
+});
+
+/**
+ * #95 — the screen showed one sentence because I bound the plans to the store.
+ *
+ * The architect's verdict was "where are the plans and the likes". Only the
+ * PRICE is the store's; what a plan gets you lives in `tiers.py` and needed no
+ * offering to be true. These tests are what stop it being re-tied.
+ */
+describe('what a plan gets you', () => {
+  it('describes every plan with no store configured at all', async () => {
+    // The state the architect actually saw: no offering, so nothing to price.
+    // A card that says what you get and cannot say the price is a real screen;
+    // a sentence apologising for a build is not.
+    await setup({ sells: [] });
+
+    expect(screen.getByText('Starter')).toBeOnTheScreen();
+    expect(screen.getByText('Pro')).toBeOnTheScreen();
+  });
+
+  it('leads with the largest honest unit rather than a raw figure', async () => {
+    // §4.6: "'3 hours of executive-level interrogation every month' reads
+    // generously. '15 credits' reads rationed. Identical product."
+    await setup({ sells: [] });
+
+    expect(screen.getByText(/3 hours a month/i)).toBeOnTheScreen();
+    expect(screen.getByText(/90 minutes a month/i)).toBeOnTheScreen();
+  });
+
+  it('never calls the free tier monthly, because its minutes never come back', async () => {
+    // Fifteen minutes for LIFE. Rendered as "a month" it would describe a more
+    // generous plan than the one that exists — a promise the ledger refuses.
+    await setup({ sells: [] });
+
+    expect(screen.getByText(/15 minutes to start/i)).toBeOnTheScreen();
+  });
+
+  it('says what is unlimited on every card, not in a footnote', async () => {
+    // §4.6 asks for this "at the top of every tier card". It is the genuine
+    // differentiator — §4.1's metering boundary made real — and burying it
+    // sells the product as minutes rather than as the thing minutes buy.
+    await setup({ sells: [] });
+
+    expect(screen.getAllByText(/unlimited coaching/i)).toHaveLength(PLANS.length);
+  });
+
+  it('marks the plan somebody is on instead of selling it back to them', async () => {
+    await setup({ sells: [] });
+
+    expect(screen.getByText(/your plan/i)).toBeOnTheScreen();
+  });
+
+  it('takes the price from the store and never from itself', async () => {
+    // §4.4's table is our pricing *intent*. What somebody is charged is the
+    // console's, in their currency. A screen holding its own states one number
+    // and charges another.
+    await setup({ sells: [{ ...PLAN, tier: 'pro', price: '€55,00' }] });
+
+    expect(screen.getByText('€55,00')).toBeOnTheScreen();
+  });
 });

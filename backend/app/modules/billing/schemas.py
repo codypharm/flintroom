@@ -89,6 +89,72 @@ class BalanceRead(BaseModel):
     has_time_remaining: bool
 
 
+class PlanRead(BaseModel):
+    """One rung, described by what it gets you — never by what it costs.
+
+    **The price is deliberately absent, and that is the whole seam.** What
+    somebody is charged is the store's: in their currency, after whatever
+    regional adjustment applies, and changeable in a console without a release.
+    What they *get* is ours, and every field here already existed in `tiers.py`
+    before this schema did.
+
+    Published rather than shipped in the app, on the argument
+    `/v1/materials/limits` already made: *"this exists so the tier table has one
+    home rather than a second copy shipped in an app release."* A client holding
+    its own ladder can offer a plan we retired.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    #: The tier key — `free`, `starter`, `pro`. What `entitlement_tier` holds.
+    name: str
+
+    #: What to call it on screen.
+    title: str
+
+    #: Whole minutes of interrogation. §4.6 forbids a depleting counter and asks
+    #: for "the largest honest unit", so this is minutes and the client says
+    #: "3 hours" where that reads better — the figure stays exact either way.
+    minutes: int
+
+    #: Whether those minutes come back each month.
+    #:
+    #: **The free tier's do not**, and the difference is the whole of what that
+    #: tier is. A card reading "15 minutes" beside "90 minutes a month" would be
+    #: read as a smaller monthly allowance — a more generous plan than the one
+    #: that exists, and a promise the ledger would refuse to keep.
+    renews: bool
+
+    #: How many panelists may be seated.
+    seats: int
+
+    #: How long a saved room stays playable, per `docs/session-retention.md`.
+    retention_days: int
+
+    #: The largest file this tier may attach, in whole megabytes.
+    max_upload_mb: int
+
+    #: Whether this tier may write its own archetype (#65).
+    may_author: bool
+
+    #: Always true, and on every plan rather than stated once.
+    #:
+    #: §4.4: *"All tiers include unmetered debrief and sparring."* §4.6: *"Say
+    #: what is unlimited, prominently... at the top of every tier card, not in a
+    #: footnote."* A client that had to remember to add it is one that will
+    #: forget on a card.
+    unmetered_coaching: bool = True
+
+    #: Whether the caller is on this plan already.
+    #:
+    #: Answered here rather than left to the client to compare against a tier
+    #: string, because the client would then need its own map of what
+    #: `pro_annual` and `teams` fall onto — the second table this endpoint
+    #: exists to prevent. Nothing is marked for a tier off the ladder, which is
+    #: honest: none of the rungs listed is the plan they hold.
+    current: bool = False
+
+
 class PurchaseOptions(BaseModel):
     """Which control leads on the buy screen, and what there is to lead with.
 
