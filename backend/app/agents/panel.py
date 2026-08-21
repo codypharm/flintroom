@@ -136,6 +136,7 @@ async def interrogate(
     routed: Routed | None = None,
     disputes_spent: int = 0,
     pressure: Pressure = STANDARD_PRESSURE,
+    audience: str = "",
     thin_opening: bool = False,
 ) -> PanelTurn:
     """Answer one thing the user said, in one archetype's voice.
@@ -167,11 +168,18 @@ async def interrogate(
     and it defaults to the room that ships today so that every caller which has
     never heard of calibration gets exactly the room `scripts/rotation.py`
     measured.
+
+    `audience` is #66 — what the presenter wrote about the room they are
+    walking into. Stamped here with `pressure` and for the same reasons: it is
+    true of the whole room rather than of this moment, and it defaults to empty
+    so that every caller predating it gets the ungrounded-in-that-respect room
+    it already had. It reaches the composer fenced as data and is never spoken.
     """
     context = TurnContext(
         said=said,
         grounding=grounding or Grounding(),
         pressure=pressure,
+        audience=audience,
         # Only ever true on a room's first turn — #79. Stamped here with
         # `pressure` because this is where the context is built, and it stays
         # off `PanelModel` for the same reason calibration did: neither adapter

@@ -149,6 +149,30 @@ class TurnContext:
     #: `scripts/rotation.py` — gets exactly the room those figures describe.
     pressure: Pressure = STANDARD_PRESSURE
 
+    #: What the presenter said about the room they are walking into, or empty.
+    #:
+    #: #66, and `Product.md` §3.1's permitted substitute for the social-profile
+    #: scraping the project refused: *"the user may paste their own text
+    #: describing the audience ('my VP hates anything that adds headcount')"*.
+    #:
+    #: **Here rather than on `Grounding`, and the distinction is the feature.**
+    #: `Grounding.claims` are citable — they render under *"Their material
+    #: says:"* and a challenge is expected to trace back to one. This is not
+    #: citable and must never be quoted, so filing it beside claims would be an
+    #: invitation for some later caller to render it as one. It sits beside
+    #: `pressure` instead, which is the other room-constant fact the model is
+    #: shown: both are true for every turn of a room and neither is evidence.
+    #:
+    #: The Auditor never sees it. Its reference set is figures, every comparison
+    #: is ordinary code, and prose about a colleague is not a claim that can be
+    #: contradicted — a note admitted there could "disagree" with the
+    #: presenter's own speech and produce exactly the false accusation
+    #: `auditor.TOLERANCE` exists to prevent.
+    #:
+    #: Empty by default, which is the ordinary room. Somebody who did not fill
+    #: the box in gets the panel that shipped before this existed.
+    audience: str = ""
+
     #: Whether `said` is a prefix of a sentence still being spoken.
     #:
     #: Routing runs on the first partial so its ~0.77s hop overlaps the tail of

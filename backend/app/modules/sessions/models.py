@@ -242,6 +242,34 @@ class Session(Base):
     #: the person who typed it.
     rehearsal_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
+    #: What the presenter wrote about the room they are walking into, or null.
+    #:
+    #: #66, and `Product.md` §3.1's permitted substitute for the social-profile
+    #: scraping this project refused on right-of-publicity, ToS and GDPR
+    #: grounds. Self-supplied context about an audience, never anything fetched
+    #: about a named person.
+    #:
+    #: **User text, and unlike `rehearsal_name` above it *does* reach a model.**
+    #: Fenced as data first (`agents/fencing.py`), shown to the composer only,
+    #: never to the Auditor, and never spoken aloud. It is the one field on this
+    #: row that a prompt reads, which is why the cap is in `AUDIENCE_LIMIT`
+    #: rather than chosen here: the length is part of the fencing.
+    #:
+    #: **Never logged, and never copied into `audit_events`.** It is prose about
+    #: identifiable colleagues — "my VP", "the CFO who blocked this last time" —
+    #: which puts it in the class `CLAUDE.md` forbids logging. Audit rows are
+    #: append-only besides, so a name written into one cannot be taken out.
+    #:
+    #: On the room and never on the account or the lineage. Somebody may put the
+    #: same argument to their VP on Monday and the board on Friday; those are one
+    #: rehearsal and two audiences, and resolving this across a group would carry
+    #: Monday's note silently into Friday's room.
+    #:
+    #: Destroyed with the account: `sessions` is in `billing/deletion.PURGED`,
+    #: which is the second reason this is a column here rather than a table of
+    #: its own — a new table is a table somebody forgets to add there.
+    audience: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     @property
     def rehearsal(self) -> uuid.UUID:
         """The lineage, with the null-means-itself rule already applied.

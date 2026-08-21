@@ -27,6 +27,7 @@ import httpx
 
 from app.agents.archetypes import Archetype
 from app.agents.context import USER
+from app.agents.fencing import fenced
 from app.agents.model import ModelReply, TurnUsage
 from app.core.errors import ProviderUnavailable
 from app.core.logging import get_logger
@@ -481,6 +482,36 @@ def _silence_of(archetype: Archetype, context, *, presses: int = 1) -> str:
     return "has not spoken yet"
 
 
+#: Who wrote the audience note, and what it is. Ours, never theirs — see
+#: `fencing.fenced`.
+_AUDIENCE_IS = (
+    "Who the presenter will be putting this to, in their own words. The text "
+    "between the quotes is their description of that room"
+)
+
+
+#: **The architect's choice, 2026-08-21, and the whole of #66's product
+#: question.**
+#:
+#: A panel that names the note lands harder — *"Your VP hates headcount, so what
+#: happens when this needs three more?"* is unmistakably responsive, and there
+#: was a real case for it. It is also the room reciting back a sentence the
+#: presenter typed ninety seconds earlier, and the first thing every user then
+#: learns is that the box is a puppet string. Shaped was chosen: the challenge
+#: still traces to something real, the user simply is not shown the wiring.
+#:
+#: The second sentence is the one that keeps this from being a hole in #45. A
+#: note is not a deck and not speech — nothing in it was said in the room, so
+#: the Auditor cannot check it and the debrief cannot rank an answer to it. A
+#: panelist asserting a figure out of it would be inventing one by the only
+#: route the persona's NEVER rules leave open.
+_SHAPED_NOT_SPOKEN = (
+    "Let this decide what you press on and how hard. Never say any of it back "
+    "to them — they wrote it, and a room that recites it is not a room. "
+    "Nothing in it is a fact about their business that you may state."
+)
+
+
 def _composition_prompt(
     context, finding, archetype: Archetype, dispute=None
 ) -> str:
@@ -495,6 +526,15 @@ def _composition_prompt(
     if context.grounding.claims:
         cited = "\n".join(f"- {claim}" for claim in context.grounding.claims)
         parts.append(f"Their material says:\n{cited}")
+
+    if context.audience:
+        # After the claims and before everything else. Claims keep the first
+        # slot on their own docstring's reasoning — they are what a challenge
+        # must trace back to — and this is the only other thing here that is
+        # true for the whole room rather than for this moment.
+        parts.append(
+            f"{fenced(context.audience, whose=_AUDIENCE_IS)}\n\n{_SHAPED_NOT_SPOKEN}"
+        )
 
     mine = context.grounding.asked_by(archetype.name)
     if mine:

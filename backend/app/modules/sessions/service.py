@@ -153,6 +153,7 @@ class SessionService:
         archetypes: Sequence[str] = (),
         repeats: uuid.UUID | None = None,
         rehearsal_name: str | None = None,
+        audience: str | None = None,
     ) -> Session:
         """Open a session in `provisioning`, grounded in whatever it was handed.
 
@@ -246,6 +247,11 @@ class SessionService:
             # so naming a rehearsal on its fourth attempt names all four — and
             # nothing here has to update a row somebody else's request wrote.
             rehearsal_name=rehearsal_name,
+            # Stored verbatim and never logged. #66: it is the presenter's own
+            # prose about identifiable colleagues, and the composer is the only
+            # thing that ever reads it — fenced, and only after `build_room`
+            # hands it over.
+            audience=audience,
         )
         self._db.add(session)
         try:
@@ -450,6 +456,25 @@ class SessionService:
             .order_by(SessionMaterial.attached_at, SessionMaterial.material_id)
         )
         return list(rows)
+
+    async def audience(self, *, session_id: uuid.UUID) -> str:
+        """What the presenter said about the room they are facing, or "".
+
+        #66. Read at room build rather than carried from start, for the reason
+        `difficulty_of` is: this is the moment that decides the room somebody
+        actually gets, and it is where `session_id` is already in hand.
+
+        **Returns a string, never `None`.** The column is nullable because most
+        rooms have no note, but the composer branches on truthiness and every
+        caller downstream would otherwise have to remember the same `or ""`.
+        One conversion at the one crossing; a missed one further in would fence
+        the word None and hand it to a live room.
+        """
+        return (
+            await self._db.scalar(
+                select(Session.audience).where(Session.id == session_id)
+            )
+        ) or ""
 
     async def _within_daily_ceiling(self, user_id: uuid.UUID) -> None:
         """Refuse a room this account has already spent its day on.

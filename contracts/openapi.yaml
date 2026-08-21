@@ -2274,6 +2274,11 @@ components:
           - type: string
           - type: 'null'
           title: Rehearsal Name
+        audience:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Audience
         state:
           $ref: '#/components/schemas/SessionState'
         started_at:
@@ -2350,6 +2355,12 @@ components:
             maxLength: 80
           - type: 'null'
           title: Rehearsal Name
+        audience:
+          anyOf:
+          - type: string
+            maxLength: 400
+          - type: 'null'
+          title: Audience
         repeats:
           anyOf:
           - type: string
@@ -2393,6 +2404,11 @@ components:
           - type: string
           - type: 'null'
           title: Rehearsal Name
+        audience:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Audience
         state:
           $ref: '#/components/schemas/SessionState'
         started_at:

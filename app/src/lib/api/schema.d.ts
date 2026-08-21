@@ -1411,6 +1411,8 @@ export interface components {
             rehearsal_id: string;
             /** Rehearsal Name */
             rehearsal_name?: string | null;
+            /** Audience */
+            audience?: string | null;
             state: components["schemas"]["SessionState"];
             /**
              * Started At
@@ -1441,6 +1443,8 @@ export interface components {
             material_ids?: string[];
             /** Rehearsal Name */
             rehearsal_name?: string | null;
+            /** Audience */
+            audience?: string | null;
             /** Repeats */
             repeats?: string | null;
             /** Archetypes */
@@ -1474,6 +1478,8 @@ export interface components {
             rehearsal_id: string;
             /** Rehearsal Name */
             rehearsal_name?: string | null;
+            /** Audience */
+            audience?: string | null;
             state: components["schemas"]["SessionState"];
             /**
              * Started At

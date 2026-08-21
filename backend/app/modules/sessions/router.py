@@ -135,6 +135,7 @@ async def start_session(
         archetypes=body.archetypes if body else [],
         repeats=body.repeats if body else None,
         rehearsal_name=body.rehearsal_name if body else None,
+        audience=body.audience if body else None,
     )
     return SessionStarted(
         **(await _read(session, sessions)).model_dump(),

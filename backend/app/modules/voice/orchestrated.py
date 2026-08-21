@@ -106,6 +106,7 @@ class OrchestratedProvider:
         reader: ClaimReader | None = None,
         transcript: TranscriptStore | None = None,
         pressure: Pressure = STANDARD_PRESSURE,
+        audience: str = "",
     ) -> None:
         #: Who is seated, in seat order. Public because a room's roster is a
         #: fact about the room rather than an implementation detail of it — the
@@ -117,6 +118,16 @@ class OrchestratedProvider:
         #: room rather than an implementation detail, and it is what a caller
         #: checks to know which room it got.
         self.pressure = pressure
+        #: What the presenter said about the room they are walking into, or
+        #: empty. #66, and public on the same reasoning as `pressure` above: it
+        #: is a fact about the room rather than an implementation detail of it,
+        #: and a caller checking which room it got has no other way to see it.
+        #:
+        #: A `str` rather than `str | None`, converted once at `build_room`. The
+        #: composer branches on truthiness, and a nullable value here would put
+        #: that branch one missing `is not None` away from fencing the word
+        #: None and handing it to a live room.
+        self.audience = audience
         self._transcriber = transcriber
         self._model = model
         self._speaker = speaker
@@ -148,6 +159,7 @@ class OrchestratedProvider:
                 opener_speaker=self._opener_speaker,
                 grounding=self._grounding,
                 pressure=self.pressure,
+                audience=self.audience,
                 # A fresh one per stream, never shared. An `Auditor` accumulates
                 # every figure spoken in a session, so a reused one would open
                 # the next room already holding the last user's numbers — and
@@ -186,6 +198,7 @@ class OrchestratedChannel:
         auditor: Auditor | None = None,
         transcript: TranscriptStore | None = None,
         pressure: Pressure = STANDARD_PRESSURE,
+        audience: str = "",
         heartbeat_seconds: float = HEARTBEAT_SECONDS,
         floor: OpeningFloor | None = None,
         choose: Chooser | None = None,
@@ -196,6 +209,15 @@ class OrchestratedChannel:
         # room that ships today so the many tests that construct a channel
         # directly keep describing the room `scripts/rotation.py` measured.
         self._pressure = pressure
+        # Fixed for the room, like the claims below and unlike the transcript —
+        # #66, the presenter's own note about who they are facing. Stamped on
+        # every `TurnContext` alongside `pressure` for the same reason: both are
+        # true of the whole room, and a turn that saw a different one would be a
+        # turn from a different room.
+        #
+        # Empty by default so every channel constructed directly — the spikes,
+        # the older tests — keeps describing the room that shipped before this.
+        self._audience = audience
         # Optional, like the speaker and the auditor: a room still runs without
         # somewhere to file its words, and every test that is not about
         # persistence should not have to supply one. Production always does —
@@ -835,6 +857,7 @@ class OrchestratedChannel:
             said=said,
             grounding=Grounding(claims=self._claims, transcript=tuple(self._transcript)),
             pressure=self._pressure,
+            audience=self._audience,
             # This is the whole point of routing early, and until now the prompt
             # was never told. Selection here runs on a prefix of a sentence
             # still being spoken; the rule that presses an unanswered question
@@ -972,6 +995,7 @@ class OrchestratedChannel:
                             claims=self._claims, transcript=tuple(self._transcript)
                         ),
                         pressure=self._pressure,
+                        audience=self._audience,
                     ),
                 ),
                 "fallback",
@@ -1057,6 +1081,7 @@ class OrchestratedChannel:
                 claims=self._claims, transcript=tuple(self._transcript)
             ),
             pressure=self._pressure,
+            audience=self._audience,
             # Already decided, during the sentence that just finished. Without
             # one — an utterance that produced no partial, or a routing call the
             # final overtook — `interrogate` chooses here as it always has.

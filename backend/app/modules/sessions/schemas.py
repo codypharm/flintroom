@@ -166,6 +166,21 @@ MAX_REQUESTED_PANELISTS = 25
 #: this is not the field for one.
 REHEARSAL_NAME_LIMIT = 80
 
+#: How much a presenter may write about the room they are walking into.
+#:
+#: #66, and `Product.md` §3.1's permitted substitute for the profile scraping
+#: the project refused. The same figure as `panels.models.PERSONA_LIMIT`, for
+#: the same reason and deliberately not by coincidence: this is the second field
+#: a user's prose reaches a prompt through, and *"a paragraph describes
+#: somebody, and a page is room to argue with the instructions underneath it."*
+#: The cap is part of the fencing rather than a storage concern.
+#:
+#: It also draws the line against the other half of §3.1's sentence. A *"publicly
+#: published fund thesis"* does not fit in a paragraph, and it should not: a
+#: document goes through ingestion, where it becomes claims the Auditor can
+#: actually check. This box is for the room, not for a document.
+AUDIENCE_LIMIT = 400
+
 
 class SessionStart(BaseModel):
     """What a room may be configured with: its grounding, and who is in it.
@@ -205,6 +220,38 @@ class SessionStart(BaseModel):
         A lineage headed by a blank line reads as a rendering fault rather than
         as a room nobody named, and `"   " != None` is the kind of difference
         that only ever shows up on somebody's screen.
+        """
+        if given is None:
+            return None
+        return given.strip() or None
+
+    #: What the presenter says about the room they are walking into, or null.
+    #:
+    #: #66. `Product.md` §3.1 removed dynamic social-profile scraping and named
+    #: this in the same breath: *"the user may paste their own text describing
+    #: the audience ('my VP hates anything that adds headcount') ... as
+    #: free-text context. User-supplied, not app-scraped."*
+    #:
+    #: **The only field on this request whose text reaches a model.** Fenced as
+    #: data before it does (`agents/fencing.py`), never rendered as a claim, and
+    #: never repeated aloud — the panel is shaped by it and never says it back,
+    #: chosen by the architect 2026-08-21. See `agents/context.TurnContext`.
+    #:
+    #: Refused past the cap rather than truncated, on `rehearsal_name`'s own
+    #: reasoning: silently storing something other than what was typed is worse
+    #: than saying no — and here it would also mean silently discarding the half
+    #: of a sentence that changes what it means.
+    audience: str | None = Field(default=None, max_length=AUDIENCE_LIMIT)
+
+    @field_validator("audience")
+    @classmethod
+    def _described_or_not_at_all(cls, given: str | None) -> str | None:
+        """A box somebody tabbed through described nobody.
+
+        Absent rather than blank, so the composer's check is answering "did they
+        describe the room" rather than "is this string non-empty" — otherwise a
+        fence containing three spaces reaches a live prompt, which is an
+        instruction to consider nothing.
         """
         if given is None:
             return None
@@ -350,6 +397,22 @@ class SessionRead(BaseModel):
     #: User text. It is rendered back to whoever typed it and reaches no model
     #: — see `Session.rehearsal_name`.
     rehearsal_name: str | None = None
+
+    #: What the presenter said about the room they are facing, or null.
+    #:
+    #: **The room's own, never the lineage's** — the one place this deliberately
+    #: differs from `rehearsal_name` above. Somebody may rehearse one argument
+    #: for their VP on Monday and for the board on Friday: same lineage, two
+    #: rooms, two audiences. Resolving it across a group would put Monday's note
+    #: silently into Friday's room.
+    #:
+    #: Published so the setup screen can prefill it when "Run it again" repeats
+    #: a room — inherited where somebody can see it and change it, which is the
+    #: whole difference between helpful and wrong.
+    #:
+    #: User text, returned only to the account that wrote it. Unlike
+    #: `rehearsal_name` it *does* reach a model, fenced — see `SessionStart`.
+    audience: str | None = None
 
     state: SessionState
     started_at: datetime

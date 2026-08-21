@@ -76,6 +76,12 @@ async def build_room(
     panel = await sessions.panel(session_id=session_id)
     materials = await sessions.materials(session_id=session_id)
 
+    # #66. Read here for the same reason the rung is: this is the moment a
+    # session becomes a room. Never logged below — it is the presenter's own
+    # prose about identifiable colleagues, which `CLAUDE.md` puts in the class
+    # that may not reach a log line.
+    audience = await sessions.audience(session_id=session_id)
+
     grounding = await session_grounding(
         db, user_id=user_id, material_ids=materials
     )
@@ -112,6 +118,10 @@ async def build_room(
         # explained from one line rather than by re-deriving the ladder.
         presses=pressure.presses,
         disputes=pressure.disputes,
+        # Whether, never what. The note is the presenter's own words about
+        # named colleagues; that a room has one is worth being able to see when
+        # a transcript surprises somebody, and the words themselves are not.
+        described=bool(audience),
     )
 
     return OrchestratedProvider(
@@ -123,6 +133,7 @@ async def build_room(
         grounding=grounding,
         reader=reader,
         pressure=pressure,
+        audience=audience,
         # Built here because this is the only place that knows *which* session a
         # room is, and the store binds that at construction rather than taking it
         # per line — the provenance rule `CLAUDE.md` sets for `LedgerService`.
