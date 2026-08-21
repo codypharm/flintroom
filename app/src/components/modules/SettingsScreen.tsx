@@ -36,8 +36,6 @@ export interface Holdings {
   /** When the earliest-expiring room stops being playable. */
   oldestExpiry: Date | null;
   materials: number;
-  recordsRooms: boolean;
-  retentionDays: number;
   /**
    * Whole minutes of interrogation available, or null when that is not known.
    *
@@ -50,6 +48,24 @@ export interface Holdings {
   minutesRemaining: number | null;
 }
 
+/**
+ * Whether rooms are being recorded, and for how long they are kept.
+ *
+ * **Its own value rather than a field on `Holdings`, and #92 is why.** The three
+ * reads behind this screen fail independently, and this one is a control while
+ * the rest are counts. A 502 on `/v1/materials` used to take the recording
+ * switch down with it even though `/v1/preferences/recording` had answered —
+ * removing a privacy control `docs/privacy-policy.md` promises by name, over an
+ * unrelated request, with its own answer sitting in memory.
+ *
+ * The precedent is inside `Holdings` already: `minutesRemaining` is nullable
+ * separately "because it arrives separately". So is this.
+ */
+export interface Recording {
+  recordsRooms: boolean;
+  retentionDays: number;
+}
+
 export interface SettingsScreenProps {
   /**
    * What the account actually holds, or null when that is not known.
@@ -60,6 +76,14 @@ export interface SettingsScreenProps {
    * A zero is a claim, and the claim it makes is the reassuring one.
    */
   holdings: Holdings | null;
+  /**
+   * The recording preference, or null when that read is what failed.
+   *
+   * Null draws no switch at all. A switch rendered from nothing has to pick a
+   * position, and either position is a claim about whether rooms are being
+   * recorded — absent is the only honest state.
+   */
+  recording: Recording | null;
   /** Whether the answer is still in flight, as opposed to having failed. */
   reading?: boolean;
   /** Offered only when the read failed and the route can make another. */
@@ -121,10 +145,17 @@ function on(date: Date): string {
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
 }
 
-function rooms({ rooms, oldestExpiry, recordsRooms, retentionDays }: Holdings): string {
+function rooms(
+  { rooms, oldestExpiry }: Holdings,
+  recording: Recording | null,
+): string {
+  // Nothing about saving when the preference is what failed to read. Both
+  // "they are kept" and "not being saved" are claims, and #92's whole point is
+  // that a failed read must not be answered with a guess.
   if (rooms === 0) {
-    return recordsRooms
-      ? `No rooms saved yet. They are kept for ${retentionDays} days.`
+    if (recording === null) return 'No rooms saved yet.';
+    return recording.recordsRooms
+      ? `No rooms saved yet. They are kept for ${recording.retentionDays} days.`
       : 'No rooms saved. New rooms are not being saved.';
   }
 
@@ -134,13 +165,47 @@ function rooms({ rooms, oldestExpiry, recordsRooms, retentionDays }: Holdings): 
   // Both facts at once when saving is off: the rooms already held stay, because
   // they were made under a disclosure the person accepted. Hiding them would
   // imply the switch had deleted them.
-  return recordsRooms
-    ? `${held}${until}.`
-    : `${held}${until}. New rooms are not being saved.`;
+  if (recording === null || recording.recordsRooms) return `${held}${until}.`;
+  return `${held}${until}. New rooms are not being saved.`;
+}
+
+/**
+ * The switch that turns saving off, drawn wherever the preference is known.
+ *
+ * #92: it used to live inside the branch that required all three reads, so a
+ * 502 on `/v1/materials` removed a control `docs/privacy-policy.md` promises by
+ * name — "Stop rooms being recorded. A switch in Settings." — while its own
+ * answer sat in memory.
+ *
+ * Returns nothing when the preference is unknown. A switch has to pick a
+ * position, and either position is a claim about whether rooms are being
+ * recorded; absent is the only honest state.
+ */
+function SaveRooms({
+  recording,
+  writing,
+  onRecordingChange,
+}: {
+  recording: Recording | null;
+  writing: boolean;
+  onRecordingChange: (records: boolean) => void;
+}) {
+  if (recording === null) return null;
+
+  return (
+    <Switch
+      accessibilityLabel="Save rooms"
+      value={recording.recordsRooms}
+      disabled={writing}
+      onValueChange={onRecordingChange}
+      trackColor={{ true: color.primary, false: color.hairline }}
+    />
+  );
 }
 
 export function SettingsScreen({
   holdings,
+  recording,
   reading = false,
   onRetry,
   writing = false,
@@ -188,6 +253,35 @@ export function SettingsScreen({
           </View>
         </View>
 
+        {/*
+          #92. The counts failed; this read did not, and it is a control rather
+          than a count. Drawn here so an unrelated 502 on `/v1/materials` cannot
+          remove a switch `docs/privacy-policy.md` promises by name — "Stop
+          rooms being recorded. A switch in Settings."
+
+          `SaveRooms` draws nothing when the preference is itself what failed,
+          so this section is absent rather than guessed at in that case.
+        */}
+        {recording !== null && (
+          <View style={styles.group}>
+            <View style={styles.row}>
+              <View style={styles.rowText}>
+                <Text style={styles.rowTitle}>Rooms</Text>
+                <Text style={styles.rowDetail}>
+                  {recording.recordsRooms
+                    ? `New rooms are saved, and kept for ${recording.retentionDays} days.`
+                    : 'New rooms are not being saved.'}
+                </Text>
+              </View>
+              <SaveRooms
+                recording={recording}
+                writing={writing}
+                onRecordingChange={onRecordingChange}
+              />
+            </View>
+          </View>
+        )}
+
         <Leaving onSignOut={onSignOut} onDeleteAccount={onDeleteAccount} />
       </ScrollView>
     );
@@ -203,7 +297,7 @@ export function SettingsScreen({
         <View style={styles.row}>
           <View style={styles.rowText}>
             <Text style={styles.rowTitle}>Rooms</Text>
-            <Text style={styles.rowDetail}>{rooms(holdings)}</Text>
+            <Text style={styles.rowDetail}>{rooms(holdings, recording)}</Text>
           </View>
           {/*
             The control sits on the thing it governs. In a Privacy section this
@@ -211,12 +305,10 @@ export function SettingsScreen({
             somewhere else, and the person would have to hold both in their head
             to know what turning it off does.
           */}
-          <Switch
-            accessibilityLabel="Save rooms"
-            value={holdings.recordsRooms}
-            disabled={writing}
-            onValueChange={onRecordingChange}
-            trackColor={{ true: color.primary, false: color.hairline }}
+          <SaveRooms
+            recording={recording}
+            writing={writing}
+            onRecordingChange={onRecordingChange}
           />
         </View>
 

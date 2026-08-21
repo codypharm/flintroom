@@ -90,6 +90,9 @@ export default function SettingsRoute() {
   const held = useHeld();
 
   const [inventory, setInventory] = useState<Inventory | null>(null);
+  // Beside the counts rather than inside them — #92. It arrives from its own
+  // request and fails on its own, and it is a control rather than a figure.
+  const [saving, setSaving] = useState<Recording | null>(null);
   const [reading, setReading] = useState(true);
   const [attempt, setAttempt] = useState(0);
   const [writing, setWriting] = useState(false);
@@ -105,34 +108,48 @@ export default function SettingsRoute() {
       let live = true;
       setReading(true);
 
-      // Together rather than in sequence: three independent reads, and one
-      // slow one should not hold the other two off the screen behind a spinner
-      // that is waiting on something else.
-      Promise.all([sessions.list(), materials.list(), preferences.read()])
-        .then(([rooms, attached, recording]) => {
+      // The gate decides where a signed-out person goes. A `replace` here
+      // would be a second opinion about the same thing.
+      const gone = (error: unknown) => {
+        if (error instanceof SignedOut) recheck();
+      };
+
+      // **Two reads, not one gathered promise — #92.** These fail
+      // independently and `Promise.all` rejects on the first rejection, so a
+      // 502 on `/v1/materials` used to discard a `/v1/preferences/recording`
+      // that had answered 200. What that removed was the switch which turns
+      // saving off, a control `docs/privacy-policy.md` promises by name.
+      //
+      // The counts stay all-or-nothing, and that half of the old reasoning is
+      // kept: this screen's job is to state what is held, and a number smaller
+      // than the truth is the worst way to be wrong here. What changed is that
+      // an unrelated failure no longer takes a *control* down with the counts.
+      Promise.all([sessions.list(), materials.list()])
+        .then(([rooms, attached]) => {
           if (!live) return;
-          setInventory({
-            ...saved(rooms),
-            materials: attached.length,
-            recordsRooms: recording.recordsRooms,
-            retentionDays: recording.retentionDays,
-          });
-          setReading(false);
+          setInventory({ ...saved(rooms), materials: attached.length });
         })
         .catch((error) => {
           if (!live) return;
-          if (error instanceof SignedOut) {
-            // The gate decides where a signed-out person goes. A `replace`
-            // here would be a second opinion about the same thing.
-            recheck();
-            return;
-          }
-          // Left null, which the screen states rather than draws as an empty
-          // account. Partial data is deliberately not shown: a screen that
-          // rendered three of four rows and quietly dropped the fourth would be
-          // understating what we hold, in the one place that must not.
+          gone(error);
+          // Stated by the screen rather than drawn as an empty account. Partial
+          // counts are still not shown: rendering three of four rows and
+          // quietly dropping the fourth would understate what we hold.
           setInventory(null);
-          setReading(false);
+        })
+        .finally(() => {
+          if (live) setReading(false);
+        });
+
+      preferences
+        .read()
+        .then((now) => live && setSaving(now))
+        .catch((error) => {
+          if (!live) return;
+          gone(error);
+          // Null draws no switch. A switch has to pick a position and either
+          // position is a claim about whether rooms are being recorded.
+          setSaving(null);
         });
 
       return () => {
@@ -159,17 +176,11 @@ export default function SettingsRoute() {
 
       void preferences
         .setRecordsRooms(records)
-        .then((now: Recording) => {
-          setInventory((was) =>
-            was === null
-              ? was
-              : {
-                  ...was,
-                  recordsRooms: now.recordsRooms,
-                  retentionDays: now.retentionDays,
-                }
-          );
-        })
+        // Straight onto the preference. It used to have to reach inside the
+        // inventory, which meant a successful write was silently dropped
+        // whenever the counts had failed to read — the switch would move on
+        // the server and not on the screen.
+        .then((now: Recording) => setSaving(now))
         .catch((error) => {
           if (error instanceof SignedOut) {
             recheck();
@@ -201,6 +212,7 @@ export default function SettingsRoute() {
         reading={reading}
         writing={writing}
         onRetry={() => setAttempt((made) => made + 1)}
+        recording={saving}
         onRecordingChange={setRecording}
         onOpenMaterial={() => router.push('/material')}
         onGetMore={() => router.push('/minutes')}

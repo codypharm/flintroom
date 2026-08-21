@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 
-import { SettingsScreen, type Holdings } from './SettingsScreen';
+import { SettingsScreen, type Holdings, type Recording } from './SettingsScreen';
 
 /**
  * Settings, as the inventory of what Flintroom holds.
@@ -16,15 +16,24 @@ const NOTHING: Holdings = {
   rooms: 0,
   oldestExpiry: null,
   materials: 0,
-  recordsRooms: true,
-  retentionDays: 30,
   minutesRemaining: 15,
 };
 
-async function show(holdings: Partial<Holdings> = {}, props = {}) {
+/**
+ * The recording preference, which arrives from its own request and so is its
+ * own prop since #92 — a failed `/v1/materials` must not take a control with it.
+ */
+const SAVING: Recording = { recordsRooms: true, retentionDays: 30 };
+
+async function show(
+  holdings: Partial<Holdings> = {},
+  props = {},
+  recording: Recording | null = SAVING,
+) {
   await render(
     <SettingsScreen
       holdings={{ ...NOTHING, ...holdings }}
+      recording={recording}
       onRecordingChange={jest.fn()}
       onDeleteAccount={jest.fn()}
       onSignOut={jest.fn()}
@@ -76,7 +85,7 @@ it('puts the switch that stops recording on the rooms it governs', async () => {
 });
 
 it('says new rooms will not be saved when recording is off', async () => {
-  await show({ recordsRooms: false });
+  await show({}, {}, { ...SAVING, recordsRooms: false });
 
   expect(screen.getByText(/not being saved/i)).toBeOnTheScreen();
 });
@@ -87,7 +96,7 @@ it('still lists rooms already held when recording is off', async () => {
    * they were made under a disclosure the person accepted. Hiding them here
    * would imply otherwise.
    */
-  await show({ recordsRooms: false, rooms: 3 });
+  await show({ rooms: 3 }, {}, { ...SAVING, recordsRooms: false });
 
   expect(screen.getByText(/3 rooms/i)).toBeOnTheScreen();
 });
@@ -146,6 +155,10 @@ describe('before the account has been read, and when it cannot be', () => {
     await render(
       <SettingsScreen
         holdings={null}
+        // Null by default, because this block is about a screen that has no
+        // answers yet or could not get them — and the preference is one of the
+        // answers. A test that wants it known passes it through `props`.
+        recording={null}
         onRecordingChange={jest.fn()}
         onDeleteAccount={jest.fn()}
         onSignOut={jest.fn()}
@@ -234,7 +247,7 @@ it('will not move the switch until the server has agreed', async () => {
    * greyed control is the feedback; the position stays a fact about the
    * account rather than a guess about it.
    */
-  await show({ recordsRooms: true }, { writing: true });
+  await show({}, { writing: true }, { ...SAVING, recordsRooms: true });
 
   const control = screen.getByRole('switch');
 
@@ -269,4 +282,65 @@ it('offers the way in even with nothing attached', async () => {
   await userEvent.press(screen.getByLabelText('Attached material'));
 
   expect(onOpenMaterial).toHaveBeenCalledTimes(1);
+});
+
+/**
+ * #92 — one read failing must not take the others down with it.
+ *
+ * The route gathered three independent calls with `Promise.all`, so a 502 on
+ * `/v1/materials` discarded a `/v1/preferences/recording` that had answered 200.
+ */
+describe('when one read failed and another did not', () => {
+  it('still offers the switch that turns recording off', async () => {
+    // `docs/privacy-policy.md` promises it in as many words — "Stop rooms being
+    // recorded. A switch in Settings." A control the privacy policy names must
+    // not disappear because an unrelated request timed out, and its own answer
+    // is sitting in memory.
+    await render(
+      <SettingsScreen
+        holdings={null}
+        recording={{ recordsRooms: true, retentionDays: 365 }}
+        onRecordingChange={jest.fn()}
+        onDeleteAccount={jest.fn()}
+        onSignOut={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('switch')).toBeOnTheScreen();
+  });
+
+  it('says the counts are unknown rather than dropping them quietly', async () => {
+    // The all-or-nothing this replaces was deliberate: "a screen that rendered
+    // three of four rows and quietly dropped the fourth would be understating
+    // what we hold, in the one place that must not." The load-bearing word is
+    // *quietly* — a section that says it could not read understates nothing.
+    await render(
+      <SettingsScreen
+        holdings={null}
+        recording={{ recordsRooms: true, retentionDays: 365 }}
+        onRecordingChange={jest.fn()}
+        onDeleteAccount={jest.fn()}
+        onSignOut={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/could not read/i)).toBeOnTheScreen();
+  });
+
+  it('shows no switch when the preference itself is what failed', async () => {
+    // A switch drawn from nothing would have to pick a position, and either
+    // position is a claim about whether rooms are being recorded. Absent is the
+    // only honest state.
+    await render(
+      <SettingsScreen
+        holdings={null}
+        recording={null}
+        onRecordingChange={jest.fn()}
+        onDeleteAccount={jest.fn()}
+        onSignOut={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('switch')).toBeNull();
+  });
 });
