@@ -40,10 +40,16 @@ FREE_TIER_LIFETIME_SECONDS = 15 * 60
 #: and a real user may spend all of them the day before a board meeting, so its
 #: ceiling has to sit above that with room to spare.
 #:
-#: These figures are the agent's proposal and are **pending the architect's
-#: sign-off** — they are cost policy rather than pricing, but they decide when
-#: a paying customer is turned away, which is a product moment. Raising one is
-#: a one-line change.
+#: These figures are the agent's proposal, and the architect deferred reviewing
+#: them until the billing flow (#32) is built — 2026-08-21. That is the right
+#: order: a ceiling decides when a *paying* customer is turned away, and until
+#: RevenueCat is wired there are no paying customers to be wrong about. The
+#: numbers below are sized to be safe in the meantime rather than to be right
+#: at launch, which is the opposite trade to the one worth making later.
+#:
+#: Reviewed against real tiers, they should also be checked against an invoice:
+#: `voice/rates.py` prices a room from published rates, so a ceiling in dollars
+#: is only as accurate as those, and #14 is what replaces them.
 DAILY_SPEND_CEILING_USD: dict[str, Decimal] = {
     "free": Decimal("1.00"),
     "starter": Decimal("8.00"),
