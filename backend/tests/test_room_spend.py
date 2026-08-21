@@ -15,6 +15,8 @@ would be lost for exactly the rooms where cost and revenue diverge most.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 from sqlalchemy import select
 
@@ -118,3 +120,68 @@ async def test_settlement_completes_a_row_the_turns_already_started(
     assert cost.interrogation_seconds >= 60
     assert cost.tier == "free"
 
+
+
+async def test_a_turn_prices_itself(db, funded_account):
+    """`computed_cost_usd` has been declared since Phase 2 and null on every row.
+
+    Open Risk #4 says every margin in §4.4 rests on an unverified $0.12/min that
+    nothing in the system could contradict — and it could not, because the one
+    column that would have contradicted it was never written. The rates are
+    published rather than invoiced (#14 is the invoice), which is enough for the
+    daily ceiling this unblocks and not yet enough to move a price.
+    """
+    session = await SessionService(db).start(user_id=funded_account.user_id)
+
+    await SpendRecorder(db).record(
+        session_id=session.id,
+        stt_seconds=50,
+        llm_input_tokens=2_495,
+        llm_output_tokens=80,
+        tts_characters=371,
+    )
+
+    cost = await _cost(db, session.id)
+    # One measured interrogation minute, which `docs/voice-cost.md` puts at
+    # ~$0.046 across 17 real rooms.
+    assert cost.computed_cost_usd is not None
+    assert Decimal("0.044") < cost.computed_cost_usd < Decimal("0.048")
+
+
+async def test_the_price_accumulates_with_the_turns(db, funded_account):
+    """Added, never recomputed-and-replaced.
+
+    Cost is linear in usage, so adding each turn's price gives the same answer
+    as pricing the total — and it keeps the addition inside the statement, which
+    is what stops two writers reading the same total and each adding to it.
+    """
+    session = await SessionService(db).start(user_id=funded_account.user_id)
+    recorder = SpendRecorder(db)
+
+    await recorder.record(session_id=session.id, tts_characters=371)
+    first = (await _cost(db, session.id)).computed_cost_usd
+    await recorder.record(session_id=session.id, tts_characters=371)
+
+    cost = await _cost(db, session.id)
+    assert cost.computed_cost_usd == first * 2
+
+
+async def test_a_room_that_only_opened_its_mouth_is_not_free(db, funded_account):
+    """The correction #73 exists to make.
+
+    `docs/voice-cost.md` priced a room abandoned under one tick at $0.0016 with
+    "panel speech: none — nobody spoke". True when the presenter held the floor
+    in silence; #79 gave the room a spoken opener that fires before anything is
+    transcribed, and the doc named that exact reopen condition.
+
+    So the cheapest room in the product is several times cheaper than a real one
+    and several times more expensive than the doc records.
+    """
+    session = await SessionService(db).start(user_id=funded_account.user_id)
+
+    await SpendRecorder(db).record(
+        session_id=session.id, stt_seconds=15, tts_characters=35
+    )
+
+    cost = await _cost(db, session.id)
+    assert cost.computed_cost_usd > Decimal("0.004")

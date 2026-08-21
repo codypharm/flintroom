@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +31,7 @@ from app.core.logging import get_logger
 from app.modules.billing.models import Account
 from app.modules.sessions.models import Session
 from app.modules.voice.costs import SessionCost
+from app.modules.voice.rates import Usage, cost_usd
 
 log = get_logger(__name__, tag="voice")
 
@@ -82,6 +83,24 @@ class SpendRecorder:
             "llm_input_tokens": llm_input_tokens,
             "llm_output_tokens": llm_output_tokens,
             "tts_characters_synthesized": tts_characters,
+            # Priced here rather than at settlement, and **added rather than
+            # recomputed**. Cost is linear in usage, so the sum of each turn's
+            # price is the price of the sum — which keeps the addition inside
+            # the statement, where two writers cannot both read the same total
+            # and each add to it.
+            #
+            # This column has been declared since Phase 2 and written by
+            # nothing, which is why Open Risk #4's $0.12/min could not be
+            # contradicted by anything in the system: the one figure that would
+            # have contradicted it was null on every row.
+            "computed_cost_usd": cost_usd(
+                Usage(
+                    stt_seconds=stt_seconds,
+                    tts_characters=tts_characters,
+                    llm_input_tokens=llm_input_tokens,
+                    llm_output_tokens=llm_output_tokens,
+                )
+            ),
         }
         statement = insert(SessionCost).values(
             session_id=session_id,
@@ -97,7 +116,11 @@ class SpendRecorder:
             statement.on_conflict_do_update(
                 index_elements=["session_id"],
                 set_={
-                    column: getattr(SessionCost, column) + value
+                    # `coalesce` because the price column is nullable and every
+                    # row written before this shipped has a null in it. Without
+                    # it, `null + value` is null and the first turn of an
+                    # upgraded room would erase its own price.
+                    column: func.coalesce(getattr(SessionCost, column), 0) + value
                     for column, value in totals.items()
                 },
             )
