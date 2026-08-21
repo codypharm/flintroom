@@ -36,16 +36,6 @@ export interface Holdings {
   /** When the earliest-expiring room stops being playable. */
   oldestExpiry: Date | null;
   materials: number;
-  /**
-   * Whole minutes of interrogation available, or null when that is not known.
-   *
-   * Nullable separately from the rest because it arrives separately: the app
-   * bar owns the balance read for all four tabs, and it swallows its own
-   * failures rather than drawing a refusal across every screen. So this row can
-   * be unknown while the inventory beside it is fine, and a `0` written in that
-   * gap would tell somebody they have run out.
-   */
-  minutesRemaining: number | null;
 }
 
 /**
@@ -84,6 +74,22 @@ export interface SettingsScreenProps {
    * recorded — absent is the only honest state.
    */
   recording: Recording | null;
+  /**
+   * Whole minutes of interrogation available, or null when that is not known.
+   *
+   * **Its own prop rather than a field on `Holdings`, and it had to become one.**
+   * It arrives from a different request — the app bar owns the balance read for
+   * all four tabs — so it survives a failure of the counts, and while it lived
+   * inside `Holdings` a 502 on `/v1/materials` hid a figure that was visible in
+   * the header one row above.
+   *
+   * That also took away the only route to the buy screen for anybody who is not
+   * out of minutes, which is the other half of #92 and was left behind when the
+   * recording switch was lifted out.
+   *
+   * A `0` written into the gap would tell somebody they have run out.
+   */
+  minutesRemaining?: number | null;
   /** Whether the answer is still in flight, as opposed to having failed. */
   reading?: boolean;
   /** Offered only when the read failed and the route can make another. */
@@ -206,6 +212,7 @@ function SaveRooms({
 export function SettingsScreen({
   holdings,
   recording,
+  minutesRemaining = null,
   reading = false,
   onRetry,
   writing = false,
@@ -282,6 +289,12 @@ export function SettingsScreen({
           </View>
         )}
 
+        <TimeUnderFire
+          minutesRemaining={minutesRemaining}
+          reading={reading}
+          onGetMore={onGetMore}
+        />
+
         <Leaving onSignOut={onSignOut} onDeleteAccount={onDeleteAccount} />
       </ScrollView>
     );
@@ -356,6 +369,55 @@ export function SettingsScreen({
         </Pressable>
       </View>
 
+      <TimeUnderFire
+        minutesRemaining={minutesRemaining}
+        reading={reading}
+        onGetMore={onGetMore}
+      />
+
+      <Leaving onSignOut={onSignOut} onDeleteAccount={onDeleteAccount} />
+    </ScrollView>
+  );
+}
+
+/**
+ * The two ways out, drawn once and rendered under every state of the screen.
+ *
+ * Last, and separated from everything reversible above it. The gap is the
+ * design doing the work a confirmation dialog cannot: nothing here should be
+ * reachable by a thumb that meant to hit the switch.
+ */
+/**
+ * What is held, and the way to add to it — drawn wherever the figure is known.
+ *
+ * **It used to live only in the loaded branch**, which meant a 502 on
+ * `/v1/materials` hid a number the app bar was displaying one row above, and
+ * took the only route to the buy screen with it. Somebody who is not out of
+ * minutes never sees the other entry point (an out-of-minutes refusal), so a
+ * failed count left an account with no way to buy anything at all.
+ *
+ * **An unknown figure is stated, not dropped.** A `0` in that gap would tell
+ * somebody they have run out — a claim about their money, and the one that
+ * stops them starting a room — but hiding the row takes the way to buy more
+ * with it. So the row stays and says it could not read the number.
+ *
+ * Nothing at all while the answer is still in flight: "could not read" is false
+ * of a request that has not finished, and a spinner's worth of pessimism is its
+ * own small lie.
+ */
+function TimeUnderFire({
+  minutesRemaining,
+  reading,
+  onGetMore,
+}: {
+  minutesRemaining: number | null;
+  reading: boolean;
+  onGetMore?: () => void;
+}) {
+  if (reading) return null;
+
+  return (
+    <>
       <Text style={styles.title} accessibilityRole="header">
         What you have
       </Text>
@@ -363,7 +425,7 @@ export function SettingsScreen({
       <View style={styles.group}>
         {/*
           The holding and the way to add to it, on one row.
-          
+
           A row rather than a button beside a number: §4.5 keeps the upsell out
           of the way of a rehearsal, and Settings is where somebody has come to
           look at their account rather than somewhere they were interrupted.
@@ -383,9 +445,9 @@ export function SettingsScreen({
               existence.
             */}
             <Text style={styles.rowDetail}>
-              {holdings.minutesRemaining === null
+              {minutesRemaining === null
                 ? 'I could not read this just now.'
-                : `${holdings.minutesRemaining} minutes of interrogation available.`}
+                : `${minutesRemaining} minutes of interrogation available.`}
             </Text>
           </View>
           {onGetMore === undefined ? null : (
@@ -397,19 +459,10 @@ export function SettingsScreen({
           )}
         </Pressable>
       </View>
-
-      <Leaving onSignOut={onSignOut} onDeleteAccount={onDeleteAccount} />
-    </ScrollView>
+    </>
   );
 }
 
-/**
- * The two ways out, drawn once and rendered under every state of the screen.
- *
- * Last, and separated from everything reversible above it. The gap is the
- * design doing the work a confirmation dialog cannot: nothing here should be
- * reachable by a thumb that meant to hit the switch.
- */
 function Leaving({
   onSignOut,
   onDeleteAccount,

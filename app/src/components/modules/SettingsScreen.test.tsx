@@ -16,7 +16,6 @@ const NOTHING: Holdings = {
   rooms: 0,
   oldestExpiry: null,
   materials: 0,
-  minutesRemaining: 15,
 };
 
 /**
@@ -30,10 +29,13 @@ async function show(
   props = {},
   recording: Recording | null = SAVING,
 ) {
+  // Its own prop since the buy screen needed a way in that survives a failed
+  // count — see `TimeUnderFire`. Overridable through `props` like the rest.
   await render(
     <SettingsScreen
       holdings={{ ...NOTHING, ...holdings }}
       recording={recording}
+      minutesRemaining={15}
       onRecordingChange={jest.fn()}
       onDeleteAccount={jest.fn()}
       onSignOut={jest.fn()}
@@ -107,7 +109,7 @@ it('shows time left in plain minutes and nothing finer', async () => {
    * minutes and a boolean — no seconds, no per-bucket split — and the screen
    * must not reintroduce the shape the API refused to send.
    */
-  await show({ minutesRemaining: 15 });
+  await show({}, { minutesRemaining: 15 });
 
   expect(screen.getByText(/15 minutes/i)).toBeOnTheScreen();
   expect(screen.queryByRole('progressbar')).not.toBeOnTheScreen();
@@ -191,7 +193,10 @@ describe('before the account has been read, and when it cannot be', () => {
   it('says the read failed rather than showing an empty account', async () => {
     await unread({ reading: false });
 
-    expect(screen.getByText(/could not/i)).toBeOnTheScreen();
+    // Named exactly, because the minutes row now says it could not read its
+    // own figure too — two honest absences on one screen, and a loose match
+    // cannot tell which one it found.
+    expect(screen.getByText(/could not read your account/i)).toBeOnTheScreen();
   });
 
   it('offers another go when one was handed to it', async () => {
@@ -230,7 +235,7 @@ it('does not write a zero over a balance it has not read', async () => {
    * tells somebody they have run out of minutes, which is both a claim about
    * their money and the one that stops them starting a room.
    */
-  await show({ minutesRemaining: null });
+  await show({}, { minutesRemaining: null });
 
   expect(screen.queryByText(/0 minutes/i)).not.toBeOnTheScreen();
   expect(screen.getByText(/could not read this/i)).toBeOnTheScreen();
@@ -324,7 +329,7 @@ describe('when one read failed and another did not', () => {
       />,
     );
 
-    expect(screen.getByText(/could not read/i)).toBeOnTheScreen();
+    expect(screen.getByText(/could not read your account/i)).toBeOnTheScreen();
   });
 
   it('shows no switch when the preference itself is what failed', async () => {
@@ -342,5 +347,57 @@ describe('when one read failed and another did not', () => {
     );
 
     expect(screen.queryByRole('switch')).toBeNull();
+  });
+});
+
+/**
+ * #90's way in, and it was unreachable — the remaining half of #92.
+ *
+ * The recording switch was lifted out of the all-or-nothing branch; the minutes
+ * row was left behind. So a failed `/v1/materials` hid both the balance and the
+ * only route to the buy screen, while the balance sat visible in the app bar
+ * one row above.
+ */
+describe('the way to more time', () => {
+  it('shows what is held even when the counts could not be read', async () => {
+    // The figure comes from `useHeld`, which the app bar owns for all four
+    // tabs — a different request from the counts, and one that had answered.
+    // Hiding a number we hold because an unrelated one failed is the same
+    // mistake the recording switch had, one row down.
+    await render(
+      <SettingsScreen
+        holdings={null}
+        recording={null}
+        minutesRemaining={54}
+        onGetMore={jest.fn()}
+        onRecordingChange={jest.fn()}
+        onDeleteAccount={jest.fn()}
+        onSignOut={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/54 minutes/)).toBeOnTheScreen();
+  });
+
+  it('keeps the route to the buy screen open', async () => {
+    // Settings is one of only two ways in — the other is an out-of-minutes
+    // refusal, which somebody with minutes never sees. Losing this one to an
+    // unrelated 502 leaves an account with no way to buy anything at all.
+    const onGetMore = jest.fn();
+    await render(
+      <SettingsScreen
+        holdings={null}
+        recording={null}
+        minutesRemaining={54}
+        onGetMore={onGetMore}
+        onRecordingChange={jest.fn()}
+        onDeleteAccount={jest.fn()}
+        onSignOut={jest.fn()}
+      />,
+    );
+
+    fireEvent.press(screen.getByText('Time under fire'));
+
+    expect(onGetMore).toHaveBeenCalled();
   });
 });

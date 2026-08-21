@@ -58,7 +58,7 @@ const preferences = createPreferencesApi({
 });
 
 /** Everything this screen reads for itself — the balance is the app bar's. */
-type Inventory = Omit<Holdings, 'minutesRemaining'>;
+type Inventory = Holdings;
 
 /**
  * The confirmation, as the platform's own control.
@@ -207,12 +207,15 @@ export default function SettingsRoute() {
             ? null
             : // The balance is nullable on its own: the app bar swallows its
               // failures, so it can be unknown while the inventory is fine.
-              { ...inventory, minutesRemaining: held?.minutes ?? null }
+              inventory
         }
         reading={reading}
         writing={writing}
         onRetry={() => setAttempt((made) => made + 1)}
         recording={saving}
+        // From the app bar's own read, so it survives a failed count — and with
+        // it the only route to the buy screen for anybody who has minutes left.
+        minutesRemaining={held?.minutes ?? null}
         onRecordingChange={setRecording}
         onOpenMaterial={() => router.push('/material')}
         onGetMore={() => router.push('/minutes')}
