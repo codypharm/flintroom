@@ -369,7 +369,11 @@ LIBRARY: tuple[Archetype, ...] = (
             'Are you still there?',
         ),
         openers=(
-            "Please, carry on. I'm sure it's all been thought through.",
+            # "Please, carry on. I'm sure it's all been thought through." was
+            # cut at the architect's review of this copy. In character, and
+            # still wrong: it lands a jab at a transcript that is still empty,
+            # which is the exact move #79 exists to stop the panel making. The
+            # two below carry the same personality without hitting first.
             "Whenever suits you. I'll follow along.",
             "Do begin. I'll save my concerns for the end.",
         ),
