@@ -11,7 +11,7 @@ delete, because nobody can tell which entries are still load-bearing.
 """
 
 from functools import lru_cache
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -506,8 +506,14 @@ class Settings(BaseSettings):
     #: guarded the same way: `tests/test_config.py` fails if the two disagree.
     libreoffice_binary: str = Field(default="soffice")
 
-    def __init__(self, **values: object) -> None:
+    def __init__(self, **values: Any) -> None:
         """Fail as `ConfigurationError`, carrying nothing underneath it.
+
+        `**values: Any` rather than `object`, which is stricter and here also
+        untrue: these are forwarded untouched to `BaseSettings.__init__`, whose
+        own parameters are typed narrowly, and nothing in this method inspects
+        them. Declaring `object` claimed a guarantee this does not make and
+        produced twenty-nine diagnostics from one line.
 
         The re-raise deliberately happens *after* the `except` block rather than
         inside it. Inside, Python would attach the original as `__context__`

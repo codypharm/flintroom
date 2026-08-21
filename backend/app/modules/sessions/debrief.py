@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.calibration import calibrate
 from app.agents.difficulty import GENTLE
 from app.agents.weakness import WeakAnswer, Weakness, WeaknessReader, weak_answers
+from app.core.database import rows_touched
 from app.core.errors import (
     RoomBroke,
     RoomHasNoQuestions,
@@ -201,7 +202,7 @@ class DebriefService:
             .where(Session.id == session_id, Session.debriefed_at.is_(None))
             .values(debriefed_at=func.now())
         )
-        if not claimed.rowcount:
+        if not rows_touched(claimed):
             # Somebody else read this room first. Their transaction held the
             # row lock until it committed, so this update re-evaluated the
             # condition afterwards and matched nothing — which is the whole

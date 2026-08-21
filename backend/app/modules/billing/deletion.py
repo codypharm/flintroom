@@ -26,6 +26,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import DeletionSweepUnconfigured
+from app.core.database import rows_touched
 from app.core.logging import get_logger
 from app.core.storage import ObjectStorage
 from app.modules.audit_log.schemas import AuditEventType
@@ -208,7 +209,7 @@ class AccountDeletion:
             .values(revoked_at=func.now())
         )
 
-        if marked.rowcount:
+        if rows_touched(marked):
             self._audit.stage(
                 AuditEventType.ACCOUNT_DELETION_REQUESTED, user_id=user_id
             )
@@ -247,14 +248,14 @@ class AccountDeletion:
             .values(deletion_requested_at=None)
         )
 
-        if cleared.rowcount:
+        if cleared_rows := rows_touched(cleared):
             self._audit.stage(
                 AuditEventType.ACCOUNT_DELETION_CANCELLED, user_id=user_id
             )
             log.info("account_deletion_cancelled", user_id=str(user_id))
 
         await self._db.commit()
-        return bool(cleared.rowcount)
+        return bool(cleared_rows)
 
     async def sweep(self) -> int:
         """Purge every account whose window has closed. Returns how many.

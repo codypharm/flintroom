@@ -59,11 +59,17 @@ phase_column = Enum(
 )
 
 
-def _sql_values(enum: type[Enum]) -> str:
+def _sql_values(enum: EnumType) -> str:
     """Render an enum's values as a SQL list.
 
     Generated rather than hand-typed so that a new member cannot be added in
     Python while the database quietly keeps rejecting it.
+
+    `EnumType` — the metaclass, which is what an enum class actually *is*.
+    This read `type[Enum]`, and the `Enum` in scope here is **SQLAlchemy's**:
+    the annotation claimed a column type where every caller passes a Python
+    enum. Harmless at runtime and wrong to read, which is the class of thing
+    only a checker finds.
     """
     return ", ".join(f"'{member.value}'" for member in enum)
 

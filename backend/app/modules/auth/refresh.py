@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import db_now
+from app.core.database import db_now, rows_touched
 from app.core.errors import NotAuthenticated
 from app.core.logging import get_logger
 from app.modules.auth.models import RefreshToken
@@ -118,8 +118,9 @@ class RefreshTokenService:
         )
         await self._db.commit()
 
-        if result.rowcount:
-            log.info("refresh_tokens_swept", deleted=result.rowcount)
+        swept = rows_touched(result)
+        if swept:
+            log.info("refresh_tokens_swept", deleted=swept)
 
     async def _revoke_family(self, family_id: uuid.UUID, *, at: datetime) -> None:
         await self._db.execute(

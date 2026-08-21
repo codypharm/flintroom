@@ -2,9 +2,10 @@ import os
 
 from collections.abc import AsyncIterator
 from datetime import datetime
+from typing import Any, cast
 
 from starlette.requests import HTTPConnection
-from sqlalchemy import func, select
+from sqlalchemy import CursorResult, Result, func, select
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -124,6 +125,24 @@ async def db_now(db: AsyncSession) -> datetime:
     consistent values, and the equal case satisfies a `>=` constraint.
     """
     return await db.scalar(select(func.now()))
+
+
+def rows_touched(result: Result[Any]) -> int:
+    """How many rows a DML statement actually changed.
+
+    **A library-stub gap, cast once and named, rather than seven suppressions.**
+    `AsyncSession.execute` is typed as returning `Result`, which has no
+    `rowcount`; every `UPDATE` and `DELETE` really returns a `CursorResult`,
+    which does. Casting at each call site would scatter the same claim through
+    four modules, and a bare ignore comment outlives the thing it suppressed.
+
+    Worth a name of its own because every caller is doing the same load-bearing
+    thing: `rowcount` is how this codebase makes a conditional write tell it
+    whether it won. `DebriefService` claims a room with it, `RefreshService`
+    retires a token with it, and the rate limiter decides a request on it — each
+    one a race that the database, not the application, arbitrates.
+    """
+    return cast("CursorResult[Any]", result).rowcount
 
 
 def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:

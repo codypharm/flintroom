@@ -22,7 +22,7 @@ from typing import Protocol
 from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import db_now
+from app.core.database import db_now, rows_touched
 from app.core.errors import RateLimited
 from app.core.logging import get_logger
 from app.modules.auth.models import RateLimitCounter
@@ -197,5 +197,6 @@ class PostgresRateLimiter:
         )
         await self._db.commit()
 
-        if result.rowcount:
-            log.info("rate_limit_counters_swept", deleted=result.rowcount)
+        swept = rows_touched(result)
+        if swept:
+            log.info("rate_limit_counters_swept", deleted=swept)
