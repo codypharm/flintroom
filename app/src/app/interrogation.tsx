@@ -1,7 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Modal, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { AudioContext, AudioManager, AudioRecorder } from 'react-native-audio-api';
 import { StatusBar } from 'expo-status-bar';
@@ -21,6 +21,7 @@ import {
   type Steadied,
 } from '../lib/audio/hearing';
 import { ensureMicrophone } from '../lib/audio/permission';
+import { refusalFor, type Refusal } from '../lib/room/refusals';
 import { createAccountApi } from '../lib/api/accountApi';
 import { RecordingDisclosure } from '../components/modules/RecordingDisclosure';
 import { createDisclosureRecord } from '../lib/consent/disclosure';
@@ -34,7 +35,7 @@ import { joinRoom, type Room } from '../lib/voice/room';
 import { Refused } from '../lib/api/refused';
 import type { Attending, Ending } from '../lib/voice/connection';
 import type { PanelLine } from '../lib/voice/connection';
-import { color, space, type } from '../theme/tokens';
+import { color, radius, space, type } from '../theme/tokens';
 
 /**
  * The live interrogation, as a route.
@@ -115,7 +116,7 @@ export default function InterrogationScreen() {
   const [heard, setHeard] = useState<Hearing>('silent');
   const [volume, setVolume] = useState(0);
   const [phase, setPhase] = useState<'opening' | 'live' | 'ending'>('opening');
-  const [refusal, setRefusal] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [elapsed, setElapsed] = useState<number | null>(null);
   /** The sheet, and the resolver that lets `enterRoom` carry on once it is read. */
   const [disclosing, setDisclosing] = useState<{
@@ -171,7 +172,12 @@ export default function InterrogationScreen() {
         // Said, because it is not their fault and the debrief they are about to
         // open will be short. The minutes were returned before the socket
         // closed; nothing here has to reconcile anything.
-        setRefusal('The room dropped out. Those minutes are back on your account.');
+        setRefusal({
+          said: 'The room dropped out. Those minutes are back on your account.',
+          // Nothing to sell: the minutes were returned before the socket
+          // closed, so they have exactly what they started with.
+          buying: false,
+        });
       }
 
       void release();
@@ -457,8 +463,35 @@ export default function InterrogationScreen() {
         {sheet}
         <View style={styles.refused}>
           <Text style={styles.refusalText} accessibilityRole="alert">
-            {refusal}
+            {refusal.said}
           </Text>
+          {/*
+            The way out, and only where money is actually the answer.
+
+            `CLAUDE.md` forbids interrupting a *live* session with a paywall.
+            This is a room that never opened — nothing was charged, nothing was
+            cut off — so the offer is a recovery rather than an interruption,
+            and §4.5 keeps it out of the way of a rehearsal by never appearing
+            during one.
+
+            `refusalFor` decides, and it says false for the daily ceiling even
+            though that reads like running out: no purchase lifts a cost
+            circuit breaker, so an offer there charges for a room that will
+            refuse again immediately.
+
+            `replace` rather than `push`. This route is spent — its intent was
+            taken on mount and the room it named was never minted — so leaving
+            it on the stack gives the back gesture somewhere useless to go.
+          */}
+          {refusal.buying && (
+            <Pressable
+              onPress={() => router.replace('/minutes')}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.getMore, pressed && styles.fading]}
+            >
+              <Text style={styles.getMoreText}>Get more time</Text>
+            </Pressable>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -486,70 +519,6 @@ export default function InterrogationScreen() {
   );
 }
 
-/**
- * Why the room did not open, in the presenter's terms.
- *
- * Split by whose problem it is. A denied microphone is theirs to fix and
- * Settings is where; `unavailable` is ours, and sending them to a Settings page
- * to grant a permission they never refused would waste their time and their
- * trust. Anything else is a room that never started, which means nothing was
- * billed — worth saying, because somebody who just tried to spend minutes will
- * assume otherwise.
- */
-function refusalFor(thrown: unknown): string {
-  // The server's own diagnosis first, because it is the only one that knows
-  // WHY. A device reported "the room would not open, nothing was charged" while
-  // the API was saying `no_minutes_remaining` — the catch-all below, standing in
-  // for an answer somebody could have acted on.
-  if (thrown instanceof Refused) {
-    return REFUSED[thrown.code] ?? thrown.message;
-  }
-
-  const why = thrown instanceof Error ? thrown.message : '';
-
-  if (why === 'denied') {
-    return 'Flintroom needs the microphone to hold a room. Turn it on in Settings, then try again.';
-  }
-
-  if (why === 'unavailable') {
-    return 'We could not reach the microphone. Try again in a moment.';
-  }
-
-  return 'The room would not open. Nothing was charged.';
-}
-
-/**
- * Why the server would not open a room, in the presenter's terms.
- *
- * Copy here rather than on the server, the rule `Product.md` §9 sets: the API
- * states the fact, the client writes the sentence. The server's own message is
- * still the fallback for a code this build predates, so a refusal added later
- * says something true rather than nothing — the same shape `debrief/refusals.ts`
- * already uses.
- */
-const REFUSED: Record<string, string> = {
-  // **§4.6 governs this sentence.** Never a depleting counter, and framed
-  // generously — so it says what is true (the minutes are spent) and what is
-  // still theirs (everything already recorded), and it does not scold. The room
-  // costs money to hold; running out is the product working, not a failure.
-  //
-  // It cannot yet offer a way to buy more: RevenueCat is unwired (#32). Saying
-  // so plainly beats a button that does nothing, and beats implying they did
-  // something wrong.
-  no_minutes_remaining:
-    'You have used your interrogation minutes. Your rooms and debriefs are all still here.',
-  // One live room at a time, which is a real constraint rather than a fault —
-  // and the recovery is to finish or leave the other one.
-  active_session_exists:
-    'A room is already open on this account. Finish that one, then start another.',
-  // The runaway-cost circuit breaker (#73), and the only refusal here that is
-  // about *us* rather than about them. It fires on abuse and will occasionally
-  // fire on somebody who rehearsed all day — so it says nothing about spend,
-  // does not scold, and leads with what is untouched. A user who reads this as
-  // "I have done something wrong" has been told the wrong thing.
-  daily_ceiling_reached:
-    'That is a lot of rooms in one day. This lifts within a day — your minutes and everything you have recorded are untouched.',
-};
 
 /** Route params arrive as strings; an absent one is an empty list, not `['']`. */
 /**
@@ -570,4 +539,18 @@ const styles = StyleSheet.create({
   dark: { flex: 1, backgroundColor: color.roomGround },
   refused: { flex: 1, justifyContent: 'center', padding: space.screen },
   refusalText: { ...type.bodyLg, color: color.onRoom, textAlign: 'center' },
+
+  // On the room's own dark ground, so it reads as a control on this screen
+  // rather than a light-mode button pasted onto it.
+  getMore: {
+    marginTop: space.loose,
+    paddingVertical: space.snug,
+    paddingHorizontal: space.loose,
+    borderRadius: radius.pill,
+    backgroundColor: color.primary,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  getMoreText: { ...type.labelLg, color: color.onPrimary, textAlign: 'center' },
+  fading: { opacity: 0.7 },
 });

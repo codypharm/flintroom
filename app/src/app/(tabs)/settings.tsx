@@ -203,6 +203,7 @@ export default function SettingsRoute() {
         onRetry={() => setAttempt((made) => made + 1)}
         onRecordingChange={setRecording}
         onOpenMaterial={() => router.push('/material')}
+        onGetMore={() => router.push('/minutes')}
         onSignOut={() => {
           void (async () => {
             // Ends the session here and, if reachable, everywhere — and never

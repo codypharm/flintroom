@@ -157,6 +157,7 @@ function Shell() {
           <Stack.Screen name="debrief/[id]" />
           <Stack.Screen name="prep-sheet/[id]" />
           <Stack.Screen name="material" />
+          <Stack.Screen name="minutes" />
           <Stack.Screen name="panelists/index" />
           <Stack.Screen name="panelists/[name]" />
           {/*

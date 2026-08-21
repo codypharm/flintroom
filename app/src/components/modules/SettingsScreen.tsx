@@ -88,6 +88,13 @@ export interface SettingsScreenProps {
    * destructive control on each row is one.
    */
   onOpenMaterial?: () => void;
+  /**
+   * Open the screen that sells more time, or undefined where it cannot be.
+   *
+   * Undefined rather than a disabled row, on the same reasoning `onOpenMaterial`
+   * uses: a capability that exists elsewhere should not read as a locked door.
+   */
+  onGetMore?: () => void;
   onDeleteAccount: () => void;
   /**
    * Leave this account on this device.
@@ -139,6 +146,7 @@ export function SettingsScreen({
   writing = false,
   onRecordingChange,
   onOpenMaterial,
+  onGetMore,
   onDeleteAccount,
   onSignOut,
 }: SettingsScreenProps) {
@@ -261,7 +269,19 @@ export function SettingsScreen({
       </Text>
 
       <View style={styles.group}>
-        <View style={styles.row}>
+        {/*
+          The holding and the way to add to it, on one row.
+          
+          A row rather than a button beside a number: §4.5 keeps the upsell out
+          of the way of a rehearsal, and Settings is where somebody has come to
+          look at their account rather than somewhere they were interrupted.
+        */}
+        <Pressable
+          onPress={onGetMore}
+          disabled={onGetMore === undefined}
+          accessibilityRole={onGetMore === undefined ? undefined : 'button'}
+          style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+        >
           <View style={styles.rowText}>
             <Text style={styles.rowTitle}>Time under fire</Text>
             {/*
@@ -276,7 +296,14 @@ export function SettingsScreen({
                 : `${holdings.minutesRemaining} minutes of interrogation available.`}
             </Text>
           </View>
-        </View>
+          {onGetMore === undefined ? null : (
+            <MaterialIcons
+              name="chevron-right"
+              size={24}
+              color={color.onSurfaceVariant}
+            />
+          )}
+        </Pressable>
       </View>
 
       <Leaving onSignOut={onSignOut} onDeleteAccount={onDeleteAccount} />
