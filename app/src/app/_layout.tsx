@@ -159,7 +159,28 @@ function Shell() {
           <Stack.Screen name="material" />
           <Stack.Screen name="panelists/index" />
           <Stack.Screen name="panelists/[name]" />
-          <Stack.Screen name="echo-spike" />
+          {/*
+            The measurement instrument from #17, not a screen anybody is meant
+            to arrive at. Nothing in the app links to it — but `app.json`
+            declares the `flintroom` scheme, so a registered route is a
+            deep-linkable one, and `flintroom://echo-spike` would open the
+            microphone and play a loud test tone out of the loudspeaker of a
+            shipped build.
+
+            That is the shape of #76 in a second place: an address that does
+            something, reachable by anybody who can type it. Harmless here —
+            it exposes no data and sits behind the same gate as everything else
+            — but a mic-opening dev instrument in a store build is exactly what
+            Open Risk #5 says review will ask about.
+
+            `__DEV__` rather than deletion: `docs/echo-cancellation.md` names
+            this file as the method behind every number in it, and #25 and #27
+            both still need to re-run it on a device. It stays in the tree and
+            leaves the shipped build.
+          */}
+          <Stack.Protected guard={__DEV__}>
+            <Stack.Screen name="echo-spike" />
+          </Stack.Protected>
         </Stack.Protected>
 
         {/*
