@@ -57,9 +57,9 @@ TAKEN_AWAY = Judgement(
 )
 
 
-async def debriefed(db, engine, sessions, settlement, account, *judged):
+async def debriefed(db, engine, sessions, settlement, account, *judged, repeats=None):
     session = await room_that_happened(
-        db, engine, sessions, settlement, account, *ROOM
+        db, engine, sessions, settlement, account, *ROOM, repeats=repeats
     )
     await DebriefService(db, reader=CountingReader(*judged)).weak_answers(
         session_id=session.id
@@ -259,6 +259,47 @@ async def test_an_account_with_no_history_reads_back_empty(db, funded_account):
     assert read.askers == ()
 
 
+
+
+async def test_a_rerun_is_reported_under_the_room_it_repeats(
+    db, engine, sessions, settlement, funded_account
+):
+    """Two attempts at one argument are one rehearsal, and the screen is told so.
+
+    This is the whole difference between "am I getting better" and "am I getting
+    better at **this**". Without it the second attempt at a board readout is a
+    room that happens to share a panel with an earlier one, and no arithmetic
+    downstream can tell three attempts at one argument from three unrelated
+    rehearsals.
+    """
+    first = await debriefed(db, engine, sessions, settlement, funded_account, DUCKED)
+    second = await debriefed(
+        db, engine, sessions, settlement, funded_account, DUCKED, repeats=first.id
+    )
+
+    read = await ProgressService(db).read(user_id=funded_account.user_id)
+
+    assert {room.session_id: room.rehearsal for room in read.rooms} == {
+        first.id: first.id,
+        second.id: first.id,
+    }
+
+
+async def test_a_room_that_repeats_nothing_is_its_own_rehearsal(
+    db, engine, sessions, settlement, funded_account
+):
+    """Never null on the wire, so a client groups on one field with no special case.
+
+    The column is nullable because a NOT NULL one would have broken inserts from
+    the previously deployed build. That is a storage fact, and letting it reach
+    a screen would put a null branch in every consumer forever.
+    """
+    only = await debriefed(db, engine, sessions, settlement, funded_account, DUCKED)
+
+    read = await ProgressService(db).read(user_id=funded_account.user_id)
+
+    assert [room.rehearsal for room in read.rooms] == [only.id]
+
 # --- Over HTTP --------------------------------------------------------------
 
 
@@ -315,3 +356,24 @@ async def test_progress_carries_no_transcript_and_no_finding_text(
 
     assert "grew forty percent" not in body
     assert "feeling about the trend" not in body
+
+
+async def test_the_wire_names_the_rehearsal_every_room_belongs_to(
+    client, db, engine, sessions, settlement, funded_account, bearer
+):
+    """One field, answered on every room, so a client groups with no null case.
+
+    The column is nullable — a NOT NULL one would have broken inserts from the
+    previously deployed build — and that fact stops at the service. A room that
+    repeats nothing reports itself.
+    """
+    first = await debriefed(db, engine, sessions, settlement, funded_account, DUCKED)
+    await debriefed(
+        db, engine, sessions, settlement, funded_account, DUCKED, repeats=first.id
+    )
+
+    rooms = (
+        await client.get("/v1/progress", headers=bearer(funded_account.user_id))
+    ).json()["rooms"]
+
+    assert {room["rehearsal_id"] for room in rooms} == {str(first.id)}

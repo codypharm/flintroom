@@ -2163,6 +2163,10 @@ components:
           type: string
           format: uuid
           title: Session Id
+        rehearsal_id:
+          type: string
+          format: uuid
+          title: Rehearsal Id
         started_at:
           type: string
           format: date-time
@@ -2181,6 +2185,7 @@ components:
       type: object
       required:
       - session_id
+      - rehearsal_id
       - started_at
       - challenged
       - held

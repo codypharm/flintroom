@@ -66,10 +66,21 @@ class Rendezvous(CountingReader):
 
 
 async def room_that_happened(
-    db, engine, sessions, settlement, account, *lines: Said, ended=EndReason.USER_ENDED
+    db,
+    engine,
+    sessions,
+    settlement,
+    account,
+    *lines: Said,
+    ended=EndReason.USER_ENDED,
+    repeats=None,
 ):
-    """A settled session with these lines in its transcript."""
-    session = await sessions.start(user_id=account.user_id)
+    """A settled session with these lines in its transcript.
+
+    `repeats` names the room this one is another attempt at, so a test can build
+    a rehearsal rather than a scattering of unrelated rooms.
+    """
+    session = await sessions.start(user_id=account.user_id, repeats=repeats)
     await sessions.activate(session_id=session.id)
     await db.commit()
 

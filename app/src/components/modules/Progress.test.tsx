@@ -15,12 +15,17 @@ import { Progress, type ProgressProps } from './Progress';
  * and any single number standing for a run of rooms that were not equally hard.
  */
 
+/**
+ * Five rooms in two rehearsals: r-1 → r-2 → r-3 is one argument put three
+ * times, and r-4 → r-5 is a second one put twice. Newest first, as the server
+ * returns them.
+ */
 const ROOMS = [
-  { sessionId: 'r-5', startedAt: '2026-08-20T09:12:00Z', challenged: 9, held: 8, level: 3 },
-  { sessionId: 'r-4', startedAt: '2026-08-19T16:04:00Z', challenged: 7, held: 4, level: 3 },
-  { sessionId: 'r-3', startedAt: '2026-08-17T11:00:00Z', challenged: 6, held: 2, level: 2 },
-  { sessionId: 'r-2', startedAt: '2026-08-14T11:00:00Z', challenged: 5, held: 1, level: 2 },
-  { sessionId: 'r-1', startedAt: '2026-08-11T11:00:00Z', challenged: 4, held: 0, level: 1 },
+  { sessionId: 'r-5', rehearsalId: 'r-4', startedAt: '2026-08-20T09:12:00Z', challenged: 9, held: 8, level: 3 },
+  { sessionId: 'r-4', rehearsalId: 'r-4', startedAt: '2026-08-19T16:04:00Z', challenged: 7, held: 4, level: 3 },
+  { sessionId: 'r-3', rehearsalId: 'r-1', startedAt: '2026-08-17T11:00:00Z', challenged: 6, held: 2, level: 2 },
+  { sessionId: 'r-2', rehearsalId: 'r-1', startedAt: '2026-08-14T11:00:00Z', challenged: 5, held: 1, level: 2 },
+  { sessionId: 'r-1', rehearsalId: 'r-1', startedAt: '2026-08-11T11:00:00Z', challenged: 4, held: 0, level: 1 },
 ];
 
 const NOW = new Date('2026-08-20T14:00:00Z');
@@ -90,7 +95,7 @@ describe('the run of rooms', () => {
     await setup({
       rooms: [
         ROOMS[0],
-        { sessionId: 'r-0', startedAt: '2026-08-10T11:00:00Z', challenged: 0, held: 0, level: 2 },
+        { sessionId: 'r-0', rehearsalId: 'r-0', startedAt: '2026-08-10T11:00:00Z', challenged: 0, held: 0, level: 2 },
       ],
     });
 
@@ -180,5 +185,65 @@ describe('an account with no history', () => {
     });
 
     expect(screen.queryByText('Answered a different question')).toBeNull();
+  });
+});
+
+describe('the same argument, put more than once', () => {
+  it('gathers the attempts at one argument into their own run', async () => {
+    // The question the whole grouping exists for: not "am I getting better" but
+    // "am I getting better at **this**". Five rooms in two rehearsals is two
+    // runs, and reading them as one list of five would answer neither.
+    await setup();
+
+    const rehearsal = within(screen.getByLabelText('One argument, oldest first, started 11 August'));
+
+    expect(rehearsal.getAllByLabelText(/held of/)).toHaveLength(3);
+  });
+
+  it('runs each rehearsal oldest first, like the trend above it', async () => {
+    // The same instrument at a narrower scope. A second rule about which way
+    // time runs is how one chart comes to disagree with the other.
+    await setup();
+
+    const rehearsal = within(screen.getByLabelText('One argument, oldest first, started 11 August'));
+    const attempts = rehearsal.getAllByLabelText(/held of/);
+
+    expect(attempts[0]).toHaveProp('accessibilityLabel', expect.stringContaining('0 held of 4'));
+    expect(attempts[2]).toHaveProp('accessibilityLabel', expect.stringContaining('2 held of 6'));
+  });
+
+  it('says nothing about a room nobody ever repeated', async () => {
+    // One attempt is not a rehearsal. Giving it a heading of its own would
+    // spread the screen across every room somebody ever ran and bury the two
+    // they are actually working on.
+    await setup({
+      rooms: [
+        ROOMS[0],
+        ROOMS[1],
+        { sessionId: 'r-9', rehearsalId: 'r-9', startedAt: '2026-08-18T11:00:00Z', challenged: 3, held: 3, level: 2 },
+      ],
+    });
+
+    expect(screen.queryAllByLabelText(/One argument, oldest first/)).toHaveLength(1);
+  });
+
+  it('does not draw the whole history twice when it is all one argument', async () => {
+    // Somebody who has only ever rehearsed one thing already has that run at
+    // the top of the screen. A second copy under a heading says nothing new.
+    await setup({ rooms: ROOMS.filter((room) => room.rehearsalId === 'r-1') });
+
+    expect(screen.queryByText('What you keep rehearsing')).toBeNull();
+  });
+
+  it('states no verdict on whether a rehearsal is going well', async () => {
+    // The architect's constraint, and the reason this shows a run rather than a
+    // reading of one: *"we need to be careful to avoid giving user false hope
+    // that they are doing well"*. Nothing here computes a direction — the
+    // attempts are drawn, and what they add up to is the presenter's to judge.
+    await setup();
+
+    for (const verdict of [/improving/i, /getting better/i, /on track/i, /well done/i]) {
+      expect(screen.queryByText(verdict)).toBeNull();
+    }
   });
 });

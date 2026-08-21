@@ -1344,6 +1344,11 @@ export interface components {
              */
             session_id: string;
             /**
+             * Rehearsal Id
+             * Format: uuid
+             */
+            rehearsal_id: string;
+            /**
              * Started At
              * Format: date-time
              */

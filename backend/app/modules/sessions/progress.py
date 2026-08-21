@@ -46,6 +46,14 @@ class RoomHeld:
     """
 
     session_id: uuid.UUID
+
+    #: The rehearsal this room belongs to — its own id unless it repeats another.
+    #:
+    #: Never null, though the column behind it is. `COALESCE(rehearsal_id, id)`
+    #: is applied here so the nullable-for-migration-safety fact stops at this
+    #: boundary; letting it travel would put a null branch in every consumer.
+    rehearsal: uuid.UUID
+
     started_at: datetime
     #: Challenges the presenter actually had a turn at. A question a colleague
     #: talked over is not one, so it is in neither term — see `read`.
@@ -94,7 +102,12 @@ class ProgressService:
         """
         rooms = (
             await self._db.execute(
-                select(Session.id, Session.started_at, Session.difficulty_level)
+                select(
+                    Session.id,
+                    func.coalesce(Session.rehearsal_id, Session.id).label("rehearsal"),
+                    Session.started_at,
+                    Session.difficulty_level,
+                )
                 .where(
                     Session.user_id == user_id,
                     Session.debriefed_at.is_not(None),
@@ -165,6 +178,7 @@ def _held(room, asked, findings) -> RoomHeld:
 
     return RoomHeld(
         session_id=room.id,
+        rehearsal=room.rehearsal,
         started_at=room.started_at,
         challenged=challenged,
         held=max(0, challenged - fumbled),

@@ -11,6 +11,14 @@ import { SignedOut } from '../auth/session';
 /** One assessed room: what it put to them, what held, and how hard it was. */
 export interface RoomHeld {
   sessionId: string;
+  /**
+   * The rehearsal this room belongs to — its own id unless it repeats another.
+   *
+   * Never null, so grouping is one field with no special case. The column
+   * behind it is nullable for migration safety and the server collapses that
+   * before it reaches here.
+   */
+  rehearsalId: string;
   startedAt: string;
   /**
    * Challenges the presenter actually had a turn at.
@@ -74,7 +82,14 @@ export function createProgressApi({
       }
 
       const body = (await response.json()) as {
-        rooms: { session_id: string; started_at: string; challenged: number; held: number; level: number | null }[];
+        rooms: {
+          session_id: string;
+          rehearsal_id: string;
+          started_at: string;
+          challenged: number;
+          held: number;
+          level: number | null;
+        }[];
         habits: Tally[];
         askers: Tally[];
       };
@@ -82,6 +97,7 @@ export function createProgressApi({
       return {
         rooms: body.rooms.map((room) => ({
           sessionId: room.session_id,
+          rehearsalId: room.rehearsal_id,
           startedAt: room.started_at,
           challenged: room.challenged,
           held: room.held,

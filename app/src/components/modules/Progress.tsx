@@ -36,6 +36,19 @@ import { color, radius, space, type } from '../../theme/tokens';
  * refusal is the reason this is a series rather than a figure — and the series
  * is *more* informative, not less.
  *
+ * **The run of rooms, then the run of attempts at one argument.** Two questions
+ * are being asked here and only the first had an answer: "am I getting better"
+ * is the trend at the top, and "am I getting better at **this**" is the section
+ * under it. The second is the one a rehearsal product exists for, and it needs
+ * no new arithmetic — the same figures, scoped to a group the presenter defined
+ * by tapping "Run it again".
+ *
+ * **No rehearsal is ever told it is going well.** Nothing computes a direction,
+ * a delta or a verdict: the attempts are drawn in order with the rung each was
+ * earned at, and what they add up to is the presenter's to read. A screen that
+ * announced improvement would be reading a trend out of what is often three
+ * points, against a room whose difficulty moved underneath them.
+ *
  * **Bars, drawn from Views, of real quantities.** The craft floor's ban is on
  * sparklines and progress rings standing in *for* content; this is the content.
  * `design-guide/home/` had a bar chart too, of "Avg. Likelihood 72%", which is
@@ -45,7 +58,7 @@ import { color, radius, space, type } from '../../theme/tokens';
 /** Below this many rooms, a recurrence is a coincidence rather than a habit. */
 const A_PATTERN = 2;
 
-/** One room is a point; a line needs two. */
+/** One room is a point; a line needs two. Also what makes a rehearsal one. */
 const A_TREND = 2;
 
 /** How tall the tallest bar stands. Everything else is a share of it. */
@@ -82,6 +95,16 @@ export function Progress({ rooms, habits, askers, now, onOpenRoom }: ProgressPro
   const habit = habits.filter((one) => one.rooms >= A_PATTERN);
   const asker = askers.filter((one) => one.rooms >= A_PATTERN);
 
+  const rehearsals = rehearsalsIn(counted);
+
+  // Withheld when there is exactly one rehearsal and it is the whole history:
+  // that run is already the trend at the top of the screen, and a second copy
+  // of it under a heading says nothing the first did not.
+  const rehearsed =
+    rehearsals.length > 1 || rehearsals[0]?.rooms.length !== counted.length
+      ? rehearsals
+      : [];
+
   return (
     <View style={styles.screen}>
       <ScrollView
@@ -97,7 +120,26 @@ export function Progress({ rooms, habits, askers, now, onOpenRoom }: ProgressPro
             than a dot.
           </Text>
         ) : (
-          <Trend rooms={counted} onOpenRoom={onOpenRoom} />
+          <Trend rooms={counted} onOpenRoom={onOpenRoom} label="Every room, oldest first" />
+        )}
+
+        {rehearsed.length > 0 && (
+          <Section heading="What you keep rehearsing">
+            {rehearsed.map((run) => {
+              const started = whenItRan(run.rooms[run.rooms.length - 1].startedAt, now);
+
+              return (
+                <View key={run.id}>
+                  <Row left={`Started ${started}`} right={inRooms(run.rooms.length)} />
+                  <Trend
+                    rooms={run.rooms}
+                    onOpenRoom={onOpenRoom}
+                    label={`One argument, oldest first, started ${started}`}
+                  />
+                </View>
+              );
+            })}
+          </Section>
         )}
 
         {habit.length > 0 && (
@@ -156,9 +198,16 @@ export function Progress({ rooms, habits, askers, now, onOpenRoom }: ProgressPro
 function Trend({
   rooms,
   onOpenRoom,
+  label,
 }: {
   rooms: RoomHeld[];
   onOpenRoom: (sessionId: string) => void;
+  /**
+   * Required rather than defaulted, because this is drawn more than once — the
+   * whole history, then each rehearsal — and two charts answering to the same
+   * name is a screen reader announcing the wrong one.
+   */
+  label: string;
 }) {
   const oldestFirst = [...rooms].reverse();
 
@@ -167,7 +216,7 @@ function Trend({
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.trend}
-      accessibilityLabel="Every room, oldest first"
+      accessibilityLabel={label}
     >
       {oldestFirst.map((room) => {
         const share = room.held / room.challenged;
@@ -203,6 +252,36 @@ function Trend({
       })}
     </ScrollView>
   );
+}
+
+/**
+ * The rooms, gathered into the arguments they are attempts at.
+ *
+ * Grouped on `rehearsalId`, which the server answers on every room — its own id
+ * unless it repeats another — so there is no null case and no chain to walk.
+ *
+ * Insertion order is kept and the rooms arrive newest first, so a rehearsal
+ * somebody returned to yesterday sits above one they last ran in June.
+ *
+ * A run of one is dropped. One attempt is a room somebody ran, not a thing they
+ * are working on, and a heading for each would spread the screen across every
+ * room in the account and bury the two that matter.
+ */
+function rehearsalsIn(rooms: RoomHeld[]): { id: string; rooms: RoomHeld[] }[] {
+  const runs = new Map<string, RoomHeld[]>();
+
+  for (const room of rooms) {
+    const run = runs.get(room.rehearsalId);
+    if (run === undefined) {
+      runs.set(room.rehearsalId, [room]);
+    } else {
+      run.push(room);
+    }
+  }
+
+  return [...runs.entries()]
+    .map(([id, its]) => ({ id, rooms: its }))
+    .filter((run) => run.rooms.length >= A_TREND);
 }
 
 function Section({ heading, children }: { heading: string; children: React.ReactNode }) {

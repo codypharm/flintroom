@@ -497,9 +497,23 @@ class RoomHeldRead(BaseModel):
     presenter they are getting worse.
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     session_id: uuid.UUID
+
+    #: The rehearsal this room belongs to — its own id unless it repeats another.
+    #:
+    #: Never null. The column behind it is nullable, because a NOT NULL one
+    #: would have broken inserts from the previously deployed build, and
+    #: `ProgressService` collapses that with `COALESCE(rehearsal_id, id)` before
+    #: it reaches here. Publishing the null would put a branch in every client
+    #: forever to carry a migration detail.
+    #:
+    #: Aliased off `RoomHeld.rehearsal` for the same reason `SessionRead` is:
+    #: the service already answers the question, and a second implementation of
+    #: "which group is this in" is how two screens come to disagree.
+    rehearsal_id: uuid.UUID = Field(validation_alias="rehearsal")
+
     started_at: datetime
 
     #: Challenges the presenter actually had a turn at.
