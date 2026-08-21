@@ -64,6 +64,20 @@ export interface RoomOrder {
    * re-run: a room that repeats another inherits its lineage's name.
    */
   rehearsalName: string | null;
+
+  /**
+   * What the presenter says about the room they are walking into, or null.
+   *
+   * #66. Rides here with the seating rather than in `/interrogation`'s
+   * address, which is what this whole module is for: the route is registered
+   * under a declared scheme, so anything the URL names is something a link can
+   * name back.
+   *
+   * Unlike `rehearsalName` it is never inherited server-side — the note belongs
+   * to a room, not to the lineage — so a re-run carries whatever the setup
+   * screen prefilled and the presenter left in the box.
+   */
+  audience: string | null;
 }
 
 /**

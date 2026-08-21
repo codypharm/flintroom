@@ -83,6 +83,7 @@ describe('the pressure a rehearsal is running at', () => {
     id,
     rehearsalId,
     rehearsalName: null,
+    audience: null,
     state: 'settled',
     startedAt,
     endReason: 'user_ended',

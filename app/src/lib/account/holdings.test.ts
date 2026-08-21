@@ -15,6 +15,7 @@ function room(recording: PastRoom['recording']): PastRoom {
     id: 'r1',
     rehearsalId: 'r1',
     rehearsalName: null,
+    audience: null,
     state: 'settled',
     startedAt: '2026-08-01T10:00:00Z',
     endReason: 'user_ended',

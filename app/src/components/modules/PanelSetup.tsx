@@ -85,6 +85,12 @@ export interface Room {
  */
 const REHEARSAL_NAME_LIMIT = 80;
 
+/**
+ * How much may be written about the room, matching `AUDIENCE_LIMIT` on the
+ * server. A paragraph describes a room; a page is something else.
+ */
+const AUDIENCE_LIMIT = 400;
+
 export interface PanelSetupProps {
   room: Room;
   /** Seated archetype names, in seat order. Controlled by the route. */
@@ -112,6 +118,17 @@ export interface PanelSetupProps {
    */
   rehearsalName: string;
   onRehearsalNameChange: (name: string) => void;
+  /**
+   * What the presenter says about the room they are walking into. Controlled
+   * by the route, and the empty string rather than null for the same reason
+   * `rehearsalName` is — a `TextInput` handed null quietly goes uncontrolled.
+   *
+   * #66, and `Product.md` §3.1's permitted substitute for the social-profile
+   * scraping this product refused: the user's own words about an audience,
+   * never anything fetched about a named person.
+   */
+  audience: string;
+  onAudienceChange: (audience: string) => void;
   material: AttachedMaterial | null;
   /** What this account may upload, or null while unknown. See `DeckAttach`. */
   limits: MaterialLimits | null;
@@ -177,6 +194,8 @@ export function PanelSetup({
   onSeatedChange,
   rehearsalName,
   onRehearsalNameChange,
+  audience,
+  onAudienceChange,
   material,
   limits,
   onAttach,
@@ -256,6 +275,51 @@ export function PanelSetup({
         onAttach={onAttach}
         onRemove={onRemoveMaterial}
       />
+
+      {/*
+        #66, and a sibling of the deck rather than of the name at the top.
+
+        Grouping follows meaning. The field under the title is the room's
+        *subject* and sits on the ground; these two are what the room is armed
+        with, and they sit on cards under one heading. A deck gives the panel
+        claims it may quote; this gives it where the pressure is. Matching the
+        name's bare hairline instead would file it with a field in a different
+        section and make the two text inputs read as a pair, which they are not.
+
+        No heading of its own, on the same reasoning as the name: a label over
+        an input whose placeholder already asks the question is the same words
+        twice, and the accessibility label carries the question once the
+        placeholder is gone.
+
+        The line underneath is a disclosure, not a hint. "Shaped, never spoken"
+        is invisible from the outside — somebody who writes a sentence and never
+        hears it back cannot tell a panel that used it from one that ignored it,
+        so the screen says which. It also sets the expectation before the room
+        opens rather than leaving it as a surprise, and it is the only place the
+        product tells anybody what happens to text they hand a model.
+      */}
+      <View style={styles.audienceCard}>
+        <TextInput
+          style={styles.audience}
+          value={audience}
+          onChangeText={onAudienceChange}
+          placeholder="Who are you presenting to?"
+          placeholderTextColor={color.onSurfaceVariant}
+          accessibilityLabel="Who you are presenting to"
+          // Bounded here as well as at the server, so a long paste stops under
+          // the thumb rather than becoming a room that will not open for a
+          // reason nobody can see.
+          maxLength={AUDIENCE_LIMIT}
+          // Grows to what was written. A sentence or two is the shape this
+          // invites, and a single line that scrolls sideways hides the half of
+          // it somebody is still deciding about.
+          multiline
+          autoCapitalize="sentences"
+        />
+      </View>
+      <Text style={styles.audienceNote}>
+        Shapes what they press on. It is never read out.
+      </Text>
 
       {/*
         Second, and heavier than the two around it. The deck goes first because
@@ -602,6 +666,41 @@ const styles = StyleSheet.create({
    * panel, which are what the screen is for. A single rule under body-sized
    * text reads as a caption somebody may edit — which is what it is.
    */
+  /**
+   * The audience note, on a card so it reads as a sibling of the deck.
+   *
+   * `DeckAttach` owns its own card of exactly this shape; this matches it
+   * rather than reaching inside, so the two sit under "What they can attack"
+   * as two things the room is armed with.
+   */
+  audienceCard: {
+    backgroundColor: color.card,
+    borderRadius: radius.card,
+    paddingHorizontal: space.base,
+    marginTop: space.snug,
+  },
+
+  audience: {
+    ...type.bodyLg,
+    color: color.onSurface,
+    paddingVertical: space.base,
+    // The floor a finger needs, held even when the field is empty and the
+    // placeholder is one line.
+    minHeight: 44,
+  },
+
+  /**
+   * Aligned with the card's own text rather than its edge, so the note reads
+   * as belonging to the field above it — the hanging indent `DeckAttach` uses
+   * for its constraints line, for the same reason.
+   */
+  audienceNote: {
+    ...type.bodySm,
+    color: color.onSurfaceVariant,
+    paddingHorizontal: space.base,
+    paddingTop: space.tight,
+  },
+
   rehearsal: {
     ...type.bodyLg,
     color: color.onSurface,

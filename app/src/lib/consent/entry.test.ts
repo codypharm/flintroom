@@ -42,7 +42,7 @@ function trace() {
       },
       order: () => {
         steps.push('order');
-        return { archetypes: ['cfo'], materialId: null, repeats: null, rehearsalName: null };
+        return { archetypes: ['cfo'], materialId: null, repeats: null, rehearsalName: null, audience: null };
       },
       mint: async () => void steps.push('mint'),
     },
@@ -170,7 +170,7 @@ it('hands the mint the seating it was asked for', async () => {
 
   await enterRoom({
     ...deps,
-    order: () => ({ archetypes: ['champion', 'cfo'], materialId: 'deck-9', repeats: null, rehearsalName: null }),
+    order: () => ({ archetypes: ['champion', 'cfo'], materialId: 'deck-9', repeats: null, rehearsalName: null, audience: null }),
     mint: async (order) => void seated.push(order.archetypes),
   });
 

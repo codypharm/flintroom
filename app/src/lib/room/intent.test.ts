@@ -20,13 +20,13 @@ it('will not open a room nobody asked for', () => {
 });
 
 it('carries the order from the tap that made it', () => {
-  intendRoom({ archetypes: ['cfo', 'champion'], materialId: 'deck-1', repeats: null, rehearsalName: null });
+  intendRoom({ archetypes: ['cfo', 'champion'], materialId: 'deck-1', repeats: null, rehearsalName: null, audience: null });
 
   expect(takeIntent()).toEqual({
     archetypes: ['cfo', 'champion'],
     materialId: 'deck-1',
     repeats: null,
-    rehearsalName: null,
+    rehearsalName: null, audience: null,
   });
 });
 
@@ -34,7 +34,7 @@ it('is spent once, so a remount cannot re-use it', () => {
   // The path that made this a money bug rather than a routing one. A token
   // refresh flips `who` off 'ready' and back, `Stack.Protected` unmounts and
   // remounts the subtree, and the mount effect runs again on the same params.
-  intendRoom({ archetypes: ['cfo'], materialId: null, repeats: null, rehearsalName: null });
+  intendRoom({ archetypes: ['cfo'], materialId: null, repeats: null, rehearsalName: null, audience: null });
 
   expect(takeIntent()).not.toBeNull();
   expect(takeIntent()).toBeNull();
@@ -45,7 +45,7 @@ it('carries the seating itself rather than trusting the address bar', () => {
   // `flintroom://interrogation?archetypes=cfo` chose somebody's room for them,
   // and the bare link chose nothing at all — `split()` returned [] and the
   // server seated a default panel the presenter never picked.
-  intendRoom({ archetypes: ['technical_skeptic'], materialId: null, repeats: null, rehearsalName: null });
+  intendRoom({ archetypes: ['technical_skeptic'], materialId: null, repeats: null, rehearsalName: null, audience: null });
 
   expect(takeIntent()?.archetypes).toEqual(['technical_skeptic']);
 });
@@ -53,14 +53,14 @@ it('carries the seating itself rather than trusting the address bar', () => {
 it('replaces an order that was never collected rather than queueing it', () => {
   // Two taps with no room between them is one intention, not two. Queueing
   // would leave the second room opening on the first tap's seating.
-  intendRoom({ archetypes: ['cfo'], materialId: null, repeats: null, rehearsalName: null });
-  intendRoom({ archetypes: ['champion'], materialId: 'deck-2', repeats: null, rehearsalName: null });
+  intendRoom({ archetypes: ['cfo'], materialId: null, repeats: null, rehearsalName: null, audience: null });
+  intendRoom({ archetypes: ['champion'], materialId: 'deck-2', repeats: null, rehearsalName: null, audience: null });
 
   expect(takeIntent()).toEqual({
     archetypes: ['champion'],
     materialId: 'deck-2',
     repeats: null,
-    rehearsalName: null,
+    rehearsalName: null, audience: null,
   });
   expect(takeIntent()).toBeNull();
 });
@@ -71,7 +71,7 @@ it('carries which room this one repeats, so a re-run joins its rehearsal', () =>
   // The server groups on it, so a re-run that arrived without it would file
   // itself as a fresh argument and the progress screen would show two runs of
   // one rehearsal as two rehearsals of one run each.
-  intendRoom({ archetypes: ['cfo'], materialId: 'deck-1', repeats: 'room-7', rehearsalName: null });
+  intendRoom({ archetypes: ['cfo'], materialId: 'deck-1', repeats: 'room-7', rehearsalName: null, audience: null });
 
   expect(takeIntent()?.repeats).toBe('room-7');
 });
@@ -80,7 +80,7 @@ it('repeats nothing when the room was assembled from scratch', () => {
   // Null rather than absent, so the field is answered on every order. An
   // optional property is one a caller forgets to set and a reader cannot
   // distinguish from one deliberately left empty.
-  intendRoom({ archetypes: ['cfo'], materialId: null, repeats: null, rehearsalName: null });
+  intendRoom({ archetypes: ['cfo'], materialId: null, repeats: null, rehearsalName: null, audience: null });
 
   expect(takeIntent()?.repeats).toBeNull();
 });

@@ -82,6 +82,7 @@ export default function HomeScreen() {
     material: sameDeck,
     repeats,
     name: called,
+    audience: facing,
     rung,
   } = useLocalSearchParams<{
     reveal?: string;
@@ -89,6 +90,7 @@ export default function HomeScreen() {
     material?: string;
     repeats?: string;
     name?: string;
+    audience?: string;
     rung?: string;
   }>();
   const revealing = reveal === '1';
@@ -100,6 +102,11 @@ export default function HomeScreen() {
   // a `TextInput` handed null quietly becomes uncontrolled. Emptiness means
   // unnamed; this screen turns that into the null the server stores.
   const [rehearsalName, setRehearsalName] = useState('');
+  // #66. The empty string rather than null for the reason the name above is:
+  // it is a `TextInput` value, and one handed null quietly goes uncontrolled.
+  // Emptiness means nobody described the room, and this screen is what turns
+  // that into the null the server stores.
+  const [audience, setAudience] = useState('');
 
   /**
    * The rung a re-run will actually open at, or null on a fresh argument.
@@ -151,6 +158,21 @@ export default function HomeScreen() {
       setRehearsalName(called);
     }
   }, [called]);
+
+  // #66, and seeded on exactly the same terms — except that this one is the
+  // room's rather than the rehearsal's, so it comes from the row that was
+  // tapped rather than from the newest attempt in the lineage.
+  //
+  // Prefilled and editable, which is the whole reason the note is stored per
+  // room. Somebody re-running the same argument for the same committee should
+  // not retype it; somebody taking it to a different room on Friday must be
+  // able to see what is in the box and change it before Start. Inheriting it
+  // silently would get the second case wrong every time.
+  useEffect(() => {
+    if (facing) {
+      setAudience(facing);
+    }
+  }, [facing]);
 
   useEffect(() => {
     // Guarded on a real number rather than on truthiness. The Library sends an
@@ -435,6 +457,8 @@ export default function HomeScreen() {
         seated={seated}
         onSeatedChange={setSeated}
         rehearsalName={rehearsalName}
+        audience={audience}
+        onAudienceChange={setAudience}
         onRehearsalNameChange={setRehearsalName}
         material={material}
         limits={limits}
@@ -493,6 +517,10 @@ export default function HomeScreen() {
             // The server strips it too — this is the same rule stated where
             // the value is produced.
             rehearsalName: rehearsalName.trim() || null,
+            // Trimmed to null here rather than sent as spaces. The server
+            // does the same on arrival, and agreeing about it means the box
+            // somebody tabbed through never becomes a fence around nothing.
+            audience: audience.trim() || null,
           });
           router.push('/interrogation');
         }}

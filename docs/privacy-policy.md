@@ -31,6 +31,19 @@ slides or whiteboards. These are read once, and the claims and figures found in
 them are kept. **The file itself is deleted as soon as it has been read** — what
 survives is the extracted claims and a single thumbnail.
 
+**What you write about the room you are facing.** Before a room opens you may
+describe the audience in your own words — "my VP hates anything that adds
+headcount". It is optional, it is capped at a paragraph, and it is stored on
+that one room rather than on your account, so a different rehearsal never
+inherits it. It is sent to the model that writes the panel's questions, which
+uses it to decide what to press on; **the panel never reads it aloud**, and
+nothing in it may be stated back to you as a fact. It is never written to a log.
+
+Flintroom asks you for this rather than looking anybody up. Nothing about the
+people you name is fetched from anywhere — not from a social network, not from
+a search engine, not from any public profile. The only thing the panel knows
+about your audience is what you typed.
+
 **Your account.** Sign-in is through Apple or Google. Flintroom stores the
 identifier they return and nothing else about you: no password, no profile, no
 contacts, no address book.
@@ -50,6 +63,7 @@ language, and does not build a profile of you from anywhere outside the app.
 | --- | --- |
 | **Recording of a room** | 30 days (Free), 90 days (Starter), 12 months (Pro) |
 | **Transcript of a room** | As long as you have an account |
+| **What you wrote about the audience** | As long as you have an account, on the one room it was given to |
 | **Attached material** | The source file: minutes. The extracted claims and thumbnail: until you delete them |
 | **Account and usage records** | As long as you have an account |
 | **Billing and money records** | [CONFIRM] — kept after account deletion, no longer linked to you, where tax or accounting law requires it. The period depends on jurisdiction and needs an answer before publication |
@@ -114,7 +128,7 @@ necessarily pass through them.
 | Provider | What reaches them |
 | --- | --- |
 | **ElevenLabs** | Your speech, to turn into text; the panel's lines, to turn into speech |
-| **Google (Gemini)** | The transcript of the room in progress, to decide who speaks and what they ask; the contents of material you attach, once, to extract its claims; the transcript again afterwards, to work out which answers were weak and to hold the debrief |
+| **Google (Gemini)** | The transcript of the room in progress, to decide who speaks and what they ask; what you wrote about the audience, if anything, to decide what to press on; the contents of material you attach, once, to extract its claims; the transcript again afterwards, to work out which answers were weak and to hold the debrief |
 | **Anthropic (Claude)** | Nothing today. Configured as the alternative for the two model tasks above, and this row becomes accurate the moment it is selected |
 | **Supabase** | Hosts the database. Flintroom is the only thing that reads it; the app holds no database credentials |
 | **Cloudflare R2** | Stores recordings and thumbnails |

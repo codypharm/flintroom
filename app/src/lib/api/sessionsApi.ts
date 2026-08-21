@@ -85,6 +85,15 @@ export interface PastRoom {
    */
   materialIds: string[];
   /**
+   * What the presenter said about the room they were facing, or null.
+   *
+   * **This room's own, never the lineage's** — unlike `rehearsalName` above.
+   * The same argument may go to a VP on Monday and a board on Friday: one
+   * rehearsal, two audiences. Read by the setup screen so a re-run arrives with
+   * the note already in the box, where somebody can change it before Start.
+   */
+  audience: string | null;
+  /**
    * The rung this room ran at, or null if it never became a room.
    *
    * Read by the setup screen so a re-run can *show* the pressure it will
@@ -126,6 +135,18 @@ export interface StartRoom {
    * that exists only to let a client get it wrong.
    */
   rehearsalName: string | null;
+  /**
+   * What the presenter says about the room they are walking into, or null.
+   *
+   * #66. Unlike `rehearsalName` this is **not** inherited server-side: it
+   * belongs to the room rather than to the lineage, so a re-run sends back what
+   * the setup screen prefilled and the presenter may have changed.
+   *
+   * The only field on this request whose text reaches a model. The server
+   * fences it as data before it does, and the panel is shaped by it without
+   * ever repeating it aloud.
+   */
+  audience: string | null;
   /**
    * The room this one is a re-run of, or null when the argument is a new one.
    *
@@ -224,7 +245,7 @@ export function createSessionsApi({
   };
 
   return {
-    start: async ({ archetypes, materialIds, repeats, rehearsalName }) => {
+    start: async ({ archetypes, materialIds, repeats, rehearsalName, audience }) => {
       const response = await send('/v1/sessions', {
         method: 'POST',
         body: JSON.stringify({
@@ -234,6 +255,7 @@ export function createSessionsApi({
           // server, and a room that repeats nothing has nothing to say here.
           ...(repeats === null ? {} : { repeats }),
           ...(rehearsalName === null ? {} : { rehearsal_name: rehearsalName }),
+          ...(audience === null ? {} : { audience }),
         }),
       });
 
@@ -325,6 +347,7 @@ interface PastRoomBody {
   settled_at?: string | null;
   archetypes?: string[];
   material_ids?: string[];
+  audience?: string | null;
   recording?: { state: string; expires_at?: string | null };
 }
 
@@ -349,6 +372,7 @@ function asPastRoom(room: PastRoomBody): PastRoom {
     settledAt: room.settled_at ?? null,
     archetypes: room.archetypes ?? [],
     materialIds: room.material_ids ?? [],
+    audience: room.audience ?? null,
     recording: {
       state: (room.recording?.state ?? 'not_recorded') as RoomRecording['state'],
       expiresAt: room.recording?.expires_at ?? null,

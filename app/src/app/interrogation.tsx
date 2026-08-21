@@ -254,6 +254,10 @@ export default function InterrogationScreen() {
               // show a run of attempts at one argument as a run.
               repeats: order.repeats,
               rehearsalName: order.rehearsalName,
+              // #66. The presenter's own words about the room they are about
+              // to face. The server fences them before the composer sees
+              // them, and the panel never says any of it back.
+              audience: order.audience,
             });
           },
         });

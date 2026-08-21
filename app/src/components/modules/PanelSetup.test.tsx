@@ -42,6 +42,8 @@ async function setup(overrides: Partial<PanelSetupProps> = {}) {
     onAuthor: jest.fn(),
     rehearsalName: '',
     onRehearsalNameChange: jest.fn(),
+    audience: '',
+    onAudienceChange: jest.fn(),
     ...overrides,
   };
   await render(<PanelSetup {...props} />);
@@ -458,5 +460,46 @@ describe('naming what is being rehearsed', () => {
     await userEvent.press(screen.getByText('Start'));
 
     expect(props.onStart).toHaveBeenCalled();
+  });
+});
+
+/**
+ * #66 — the permitted substitute for the profile scraping `Product.md` §3.1
+ * refused. The user describes the room; nothing is fetched about anybody.
+ */
+describe('who they are presenting to', () => {
+  it('asks, and hands back what was typed', async () => {
+    const onAudienceChange = jest.fn();
+    await setup({ onAudienceChange });
+
+    fireEvent.changeText(
+      screen.getByLabelText('Who you are presenting to'),
+      'my VP hates anything that adds headcount',
+    );
+
+    expect(onAudienceChange).toHaveBeenCalledWith(
+      'my VP hates anything that adds headcount',
+    );
+  });
+
+  it('says what the room does with it, and what it will not do', async () => {
+    await setup();
+
+    // The disclosure half of the architect's "shaped, never spoken" choice.
+    // Somebody who writes a sentence and never hears it back has no way to
+    // tell a panel that used it from one that ignored it — and a product that
+    // reads it aloud would be the other room entirely.
+    expect(screen.getByText(/never read out/i)).toBeOnTheScreen();
+  });
+
+  it('stops a long paste under the thumb rather than at Start', async () => {
+    await setup();
+
+    // The server refuses past AUDIENCE_LIMIT with a 422. Bounded here as well
+    // so the refusal is not a room that will not open for an invisible reason
+    // — the same rule the rehearsal name already follows.
+    expect(
+      screen.getByLabelText('Who you are presenting to').props.maxLength,
+    ).toBe(400);
   });
 });

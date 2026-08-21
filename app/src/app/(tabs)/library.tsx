@@ -101,6 +101,11 @@ export default function LibraryRoute() {
         // rather than an empty field asking somebody to name a thing that has
         // a name. Empty when nobody named it, which is the same as unnamed.
         name: room.rehearsalName ?? '',
+        // #66, and this row's own rather than the rehearsal's — unlike the
+        // name above. The same argument can go to two different rooms, so
+        // "Run it again" prefills what *this* attempt was told and lets the
+        // presenter change it. Empty when nobody described the room.
+        audience: room.audience ?? '',
         // The rung this rehearsal is running at, so the setup screen shows the
         // pressure the room will actually open at. The server resolves the same
         // thing at room build; sending it here is only so the picker cannot
