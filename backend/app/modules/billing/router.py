@@ -12,7 +12,7 @@ from app.modules.billing.dependencies import (
     WebhookSecret,
 )
 from app.modules.billing.revenuecat import SIGNATURE_HEADER
-from app.modules.billing.schemas import BalanceRead
+from app.modules.billing.schemas import BalanceRead, PurchaseOptions
 
 router = APIRouter(tags=["billing"])
 
@@ -29,6 +29,21 @@ async def read_balance(user_id: CurrentUser, ledger: LedgerServiceDep) -> Balanc
     return BalanceRead.model_validate(
         await ledger.ensure_current_period(user_id=user_id)
     )
+
+
+@router.get("/purchase-options", response_model=PurchaseOptions)
+async def read_purchase_options(
+    user_id: CurrentUser, ledger: LedgerServiceDep
+) -> PurchaseOptions:
+    """Which control the buy screen leads with, per §4.5.
+
+    Separate from `/balance` rather than a field on it, and on purpose. Balance
+    is polled from the top bar of every screen; this is read once, by a screen
+    somebody deliberately opened, and it costs a count over `ledger_entries`.
+    Folding it in would put that query on the hottest path in the API to answer
+    a question nobody on those screens is asking.
+    """
+    return await ledger.purchase_options(user_id=user_id)
 
 
 @router.post("/webhooks/revenuecat", status_code=200, include_in_schema=False)

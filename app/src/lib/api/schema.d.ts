@@ -584,6 +584,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/purchase-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Purchase Options
+         * @description Which control the buy screen leads with, per §4.5.
+         *
+         *     Separate from `/balance` rather than a field on it, and on purpose. Balance
+         *     is polled from the top bar of every screen; this is read once, by a screen
+         *     somebody deliberately opened, and it costs a count over `ledger_entries`.
+         *     Folding it in would put that query on the hottest path in the API to answer
+         *     a question nobody on those screens is asking.
+         */
+        get: operations["billing_read_purchase_options"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/materials/limits": {
         parameters: {
             query?: never;
@@ -1270,6 +1296,26 @@ export interface components {
             habits?: components["schemas"]["TallyRead"][];
             /** Askers */
             askers?: components["schemas"]["TallyRead"][];
+        };
+        /**
+         * PurchaseOptions
+         * @description Which control leads on the buy screen, and what there is to lead with.
+         *
+         *     §4.5's Credit-Toward-Upgrade Rule, answered on the server. The window and
+         *     the threshold are business rules, and a client computing them from a raw
+         *     count would be a second implementation free to drift from this one.
+         *
+         *     **A decision, not a tally.** The count of top-ups is deliberately not on the
+         *     wire. `BalanceRead` above refuses raw seconds for the same reason §4.6 gives
+         *     — a number that only goes one way invites a display that makes people
+         *     ration — and "you have topped up twice this month" is that display wearing a
+         *     different hat. Somebody who bought two packs knows they bought two packs.
+         */
+        PurchaseOptions: {
+            /** Upgrade First */
+            upgrade_first: boolean;
+            /** Next Tier */
+            next_tier?: string | null;
         };
         /**
          * RecordingPlayback
@@ -2314,6 +2360,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BalanceRead"];
+                };
+            };
+        };
+    };
+    billing_read_purchase_options: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOptions"];
                 };
             };
         };

@@ -6,14 +6,35 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.actors import ActorContext
+from app.core.database import db_now
 from app.core.errors import AccountNotFound
 from app.core.logging import get_logger
 from app.modules.billing.models import Account, LedgerEntry
-from app.modules.billing.schemas import Balance, Bucket, EntryReason, LedgerEntryRead
+from app.modules.billing.schemas import (
+    Balance,
+    Bucket,
+    EntryReason,
+    LedgerEntryRead,
+    PurchaseOptions,
+)
 from app.modules.billing.tiers import (
     FREE_TIER_LIFETIME_SECONDS,
     MONTHLY_ALLOWANCE_SECONDS,
+    next_tier_above,
 )
+
+#: How far back §4.5's Credit-Toward-Upgrade Rule looks for a previous pack.
+#:
+#: *"On the second top-up in any rolling 30-day window."* Rolling rather than
+#: calendar, like the daily spend ceiling — there is no timezone to argue about
+#: and no midnight at which somebody who topped up twice last week is handed a
+#: clean slate.
+#:
+#: Thirty days rather than a billing period on purpose. The rule is about a
+#: *rate* of buying — "a user who tops up three times in a month is a pricing
+#: failure" — and a period boundary would let two purchases either side of a
+#: renewal look like two isolated ones.
+TOPUP_WINDOW = timedelta(days=30)
 
 _BUCKET_BALANCE_COLUMN = {
     Bucket.ALLOWANCE: "balance_allowance_seconds",
@@ -516,6 +537,52 @@ class LedgerService:
 
     async def balance(self, *, user_id: uuid.UUID) -> Balance:
         return self._balance_of(await self._load_account(user_id))
+
+    async def purchase_options(self, *, user_id: uuid.UUID) -> PurchaseOptions:
+        """Which control the buy screen leads with — §4.5's Credit-Toward-Upgrade Rule.
+
+        *"On the second top-up in any rolling 30-day window, make the upgrade
+        the default option and the top-up the secondary one."* So the question
+        is whether they have bought one **already**: the purchase in front of
+        them is the second, and the steering has to happen before they pay
+        rather than after.
+
+        **Rolling rather than calendar**, like the daily spend ceiling and for
+        the same reason — no timezone to pick, and no midnight at which somebody
+        who topped up twice last week is quietly treated as new.
+
+        **Never a gate.** Point 4 forbids putting a top-up behind the upgrade
+        prompt, and there is nothing here that could: the answer says which
+        control is larger and has no way to withhold either.
+
+        A per-account query on `ledger_entries`, which is indexed by `user_id`
+        and never aggregated across users — `docs/deferred-scale-work.md`
+        forbids a cross-user aggregate here and this is not one. Not on the
+        balance path either: balance is polled from the top bar of every screen,
+        and this is read once, by a screen somebody deliberately opened.
+        """
+        since = await db_now(self._db) - TOPUP_WINDOW
+        bought = await self._db.scalar(
+            select(func.count())
+            .select_from(LedgerEntry)
+            .where(
+                LedgerEntry.user_id == user_id,
+                LedgerEntry.reason == EntryReason.GRANT_TOPUP,
+                LedgerEntry.created_at >= since,
+            )
+        )
+
+        account = await self._load_account(user_id)
+        above = next_tier_above(account.entitlement_tier)
+
+        return PurchaseOptions(
+            # Both halves, and the second is not a detail. A user at the top of
+            # the ladder has bought every rung there is; leading with an upgrade
+            # that does not exist would be a screen with a primary button and
+            # nothing to put in it.
+            upgrade_first=bool(bought) and above is not None,
+            next_tier=above,
+        )
 
     async def entries(self, *, user_id: uuid.UUID) -> list[LedgerEntryRead]:
         """The audit trail, oldest first."""

@@ -254,7 +254,7 @@ Design rules for the flow:
 - **Top-up minutes never expire.** They sit alongside the monthly allowance.
 - **Monthly allowance is consumed first**, then the top-up balance. Users should never accidentally burn purchased minutes while free ones remain.
 - **Never interrupt a live session.** If a user runs out mid-interrogation, let the panel finish and settle afterwards. Cutting off a panelist mid-question to show a paywall destroys the one experience the product sells.
-- **Prompt the upgrade with the credit applied** — see the Credit-Toward-Upgrade Rule above. Farming your most engaged users is a short game.
+- **Steer a repeat top-up toward the plan** — see the Credit-Toward-Upgrade Rule above. Farming your most engaged users is a short game. *(Corrected 2026-08-21: this bullet still read "prompt the upgrade with the credit applied", which is the price-discount language the 2026-08-16 revision three paragraphs above explicitly retired — neither store will discount a subscription for a prior consumable purchase. The credit is the minutes, which the ledger already keeps.)*
 - **Optional auto-refill**, off by default, with a user-set monthly ceiling. Silent auto-charging is the fastest route to chargebacks and one-star reviews.
 
 ### 4.6 Presenting the Price

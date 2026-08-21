@@ -89,6 +89,42 @@ class BalanceRead(BaseModel):
     has_time_remaining: bool
 
 
+class PurchaseOptions(BaseModel):
+    """Which control leads on the buy screen, and what there is to lead with.
+
+    §4.5's Credit-Toward-Upgrade Rule, answered on the server. The window and
+    the threshold are business rules, and a client computing them from a raw
+    count would be a second implementation free to drift from this one.
+
+    **A decision, not a tally.** The count of top-ups is deliberately not on the
+    wire. `BalanceRead` above refuses raw seconds for the same reason §4.6 gives
+    — a number that only goes one way invites a display that makes people
+    ration — and "you have topped up twice this month" is that display wearing a
+    different hat. Somebody who bought two packs knows they bought two packs.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    #: Whether the upgrade is the primary control and the top-up the secondary
+    #: one — §4.5 point 2, on the second purchase in a rolling thirty days.
+    #:
+    #: **Never a gate.** Point 4 is explicit: *"Never gate the top-up behind the
+    #: upgrade prompt. One tap to decline, always."* This says which is bigger,
+    #: never which is available, and there is no field here that could withhold
+    #: one — a top-up is always purchasable and the schema has no way to say
+    #: otherwise.
+    upgrade_first: bool
+
+    #: The rung to offer, or null at the top of the ladder.
+    #:
+    #: Null is a real answer rather than a missing one. `pro_annual` is the same
+    #: capability on a different period and `teams` has a *smaller* upload cap,
+    #: so neither is on `UPGRADE_LADDER` — and a Pro subscriber buying their
+    #: third pack has genuinely nothing to be steered toward. Steering them
+    #: anyway would take money for a plan that gives them no more room.
+    next_tier: str | None = None
+
+
 class LedgerEntryRead(BaseModel):
     """One immutable line of the audit trail."""
 
