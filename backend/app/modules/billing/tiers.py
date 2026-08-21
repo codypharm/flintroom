@@ -9,6 +9,9 @@ minutes are *lifetime*, granted once at signup into the free bucket, and nothing
 about it renews monthly.
 """
 
+from datetime import timedelta
+from decimal import Decimal
+
 MONTHLY_ALLOWANCE_SECONDS: dict[str, int] = {
     "starter": 90 * 60,
     "pro": 180 * 60,
@@ -18,6 +21,41 @@ MONTHLY_ALLOWANCE_SECONDS: dict[str, int] = {
 
 #: Granted once at signup, never renewed. Product.md §4.4.
 FREE_TIER_LIFETIME_SECONDS = 15 * 60
+
+#: The runaway-cost circuit breaker `CLAUDE.md` names in its Metering Rules and
+#: nothing implemented until #73: *"per-account daily spend ceiling"*.
+#:
+#: **A cost control, never a revenue one.** It bounds what three providers can
+#: be made to charge us for rooms the meter will never bill — the abuse shape
+#: `docs/voice-cost.md` describes, where the one-active-session rule turns the
+#: loop into start, end, start at "on the order of a dollar an hour per
+#: account". It must not be reached for by anything that decides what a *user*
+#: pays; minutes are the only thing sold.
+#:
+#: **Per tier, because what a tier can legitimately spend differs by an order
+#: of magnitude.** A free account holds fifteen minutes for life — about $0.68
+#: of interrogation at the rates in `voice/rates.py` — so it can never
+#: legitimately approach a paid account's day, and a single figure would have
+#: to be set high enough for Pro. Pro's 180 monthly minutes are worth ~$8.10,
+#: and a real user may spend all of them the day before a board meeting, so its
+#: ceiling has to sit above that with room to spare.
+#:
+#: These figures are the agent's proposal and are **pending the architect's
+#: sign-off** — they are cost policy rather than pricing, but they decide when
+#: a paying customer is turned away, which is a product moment. Raising one is
+#: a one-line change.
+DAILY_SPEND_CEILING_USD: dict[str, Decimal] = {
+    "free": Decimal("1.00"),
+    "starter": Decimal("8.00"),
+    "pro": Decimal("15.00"),
+    "pro_annual": Decimal("15.00"),
+    "teams": Decimal("8.00"),
+}
+
+#: How far back the ceiling looks. Rolling rather than a calendar day: no
+#: timezone to decide, and no midnight at which somebody who has been hammering
+#: the API all evening is handed a fresh budget.
+SPEND_WINDOW = timedelta(hours=24)
 
 #: The tier every account starts on. Not a key in the table above: the free
 #: tier's minutes are lifetime rather than monthly, so it has no renewing

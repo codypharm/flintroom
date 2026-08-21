@@ -23,6 +23,7 @@ from app.core.actors import ActorContext
 from app.core.database import db_now
 from app.core.errors import (
     AccountNotFound,
+    DailyCeilingReached,
     FlintroomError,
     NoMinutesRemaining,
     ActiveSessionExists,
@@ -45,7 +46,13 @@ from app.modules.sessions.models import (
 )
 from app.modules.billing.models import Account
 from app.modules.panels.authoring import AuthoringService
-from app.modules.billing.tiers import FREE_TIER, RECORDING_RETENTION_DAYS
+from app.modules.billing.tiers import (
+    DAILY_SPEND_CEILING_USD,
+    FREE_TIER,
+    RECORDING_RETENTION_DAYS,
+    SPEND_WINDOW,
+)
+from app.modules.voice.costs import SessionCost
 from app.modules.sessions.models import SessionRecording
 from app.modules.sessions.rehearsals import name_of, names_of
 from app.modules.sessions.schemas import (
@@ -223,6 +230,12 @@ class SessionService:
                 reason="no_minutes_remaining",
                 error=NoMinutesRemaining(user_id=str(user_id)),
             )
+
+        # Last of the refusals, and after the balance question on purpose. Out
+        # of minutes is the user's own business and actionable — they can top
+        # up; this is ours, and an account with no minutes cannot spend anything
+        # anyway, so leading with it would send somebody the wrong way.
+        await self._within_daily_ceiling(user_id)
 
         session = Session(
             user_id=user_id,
@@ -437,6 +450,62 @@ class SessionService:
             .order_by(SessionMaterial.attached_at, SessionMaterial.material_id)
         )
         return list(rows)
+
+    async def _within_daily_ceiling(self, user_id: uuid.UUID) -> None:
+        """Refuse a room this account has already spent its day on.
+
+        The circuit breaker `CLAUDE.md` names in its Metering Rules and nothing
+        implemented until #73. `docs/voice-cost.md` leans on it explicitly: the
+        abuse loop is bounded by the one-active-session rule to "on the order of
+        a dollar an hour per account, against a daily spend ceiling that exists
+        to catch exactly that" — and it did not exist.
+
+        **Cost, not revenue.** A room under the meter's first tick charges the
+        user nothing and must go on charging them nothing; what this bounds is
+        what three providers can be made to charge *us* for rooms the meter will
+        never bill.
+
+        A per-account sum on the start path only. Never on the tick path, and
+        never across users — `docs/deferred-scale-work.md` forbids a cross-user
+        aggregate on the write path, and this keeps the property that a user
+        contends only with themselves.
+
+        `coalesce` on the column and on the sum. Every `session_costs` row
+        written before pricing shipped has a null in it, and an empty window
+        sums to null rather than zero — either would compare as "unknown" and
+        fail open or closed depending on the operator, which is not a thing to
+        leave to chance in a control that turns customers away.
+        """
+        spent = await self._db.scalar(
+            select(
+                func.coalesce(func.sum(func.coalesce(SessionCost.computed_cost_usd, 0)), 0)
+            ).where(
+                SessionCost.user_id == user_id,
+                SessionCost.recorded_at >= await db_now(self._db) - SPEND_WINDOW,
+            )
+        )
+
+        ceiling = DAILY_SPEND_CEILING_USD.get(
+            await self._tier_of(user_id), DAILY_SPEND_CEILING_USD[FREE_TIER]
+        )
+        if spent is None or spent < ceiling:
+            return
+
+        # Logged as well as audited. The audit row proves it happened; this line
+        # is what an operator greps when deciding whether the ceiling is set
+        # right, which is a question the first heavy legitimate user will ask
+        # for us.
+        log.warning(
+            "daily_ceiling_reached",
+            user_id=str(user_id),
+            spent_usd=str(spent),
+            ceiling_usd=str(ceiling),
+        )
+        await self._deny_start(
+            user_id,
+            reason="daily_ceiling_reached",
+            error=DailyCeilingReached(user_id=str(user_id)),
+        )
 
     async def _deny_start(
         self,

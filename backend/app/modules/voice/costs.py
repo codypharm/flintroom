@@ -18,7 +18,16 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, Numeric, String, func
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -36,6 +45,15 @@ class SessionCost(Base):
     """
 
     __tablename__ = "session_costs"
+
+    #: The daily spend ceiling's only question: what has this account cost us
+    #: since a moment. `user_id` leads because it is the equality and
+    #: `recorded_at` the range — reversed, the leading column would be useless
+    #: for the lookup, and the ceiling runs on the session-start path where
+    #: latency is the product.
+    __table_args__ = (
+        Index("ix_session_costs_user_recorded", "user_id", "recorded_at"),
+    )
 
     session_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),

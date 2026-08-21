@@ -150,29 +150,57 @@ abandoned to the idle reap is refunded from tick zero — `settlement.py`'s
 `_first_unserved_tick` returns 0 when the presenter never spoke, because "no
 part of this room was received."
 
-**The premise no longer holds, and #79 is why.** It was written when the panel
-opened the room, so an abandoned room burned a synthesised opener — the 88%
-line in the table above. Since the presenter holds the floor, no panelist
-speaks until they have spoken and paused, so an abandoned room synthesises
-nothing at all and routes nothing.
+**Corrected 2026-08-21, and #79 is why.** This section originally read that an
+abandoned room "synthesises nothing at all", on the grounds that the presenter
+holds the floor and no panelist speaks until they have spoken and paused. That
+was true of *composed* turns and remains so — nothing is routed, and no model
+composes a line. It was never true of the opener. `_open_the_room` runs before
+anything is transcribed, so the cheapest possible room still synthesises one
+hand-written line.
 
-What is left, computed from the rates above rather than observed:
+This is the reopen condition the section named for itself: *"if anything is ever
+added that synthesises speech before the presenter has spoken."* It fired the
+day #79 shipped and went unnoticed for two days, which is the argument for
+writing reopen conditions down.
 
 | | Scribe | Panel speech | Total |
 | --- | --- | --- | --- |
-| Ended by hand under one tick (15s) | $0.0016 | none — nobody spoke | **~$0.0016** |
-| Abandoned to the 90s idle reap | $0.0098 | one nudge, ~3s | **~$0.012** |
+| Ended by hand under one tick (15s) | $0.0016 | one opener, ~35 chars | **~$0.009** |
+| Abandoned to the 90s idle reap | $0.0098 | opener + one nudge | **~$0.020** |
 
-The nudge is the only synthesis an abandoned room can reach, and it fires once
-at `NUDGE_AFTER_SECS = 60` against a reap at `IDLE_LIMIT = 90`.
+Openers use the expressive model, which the header measurement above puts at
+exactly twice Flash per character — so the cheapest room in the product is
+roughly **five times** what this section used to record, and an abandoned one
+is nearly double. Still cents, and still the right shape: it is now the panel
+*speaking* that dominates even the rooms nobody speaks in, which is the same
+sentence as the 88% line and not a coincidence.
+
+The nudge fires once at `NUDGE_AFTER_SECS = 60` against a reap at
+`IDLE_LIMIT = 90`.
 
 **The abuse ceiling is set by the one-active-session rule, not by the meter.**
 A user holds one room at a time — `ActiveSessionExists`, 409, audited — so the
 loop is start, end, start rather than ten in parallel. At the
 `SESSION_START_LIMIT` of 10/minute that is on the order of a dollar an hour per
 account, against a daily spend ceiling that exists to catch exactly that. And
-it buys the abuser nothing: the panel never speaks, so there are no free
-questions to farm.
+it buys the abuser nothing: the panel asks nothing, so there are no free
+questions to farm — the opener is a fixed hand-written line and tells them
+nothing they did not already know.
+
+**The ceiling exists as of 2026-08-21.** It was named in `CLAUDE.md`'s Metering
+Rules and leaned on by the paragraph above for two days before anything
+implemented it. `SessionService._within_daily_ceiling` sums
+`session_costs.computed_cost_usd` over a rolling 24 hours for the one account
+and refuses a start past `DAILY_SPEND_CEILING_USD[tier]`, audited as
+`daily_ceiling_reached`. Rolling rather than a calendar day: no timezone to
+decide, and no midnight at which somebody hammering the API all evening is
+handed a fresh budget. Per tier, because a free account holds fifteen minutes
+for life — about $0.68 of interrogation — and can never legitimately approach a
+Pro account's day.
+
+It reads a column that was null on every row until the same day:
+`voice/rates.py` now prices each turn as it is recorded, which is also what
+gives §4.3 something that can contradict $0.12/min.
 
 **Decided: no minimum charge.** It would be a metering-boundary change, which
 `CLAUDE.md` reserves to the architect, and it would trade a deliberate

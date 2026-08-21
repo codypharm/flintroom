@@ -538,6 +538,13 @@ const REFUSED: Record<string, string> = {
   // and the recovery is to finish or leave the other one.
   active_session_exists:
     'A room is already open on this account. Finish that one, then start another.',
+  // The runaway-cost circuit breaker (#73), and the only refusal here that is
+  // about *us* rather than about them. It fires on abuse and will occasionally
+  // fire on somebody who rehearsed all day — so it says nothing about spend,
+  // does not scold, and leads with what is untouched. A user who reads this as
+  // "I have done something wrong" has been told the wrong thing.
+  daily_ceiling_reached:
+    'That is a lot of rooms in one day. This lifts within a day — your minutes and everything you have recorded are untouched.',
 };
 
 /** Route params arrive as strings; an absent one is an empty list, not `['']`. */

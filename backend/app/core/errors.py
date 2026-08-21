@@ -504,6 +504,29 @@ class NoMinutesRemaining(BusinessRuleViolation):
     message = "You are out of interrogation minutes."
 
 
+class DailyCeilingReached(BusinessRuleViolation):
+    """The runaway-cost circuit breaker, tripped.
+
+    Not about the user's balance and not a paywall. It bounds what the
+    *providers* can be made to charge us in a day for one account — the abuse
+    shape `docs/voice-cost.md` describes, where a room ended under the meter's
+    first tick is free to the user and still cost three vendors something.
+
+    Raised only at a start, like `NoMinutesRemaining` and for the same reason:
+    Product.md §4.5 forbids interrupting a live interrogation, so a room that
+    opens is a room that finishes however much it costs.
+
+    **The message says nothing about spend.** The figure is ours and telling
+    somebody what their rehearsing costs us invites a conversation the product
+    does not want to have — and this will occasionally fire on a heavy paying
+    user, whose reaction to "you have cost us fifteen dollars" would be a
+    reasonable one we would deserve.
+    """
+
+    code = "daily_ceiling_reached"
+    message = "This account has opened its limit of rooms for now."
+
+
 # --- External providers ---------------------------------------------------
 
 
