@@ -84,9 +84,12 @@ class Silence:
 
 
 def nudge_from(
-    panel: Sequence[Archetype], *, choose: Chooser = random.choice
+    panel: Sequence[Archetype],
+    *,
+    choose: Chooser = random.choice,
+    heard: bool = True,
 ) -> tuple[Archetype, str]:
-    """Who asks whether anybody is there, and how they put it.
+    """Who breaks the quiet, and how they put it.
 
     The same shape as `opener_from` and for the same reasons: drawn from the
     **seated** panel because a voice belonging to nobody at the table would be a
@@ -97,10 +100,25 @@ def nudge_from(
     the minute, so it has to be short, unmistakable and the same every time it
     is heard. A composed line is none of those, and it would be a model call
     made about nothing at all.
+
+    **`heard` picks the question, and getting it wrong is the bug #77 found.**
+    Every line in `nudges` asks the presenter to *speak* — "take your time, but
+    say something", "come on, talk to me". To somebody whose microphone is dead
+    and who has been talking for a minute, that is the room telling them to keep
+    doing the thing that has already failed. It reads as a room that is not
+    listening, which is worse than saying nothing at all.
+
+    So a room that has never heard anything asks from `unheard` instead, which
+    sends them to the handset. The default is `True` because that is the
+    ordinary case and the one a caller who has not thought about this wants: a
+    presenter thinking hard about a hostile question has a working microphone,
+    and telling them to check it would be the same failure inverted.
     """
-    speaking = [one for one in panel if one.nudges]
+    lines = (lambda one: one.nudges) if heard else (lambda one: one.unheard)
+
+    speaking = [one for one in panel if lines(one)]
     if not speaking:
         raise NoOneToOpen("no seated archetype has a way to ask")
 
     who = choose(speaking)
-    return who, choose(who.nudges)
+    return who, choose(lines(who))

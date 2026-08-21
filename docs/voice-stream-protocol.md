@@ -161,6 +161,20 @@ extend the limit — panel speech never counts as activity, precisely so a room
 talking to an empty chair still ends. A warning that bought time would be a
 second clock, and a silent room could then run forever.
 
+**Which question it asks depends on `unheard`**, and that was a live bug until
+#77. Every hand-written nudge asks the presenter to *speak* — "take your time,
+but say something", "come on, talk to me" — and nothing consulted whether the
+room had ever heard anything before choosing one. So the third person in the
+list above, the one holding a dead microphone, was told at sixty seconds to do
+the exact thing that had already failed for a minute. That reads as a room which
+is not listening, which is worse than saying nothing.
+
+A room that has heard nothing now draws from a second hand-written set that
+sends them to the handset instead — *"Nothing is coming through."*, *"We have no
+audio from your end at present."* Same channel, same constraints, opposite
+instruction. The screen still carries the actionable half at twenty-five
+seconds; this is what reaches somebody who is not looking at it.
+
 `turn_finished` says the panel has stopped and is waiting. **It is carried
 rather than inferred, and that is the whole reason it exists.** Nothing else
 marks where an utterance ends: the caption arrives *before* its audio, and

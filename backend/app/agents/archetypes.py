@@ -133,6 +133,27 @@ class Archetype(BaseModel):
     #: manner is what keeps it from sounding like a system prompt.
     nudges: tuple[str, ...] = Field(default=())
 
+    #: How this panelist says the room is getting nothing at all.
+    #:
+    #: #77, and the reason it is a second set rather than a shade of `nudges`:
+    #: every nudge asks the presenter to *speak*. To somebody whose microphone
+    #: is dead and who has been talking for a minute, that is the room telling
+    #: them to keep doing the thing that has already failed — which reads as a
+    #: room that is not listening, and is worse than saying nothing.
+    #:
+    #: So these send them to the handset instead. Same constraints as `nudges`,
+    #: plus two of their own, both enforced in `test_unheard_nudge.py`: no line
+    #: may ask them to say, repeat or go on, and every line states *our* side.
+    #: The room cannot know their microphone is broken — a presenter who has
+    #: simply not started yet produces identical bytes — so "we are getting
+    #: nothing" is the strongest true thing available.
+    #:
+    #: In character like the rest, and it survives being in character: "we're
+    #: not getting anything at this end" is what a person in a room with a
+    #: microphone actually says. "Check your microphone" is not, which is why
+    #: the screen says that and the panel does not.
+    unheard: tuple[str, ...] = Field(default=())
+
 
 #: Every archetype the product ships with.
 #:
@@ -185,6 +206,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "soften anything with a preamble."
         ),
         voice=Voice.MEASURED,
+        unheard=(
+            'Nothing is coming through.',
+            'We have silence at this end.',
+            'Your side is not reaching us.',
+        ),
         nudges=(
             'Are you still with us?',
             'We are waiting.',
@@ -221,6 +247,10 @@ LIBRARY: tuple[Archetype, ...] = (
             "concrete noun rather than trailing off."
         ),
         voice=Voice.PRECISE,
+        unheard=(
+            'We are not receiving audio from your side.',
+            'Something between you and us is dropping the signal.',
+        ),
         nudges=(
             'Still there?',
             'Take your time — but say something.',
@@ -256,6 +286,10 @@ LIBRARY: tuple[Archetype, ...] = (
             "sentence always turns."
         ),
         voice=Voice.ASSURED,
+        unheard=(
+            'Whatever you are giving us, none of it arrives.',
+            'We have lost your audio, not your thread.',
+        ),
         nudges=(
             'Still with me?',
             'Take a breath, then go on.',
@@ -290,6 +324,10 @@ LIBRARY: tuple[Archetype, ...] = (
             "arriving faster than it should."
         ),
         voice=Voice.EAGER,
+        unheard=(
+            'We are getting nothing here, nothing at all.',
+            'Dead air our end, completely dead.',
+        ),
         nudges=(
             'You still there?',
             "Don't leave us hanging.",
@@ -328,6 +366,10 @@ LIBRARY: tuple[Archetype, ...] = (
             "a word spent on politeness."
         ),
         voice=Voice.BRISK,
+        unheard=(
+            'Silence. Total silence our end.',
+            'Nothing. We have nothing.',
+        ),
         nudges=(
             'Hello?',
             'Are we doing this?',
@@ -363,6 +405,10 @@ LIBRARY: tuple[Archetype, ...] = (
             "never hurried, and never actually agrees."
         ),
         voice=Voice.SMOOTH,
+        unheard=(
+            'I may be wrong, but nothing seems to reach us.',
+            'It may just be us, though nothing comes through.',
+        ),
         nudges=(
             'Everything all right?',
             'Do go on, when you can.',
@@ -402,6 +448,10 @@ LIBRARY: tuple[Archetype, ...] = (
             "abstraction at all."
         ),
         voice=Voice.WARM,
+        unheard=(
+            'We cannot pick up a thing on our side.',
+            'Nothing arrives on our side, so we are missing it.',
+        ),
         nudges=(
             'Still with us? No rush.',
             'Whenever you are ready.',
@@ -437,6 +487,10 @@ LIBRARY: tuple[Archetype, ...] = (
             "emphasis, no hedging, no hurry."
         ),
         voice=Voice.DRY,
+        unheard=(
+            'We have no audio from your end at present.',
+            'Nothing has reached us since we began.',
+        ),
         nudges=(
             'Still present?',
             'The clock is running.',

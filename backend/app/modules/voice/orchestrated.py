@@ -521,6 +521,14 @@ class OrchestratedChannel:
         moment attention is lowest, aimed at somebody who by definition stopped
         looking.
 
+        **Which question, decided by whether the room has ever heard them.**
+        #77. Every line in `nudges` asks the presenter to speak, and to the
+        third person on that list — the one holding a dead microphone — that is
+        the room telling them to keep doing what has already failed. It reads as
+        a room that is not listening, which is the failure this whole area keeps
+        arriving back at. So a room that has heard nothing at all asks from
+        `unheard` instead, and sends them to the handset.
+
         **It changes nothing.** No clock is reset and no limit is extended: the
         room still ends at `IDLE_LIMIT` and still refunds in full. A warning
         that bought time would be a second clock, and a silent room could then
@@ -538,10 +546,11 @@ class OrchestratedChannel:
             return
 
         try:
+            heard = not self._ears.unheard
             who, line = (
-                nudge_from(self._panel, choose=self._choose)
+                nudge_from(self._panel, choose=self._choose, heard=heard)
                 if self._choose is not None
-                else nudge_from(self._panel)
+                else nudge_from(self._panel, heard=heard)
             )
         except NoOneToOpen:
             log.warning("nobody_could_ask")
@@ -549,7 +558,12 @@ class OrchestratedChannel:
             return
 
         self._silence.asked()
-        log.info("asked_if_anybody_is_there", archetype=who.name)
+        # `heard` says which of the two questions was asked, and it is the only
+        # record of it — the line itself is never logged, because `CLAUDE.md`
+        # forbids room speech in logs. A room that asked the wrong one is
+        # otherwise indistinguishable in a trace from one that asked the right
+        # one, which is exactly how this went unnoticed until #77.
+        log.info("asked_if_anybody_is_there", archetype=who.name, heard=heard)
 
         # The same three events an ordinary turn uses, so the relay, the mixer,
         # the recording and the phone all treat it as what it is: a panelist

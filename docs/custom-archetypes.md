@@ -70,7 +70,7 @@ the difference. **`Archetype` is the boundary.**
 | Avatar | Nobody — their initials, see below. |
 | `name` | Server. `custom:{uuid}` — see §5. |
 | `attack_strategy` | Us, composed from their domains — see §2. |
-| `cadence`, `openers`, `nudges` | Nobody. Null, and the room copes. |
+| `cadence`, `openers`, `nudges`, `unheard` | Nobody. Null, and the room copes. |
 
 ### The avatar is their initials, and that is already built
 
@@ -196,11 +196,19 @@ moment on a screen the user has already committed to, and the metering rules
 are explicit that a room in progress is never where a constraint is discovered.
 Better that it is not an arrangement the picker will build.
 
-**Why not give custom archetypes generic openers and nudges.** Both are
-hand-written deliberately, and `nudges` more strictly: identical every time so
-it is recognisable rather than parsed, and in character because *"every voice in
-this room belongs to somebody at the table"*. A generic line breaks the one
-moment the panel is not interrogating.
+**Why not give custom archetypes generic openers and nudges.** All three are
+hand-written deliberately, and the two nudge sets more strictly: identical every
+time so they are recognisable rather than parsed, and in character because
+*"every voice in this room belongs to somebody at the table"*. A generic line
+breaks the one moment the panel is not interrogating.
+
+`unheard` joined them on 2026-08-21 (#77) and is the sharpest case of the three.
+It is what a panelist says when the room has never heard anything at all, and it
+exists because every ordinary `nudges` line asks the presenter to *speak* —
+which, said to somebody holding a dead microphone, is the room telling them to
+keep doing what has already failed. A generic substitute there would be a
+generic line delivered at the worst moment in the product: the presenter is
+already wondering whether any of this is real.
 
 ## 4. Immutable once seated; delete is an archive
 
