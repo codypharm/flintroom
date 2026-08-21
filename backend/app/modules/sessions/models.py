@@ -1,5 +1,8 @@
 import uuid
 from datetime import datetime
+from collections.abc import Iterable
+from enum import Enum as PythonEnum, EnumType
+from typing import cast
 
 from sqlalchemy import (
     Boolean,
@@ -71,7 +74,9 @@ def _sql_values(enum: EnumType) -> str:
     enum. Harmless at runtime and wrong to read, which is the class of thing
     only a checker finds.
     """
-    return ", ".join(f"'{member.value}'" for member in enum)
+    return ", ".join(
+        f"'{member.value}'" for member in cast("Iterable[PythonEnum]", enum)
+    )
 
 
 class Session(Base):

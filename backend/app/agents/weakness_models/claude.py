@@ -33,6 +33,7 @@ from typing import Any
 
 import httpx
 from anthropic import AsyncAnthropic
+from anthropic.types import MessageParam, ToolParam
 
 from app.agents.model import TurnUsage
 from app.agents.weakness import (
@@ -68,7 +69,7 @@ THINKING_TOKENS = 4096
 #: The name is part of the contract with the model and appears in the reply.
 TOOL = "report_weak_answers"
 
-_TOOL_SCHEMA: dict[str, Any] = {
+_TOOL_SCHEMA: ToolParam = {
     "name": TOOL,
     "description": (
         "Report the answers that were weakest in this session, worst first."
@@ -141,7 +142,7 @@ class ClaudeWeaknessReader:
             thinking={"type": "enabled", "budget_tokens": THINKING_TOKENS},
             tools=[_TOOL_SCHEMA],
             system=INSTRUCTION,
-            messages=[{"role": "user", "content": render(room)}],
+            messages=[MessageParam(role="user", content=render(room))],
         )
 
         return WeaknessReading(

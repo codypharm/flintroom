@@ -26,6 +26,7 @@ from typing import Any
 
 import httpx
 from anthropic import AsyncAnthropic, AnthropicError
+from anthropic.types import ContentBlockParam, MessageParam, ToolParam
 
 from app.core.logging import get_logger
 from app.modules.ingestion.extraction_model import ExtractionResult, ExtractionUsage
@@ -123,7 +124,7 @@ _QUOTE = {
 #: `statement` required for an assertion, and conditional JSON Schema is the
 #: part models honour least reliably. Two flat schemas, every field required in
 #: each, is the shape that comes back correct — and `to_claims` reads both.
-CLAIM_TOOL: dict[str, Any] = {
+CLAIM_TOOL: ToolParam = {
     "name": TOOL_NAME,
     "description": (
         "Record what these pages claim. Figures go in `figures`; statements "
@@ -259,7 +260,7 @@ class ClaudeExtractionModel:
                     max_tokens=MAX_OUTPUT_TOKENS,
                     tools=[CLAIM_TOOL],
                     tool_choice={"type": "tool", "name": TOOL_NAME},
-                    messages=[{"role": "user", "content": _content(pages)}],
+                    messages=[MessageParam(role="user", content=_content(pages))],
                 )
             except AnthropicError as exc:
                 # The vendor is never named to the caller. CLAUDE.md: a vendor
@@ -297,14 +298,14 @@ class ClaudeExtractionModel:
             ),
         )
 
-def _content(pages: Sequence[RenderedPage]) -> list[dict[str, Any]]:
+def _content(pages: Sequence[RenderedPage]) -> list[ContentBlockParam]:
     """One instruction, then every page as image and text.
 
     The image comes first within each page because the text is a caption for it:
     a model reading them the other way round anchors on the text layer, which is
     the half that is missing the chart values.
     """
-    blocks: list[dict[str, Any]] = [{"type": "text", "text": INSTRUCTION}]
+    blocks: list[ContentBlockParam] = [{"type": "text", "text": INSTRUCTION}]
 
     for page in pages:
         blocks.append(
