@@ -47,16 +47,22 @@ export class RoomNotOpened extends Error {
  * between two vocabularies.
  */
 /**
- * The three things the room may be doing, and no more.
+ * What the room may be doing, and no more.
  *
  * Deliberately silent about a panelist speaking: the caption and
  * `turn_finished` already carry that, and a second source for one fact is what
  * took a panelist off the screen mid-sentence.
+ *
+ * `unheard` is #77, and it is a stronger claim than `listening` rather than a
+ * shade of it: nothing has reached the room since it opened. Only the server
+ * can say it — `docs/echo-cancellation.md` measured a quiet room on the
+ * configuration this app ships reading exact digital zero, so the levels this
+ * device sees cannot tell an ordinary pause from an unplugged microphone.
  */
-export type Attending = 'listening' | 'heard' | 'working';
+export type Attending = 'listening' | 'heard' | 'working' | 'unheard';
 
 /** Every value this build understands. Anything else is dropped, not rendered. */
-const ATTENDING: readonly Attending[] = ['listening', 'heard', 'working'];
+const ATTENDING: readonly Attending[] = ['listening', 'heard', 'working', 'unheard'];
 
 export interface PanelLine {
   speaker: string;

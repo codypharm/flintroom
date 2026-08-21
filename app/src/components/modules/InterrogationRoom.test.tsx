@@ -230,6 +230,29 @@ describe('what the room says it is doing', () => {
     expect(screen.queryByText(/Working on it/)).toBeNull();
   });
 
+  it('says when nothing has reached the room at all', async () => {
+    // #77. The server split "it did not hear them" in two, because the two
+    // halves want different things: a final that never arrived wants the
+    // sentence again, and a microphone that has never delivered anything wants
+    // the phone checked. `listening` was quietly claiming both, so a presenter
+    // with a dead microphone got the same blank screen as one being thought
+    // about — worse on a phone lying flat where nobody is watching it.
+    await show({ attending: { state: 'unheard', since: Date.now() } });
+
+    expect(await screen.findByText(/check your microphone/)).toBeTruthy();
+  });
+
+  it('does not tell somebody their microphone is broken once it has heard them', async () => {
+    // The whole safety argument. `docs/echo-cancellation.md` measured a quiet
+    // room on this app's shipped audio configuration reading exact digital
+    // zero, so an ordinary pause and an unplugged microphone look identical
+    // from here. Only the server may say this, and only about a room that has
+    // never heard anything — which is why the state is not derived on device.
+    await show({ attending: { state: 'listening', since: Date.now() } });
+
+    expect(screen.queryByText(/check your microphone/)).toBeNull();
+  });
+
   it('yields to the warning that something is actually wrong', async () => {
     // Two lines of machinery on a hands-free screen is a paragraph nobody
     // glancing will read, and "we can barely hear you" is the more actionable.

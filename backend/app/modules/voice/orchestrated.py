@@ -44,6 +44,7 @@ from app.modules.voice.events import (
     UserSpoke,
     VoiceEvent,
 )
+from app.modules.voice.hearing import RoomHearing
 from app.modules.voice.speech import Speaker
 from app.modules.voice.transcript import TranscriptStore
 from app.modules.voice.transcription import Transcriber, TranscriptionStream
@@ -276,6 +277,10 @@ class OrchestratedChannel:
         # When the room last heard them, on the same monotonic clock the floor
         # uses. Set at the open so a presenter who never speaks is still asked.
         self._heard_at = time.monotonic()
+        # #77. Whether a voice has ever reached this room at all — a different
+        # question from `_heard_at`, which measures the gap since the last one
+        # and cannot tell a first gap from a broken microphone.
+        self._ears = RoomHearing()
 
     async def _keep(self, line: Said) -> None:
         """File one line where it will outlive the room, if anywhere.
@@ -302,6 +307,11 @@ class OrchestratedChannel:
         a phone reconnects or a stream stalls.
         """
         self._heard_bytes += len(pcm)
+        # Here rather than in `_listen`, because a transcriber that has decided
+        # this is not speech reports nothing at all — which is precisely the
+        # room #77 is about. These are the bytes the provider is given and bills
+        # for, so nothing downstream of it can disagree with what it saw.
+        self._ears.heard(pcm)
         await self._transcription.send_audio(pcm)
 
     def _seconds_heard(self) -> int:
@@ -576,6 +586,13 @@ class OrchestratedChannel:
             return Attention.WORKING
         if self._floor.open and self._floor.words:
             return Attention.HEARD
+        # #77. Below the two above it, because both mean somebody has been
+        # heard — a panelist answering them, or the floor holding what they
+        # said — and this can only ever be true of a room that has heard
+        # nothing. The ordering is therefore belt and braces rather than a
+        # tie-break: `RoomHearing` latches off on the first non-zero sample.
+        if self._ears.unheard:
+            return Attention.UNHEARD
         return Attention.LISTENING
 
     async def _attend(
@@ -641,9 +658,20 @@ class OrchestratedChannel:
                     # merely ask one bad question: it corrupts the record the
                     # whole unmetered half is grounded in.
                     #
-                    # This is a guard, not the fix. Why a transcriber returns
-                    # finals for non-speech at all — and how to stop asking it
-                    # to — is #77. This is the last line of defence, and it
+                    # **This is the fix, and #77 established there is no
+                    # other one.** The trigger is sustained digital silence:
+                    # measured across three rooms, the transcriber takes in
+                    # 36-37 seconds of it and then commits one empty utterance.
+                    # Not sending that silence was the obvious remedy and it
+                    # does not work — `docs/echo-cancellation.md` measured a
+                    # *quiet room* on this product's shipped audio
+                    # configuration reading exact digital zero, so gating
+                    # silence would gate every pause, which is the signal the
+                    # transcriber endpoints on.
+                    #
+                    # So the empty final gets dropped here, and the presenter is
+                    # told at twenty-five seconds that nothing has reached the
+                    # room — see `hearing.py` and `Attention.UNHEARD`. This
                     # belongs here whatever the provider does, because a room
                     # must never answer something nobody said.
                     if not result.text.strip():
@@ -662,6 +690,10 @@ class OrchestratedChannel:
                     # somebody who steps away twice in one room is asked twice.
                     self._heard_at = time.monotonic()
                     self._silence.heard()
+                    # #77. Words, so the microphone is proven — and the screen
+                    # can never claim nothing has reached the room while the
+                    # transcript is filling with what they said.
+                    self._ears.spoke()
                     # Recorded here rather than inside the turn, because the turn
                     # can be cancelled and this must not be. A user who keeps
                     # talking through the panel's answer has still said the thing

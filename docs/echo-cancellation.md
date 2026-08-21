@@ -158,6 +158,41 @@ line:
 The microphone is fine, and the same code path that returned silence returns
 healthy near-end speech. **That is the go.**
 
+## What that costs elsewhere, found 2026-08-21
+
+"Perfect cancellation and a dead microphone are indistinguishable" is a sentence
+about the echo spike, and it is also a sentence about the product. A quiet room
+on this configuration is **exact digital zero on the uplink**, so every question
+of the form "can we hear the presenter right now" has the same answer whether
+the microphone is working or unplugged.
+
+#77 was written before this connection was made. It records an emulator with its
+virtual microphone switched off producing 37 seconds of digital silence and then
+one empty final that a panelist answered, reads it as an emulator artefact, and
+proposes two fixes: gate silence out of the uplink, and warn the presenter from
+the device's own level readings. **Neither survives the measurement above.**
+
+- Gating silence out of the uplink would gate every *pause* on Android, because
+  a pause and a dead microphone are the same bytes. Trailing silence is what the
+  transcriber endpoints on, so this would break the thing it was meant to
+  protect. It is also the voice-activity decision `OrchestratedChannel.
+  send_audio` already refuses to make, moved one hop earlier and made invisible
+  to the server.
+- A level-based "your microphone is dead" warning would fire at every pause.
+  That is the failure `app/src/lib/audio/hearing.ts` shipped once and documents
+  at length — a warning at the noise floor teaches people to ignore the warning
+  that matters.
+
+What shipped instead is `app/modules/voice/hearing.py`: a latch on whether the
+room has **ever** heard anything, which the two cases do separate, surfaced as
+the `unheard` value of `attending`. `docs/voice-stream-protocol.md` carries the
+reasoning and the thresholds.
+
+**The reopen condition is the same one as above.** If the audio layer is ever
+replaced (#25) or its input preset changed, re-measure the silent room. A
+configuration whose noise gate leaves any residual dither makes `unheard`
+unreachable — a false negative, and a silent one.
+
 **The talk-over capture also proves the silence is cancellation rather than a
 mic that mutes whenever the far end plays.** The panel line is 6.61 s long and
 the capture is 7.72 s, so anything before ~6.7 s has the far end active. Within

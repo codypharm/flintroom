@@ -353,6 +353,19 @@ describe('what the room says it is doing', () => {
     expect(said).toEqual(['working', 'listening']);
   });
 
+  it('carries the room having heard nothing at all', async () => {
+    // #77. The server split "it did not hear them" in two: a final that never
+    // arrived, and a microphone that has never delivered anything. Those want
+    // different things from the presenter — say it again, against check the
+    // phone — and `listening` was quietly claiming both.
+    const said: string[] = [];
+    const { socket } = await connected({ onAttending: (state) => said.push(state) });
+
+    socket.receive(JSON.stringify({ type: 'attending', state: 'unheard' }));
+
+    expect(said).toEqual(['unheard']);
+  });
+
   it('ignores a state it does not recognise', async () => {
     // The server may learn a fourth value before the phone does — #24 already
     // has an idle warning queued behind it. An unknown value must leave the

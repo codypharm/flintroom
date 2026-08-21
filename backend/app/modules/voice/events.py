@@ -155,8 +155,13 @@ class Attention(StrEnum):
     Five things look identical to somebody sitting in a room that has gone
     quiet — it is thinking, it did not hear them, it is waiting for more, it has
     failed, or it is about to end — and after a day of testing the architect
-    reported the middle of that list as the panel being broken. These three
-    values separate the two that cost a session.
+    reported the middle of that list as the panel being broken. These values
+    separate the ones that cost a session.
+
+    "It did not hear them" split in two once #77 was measured. A final that
+    never arrived and a *microphone* that never delivered anything are different
+    failures with different remedies — say it again, against check the phone —
+    and `LISTENING` was quietly claiming both.
 
     **Only the server can answer this.** A final arriving is invisible to the
     phone, so no timer on the device can tell "composing" from "never heard
@@ -178,6 +183,17 @@ class Attention(StrEnum):
 
     #: A turn is in flight. Composing, or synthesising, or streaming.
     WORKING = "working"
+
+    #: Nothing has reached the room since it opened. #77.
+    #:
+    #: **Never once**, which is a different claim from "not right now" and the
+    #: only one that can honestly be made. `docs/echo-cancellation.md` measured
+    #: a quiet room on the configuration this product ships reading exact
+    #: digital zero — noise suppression gates it — so an ordinary pause and an
+    #: unplugged microphone are byte-for-byte identical. A room that has heard
+    #: a voice once can never send this again, which is what makes it safe to
+    #: show at all.
+    UNHEARD = "unheard"
 
 
 @dataclass(frozen=True, slots=True)

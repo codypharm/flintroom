@@ -53,7 +53,7 @@ inspect a payload to know whether it is holding audio or an instruction.
 | `discard_playback` | — | Drop everything buffered and unplayed, immediately. |
 | `transcript` | `text`, `speaker` | Show this as the panel's current line, from that archetype. |
 | `turn_finished` | — | The panel is done. The floor is the presenter's. |
-| `attending` | `state` | What the room is doing while the floor is the presenter's: `listening`, `heard`, `working`. |
+| `attending` | `state` | What the room is doing while the floor is the presenter's: `listening`, `heard`, `working`, `unheard`. |
 
 `discard_playback` is barge-in. Audio runs ahead of playback, so when the user
 talks over a panelist the device is still holding frames of a sentence that will
@@ -83,10 +83,52 @@ synchronisation problem invented for nothing.
 
 `attending` exists because **five things look like silence** to somebody in a
 room that has gone quiet: it is thinking, it did not hear them, it is waiting
-for more, it has failed, or it is about to end. Three of those are told apart by
-this message, and only the server can tell them apart at all — a final arriving
-is invisible to the phone, so any timer on the device would be racing the
-network and would be wrong in exactly the case that matters.
+for more, it has failed, or it is about to end. This message tells apart the
+ones that cost a room, and only the server can tell them apart at all — a final
+arriving is invisible to the phone, so any timer on the device would be racing
+the network and would be wrong in exactly the case that matters.
+
+**"It did not hear them" turned out to be two things**, and `unheard` is the
+second — #77. A final that never arrived wants the sentence said again; a
+microphone that has never delivered anything wants the phone checked. Those are
+different remedies, and `listening` was quietly claiming both.
+
+The obvious way to answer it does not work. `docs/echo-cancellation.md` measured
+the audio configuration this product actually ships — patched
+`Usage::VoiceCommunication` on both streams, `MODE_IN_COMMUNICATION`,
+loudspeaker — and found a *quiet room* on a real S24+ reading exact digital
+zero, every sample, peak -120 dBFS. Noise suppression gates the room outright.
+The doc states the consequence: "perfect cancellation and a dead microphone are
+indistinguishable in it." So on Android an ordinary pause and an unplugged
+microphone are byte-for-byte the same, no level on the device separates them,
+and any warning built on one would fire on the other.
+
+What *is* separable is a room that has **never once** heard anything, and that
+is exactly what `unheard` claims. A working microphone delivers a non-zero
+sample the moment somebody speaks; a dead one never does. It is a latch rather
+than a reading: it can only fire before the first real audio, and the first
+voice turns it off for the rest of the room. That is what makes it safe to show
+at all — nothing that could interrupt a presenter mid-thought.
+
+It goes out after twenty-five seconds of forwarded audio with nothing in it,
+bounded on both sides by measurements. Above, the transcriber commits an empty
+utterance after 36-37 seconds of digital silence (#77, three rooms), and the
+room drops that final rather than answering it — so past that point the
+presenter's only signal is a room that never speaks. Below,
+`NUDGE_AFTER_SECONDS` is 60 and argues quiet is still plausibly thought beneath
+it. The escalation reads: **25s** the screen says so, **~37s** the transcriber
+invents an utterance and `_listen` discards it, **60s** a panelist asks out
+loud, **90s** `IDLE_LIMIT` ends the room and refunds it.
+
+The wording states our side and never diagnoses theirs — *"Nothing has reached
+us yet — check your microphone."* A presenter who has simply not started yet
+produces the same bytes as one holding a dead handset, so a message claiming the
+microphone is broken would be false for half the people who see it. This
+codebase has already shipped a warning that fired at the wrong moment once —
+`app/src/lib/audio/hearing.ts` told the architect the room could barely hear
+them, continuously, while they were saying nothing — and the lesson recorded
+there is that a warning firing at the wrong time teaches people to ignore the
+one that matters.
 
 It says nothing about a panelist speaking. The caption and `turn_finished`
 already carry that, and a second source for one fact is what took a speaking

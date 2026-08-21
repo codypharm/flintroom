@@ -67,11 +67,17 @@ export interface InterrogationRoomProps {
    *
    * #24. Five things look like silence to somebody in a room that has gone
    * quiet — it is thinking, it did not hear them, it is waiting for more, it
-   * failed, or it is about to end. Three of those are told apart here.
+   * failed, or it is about to end. This tells apart the ones that cost a room.
+   *
+   * "It did not hear them" is two things rather than one, and #77 is the split:
+   * a final that never arrived wants the sentence said again, and a microphone
+   * that has never delivered anything wants the phone checked.
    *
    * Reported by the server and never inferred: only it sees a final arrive, so
    * a timer on this side would be racing the network and would be wrong in
-   * exactly the case that matters.
+   * exactly the case that matters. `unheard` doubly so — the levels this device
+   * reads cannot tell an ordinary pause from a dead microphone, because
+   * `docs/echo-cancellation.md` measured both as exact digital zero.
    */
   attending: { state: Attending; since: number };
   /**
@@ -371,6 +377,24 @@ function Doing({ attending }: Pick<InterrogationRoomProps, 'attending'>) {
 
   if (attending.state === 'listening') {
     return null;
+  }
+
+  // #77, and the amber rather than the plain grey: this is the one value here
+  // that says something is wrong rather than something is happening.
+  //
+  // **It states our side and never diagnoses theirs.** "Your microphone is
+  // broken" would be a claim the server cannot make — a presenter who simply
+  // has not started yet produces exactly the same bytes — and this codebase
+  // has already shipped a warning that fired at the wrong moment once, in
+  // `audio/hearing.ts`, which told the architect the room could barely hear
+  // them while they were saying nothing at all. "Nothing has reached us" is
+  // true in both readings and actionable in both.
+  if (attending.state === 'unheard') {
+    return (
+      <Text style={styles.faint} accessibilityLiveRegion="polite">
+        Nothing has reached us yet — check your microphone.
+      </Text>
+    );
   }
 
   return (
