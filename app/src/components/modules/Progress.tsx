@@ -126,15 +126,29 @@ export function Progress({ rooms, habits, askers, now, onOpenRoom }: ProgressPro
         {rehearsed.length > 0 && (
           <Section heading="What you keep rehearsing">
             {rehearsed.map((run) => {
-              const started = whenItRan(run.rooms[run.rooms.length - 1].startedAt, now);
+              // The oldest room in the run, which is where it started. Read
+              // from the tail because the rooms arrive newest first.
+              const oldest = run.rooms[run.rooms.length - 1];
+
+              // The name if the presenter gave the rehearsal one, and when it
+              // began if they did not. Nothing is derived from the panel or
+              // the deck: a heading somebody never chose is one they have no
+              // way to correct, and a date at least says only what is true.
+              const called = oldest.rehearsalName ?? `Started ${whenItRan(oldest.startedAt, now)}`;
 
               return (
                 <View key={run.id}>
-                  <Row left={`Started ${started}`} right={inRooms(run.rooms.length)} />
+                  <Row left={called} right={inRooms(run.rooms.length)} />
                   <Trend
                     rooms={run.rooms}
                     onOpenRoom={onOpenRoom}
-                    label={`One argument, oldest first, started ${started}`}
+                    // Named after the run itself, which is what makes the two
+                    // charts on this screen tellable apart by a screen reader.
+                    label={
+                      oldest.rehearsalName === null
+                        ? `One argument, oldest first, started ${whenItRan(oldest.startedAt, now)}`
+                        : `${oldest.rehearsalName}, oldest first`
+                    }
                   />
                 </View>
               );

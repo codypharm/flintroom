@@ -2167,6 +2167,11 @@ components:
           type: string
           format: uuid
           title: Rehearsal Id
+        rehearsal_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Rehearsal Name
         started_at:
           type: string
           format: date-time
@@ -2219,6 +2224,11 @@ components:
           type: string
           format: uuid
           title: Rehearsal Id
+        rehearsal_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Rehearsal Name
         state:
           $ref: '#/components/schemas/SessionState'
         started_at:
@@ -2284,6 +2294,12 @@ components:
           type: array
           maxItems: 10
           title: Material Ids
+        rehearsal_name:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Rehearsal Name
         repeats:
           anyOf:
           - type: string
@@ -2322,6 +2338,11 @@ components:
           type: string
           format: uuid
           title: Rehearsal Id
+        rehearsal_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Rehearsal Name
         state:
           $ref: '#/components/schemas/SessionState'
         started_at:

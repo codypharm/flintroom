@@ -133,6 +133,7 @@ async def start_session(
         material_ids=body.material_ids if body else [],
         archetypes=body.archetypes if body else [],
         repeats=body.repeats if body else None,
+        rehearsal_name=body.rehearsal_name if body else None,
     )
     return SessionStarted(
         **(await _read(session, sessions)).model_dump(),
@@ -292,6 +293,9 @@ async def _read(session, sessions: SessionServiceDep) -> SessionRead:
             "material_ids": await sessions.materials(session_id=session.id),
             "recording": await sessions.recording(session_id=session.id),
             "archetypes": [archetype.name for archetype in panel],
+            # The lineage's name, which is not always this row's: a re-run
+            # inherits it from whichever room in the group was given one.
+            "rehearsal_name": await sessions.rehearsal_name(session=session),
         }
     )
 

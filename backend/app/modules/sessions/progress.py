@@ -34,6 +34,7 @@ from app.agents.calibration import PRESENTER_AT_FAULT
 from app.agents.context import USER
 from app.agents.weakness import Weakness
 from app.modules.sessions.models import Session, SessionWeakAnswer, TranscriptLine
+from app.modules.sessions.rehearsals import names_of
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +54,13 @@ class RoomHeld:
     #: is applied here so the nullable-for-migration-safety fact stops at this
     #: boundary; letting it travel would put a null branch in every consumer.
     rehearsal: uuid.UUID
+
+    #: What the presenter calls that rehearsal, or null if nobody named it.
+    #:
+    #: The group's name rather than this room's — the newest name given to any
+    #: room in the lineage, so the rooms run before somebody thought to name the
+    #: thing report it too.
+    rehearsal_name: str | None
 
     started_at: datetime
     #: Challenges the presenter actually had a turn at. A question a colleague
@@ -147,8 +155,13 @@ class ProgressService:
             )
         ).all()
 
+        # One query for every name this account has given, folded into the rooms
+        # below. A lineage's name lives on whichever of its rooms carried one,
+        # so it cannot be read off the row it belongs to.
+        named = await names_of(self._db, user_id=user_id)
+
         return Progress(
-            rooms=tuple(_held(room, asked, findings) for room in rooms),
+            rooms=tuple(_held(room, named, asked, findings) for room in rooms),
             habits=_by_room(
                 (found.session_id, found.weakness)
                 for found in findings
@@ -162,7 +175,7 @@ class ProgressService:
         )
 
 
-def _held(room, asked, findings) -> RoomHeld:
+def _held(room, named, asked, findings) -> RoomHeld:
     """One room's arithmetic, with both exclusions applied.
 
     A question the room took away leaves **both** terms. It is not a failure —
@@ -179,6 +192,7 @@ def _held(room, asked, findings) -> RoomHeld:
     return RoomHeld(
         session_id=room.id,
         rehearsal=room.rehearsal,
+        rehearsal_name=named.get(room.rehearsal),
         started_at=room.started_at,
         challenged=challenged,
         held=max(0, challenged - fumbled),

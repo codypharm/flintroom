@@ -1,4 +1,4 @@
-import { render, screen, userEvent, within } from '@testing-library/react-native';
+import { fireEvent, render, screen, userEvent, within } from '@testing-library/react-native';
 
 import { PanelSetup, type PanelSetupProps } from './PanelSetup';
 
@@ -40,6 +40,8 @@ async function setup(overrides: Partial<PanelSetupProps> = {}) {
     onDifficultyChange: jest.fn(),
     onStart: jest.fn(),
     onAuthor: jest.fn(),
+    rehearsalName: '',
+    onRehearsalNameChange: jest.fn(),
     ...overrides,
   };
   await render(<PanelSetup {...props} />);
@@ -420,4 +422,41 @@ it('says what somebody gets rather than what we lack', async () => {
     screen.getByText('Make the room closer to the one that matters.')
   ).toBeTruthy();
   expect(screen.queryByText(/this product has never met/i)).toBeNull();
+});
+
+describe('naming what is being rehearsed', () => {
+  it('asks what this is, and reports what was typed', async () => {
+    // A run of rooms headed by a date answers "am I getting better" and not
+    // "am I getting better at my Q3 board readout", which is the question. The
+    // words have to come from somewhere and nothing else in the product holds
+    // them.
+    const props = await setup();
+
+    fireEvent.changeText(
+      screen.getByLabelText('What you are rehearsing'),
+      'Q3 board readout'
+    );
+
+    expect(props.onRehearsalNameChange).toHaveBeenCalledWith('Q3 board readout');
+  });
+
+  it('shows the name a re-run arrived with', async () => {
+    // "Run it again" carries the lineage's name back onto this screen, so
+    // somebody re-running a rehearsal sees what it is called rather than an
+    // empty field asking them to name a thing that already has a name.
+    await setup({ rehearsalName: 'Series B narrative' });
+
+    expect(screen.getByDisplayValue('Series B narrative')).toBeTruthy();
+  });
+
+  it('starts a room nobody named', async () => {
+    // Optional, and it has to stay optional. The field sits above the deck and
+    // the panel, and a room that would not open without it would put a text
+    // input between somebody and the thing they came to do.
+    const props = await setup({ seated: ['cfo'], rehearsalName: '' });
+
+    await userEvent.press(screen.getByText('Start'));
+
+    expect(props.onStart).toHaveBeenCalled();
+  });
 });

@@ -21,11 +21,11 @@ import { Progress, type ProgressProps } from './Progress';
  * returns them.
  */
 const ROOMS = [
-  { sessionId: 'r-5', rehearsalId: 'r-4', startedAt: '2026-08-20T09:12:00Z', challenged: 9, held: 8, level: 3 },
-  { sessionId: 'r-4', rehearsalId: 'r-4', startedAt: '2026-08-19T16:04:00Z', challenged: 7, held: 4, level: 3 },
-  { sessionId: 'r-3', rehearsalId: 'r-1', startedAt: '2026-08-17T11:00:00Z', challenged: 6, held: 2, level: 2 },
-  { sessionId: 'r-2', rehearsalId: 'r-1', startedAt: '2026-08-14T11:00:00Z', challenged: 5, held: 1, level: 2 },
-  { sessionId: 'r-1', rehearsalId: 'r-1', startedAt: '2026-08-11T11:00:00Z', challenged: 4, held: 0, level: 1 },
+  { sessionId: 'r-5', rehearsalId: 'r-4', rehearsalName: null, startedAt: '2026-08-20T09:12:00Z', challenged: 9, held: 8, level: 3 },
+  { sessionId: 'r-4', rehearsalId: 'r-4', rehearsalName: null, startedAt: '2026-08-19T16:04:00Z', challenged: 7, held: 4, level: 3 },
+  { sessionId: 'r-3', rehearsalId: 'r-1', rehearsalName: null, startedAt: '2026-08-17T11:00:00Z', challenged: 6, held: 2, level: 2 },
+  { sessionId: 'r-2', rehearsalId: 'r-1', rehearsalName: null, startedAt: '2026-08-14T11:00:00Z', challenged: 5, held: 1, level: 2 },
+  { sessionId: 'r-1', rehearsalId: 'r-1', rehearsalName: null, startedAt: '2026-08-11T11:00:00Z', challenged: 4, held: 0, level: 1 },
 ];
 
 const NOW = new Date('2026-08-20T14:00:00Z');
@@ -95,7 +95,7 @@ describe('the run of rooms', () => {
     await setup({
       rooms: [
         ROOMS[0],
-        { sessionId: 'r-0', rehearsalId: 'r-0', startedAt: '2026-08-10T11:00:00Z', challenged: 0, held: 0, level: 2 },
+        { sessionId: 'r-0', rehearsalId: 'r-0', rehearsalName: null, startedAt: '2026-08-10T11:00:00Z', challenged: 0, held: 0, level: 2 },
       ],
     });
 
@@ -220,7 +220,7 @@ describe('the same argument, put more than once', () => {
       rooms: [
         ROOMS[0],
         ROOMS[1],
-        { sessionId: 'r-9', rehearsalId: 'r-9', startedAt: '2026-08-18T11:00:00Z', challenged: 3, held: 3, level: 2 },
+        { sessionId: 'r-9', rehearsalId: 'r-9', rehearsalName: null, startedAt: '2026-08-18T11:00:00Z', challenged: 3, held: 3, level: 2 },
       ],
     });
 
@@ -245,5 +245,30 @@ describe('the same argument, put more than once', () => {
     for (const verdict of [/improving/i, /getting better/i, /on track/i, /well done/i]) {
       expect(screen.queryByText(verdict)).toBeNull();
     }
+  });
+});
+
+describe('what the rehearsal is called', () => {
+  it('heads the run with its name when it has one', async () => {
+    // "Started 11 August" is honest and nearly useless. "Am I getting better at
+    // my Q3 board readout" needs the words, and this is the only screen where
+    // they answer the question the presenter came with.
+    await setup({
+      rooms: ROOMS.map((room) =>
+        room.rehearsalId === 'r-1' ? { ...room, rehearsalName: 'Q3 board readout' } : room
+      ),
+    });
+
+    expect(screen.getByText('Q3 board readout')).toBeTruthy();
+    expect(screen.getByLabelText('Q3 board readout, oldest first')).toBeTruthy();
+  });
+
+  it('falls back to when it started rather than inventing a heading', async () => {
+    // Nothing derives a name from the panel or the deck. A label the presenter
+    // never chose is one they have no way to correct, and a date at least says
+    // only what is true.
+    await setup();
+
+    expect(screen.getByText('Started 11 August')).toBeTruthy();
   });
 });

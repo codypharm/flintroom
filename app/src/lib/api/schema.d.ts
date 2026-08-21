@@ -1348,6 +1348,8 @@ export interface components {
              * Format: uuid
              */
             rehearsal_id: string;
+            /** Rehearsal Name */
+            rehearsal_name?: string | null;
             /**
              * Started At
              * Format: date-time
@@ -1390,6 +1392,8 @@ export interface components {
              * Format: uuid
              */
             rehearsal_id: string;
+            /** Rehearsal Name */
+            rehearsal_name?: string | null;
             state: components["schemas"]["SessionState"];
             /**
              * Started At
@@ -1416,6 +1420,8 @@ export interface components {
         SessionStart: {
             /** Material Ids */
             material_ids?: string[];
+            /** Rehearsal Name */
+            rehearsal_name?: string | null;
             /** Repeats */
             repeats?: string | null;
             /** Archetypes */
@@ -1447,6 +1453,8 @@ export interface components {
              * Format: uuid
              */
             rehearsal_id: string;
+            /** Rehearsal Name */
+            rehearsal_name?: string | null;
             state: components["schemas"]["SessionState"];
             /**
              * Started At

@@ -103,19 +103,31 @@ function Room({
   const when = whenItRan(room.startedAt, now);
   const who = whoWasThere(room.archetypes);
   const ran = howLongItRan(room.startedAt, room.settledAt);
+  const named = room.rehearsalName;
 
   return (
     <View style={[styles.room, first && styles.firstRoom]}>
       <Pressable
         accessibilityRole="button"
-        // The date and the panel together, because that is how somebody names
-        // the room they are looking for out loud.
-        accessibilityLabel={`${when}, ${who}`}
+        // The name if there is one, then the date, then the panel — the order
+        // somebody says the room they are looking for out loud. The date stays
+        // in even when there is a name, because a rehearsal run five times is
+        // five rows sharing a headline and when is all that separates them.
+        accessibilityLabel={named === null ? `${when}, ${who}` : `${named}, ${when}, ${who}`}
         onPress={() => onOpen(room.id)}
         style={({ pressed }) => [styles.open, pressed && styles.pressed]}
       >
         <View style={styles.headline}>
-          <Text style={styles.when}>{when}</Text>
+          {/*
+            The name takes the headline when there is one, and the date drops to
+            the line below beside the panel. What distinguishes two rooms is one
+            line of text — until a rehearsal could be named, the best this screen
+            had was a date and a panel, which is how you narrow down a pile
+            rather than how you find a thing.
+          */}
+          <Text style={styles.when} numberOfLines={1}>
+            {named ?? when}
+          </Text>
           {/*
             Only when there is one. A room that never settled has no duration,
             and "0:00" would claim it ran for no time rather than that nobody
@@ -123,7 +135,7 @@ function Room({
           */}
           {ran !== null && <Text style={styles.ran}>{ran}</Text>}
         </View>
-        <Text style={styles.who}>{who}</Text>
+        <Text style={styles.who}>{named === null ? who : `${when} · ${who}`}</Text>
         <Hearing recording={room.recording} />
       </Pressable>
 
@@ -215,12 +227,18 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
     justifyContent: 'space-between',
   },
-  when: { ...type.headlineSm, color: color.onSurface },
+  /**
+   * `flexShrink` and one line, because this now holds a name somebody typed.
+   * A date is four to twelve characters and a rehearsal's name may be eighty,
+   * which without this would push the duration off the row.
+   */
+  when: { ...type.headlineSm, color: color.onSurface, flexShrink: 1 },
   /** Tabular, so a column of durations lines up on the colon. */
   ran: {
     ...type.bodyMd,
     color: color.onSurfaceVariant,
     fontVariant: ['tabular-nums'],
+    marginLeft: space.base,
   },
 
   who: { ...type.bodyMd, color: color.onSurfaceVariant, marginTop: space.hair },

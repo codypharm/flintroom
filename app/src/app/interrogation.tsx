@@ -253,6 +253,7 @@ export default function InterrogationScreen() {
               // files it under the same rehearsal, so the progress screen can
               // show a run of attempts at one argument as a run.
               repeats: order.repeats,
+              rehearsalName: order.rehearsalName,
             });
           },
         });

@@ -47,6 +47,7 @@ from app.modules.billing.models import Account
 from app.modules.panels.authoring import AuthoringService
 from app.modules.billing.tiers import FREE_TIER, RECORDING_RETENTION_DAYS
 from app.modules.sessions.models import SessionRecording
+from app.modules.sessions.rehearsals import name_of, names_of
 from app.modules.sessions.schemas import (
     SessionRead,
     RECENT_LIMIT,
@@ -144,6 +145,7 @@ class SessionService:
         material_ids: Sequence[uuid.UUID] = (),
         archetypes: Sequence[str] = (),
         repeats: uuid.UUID | None = None,
+        rehearsal_name: str | None = None,
     ) -> Session:
         """Open a session in `provisioning`, grounded in whatever it was handed.
 
@@ -226,6 +228,11 @@ class SessionService:
             user_id=user_id,
             state=SessionState.PROVISIONING,
             rehearsal_id=await self._rehearsal_of(user_id, repeats),
+            # Stored on this room rather than pushed onto the lineage's root.
+            # `rehearsals.py` reads the newest name in a group as the group's,
+            # so naming a rehearsal on its fourth attempt names all four — and
+            # nothing here has to update a row somebody else's request wrote.
+            rehearsal_name=rehearsal_name,
         )
         self._db.add(session)
         try:
@@ -525,12 +532,32 @@ class SessionService:
             .limit(RECENT_LIMIT)
         )
 
+        # One query for every name in the account, rather than one per room.
+        # A lineage's name lives on whichever of its rooms was given one, which
+        # may be outside this window — so it cannot be resolved from the rows
+        # above, and resolving it per row would be fifty round trips for a list.
+        named = await names_of(self._db, user_id=user_id)
+
         return [
             SessionRead.model_validate(session).model_copy(
-                update={"recording": await self.recording(session_id=session.id)}
+                update={
+                    "recording": await self.recording(session_id=session.id),
+                    "rehearsal_name": named.get(session.rehearsal),
+                }
             )
             for session in rows.scalars()
         ]
+
+    async def rehearsal_name(self, *, session: Session) -> str | None:
+        """What the lineage this room belongs to is called, or null.
+
+        Takes the loaded row rather than an id, because both facts it needs —
+        the owner and the group — are already on it, and re-reading them would
+        be a query to find out what the caller is holding.
+        """
+        return await name_of(
+            self._db, user_id=session.user_id, rehearsal=session.rehearsal
+        )
 
     async def recording(self, *, session_id: uuid.UUID) -> RecordingRead:
         """Whether this room can still be heard, and until when.

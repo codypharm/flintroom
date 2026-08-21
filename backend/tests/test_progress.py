@@ -57,9 +57,11 @@ TAKEN_AWAY = Judgement(
 )
 
 
-async def debriefed(db, engine, sessions, settlement, account, *judged, repeats=None):
+async def debriefed(
+    db, engine, sessions, settlement, account, *judged, repeats=None, name=None
+):
     session = await room_that_happened(
-        db, engine, sessions, settlement, account, *ROOM, repeats=repeats
+        db, engine, sessions, settlement, account, *ROOM, repeats=repeats, name=name
     )
     await DebriefService(db, reader=CountingReader(*judged)).weak_answers(
         session_id=session.id
@@ -377,3 +379,49 @@ async def test_the_wire_names_the_rehearsal_every_room_belongs_to(
     ).json()["rooms"]
 
     assert {room["rehearsal_id"] for room in rooms} == {str(first.id)}
+
+
+async def test_the_wire_names_the_rehearsal_when_somebody_named_it(
+    client, db, engine, sessions, settlement, funded_account, bearer
+):
+    """A group headed by a date is honest and nearly useless.
+
+    "Am I getting better at my Q3 board readout" needs the words. The name is
+    the lineage's, resolved from whichever room in it was given one, so every
+    room in the run reports it — including the ones started before anybody
+    thought to name the thing.
+    """
+    first = await debriefed(db, engine, sessions, settlement, funded_account, DUCKED)
+    await debriefed(
+        db,
+        engine,
+        sessions,
+        settlement,
+        funded_account,
+        DUCKED,
+        repeats=first.id,
+        name="Q3 board readout",
+    )
+
+    rooms = (
+        await client.get("/v1/progress", headers=bearer(funded_account.user_id))
+    ).json()["rooms"]
+
+    assert {room["rehearsal_name"] for room in rooms} == {"Q3 board readout"}
+
+
+async def test_an_unnamed_rehearsal_says_so_rather_than_inventing_a_heading(
+    client, db, engine, sessions, settlement, funded_account, bearer
+):
+    """Null, so the screen can head the run with a date instead.
+
+    Deriving a name from the panel or the deck would put a label on a run the
+    presenter never chose, and they would then have no way to correct it.
+    """
+    await debriefed(db, engine, sessions, settlement, funded_account, DUCKED)
+
+    rooms = (
+        await client.get("/v1/progress", headers=bearer(funded_account.user_id))
+    ).json()["rooms"]
+
+    assert rooms[0]["rehearsal_name"] is None

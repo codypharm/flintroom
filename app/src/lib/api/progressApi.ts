@@ -19,6 +19,13 @@ export interface RoomHeld {
    * before it reaches here.
    */
   rehearsalId: string;
+  /**
+   * What the presenter calls that rehearsal, or null if nobody named it.
+   *
+   * Null rather than a heading derived from the panel or the deck: a label
+   * somebody never chose is one they cannot correct.
+   */
+  rehearsalName: string | null;
   startedAt: string;
   /**
    * Challenges the presenter actually had a turn at.
@@ -85,6 +92,7 @@ export function createProgressApi({
         rooms: {
           session_id: string;
           rehearsal_id: string;
+          rehearsal_name: string | null;
           started_at: string;
           challenged: number;
           held: number;
@@ -98,6 +106,7 @@ export function createProgressApi({
         rooms: body.rooms.map((room) => ({
           sessionId: room.session_id,
           rehearsalId: room.rehearsal_id,
+          rehearsalName: room.rehearsal_name,
           startedAt: room.started_at,
           challenged: room.challenged,
           held: room.held,

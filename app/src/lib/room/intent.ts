@@ -56,6 +56,14 @@ export interface RoomOrder {
    * takes a tap on Start to spend it.
    */
   repeats: string | null;
+
+  /**
+   * What the presenter calls what they are rehearsing, or null.
+   *
+   * Carried rather than left to the server to infer, and never required on a
+   * re-run: a room that repeats another inherits its lineage's name.
+   */
+  rehearsalName: string | null;
 }
 
 /**

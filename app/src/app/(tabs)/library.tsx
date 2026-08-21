@@ -95,6 +95,10 @@ export default function LibraryRoute() {
         // three attempts at one argument from three unrelated rehearsals — the
         // difference between "am I getting better at this" and a list of dates.
         repeats: room.id,
+        // What this rehearsal is already called, so the setup screen shows it
+        // rather than an empty field asking somebody to name a thing that has
+        // a name. Empty when nobody named it, which is the same as unnamed.
+        name: room.rehearsalName ?? '',
       },
     });
   }, []);

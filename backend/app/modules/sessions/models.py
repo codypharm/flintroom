@@ -214,6 +214,22 @@ class Session(Base):
         PGUUID(as_uuid=True), nullable=True, index=True
     )
 
+    #: What the presenter calls the thing they are rehearsing, or null.
+    #:
+    #: **The name belongs to the lineage, and is stored on whichever rooms were
+    #: given one.** The newest name in a group is the group's, which is what
+    #: keeps a rename possible: almost nobody names the first room, because they
+    #: discover on the third attempt that they are working on a *thing*. A name
+    #: only the root room could hold would leave that presenter unable to name
+    #: their rehearsal at all.
+    #:
+    #: **User text, and it never reaches a model.** Nothing in `agents/` reads
+    #: this and nothing may start — `docs/custom-archetypes.md` sets the rule
+    #: for what user-authored strings may enter a prompt, and a heading on a
+    #: history screen has no business in one. It is a label, rendered back to
+    #: the person who typed it.
+    rehearsal_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
     @property
     def rehearsal(self) -> uuid.UUID:
         """The lineage, with the null-means-itself rule already applied.

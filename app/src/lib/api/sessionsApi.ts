@@ -50,6 +50,14 @@ export interface RoomRecording {
 /** A room that has already happened. */
 export interface PastRoom {
   id: string;
+  /**
+   * What the presenter calls the rehearsal this room belongs to, or null.
+   *
+   * The **lineage's** name, not this room's. A re-run reports the name it
+   * inherited even though nobody typed one into it, and naming a rehearsal on
+   * its fourth attempt names all four.
+   */
+  rehearsalName: string | null;
   state: string;
   startedAt: string;
   /**
@@ -95,6 +103,14 @@ export interface StartRoom {
   /** Archetype names, as the catalogue spells them. Empty seats the default panel. */
   archetypes: string[];
   materialIds: string[];
+  /**
+   * What the presenter calls what they are rehearsing, or null.
+   *
+   * Optional, and never required to re-run: a room that repeats another
+   * inherits its lineage's name server-side, so sending it back is a round trip
+   * that exists only to let a client get it wrong.
+   */
+  rehearsalName: string | null;
   /**
    * The room this one is a re-run of, or null when the argument is a new one.
    *
@@ -179,7 +195,7 @@ export function createSessionsApi({
   };
 
   return {
-    start: async ({ archetypes, materialIds, repeats }) => {
+    start: async ({ archetypes, materialIds, repeats, rehearsalName }) => {
       const response = await send('/v1/sessions', {
         method: 'POST',
         body: JSON.stringify({
@@ -188,6 +204,7 @@ export function createSessionsApi({
           // Omitted rather than sent as null. The field is optional on the
           // server, and a room that repeats nothing has nothing to say here.
           ...(repeats === null ? {} : { repeats }),
+          ...(rehearsalName === null ? {} : { rehearsal_name: rehearsalName }),
         }),
       });
 
@@ -258,6 +275,7 @@ interface SaidLineBody {
 /** The wire's spelling, before the app renames it. */
 interface PastRoomBody {
   id: string;
+  rehearsal_name?: string | null;
   state: string;
   started_at: string;
   end_reason?: string | null;
@@ -279,6 +297,7 @@ interface PastRoomBody {
 function asPastRoom(room: PastRoomBody): PastRoom {
   return {
     id: room.id,
+    rehearsalName: room.rehearsal_name ?? null,
     state: room.state,
     startedAt: room.started_at,
     endReason: room.end_reason ?? null,

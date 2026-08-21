@@ -74,13 +74,16 @@ async def room_that_happened(
     *lines: Said,
     ended=EndReason.USER_ENDED,
     repeats=None,
+    name=None,
 ):
     """A settled session with these lines in its transcript.
 
     `repeats` names the room this one is another attempt at, so a test can build
     a rehearsal rather than a scattering of unrelated rooms.
     """
-    session = await sessions.start(user_id=account.user_id, repeats=repeats)
+    session = await sessions.start(
+        user_id=account.user_id, repeats=repeats, rehearsal_name=name
+    )
     await sessions.activate(session_id=session.id)
     await db.commit()
 

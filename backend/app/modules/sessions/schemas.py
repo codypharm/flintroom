@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 #: How often a live interrogation is billed — and, because the tick doubles as
 #: the heartbeat, how often the client proves it is still there. Declared here
@@ -156,6 +156,14 @@ MAX_SESSION_MATERIALS = 10
 #: itself, low enough that nobody posts a list of ten thousand names.
 MAX_REQUESTED_PANELISTS = 25
 
+#: How long the name of a rehearsal may be.
+#:
+#: A heading, not a description. It is drawn as one line above a run of rooms on
+#: the progress screen and as the headline of a row in the Library, so anything
+#: that does not fit on a phone in one line is not a name — it is a note, and
+#: this is not the field for one.
+REHEARSAL_NAME_LIMIT = 80
+
 
 class SessionStart(BaseModel):
     """What a room may be configured with: its grounding, and who is in it.
@@ -174,6 +182,31 @@ class SessionStart(BaseModel):
     material_ids: list[uuid.UUID] = Field(
         default_factory=list, max_length=MAX_SESSION_MATERIALS
     )
+
+    #: What the presenter calls the thing they are rehearsing, or null.
+    #:
+    #: Optional everywhere and asked for once: a room started from scratch may
+    #: name what it is about, and a re-run inherits the name of the lineage it
+    #: joins without having to send it back.
+    #:
+    #: Bounded because this is a heading rather than a description, and a field
+    #: with no length is a field somebody pastes a transcript into. Refused at
+    #: 422 rather than truncated — silently storing something other than what
+    #: was typed is worse than saying no.
+    rehearsal_name: str | None = Field(default=None, max_length=REHEARSAL_NAME_LIMIT)
+
+    @field_validator("rehearsal_name")
+    @classmethod
+    def _named_or_not_at_all(cls, given: str | None) -> str | None:
+        """A field somebody tabbed through is no name, not a name of spaces.
+
+        A lineage headed by a blank line reads as a rendering fault rather than
+        as a room nobody named, and `"   " != None` is the kind of difference
+        that only ever shows up on somebody's screen.
+        """
+        if given is None:
+            return None
+        return given.strip() or None
 
     #: The room this one repeats, or null for a fresh argument.
     #:
@@ -304,6 +337,18 @@ class SessionRead(BaseModel):
     #: rule. Reading the column directly would put the null on the wire and
     #: hand every client the same branch to get wrong.
     rehearsal_id: uuid.UUID = Field(validation_alias="rehearsal")
+
+    #: What the presenter calls this rehearsal, or null if nobody named it.
+    #:
+    #: The **lineage's** name, not the row's: the newest name given to any room
+    #: in the group, resolved by `rehearsals.py`. A re-run therefore reports the
+    #: name it inherited even though its own column is empty, and naming a
+    #: rehearsal on its fourth attempt names all four.
+    #:
+    #: User text. It is rendered back to whoever typed it and reaches no model
+    #: — see `Session.rehearsal_name`.
+    rehearsal_name: str | None = None
+
     state: SessionState
     started_at: datetime
     end_reason: EndReason | None = None
@@ -513,6 +558,13 @@ class RoomHeldRead(BaseModel):
     #: the service already answers the question, and a second implementation of
     #: "which group is this in" is how two screens come to disagree.
     rehearsal_id: uuid.UUID = Field(validation_alias="rehearsal")
+
+    #: What the presenter calls that rehearsal, or null if nobody named it.
+    #:
+    #: Null rather than a heading derived from the panel or the deck. A label
+    #: the presenter never chose is one they cannot correct, and a run headed by
+    #: a date at least says only what is true.
+    rehearsal_name: str | None = None
 
     started_at: datetime
 

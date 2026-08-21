@@ -20,6 +20,7 @@ import { Library, type LibraryProps } from './Library';
 const ROOMS = [
   {
     id: 'room-2',
+    rehearsalName: null,
     state: 'settled',
     startedAt: '2026-08-20T09:12:00Z',
     endReason: 'user_ended',
@@ -30,6 +31,7 @@ const ROOMS = [
   },
   {
     id: 'room-1',
+    rehearsalName: null,
     state: 'settled',
     startedAt: '2026-08-17T16:04:00Z',
     endReason: 'idle_timeout',
@@ -99,6 +101,7 @@ it('offers no re-run for a room that never seated anybody', async () => {
     rooms: [
       {
         id: 'room-0',
+        rehearsalName: null,
         state: 'failed',
         startedAt: '2026-08-19T19:02:27Z',
         endReason: 'provisioning_failed',
@@ -144,5 +147,40 @@ describe('an account with nothing in it', () => {
 
     await userEvent.press(screen.getByLabelText('Start a room'));
     expect(onStart).toHaveBeenCalled();
+  });
+});
+
+describe('what the room was about', () => {
+  it('leads with the name when the rehearsal has one', async () => {
+    // What actually distinguishes two rooms is one line of text, and until the
+    // presenter could name a rehearsal the best this screen had was a date and
+    // a panel. "Q3 board readout" is what somebody is looking for; "Monday" is
+    // how they narrow it down once they have found the right pile.
+    await setup({
+      rooms: [{ ...ROOMS[0], rehearsalName: 'Q3 board readout' }],
+    });
+
+    expect(screen.getByText('Q3 board readout')).toBeTruthy();
+    expect(
+      screen.getByLabelText('Q3 board readout, Today, The CFO and The Technical Skeptic')
+    ).toBeTruthy();
+  });
+
+  it('still places a named room in time', async () => {
+    // The date is demoted, not dropped. A rehearsal run five times is five rows
+    // with the same headline, and the only thing telling them apart is when.
+    await setup({
+      rooms: [{ ...ROOMS[0], rehearsalName: 'Q3 board readout' }],
+    });
+
+    expect(screen.getByText(/Today/)).toBeTruthy();
+  });
+
+  it('heads an unnamed room with its date, as it always did', async () => {
+    // Nothing is invented. A heading derived from the panel or the deck would
+    // be a label the presenter never chose and cannot correct.
+    await setup();
+
+    expect(screen.getByText('Today')).toBeTruthy();
   });
 });

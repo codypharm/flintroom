@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import type { AttachedMaterial, MaterialLimits } from '../../lib/api/materialsApi';
 import { portraitOf } from '../../lib/archetypes/portraits';
@@ -78,6 +78,13 @@ export interface Room {
   hardest: number;
 }
 
+/**
+ * How long a rehearsal's name may be, matching `REHEARSAL_NAME_LIMIT` on the
+ * server. A heading, not a note — anything that does not fit on one line of a
+ * phone is not a name.
+ */
+const REHEARSAL_NAME_LIMIT = 80;
+
 export interface PanelSetupProps {
   room: Room;
   /** Seated archetype names, in seat order. Controlled by the route. */
@@ -95,6 +102,16 @@ export interface PanelSetupProps {
    * the setup flow offers today, and widening it before anything attaches two
    * is a guess about a screen nobody has used.
    */
+  /**
+   * What the presenter calls what they are rehearsing. Controlled by the route.
+   *
+   * The empty string rather than null, because this is a text input's value and
+   * a `TextInput` handed null is an uncontrolled one that silently stops
+   * reflecting its prop. Emptiness means unnamed, and the route is what turns
+   * that into the null the server stores.
+   */
+  rehearsalName: string;
+  onRehearsalNameChange: (name: string) => void;
   material: AttachedMaterial | null;
   /** What this account may upload, or null while unknown. See `DeckAttach`. */
   limits: MaterialLimits | null;
@@ -158,6 +175,8 @@ export function PanelSetup({
   room,
   seated,
   onSeatedChange,
+  rehearsalName,
+  onRehearsalNameChange,
   material,
   limits,
   onAttach,
@@ -187,6 +206,45 @@ export function PanelSetup({
       <Text style={styles.title} accessibilityRole="header">
         Set the room
       </Text>
+
+      {/*
+        First, and one line.
+
+        This is the room's *subject*, so it reads where a subject reads: under
+        the title, above what the room is made of. Everything below is an
+        answer to it — this is the deck for *that*, this is the panel for
+        *that* — and asking it last would make it a form field rather than the
+        thing the screen is about.
+
+        Above the deck, which the ordering note below is careful about: the
+        deck goes before the panel because extraction is slow and starting it
+        early overlaps the wait with the choices. That still holds. This is one
+        optional line somebody can skip with a thumb, not a second slow thing.
+
+        It carries no label of its own. A heading over a one-line input that
+        already asks the question in its placeholder is the same words twice,
+        and this screen has three headings already. The accessibility label
+        carries what the placeholder shows, so nothing is lost when the field
+        is full and the placeholder is gone.
+      */}
+      <TextInput
+        style={styles.rehearsal}
+        value={rehearsalName}
+        onChangeText={onRehearsalNameChange}
+        placeholder="What are you rehearsing?"
+        placeholderTextColor={color.onSurfaceVariant}
+        accessibilityLabel="What you are rehearsing"
+        // The name is a heading on two screens; the server refuses more.
+        // Bounded here as well so a long paste is stopped under the thumb
+        // rather than at Start, where it would read as the room refusing to
+        // open for a reason nobody can see.
+        maxLength={REHEARSAL_NAME_LIMIT}
+        // One line. `returnKeyType` is "done" rather than "next" because there
+        // is nothing after it to focus — everything below this is tapped.
+        returnKeyType="done"
+        submitBehavior="blurAndSubmit"
+        autoCapitalize="sentences"
+      />
 
       <Text style={styles.field} accessibilityRole="header">
         What they can attack
@@ -537,6 +595,21 @@ const styles = StyleSheet.create({
    * adds its own to a container's is the commonest way a screen ends up with
    * two different top edges depending on which one you measure.
    */
+  /**
+   * A line to write on, not a box to fill in.
+   *
+   * A bordered field would read as a form and pull rank over the deck and the
+   * panel, which are what the screen is for. A single rule under body-sized
+   * text reads as a caption somebody may edit — which is what it is.
+   */
+  rehearsal: {
+    ...type.bodyLg,
+    color: color.onSurface,
+    paddingVertical: space.snug,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: color.hairline,
+  },
+
   title: {
     ...type.headlineLg,
     color: color.onSurface,

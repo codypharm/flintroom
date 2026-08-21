@@ -75,17 +75,28 @@ export default function HomeScreen() {
   // Set once by onboarding, and never by a link, a back gesture or a fresh
   // launch. A string because route params are strings; the comparison is
   // explicit so a truthy `'0'` cannot creep in later.
-  const { reveal, archetypes: again, material: sameDeck, repeats } = useLocalSearchParams<{
+  const {
+    reveal,
+    archetypes: again,
+    material: sameDeck,
+    repeats,
+    name: called,
+  } = useLocalSearchParams<{
     reveal?: string;
     archetypes?: string;
     material?: string;
     repeats?: string;
+    name?: string;
   }>();
   const revealing = reveal === '1';
   const [room, setRoom] = useState<Catalogue | null>(null);
   const [mine, setMine] = useState<MyArchetype[]>([]);
   const [refused, setRefused] = useState<string | null>(null);
   const [seated, setSeated] = useState<string[]>([]);
+  // The empty string rather than null, because it is a text input's value and
+  // a `TextInput` handed null quietly becomes uncontrolled. Emptiness means
+  // unnamed; this screen turns that into the null the server stores.
+  const [rehearsalName, setRehearsalName] = useState('');
 
   const [material, setMaterial] = useState<AttachedMaterial | null>(null);
   const [limits, setLimits] = useState<MaterialLimits | null>(null);
@@ -111,6 +122,16 @@ export default function HomeScreen() {
       setSeated(again.split(',').filter(Boolean));
     }
   }, [again]);
+
+  // Seeded rather than locked, like the seating. Somebody re-running a
+  // rehearsal usually wants it called what it is called, and occasionally
+  // wants to correct the name — typing over it renames the whole lineage,
+  // because the server reads the newest name in a group as the group's.
+  useEffect(() => {
+    if (called) {
+      setRehearsalName(called);
+    }
+  }, [called]);
 
   useEffect(() => {
     let live = true;
@@ -357,6 +378,8 @@ export default function HomeScreen() {
         room={{ ...room, archetypes: railFor(room.archetypes, mine) }}
         seated={seated}
         onSeatedChange={setSeated}
+        rehearsalName={rehearsalName}
+        onRehearsalNameChange={setRehearsalName}
         material={material}
         limits={limits}
         onAttach={attach}
@@ -409,6 +432,11 @@ export default function HomeScreen() {
             // that argument, and a lineage that broke whenever somebody edited
             // the room would only ever group rooms nobody improved.
             repeats: repeats ?? null,
+            // Trimmed here rather than on the server's word alone, so a field
+            // somebody tabbed through does not travel as a string of spaces.
+            // The server strips it too — this is the same rule stated where
+            // the value is produced.
+            rehearsalName: rehearsalName.trim() || null,
           });
           router.push('/interrogation');
         }}
