@@ -1,3 +1,4 @@
+import { MaterialIcons } from '@expo/vector-icons';
 import {
   ActivityIndicator,
   Pressable,
@@ -75,6 +76,18 @@ export interface SettingsScreenProps {
    */
   writing?: boolean;
   onRecordingChange: (records: boolean) => void;
+  /**
+   * Open what is attached, where it can also be destroyed.
+   *
+   * The row counted material and stopped there, so `docs/privacy-policy.md`
+   * described a control — *"Delete attached material. Any time, in Settings"* —
+   * that existed nowhere in the app.
+   *
+   * A pushed list rather than rows here. The surface brief says this screen
+   * fails the moment it reads as a dashboard, and a deck-by-deck list with a
+   * destructive control on each row is one.
+   */
+  onOpenMaterial?: () => void;
   onDeleteAccount: () => void;
   /**
    * Leave this account on this device.
@@ -125,6 +138,7 @@ export function SettingsScreen({
   onRetry,
   writing = false,
   onRecordingChange,
+  onOpenMaterial,
   onDeleteAccount,
   onSignOut,
 }: SettingsScreenProps) {
@@ -211,7 +225,19 @@ export function SettingsScreen({
 
         <View style={styles.hairline} />
 
-        <View style={styles.row}>
+        {/*
+          The one row that goes somewhere. A count is an answer to "what do you
+          hold"; the policy also promises a way to destroy it, and that needs a
+          list. `chevron-right` is the platform's own disclosure mark rather
+          than anything of ours — `CLAUDE.md` keeps brand out of controls.
+        */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Attached material"
+          onPress={onOpenMaterial}
+          disabled={onOpenMaterial === undefined}
+          style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+        >
           <View style={styles.rowText}>
             <Text style={styles.rowTitle}>Material</Text>
             <Text style={styles.rowDetail}>
@@ -220,7 +246,14 @@ export function SettingsScreen({
                 : `${holdings.materials} attached. Only the claims and a thumbnail — the file itself is deleted after it is read.`}
             </Text>
           </View>
-        </View>
+          {onOpenMaterial === undefined ? null : (
+            <MaterialIcons
+              name="chevron-right"
+              size={24}
+              color={color.onSurfaceVariant}
+            />
+          )}
+        </Pressable>
       </View>
 
       <Text style={styles.title} accessibilityRole="header">

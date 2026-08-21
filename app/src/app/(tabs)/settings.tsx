@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -202,6 +202,7 @@ export default function SettingsRoute() {
         writing={writing}
         onRetry={() => setAttempt((made) => made + 1)}
         onRecordingChange={setRecording}
+        onOpenMaterial={() => router.push('/material')}
         onSignOut={() => {
           void (async () => {
             // Ends the session here and, if reachable, everywhere — and never

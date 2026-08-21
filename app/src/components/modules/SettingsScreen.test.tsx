@@ -241,3 +241,32 @@ it('will not move the switch until the server has agreed', async () => {
   expect(control.props.value).toBe(true);
   expect(control.props.disabled).toBe(true);
 });
+
+it('opens what is attached rather than only counting it', async () => {
+  /**
+   * `docs/privacy-policy.md` states that attached material can be deleted in
+   * Settings. The row counted it and stopped there, so the policy described a
+   * control that existed nowhere in the app.
+   *
+   * The list is a pushed screen rather than rows here: the surface brief says
+   * this screen fails the moment it reads as a dashboard, and a deck-by-deck
+   * list with a destructive control on each row is one.
+   */
+  const onOpenMaterial = jest.fn();
+  await show({ materials: 2 }, { onOpenMaterial });
+
+  await userEvent.press(screen.getByLabelText('Attached material'));
+
+  expect(onOpenMaterial).toHaveBeenCalledTimes(1);
+});
+
+it('offers the way in even with nothing attached', async () => {
+  // An empty inventory is still an inventory, and somebody checking what is
+  // held should be able to see for themselves rather than trust the count.
+  const onOpenMaterial = jest.fn();
+  await show({ materials: 0 }, { onOpenMaterial });
+
+  await userEvent.press(screen.getByLabelText('Attached material'));
+
+  expect(onOpenMaterial).toHaveBeenCalledTimes(1);
+});

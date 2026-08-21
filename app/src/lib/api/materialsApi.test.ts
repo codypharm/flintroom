@@ -165,3 +165,52 @@ describe('what this account still has attached', () => {
     await expect(materials.list()).resolves.toEqual([]);
   });
 });
+
+describe('destroying a material the server refuses to destroy', () => {
+  function refusing(status: number, body: unknown) {
+    const fetcher = jest.fn().mockResolvedValue({
+      ok: false,
+      status,
+      json: async () => body,
+    });
+
+    return createMaterialsApi({
+      baseUrl: 'https://flintroom.test',
+      accessToken: async () => 'a-token',
+      fetch: fetcher as unknown as typeof fetch,
+    });
+  }
+
+  it('carries the refusal the server explained, rather than a status code', async () => {
+    /**
+     * `material_in_use` is the one refusal here that protects a *session*: the
+     * Auditor cross-checks live speech against this material's claims, so
+     * pulling it out mid-room leaves somebody paying metered minutes for a
+     * panel that has quietly stopped being able to catch anything.
+     *
+     * The recovery is specific — end the room, then delete — and the server
+     * already wrote that sentence. Throwing it away for "failed with 422" is
+     * how a screen says "something went wrong" about a problem that was
+     * diagnosed.
+     */
+    const materials = refusing(422, {
+      error: {
+        code: 'material_in_use',
+        message: 'That material is in a room you are still in. End the session first.',
+      },
+    });
+
+    await expect(materials.remove('m1')).rejects.toMatchObject({
+      code: 'material_in_use',
+      message: 'That material is in a room you are still in. End the session first.',
+    });
+  });
+
+  it('still fails plainly when the server explains nothing', async () => {
+    // A gateway, a proxy, an HTML error page. There is no sentence to carry and
+    // inventing one would put words in the server's mouth.
+    const materials = refusing(502, 'not json at all');
+
+    await expect(materials.remove('m1')).rejects.toThrow(/502/);
+  });
+});

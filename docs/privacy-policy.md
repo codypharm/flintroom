@@ -75,7 +75,12 @@ under a disclosure you accepted — removing them is a separate, deliberate act.
 
 **Delete a room's recording.** Any room, at any time, in Settings.
 
-**Delete attached material.** Any time, in Settings.
+**Delete attached material.** Any time, in Settings, under Material. It
+destroys the file, everything extracted from it, and the thumbnail. Rooms you
+already ran are unaffected — running one of them again simply will not be
+grounded in it. The one refusal is a deck a room you are currently in is
+standing on: the panel is cross-checking what you say against it, so we ask you
+to end that room first.
 
 **Delete your account.** In Settings, and it takes seven days.
 
@@ -150,6 +155,7 @@ So that this document can be checked against the system rather than trusted.
 | A failed room keeps nothing | `backend/app/modules/voice/relay.py` → `_keep_recording`, derived from `REFUND_REASONS` |
 | The source file is deleted after reading | `docs/ingestion.md`, `backend/app/modules/ingestion/service.py` |
 | Recording can be turned off | `backend/app/modules/sessions/preferences.py`, read before a room opens |
+| Attached material can be destroyed | `backend/app/modules/ingestion/service.py` → `delete`, reachable at `app/src/app/material.tsx` |
 | The disclosure precedes the microphone prompt | `app/src/lib/consent/entry.ts` |
 
 The full reasoning behind these decisions is in `docs/session-retention.md`.

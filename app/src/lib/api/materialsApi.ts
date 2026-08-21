@@ -1,4 +1,5 @@
 import { SignedOut } from '../auth/session';
+import { refusalIn } from './refused';
 
 /**
  * Attaching a deck: three calls, then a wait.
@@ -202,6 +203,14 @@ export function createMaterialsApi({
       // report a failure for work that was already done.
       if (response.ok || response.status === 404) return;
       if (response.status === 401) throw new SignedOut('refused by DELETE /v1/materials');
+
+      // `material_in_use` is the refusal that matters, and the server has
+      // already written the sentence for it: a room standing on this material
+      // is cross-checking live speech against its claims, so the recovery is
+      // to end the room rather than to try again. Reducing that to a status
+      // code is how a screen says "something went wrong" about a diagnosis.
+      const refusal = await refusalIn(response);
+      if (refusal !== null) throw refusal;
 
       throw new Error(`DELETE /v1/materials failed with ${response.status}`);
     },
