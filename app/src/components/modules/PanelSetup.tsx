@@ -303,17 +303,22 @@ export function PanelSetup({
         headcount is the third rail. The panel is the kind of person; this is
         the particular room. So it asks for what we could not have guessed.
 
-        Two supporting lines rather than one, matching the density of the deck
-        card above, and the example goes first. Nobody knows what belongs in an
-        empty box, and one concrete line does more work than a paragraph of
-        instruction — `Product.md` §3.1's own example, verbatim.
+        One line under it, carrying the reason to bother and the example
+        together. Nobody knows what belongs in an empty box, and one concrete
+        line does more work than a paragraph of instruction — `Product.md`
+        §3.1's own example, verbatim.
 
-        The second line is a disclosure, not a hint. "Shaped, never spoken" is
-        invisible from the outside — somebody who writes a sentence and never
-        hears it back cannot tell a panel that used it from one that ignored it,
-        so the screen says which. It also sets the expectation before the room
-        opens rather than leaving it as a surprise, and it is the only place the
-        product tells anybody what happens to text they hand a model.
+        **It used to also say "It is never read out." That was written for us,
+        not for the presenter**, and the architect said so on sight. Nobody
+        typing into a text box expects it to be recited back at them, so the
+        sentence answers a question no user has — and reading it is the first
+        time the possibility occurs to anybody. It is an internal decision
+        leaking onto a screen.
+
+        "Shaped, never spoken" is still true and still enforced in the composer
+        prompt. It is ours to hold rather than the presenter's to be reassured
+        about. Where a user can actually read what happens to this text is
+        `docs/privacy-policy.md`, which is what a disclosure is for.
       */}
       <View style={styles.audienceCard}>
         <TextInput
@@ -334,11 +339,8 @@ export function PanelSetup({
           autoCapitalize="sentences"
         />
       </View>
-      <Text style={styles.audienceExample}>
-        e.g. my VP hates anything that adds headcount
-      </Text>
       <Text style={styles.audienceNote}>
-        Shapes what they press on. It is never read out.
+        Shapes what they press on — e.g. my VP hates anything that adds headcount
       </Text>
 
       {/*
@@ -714,18 +716,11 @@ const styles = StyleSheet.create({
    * as belonging to the field above it — the hanging indent `DeckAttach` uses
    * for its constraints line, for the same reason.
    */
-  audienceExample: {
-    ...type.bodySm,
-    color: color.onSurfaceVariant,
-    paddingHorizontal: space.base,
-    paddingTop: space.tight,
-  },
-
   audienceNote: {
     ...type.bodySm,
     color: color.onSurfaceVariant,
     paddingHorizontal: space.base,
-    paddingTop: space.hair,
+    paddingTop: space.tight,
   },
 
   rehearsal: {

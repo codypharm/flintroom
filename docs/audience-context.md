@@ -58,11 +58,43 @@ answer to it. A figure lifted out of the box would be an invented one arriving
 by the only door the NEVER rules leave open. Hence: *"Nothing in it is a fact
 about their business that you may state."*
 
-**The disclosure is the other half.** "Shaped" is invisible from outside —
-somebody who writes a sentence and never hears it back cannot tell a panel that
-used it from one that ignored it. The setup screen says *"Shapes what they press
-on. It is never read out."* under the field, and `docs/privacy-policy.md` says
-the same thing at greater length.
+**It is ours to hold, not the presenter's to be reassured about.** The setup
+screen briefly said *"It is never read out."* and the architect cut it on sight:
+nobody typing into a text box expects it recited back, so the sentence answers a
+question no user has — and reading it is the first time the possibility occurs
+to anybody. An internal decision does not belong on a screen. What the screen
+says is what filling the box in buys: *"Shapes what they press on."* Where a
+user can read what actually happens to the text is `docs/privacy-policy.md`,
+which is what a disclosure is for.
+
+**Measured against the live model, 2026-08-21** — `scripts/audience.py`, 24
+composition calls across two archetypes and two conditions:
+
+| | Read the note back | Went to headcount |
+| --- | --- | --- |
+| Technical Skeptic, no note | 0/6 | 0/6 |
+| Technical Skeptic, with note | 0/6 | 1/6 |
+| CFO, no note | 0/6 | 0/6 |
+| CFO, with note | 0/6 | **2/6** |
+
+Shaped-not-spoken **holds**: nothing was read back in any of the 24 lines. The
+steering is real but small — the CFO produced *"how many heads do you need to
+reach it?"* and *"how many engineers are doing the migration?"* against an
+utterance about a replatform, having asked about neither without the note.
+
+**The scorer undercounts and the numbers are a floor.** `HIRING` contains
+`headcount` and not `heads`, so *"how many heads do you need"* was not flagged
+by the run that produced it and was counted by hand. Widen the list before
+quoting these against anything. And per `scripts/rotation.py`'s own warning, one
+run is not evidence — a difference of one is noise.
+
+**The off-domain concern, checked.** The architect asked whether a note about
+headcount drags the Technical Skeptic onto the CFO's ground. Once in six, and
+the line was *"what happens when those customers demand more engineers to
+maintain them without adding headcount"* — a load question wearing a hiring
+coat, rather than the Skeptic abandoning its domain. Mild. Worth re-running if
+the note ever moves into the system instruction, which would invert the
+ordering that currently keeps the persona on top.
 
 ## 1a. It must not ask who is in the room
 

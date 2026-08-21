@@ -511,14 +511,21 @@ describe('what the room is like', () => {
     ).toBeOnTheScreen();
   });
 
-  it('says what the room does with it, and what it will not do', async () => {
+  it('says what filling it in buys, and nothing about our own machinery', async () => {
+    // It used to add "It is never read out." That sentence answers a question
+    // no user has: nobody typing into a text box expects it to be recited back
+    // at them, so the line explains a decision rather than the product, and
+    // reading it is the first time the possibility occurs to anybody.
+    //
+    // "Shaped, never spoken" is still true, still enforced in the composer
+    // prompt, and still the architect's choice — it is simply ours to hold
+    // rather than the presenter's to be reassured about. The place a user can
+    // read what happens to this text is docs/privacy-policy.md, where a
+    // disclosure belongs.
     await setup();
 
-    // The disclosure half of the architect's "shaped, never spoken" choice.
-    // Somebody who writes a sentence and never hears it back has no way to
-    // tell a panel that used it from one that ignored it — and a product that
-    // reads it aloud would be the other room entirely.
-    expect(screen.getByText(/never read out/i)).toBeOnTheScreen();
+    expect(screen.getByText(/Shapes what they press on/)).toBeOnTheScreen();
+    expect(screen.queryByText(/never read out/i)).toBeNull();
   });
 
   it('stops a long paste under the thumb rather than at Start', async () => {
