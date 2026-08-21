@@ -91,6 +91,14 @@ const REHEARSAL_NAME_LIMIT = 80;
  */
 const AUDIENCE_LIMIT = 400;
 
+/**
+ * How few characters left before the count starts warning rather than stating.
+ *
+ * About a sentence. Far enough out that somebody mid-thought can finish it,
+ * close enough that the warning is about the sentence they are writing.
+ */
+const AUDIENCE_NEARLY_FULL = 50;
+
 export interface PanelSetupProps {
   room: Room;
   /** Seated archetype names, in seat order. Controlled by the route. */
@@ -216,6 +224,16 @@ export function PanelSetup({
   // A card's width of slack, so the pointer does not flicker off one pixel
   // before the last card is actually reached.
   const more = reach - viewport - at > 24 ? 'right' : at > 24 ? 'left' : null;
+  // Clamped at zero rather than allowed to go negative. `maxLength` makes
+  // over-length unreachable from the keyboard, but the value is a prop: a
+  // re-run prefills it from whatever the server holds, and a field reading
+  // "-12" would be reporting a bug it cannot actually have.
+  const left = Math.max(0, AUDIENCE_LIMIT - audience.length);
+  //: The last stretch, where how many are left stops being trivia. Fifty is
+  //: about a sentence — far enough out that somebody mid-thought can finish it,
+  //: close enough that the warning is about this sentence and not the next one.
+  const nearlyFull = audience.length > 0 && left <= AUDIENCE_NEARLY_FULL;
+
   const held = holdingUpStart(seated, material);
 
   return (
@@ -339,9 +357,43 @@ export function PanelSetup({
           autoCapitalize="sentences"
         />
       </View>
-      <Text style={styles.audienceNote}>
-        Shapes what they press on — e.g. my VP hates anything that adds headcount
-      </Text>
+      {/*
+        The note and what is left of the cap, on one row.
+
+        **This is not the counter `CLAUDE.md` forbids**, and the distinction is
+        worth stating because somebody will grep for one. That rule is about
+        *minutes* — "never display a depleting counter (2 of 5 credits left)" —
+        and it exists because a number counting down on something you paid for
+        makes a rehearsal feel expensive. Characters are not bought, not
+        metered, and not scarce. What this prevents is the opposite failure:
+        typing into a field that silently stops accepting input.
+
+        Absent until somebody types. An empty field is showing its placeholder
+        and its example, which is what a person deciding whether to bother
+        needs; "400" beside them is a rule about a box they have not opened.
+
+        **The space is reserved even while it is empty**, so the first keystroke
+        does not shove the note sideways. Tabular figures for the same reason at
+        a smaller scale — proportional digits change width as the number falls
+        and the row twitches on every letter.
+      */}
+      <View style={styles.audienceRow}>
+        <Text style={styles.audienceNote}>
+          Shapes what they press on — e.g. my VP hates anything that adds headcount
+        </Text>
+        <Text
+          style={[styles.audienceLeft, nearlyFull && styles.audienceLow]}
+          // A bare number read aloud is noise. Named, it is the same fact the
+          // sighted reader gets from its position beside the field.
+          accessibilityLabel={audience ? `${left} characters left` : undefined}
+          // Only near the end. A polite live region on every keystroke would
+          // read a number after every letter, which is worse than silence —
+          // and the fact only becomes actionable when running out is real.
+          accessibilityLiveRegion={nearlyFull ? 'polite' : 'none'}
+        >
+          {audience ? String(left) : ''}
+        </Text>
+      </View>
 
       {/*
         Second, and heavier than the two around it. The deck goes first because
@@ -716,12 +768,42 @@ const styles = StyleSheet.create({
    * as belonging to the field above it — the hanging indent `DeckAttach` uses
    * for its constraints line, for the same reason.
    */
+  audienceRow: {
+    flexDirection: 'row',
+    // The note wraps to two lines on a narrow phone and the count is one line.
+    // Aligning their boxes would float the number against the note's first
+    // line; `flex-end` sits it on the last, where the field it belongs to is.
+    alignItems: 'flex-end',
+    paddingHorizontal: space.base,
+    paddingTop: space.tight,
+    gap: space.snug,
+  },
+
   audienceNote: {
     ...type.bodySm,
     color: color.onSurfaceVariant,
-    paddingHorizontal: space.base,
-    paddingTop: space.tight,
+    // Takes the room the count does not, rather than the count taking what is
+    // left — otherwise a long note pushes the number off the right edge.
+    flex: 1,
   },
+
+  audienceLeft: {
+    ...type.bodySm,
+    color: color.onSurfaceVariant,
+    // Three digits plus a little, held whether or not anything is in it.
+    minWidth: 28,
+    textAlign: 'right',
+    fontVariant: ['tabular-nums'],
+  },
+
+  /**
+   * The last stretch, in the colour the system reserves for a limit.
+   *
+   * A second channel, never the only one — the number itself says how many are
+   * left, and WCAG 2.2 AA is the floor here. Somebody who cannot distinguish
+   * the colour loses nothing.
+   */
+  audienceLow: { color: color.danger },
 
   rehearsal: {
     ...type.bodyLg,

@@ -528,6 +528,36 @@ describe('what the room is like', () => {
     expect(screen.queryByText(/never read out/i)).toBeNull();
   });
 
+  it('stays quiet until there is something to count', async () => {
+    // An empty field is showing its placeholder and its example — the two
+    // things somebody deciding whether to bother needs. "400" beside them is a
+    // rule about a box they have not chosen to use yet.
+    await setup({ audience: '' });
+
+    expect(screen.queryByText('400')).toBeNull();
+  });
+
+  it('counts down from the moment somebody types', async () => {
+    await setup({ audience: 'my VP hates headcount' });
+
+    expect(screen.getByText(String(400 - 'my VP hates headcount'.length))).toBeOnTheScreen();
+  });
+
+  it('reads zero at the cap rather than going negative', async () => {
+    // `maxLength` makes over-length unreachable through the keyboard, but the
+    // value is a prop and a re-run prefills it from whatever the server holds.
+    // A field showing "-12" would be reporting a bug it cannot have.
+    await setup({ audience: 'x'.repeat(420) });
+
+    expect(screen.getByText('0')).toBeOnTheScreen();
+  });
+
+  it('says what the number means, for somebody who cannot see it', async () => {
+    await setup({ audience: 'x'.repeat(380) });
+
+    expect(screen.getByLabelText('20 characters left')).toBeOnTheScreen();
+  });
+
   it('stops a long paste under the thumb rather than at Start', async () => {
     await setup();
 
