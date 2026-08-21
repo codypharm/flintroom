@@ -221,10 +221,17 @@ class AccountDeletion:
         # call updates nothing and still owes an answer — and the answer it
         # owes is the *original* date. `func.now()` is the transaction's clock,
         # so this is the value that was actually stored either way.
-        requested = await self._db.execute(
+        requested = await self._db.scalar(
             select(Account.deletion_requested_at).where(Account.user_id == user_id)
         )
-        return requested.scalar_one() + WINDOW
+
+        # The column is nullable and by here it cannot be null: this method has
+        # either just set it or found it already set. Asserted rather than
+        # left implicit, because the alternative failure is `None + WINDOW` —
+        # a `TypeError` surfacing as a 500 on the endpoint Apple requires, with
+        # a traceback rather than a sentence.
+        assert requested is not None
+        return requested + WINDOW
 
     async def cancel(self, *, user_id: uuid.UUID) -> bool:
         """Call it off. Returns whether there was anything to call off.

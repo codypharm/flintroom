@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from enum import EnumType
 
 from sqlalchemy import (
     BigInteger,

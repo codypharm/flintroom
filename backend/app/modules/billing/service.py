@@ -458,15 +458,22 @@ class LedgerService:
         account = await self._load_account(user_id, for_update=True)
         now = datetime.now(UTC)
 
-        if account.period_ends_at is None or account.period_ends_at > now:
+        # Read into a local before the walk. The loop reassigns the column, and
+        # a nullable attribute rewritten inside its own guard is a value nothing
+        # can prove is still non-null — for a reader or a checker. One name, one
+        # write back.
+        ends_at = account.period_ends_at
+        if ends_at is None or ends_at > now:
             return self._balance_of(account)
 
         # Walk to the *current* period. Granting per elapsed boundary would hand
         # a user who was away for a quarter three allowances at once.
         elapsed = 0
-        while account.period_ends_at <= now:
-            account.period_ends_at = account.period_ends_at + PERIOD_LENGTH
+        while ends_at <= now:
+            ends_at = ends_at + PERIOD_LENGTH
             elapsed += 1
+
+        account.period_ends_at = ends_at
         account.period_id += elapsed
 
         # No roll-over (Product.md §4.4). The remainder is written off as its own

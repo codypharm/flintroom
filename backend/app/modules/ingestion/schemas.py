@@ -3,6 +3,8 @@
 The lifecycle is specified in `docs/ingestion.md`.
 """
 
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
 from enum import Enum

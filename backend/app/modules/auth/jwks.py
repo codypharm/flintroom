@@ -87,7 +87,15 @@ class JwksKeys:
             response = await self._http.get(self._url)
             response.raise_for_status()
             document = response.json()
-            keys = {key.key_id: key.key for key in jwt.PyJWKSet.from_dict(document).keys}
+            # Keyed by `kid`, so a key without one is a key nothing can ever
+            # look up. Skipped rather than stored under `None`, which would put
+            # a null in a `dict[str, ...]` and make every lookup miss it anyway
+            # — the same outcome, reached by a shape that lies about itself.
+            keys = {
+                key.key_id: key.key
+                for key in jwt.PyJWKSet.from_dict(document).keys
+                if key.key_id is not None
+            }
         except (httpx.HTTPError, jwt.PyJWTError, ValueError) as exc:
             # Not a refused sign-in. The caller did nothing wrong and retrying
             # their credential will not help, so this has to stay distinguishable

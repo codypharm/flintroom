@@ -25,6 +25,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from app.agents.archetypes import DEFAULT_PANEL, Archetype, by_name
+from app.core.errors import ArchetypeNotFound
 
 #: What each seat on the plan means, and who fills it.
 #:
@@ -98,4 +99,28 @@ def compose(
         if name not in chosen:
             chosen.append(name)
 
-    return tuple(by_name(name) for name in chosen[:seats])
+    return tuple(_shipped(name) for name in chosen[:seats])
+
+
+def _shipped(name: str) -> Archetype:
+    """One of ours, or a refusal — never a hole in the seating.
+
+    `by_name` answers `None` for a name nobody in the library has, and every
+    name reaching it here comes from `SEATING`, `BY_ROLE` or `DEFAULT_PANEL` —
+    tables we write. So this cannot fire on user input, and that is exactly why
+    it is worth having: a typo in one of those tables would otherwise put `None`
+    in a seating tuple and hand it to a live, metered room, where the first
+    symptom is an attribute error partway through somebody's rehearsal.
+
+    This module's own header records the same failure twice already — a domain
+    claimed by two archetypes so one silently never fired, and a client mapping
+    `distracted` against a server shipping `distracted_executive`. Both were
+    namespaces without a guard.
+
+    `ArchetypeNotFound` rather than an assertion, because it is the error the
+    rest of the system already raises for a name nobody answers to.
+    """
+    archetype = by_name(name)
+    if archetype is None:
+        raise ArchetypeNotFound(name=name)
+    return archetype

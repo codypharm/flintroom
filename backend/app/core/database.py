@@ -123,8 +123,16 @@ async def db_now(db: AsyncSession) -> datetime:
     This is `transaction_timestamp()`, matching `func.now()` exactly rather than
     approximating it — so a row written and compared in one transaction sees
     consistent values, and the equal case satisfies a `>=` constraint.
+
+    `scalar` is typed as nullable because most queries can select nothing.
+    `SELECT transaction_timestamp()` is not one of them — it has no `FROM` and
+    always produces exactly one row — so the null is a shape the database cannot
+    return, and asserting it is more honest than a caller-side `or datetime.now`
+    that would quietly reintroduce the second clock this exists to avoid.
     """
-    return await db.scalar(select(func.now()))
+    now = await db.scalar(select(func.now()))
+    assert now is not None
+    return now
 
 
 def rows_touched(result: Result[Any]) -> int:
