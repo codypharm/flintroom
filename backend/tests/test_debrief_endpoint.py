@@ -363,3 +363,66 @@ async def test_one_user_cannot_replay_another_users_opening(
     )
 
     assert response.status_code == 404
+
+
+async def test_two_attempts_at_one_rehearsal_are_compared_to_each_other(
+    client, db, engine, sessions, settlement, funded_account, bearer, weakness_reader
+):
+    """The comparison a rehearsal actually wants: this attempt against the last.
+
+    "They pressed harder *this time* than last" reads as a statement about the
+    same thing tried twice, and since a re-run inherits the rung its rehearsal
+    last ran at, that is the only pair whose difference means anything.
+    """
+    first = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    await _ran_at(db, first.id, GENTLE)
+    again = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM, repeats=first.id
+    )
+    await _ran_at(db, again.id, RELENTLESS)
+
+    body = (
+        await client.get(
+            f"/v1/sessions/{again.id}/debrief", headers=bearer(funded_account.user_id)
+        )
+    ).json()
+
+    assert body["pressed"] == "harder"
+
+
+async def test_a_rehearsal_is_never_compared_against_a_different_one(
+    client, db, engine, sessions, settlement, funded_account, bearer, weakness_reader
+):
+    """The noise this exists to stop.
+
+    A re-run opens at the rung its own rehearsal last ran at, so two rehearsals
+    sitting at different rungs make every debrief say "harder", then "easier",
+    then "harder" — while nothing about the presenter changed. Decision 5 built
+    this sentence to give credit; one that oscillates on bookkeeping spends the
+    credit it was for.
+    """
+    board = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    await _ran_at(db, board.id, RELENTLESS)
+    demo = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    await _ran_at(db, demo.id, GENTLE)
+    # Back to the board readout, which still sits where it sat.
+    again = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM, repeats=board.id
+    )
+    await _ran_at(db, again.id, RELENTLESS)
+
+    body = (
+        await client.get(
+            f"/v1/sessions/{again.id}/debrief", headers=bearer(funded_account.user_id)
+        )
+    ).json()
+
+    # Against the board readout's own last attempt, which pressed exactly as
+    # hard — not against the gentle demo-day room that happened in between.
+    assert body["pressed"] is None

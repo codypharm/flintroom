@@ -322,14 +322,29 @@ the client. A picker that displayed the account's number would state one rung
 and start another. Touching the control clears the pin on screen at the same
 moment `choose` makes the server prefer the account, so the two never disagree.
 
+### Decision 9 — the debrief compares like with like
+
+Decision 8 gives a room's rung two possible sources: a re-run inherits its
+rehearsal's, a fresh argument opens at the account's. `_moved` compared against
+*the room before*, across both — which measures bookkeeping rather than the
+presenter.
+
+Two rehearsals sitting at different rungs would make every debrief say
+"harder", then "easier", then "harder", while nothing about the person changed.
+Decision 5 built that sentence to give credit, and one that oscillates spends
+the credit it was for.
+
+So it compares against the last attempt at **this** rehearsal — or, for a room
+that started its own lineage, the last room that also opened at the account's
+rung, where a difference is calibration having moved and is genuinely
+creditable. A room with no comparable predecessor says nothing, exactly as a
+first room already did.
+
+Both branches share one `_before` query so "which room came before" is written
+once; they differ only in what they consider comparable.
+
 ### Still open, and untouched by this
 
-- **The debrief's sentence.** `_moved` compares this room's rung against the
-  previous room by `started_at` across the whole account. Under B the rung a
-  re-run runs at is now the lineage's, so the comparison should be scoped to the
-  lineage too — otherwise *"they pressed harder this time than last"* can be
-  measured against an unrelated argument. Not fixed here; it is a sentence
-  rather than a room.
 - **The thresholds.** `FUMBLED = 0.5` and `HANDLED = 0.2` are still, by their
   own comment, *"a judgement with no data behind it."*
 - **Nothing changes for deletion.** `sessions` and `accounts` are both already

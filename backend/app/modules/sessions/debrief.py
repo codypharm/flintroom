@@ -309,6 +309,20 @@ class DebriefService:
         settled, and with a rung recorded. Sessions started and never joined
         have no `difficulty_level` and are skipped, because they are not rooms.
 
+        **Like is compared with like, and that is not the same as "the room
+        before".** Since `docs/difficulty-calibration.md` decision 8, a room's
+        rung comes from one of two places: a re-run inherits the rung its own
+        rehearsal last ran at, and a fresh argument opens at the account's. A
+        comparison across that seam measures bookkeeping rather than the
+        presenter — two rehearsals sitting at different rungs would make every
+        debrief say "harder", then "easier", then "harder", while nothing about
+        them changed. Decision 5 built this sentence to give credit, and one
+        that oscillates spends the credit it was for.
+
+        So: the last attempt at *this* rehearsal, or — for a room that started
+        its own — the last room that also opened at the account's rung, where a
+        difference is calibration having moved and is genuinely creditable.
+
         Null rather than a third word when the rung is unchanged. Nothing
         happened, and a screen already carrying weak answers and a coach does
         not need a sentence saying so.
@@ -317,10 +331,38 @@ class DebriefService:
         if this is None or this.difficulty_level is None:
             return None
 
-        before = await self._db.execute(
+        last = await self._db.scalar(
+            self._before(this).where(
+                func.coalesce(Session.rehearsal_id, Session.id) == this.rehearsal
+            )
+        )
+
+        if last is None and this.rehearsal_id is None:
+            # No earlier attempt at this rehearsal, and this room started its
+            # own — so it opened at the account's rung. The comparable rooms are
+            # the other lineage-openers, which read that same dial.
+            last = await self._db.scalar(
+                self._before(this).where(Session.rehearsal_id.is_(None))
+            )
+
+        if last is None or last == this.difficulty_level:
+            return None
+
+        return "harder" if this.difficulty_level > last else "easier"
+
+    @staticmethod
+    def _before(this: Session):
+        """The rung of this account's last room before `this`, unscoped.
+
+        Shared by both branches of `_moved` so "which room came before" is
+        written once — the two differ only in what they consider comparable,
+        and a second copy of the ordering is how they come to disagree about it.
+        """
+        return (
             select(Session.difficulty_level)
             .where(
                 Session.user_id == this.user_id,
+                Session.id != this.id,
                 Session.difficulty_level.is_not(None),
                 Session.settled_at.is_not(None),
                 Session.settled_at < this.settled_at,
@@ -328,8 +370,3 @@ class DebriefService:
             .order_by(Session.settled_at.desc())
             .limit(1)
         )
-        last = before.scalar_one_or_none()
-        if last is None or last == this.difficulty_level:
-            return None
-
-        return "harder" if this.difficulty_level > last else "easier"
