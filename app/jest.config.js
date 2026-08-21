@@ -8,6 +8,14 @@
  * too: a second runner would be a second config, a second mocking story, and a
  * rule about which one a new file belongs to. See `CLAUDE.md` → Frontend.
  *
+ * **`render()` must be awaited.** `await render(<Thing />)`, never bare. React
+ * 19's concurrent root means the tree is not committed when `render` returns,
+ * so `screen` is still unset — and the error it raises then is
+ * *"`render` function has not been called"*, which sends you looking at the
+ * wrong thing entirely. It is a lie: it was called, and it had not finished.
+ * Every component test here awaits; a new one that does not will fail with that
+ * message against a component that is perfectly fine.
+ *
  * The preset is pinned to `jest-expo/ios` rather than the multi-platform one.
  * The default preset runs every test once per platform, which for logic with no
  * platform branches is the same assertion three times at three times the cost.
