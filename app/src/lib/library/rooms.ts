@@ -1,3 +1,4 @@
+import type { PastRoom } from '../api/sessionsApi';
 import { panelistName } from '../panel/vocabulary';
 
 /**
@@ -90,4 +91,30 @@ function midnightsBetween(then: Date, now: Date): number {
     new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
 
   return Math.round((midnight(now) - midnight(then)) / DAY_MS);
+}
+
+/**
+ * The rung a rehearsal is currently running at, or null if it never ran.
+ *
+ * **"Run it again" restores the panel and the deck; it has to restore the
+ * pressure too.** Until it did, the button handed back a room that pressed
+ * differently from the one it named — the rung came from the account, and every
+ * debrief moves that, including debriefs of entirely unrelated arguments. A
+ * badly handled demo day made somebody's board readout gentler.
+ *
+ * The server resolves the same thing at room build; this exists so the setup
+ * screen can *show* it. A picker still displaying the account's number would
+ * state one rung and start another, which is worse than not showing it at all.
+ *
+ * The newest attempt that actually became a room. A session that failed to
+ * provision has no rung — there was no room — so it is skipped rather than
+ * inherited as a zero.
+ */
+export function pressureOf(rooms: PastRoom[], rehearsalId: string): number | null {
+  // The rooms arrive newest first, so the first match is the latest attempt.
+  const ran = rooms.find(
+    (room) => room.rehearsalId === rehearsalId && room.difficultyLevel !== null
+  );
+
+  return ran?.difficultyLevel ?? null;
 }

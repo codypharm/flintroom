@@ -82,12 +82,14 @@ export default function HomeScreen() {
     material: sameDeck,
     repeats,
     name: called,
+    rung,
   } = useLocalSearchParams<{
     reveal?: string;
     archetypes?: string;
     material?: string;
     repeats?: string;
     name?: string;
+    rung?: string;
   }>();
   const revealing = reveal === '1';
   const [room, setRoom] = useState<Catalogue | null>(null);
@@ -98,6 +100,22 @@ export default function HomeScreen() {
   // a `TextInput` handed null quietly becomes uncontrolled. Emptiness means
   // unnamed; this screen turns that into the null the server stores.
   const [rehearsalName, setRehearsalName] = useState('');
+
+  /**
+   * The rung a re-run will actually open at, or null on a fresh argument.
+   *
+   * Held beside the catalogue's number rather than written into it, because the
+   * two answer different questions: `room.difficulty` is the rung this
+   * *account* is on, and this is the rung this *rehearsal* is on. The server
+   * resolves the same thing at room build — a room that repeats another opens
+   * at the pressure that rehearsal last ran at — so showing the account's
+   * number here would state one rung and start another.
+   *
+   * Cleared the moment the user touches the control, which is what makes the
+   * override honest on both sides: `choose` stamps `difficulty_chosen_at`, the
+   * server then prefers the account, and the screen stops showing the pin.
+   */
+  const [pinned, setPinned] = useState<number | null>(null);
 
   const [material, setMaterial] = useState<AttachedMaterial | null>(null);
   const [limits, setLimits] = useState<MaterialLimits | null>(null);
@@ -133,6 +151,16 @@ export default function HomeScreen() {
       setRehearsalName(called);
     }
   }, [called]);
+
+  useEffect(() => {
+    // Guarded on a real number rather than on truthiness. The Library sends an
+    // empty string for a rehearsal that has never run, and `Number('')` is 0 —
+    // a rung off the ladder, which would draw no pill as selected at all.
+    const at = Number(rung);
+    if (rung && Number.isFinite(at) && at > 0) {
+      setPinned(at);
+    }
+  }, [rung]);
 
   useEffect(() => {
     let live = true;
@@ -357,6 +385,11 @@ export default function HomeScreen() {
 
   const chooseDifficulty = useCallback(
     (level: number) => {
+      // The pin stops applying the moment somebody sets a rung themselves, and
+      // the server agrees: `choose` stamps `difficulty_chosen_at`, and a choice
+      // made after this rehearsal's last attempt beats the inherited pressure.
+      // Without this the picker would move under the thumb and then snap back.
+      setPinned(null);
       // Optimistic, then corrected by what the server stored. The control has
       // to move under the thumb — a rung that waited on a round trip would feel
       // broken — and the server is the authority on what it actually is.
@@ -394,7 +427,11 @@ export default function HomeScreen() {
         // with different lifecycles: the catalogue is what we ship, and this is
         // what somebody wrote a minute ago. `railFor` owns the ordering and
         // says why the shipped eight never move.
-        room={{ ...room, archetypes: railFor(room.archetypes, mine) }}
+        room={{
+          ...room,
+          archetypes: railFor(room.archetypes, mine),
+          difficulty: pinned ?? room.difficulty,
+        }}
         seated={seated}
         onSeatedChange={setSeated}
         rehearsalName={rehearsalName}

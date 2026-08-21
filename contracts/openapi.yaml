@@ -2251,6 +2251,11 @@ components:
             format: uuid
           type: array
           title: Material Ids
+        difficulty_level:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Difficulty Level
         recording:
           $ref: '#/components/schemas/RecordingRead'
         archetypes:
@@ -2365,6 +2370,11 @@ components:
             format: uuid
           type: array
           title: Material Ids
+        difficulty_level:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Difficulty Level
         recording:
           $ref: '#/components/schemas/RecordingRead'
         archetypes:

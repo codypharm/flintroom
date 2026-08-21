@@ -87,6 +87,22 @@ class Account(Base):
         SmallInteger, nullable=False, default=GENTLE, server_default=str(GENTLE)
     )
 
+    #: When the user last set the rung themselves, or null if they never have.
+    #:
+    #: **The only thing that separates a preference from a calibration.** Both
+    #: write `difficulty_level`, and once written the two are indistinguishable
+    #: — which matters because a room that repeats another opens at the rung
+    #: that rehearsal last ran at, and the setup screen's control has to be able
+    #: to beat that pin. Without a timestamp there is no way to ask "did they
+    #: say this *after* that attempt", and the control would silently do nothing
+    #: on the one screen where it matters most.
+    #:
+    #: Set by `PanelService.choose` and by nothing else. `calibrate` deliberately
+    #: leaves it alone: the machine moving the number is not the user asking.
+    difficulty_chosen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     period_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     period_ends_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

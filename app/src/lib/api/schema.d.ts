@@ -1405,6 +1405,8 @@ export interface components {
             settled_at?: string | null;
             /** Material Ids */
             material_ids?: string[];
+            /** Difficulty Level */
+            difficulty_level?: number | null;
             recording?: components["schemas"]["RecordingRead"];
             /** Archetypes */
             archetypes?: string[];
@@ -1466,6 +1468,8 @@ export interface components {
             settled_at?: string | null;
             /** Material Ids */
             material_ids?: string[];
+            /** Difficulty Level */
+            difficulty_level?: number | null;
             recording?: components["schemas"]["RecordingRead"];
             /** Archetypes */
             archetypes?: string[];

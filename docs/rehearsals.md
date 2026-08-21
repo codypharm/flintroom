@@ -182,6 +182,13 @@ What bounds it:
   pairing a technical failure with a real attempt reads as somebody collapsing.
 - **Silent when there is nothing to say**, which is the common case early on.
 
+**What makes this fire at all** is decision 8 of `docs/difficulty-calibration.md`:
+a room that repeats another opens at the rung that rehearsal last ran at. Without
+it the rung was read from the account and moved on every debrief — including
+debriefs of unrelated arguments — so two adjacent attempts at one pitch could be
+pressed differently for reasons nothing to do with that pitch, and this
+comparison went silent exactly where it is wanted.
+
 **The Library** leads a row with the name when there is one, demoting the date
 to sit beside the panel — what actually distinguishes two rooms is one line of
 text. Unnamed rooms are unchanged.

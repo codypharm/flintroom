@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Library } from '../../components/modules/Library';
 import { createSessionsApi, type PastRoom } from '../../lib/api/sessionsApi';
+import { pressureOf } from '../../lib/library/rooms';
 import { API_BASE_URL, auth } from '../../lib/auth';
 import { useGateway } from '../../lib/auth/gateway';
 import { SignedOut } from '../../lib/auth/session';
@@ -77,7 +78,8 @@ export default function LibraryRoute() {
    * that minted a room directly would be a second place for all three to be
    * forgotten, and the first thing forgotten would be the disclosure.
    */
-  const runAgain = useCallback((room: PastRoom) => {
+  const runAgain = useCallback(
+    (room: PastRoom) => {
     router.push({
       // The Home tab. Assembling a room is what that screen now is, so a
       // re-run lands on the picker with the seating already on it rather than
@@ -99,9 +101,22 @@ export default function LibraryRoute() {
         // rather than an empty field asking somebody to name a thing that has
         // a name. Empty when nobody named it, which is the same as unnamed.
         name: room.rehearsalName ?? '',
+        // The rung this rehearsal is running at, so the setup screen shows the
+        // pressure the room will actually open at. The server resolves the same
+        // thing at room build; sending it here is only so the picker cannot
+        // state one rung and start another.
+        //
+        // The rehearsal's newest attempt rather than this row's, because that
+        // is what the server inherits from — tapping an older row still opens
+        // the room the rehearsal is currently at.
+        rung: String(pressureOf(rooms ?? [], room.rehearsalId) ?? ''),
       },
-    });
-  }, []);
+      });
+    },
+    // `rooms` is read to find the rehearsal's newest attempt, so a stale
+    // closure here would send the rung from whatever the list held on mount.
+    [rooms]
+  );
 
   if (refused !== null) {
     return (

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.archetypes import LIBRARY
@@ -144,7 +144,13 @@ class PanelCatalogueService:
         await self._db.execute(
             update(Account)
             .where(Account.user_id == user_id)
-            .values(difficulty_level=difficulty)
+            # Stamped, and only here. Calibration writes the same number and
+            # deliberately leaves this alone: a room that repeats another opens
+            # at the rung that rehearsal last ran at, and the only way to ask
+            # whether this control should beat that pin is whether the person
+            # said it *after* that attempt. The machine moving the number is not
+            # the user asking.
+            .values(difficulty_level=difficulty, difficulty_chosen_at=func.now())
         )
         await self._db.commit()
         log.info("difficulty_chosen", user_id=str(user_id), level=difficulty)

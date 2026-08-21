@@ -20,7 +20,9 @@ import { Library, type LibraryProps } from './Library';
 const ROOMS = [
   {
     id: 'room-2',
+    rehearsalId: 'room-2',
     rehearsalName: null,
+    difficultyLevel: 2,
     state: 'settled',
     startedAt: '2026-08-20T09:12:00Z',
     endReason: 'user_ended',
@@ -31,7 +33,9 @@ const ROOMS = [
   },
   {
     id: 'room-1',
+    rehearsalId: 'room-1',
     rehearsalName: null,
+    difficultyLevel: 2,
     state: 'settled',
     startedAt: '2026-08-17T16:04:00Z',
     endReason: 'idle_timeout',
@@ -101,7 +105,9 @@ it('offers no re-run for a room that never seated anybody', async () => {
     rooms: [
       {
         id: 'room-0',
+        rehearsalId: 'room-0',
         rehearsalName: null,
+        difficultyLevel: null,
         state: 'failed',
         startedAt: '2026-08-19T19:02:27Z',
         endReason: 'provisioning_failed',

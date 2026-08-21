@@ -51,6 +51,12 @@ export interface RoomRecording {
 export interface PastRoom {
   id: string;
   /**
+   * The rehearsal this room belongs to — its own id unless it repeats another.
+   *
+   * Never null, so grouping and lineage lookups have no special case.
+   */
+  rehearsalId: string;
+  /**
    * What the presenter calls the rehearsal this room belongs to, or null.
    *
    * The **lineage's** name, not this room's. A re-run reports the name it
@@ -78,6 +84,15 @@ export interface PastRoom {
    * are what a room actually reads.
    */
   materialIds: string[];
+  /**
+   * The rung this room ran at, or null if it never became a room.
+   *
+   * Read by the setup screen so a re-run can *show* the pressure it will
+   * actually open at — a room that repeats another inherits the rung its
+   * rehearsal last ran at, and a picker showing the account's number would
+   * state one thing and start another.
+   */
+  difficultyLevel: number | null;
   recording: RoomRecording;
 }
 
@@ -275,7 +290,9 @@ interface SaidLineBody {
 /** The wire's spelling, before the app renames it. */
 interface PastRoomBody {
   id: string;
+  rehearsal_id: string;
   rehearsal_name?: string | null;
+  difficulty_level?: number | null;
   state: string;
   started_at: string;
   end_reason?: string | null;
@@ -297,7 +314,9 @@ interface PastRoomBody {
 function asPastRoom(room: PastRoomBody): PastRoom {
   return {
     id: room.id,
+    rehearsalId: room.rehearsal_id,
     rehearsalName: room.rehearsal_name ?? null,
+    difficultyLevel: room.difficulty_level ?? null,
     state: room.state,
     startedAt: room.started_at,
     endReason: room.end_reason ?? null,

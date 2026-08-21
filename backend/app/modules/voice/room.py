@@ -87,7 +87,7 @@ async def build_room(
     # Through `pressure_at`, which clamps. A row holding something off the
     # ladder produces a real room rather than ending a metered session over
     # bookkeeping.
-    level = await sessions.difficulty_of(user_id=user_id)
+    level = await sessions.difficulty_of(session_id=session_id)
     pressure = pressure_at(level)
 
     # Recorded on the session, not only used. The account carries the rung a

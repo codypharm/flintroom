@@ -1,4 +1,4 @@
-import { howLongItRan, whenItRan, whoWasThere } from './rooms';
+import { howLongItRan, pressureOf, whenItRan, whoWasThere } from './rooms';
 
 /**
  * A past room, said the way somebody would say it.
@@ -75,5 +75,70 @@ describe('who was there', () => {
     // where the panel should be, which reads as a rendering fault rather than
     // as a room that never opened.
     expect(whoWasThere([])).toBe('Nobody was seated');
+  });
+});
+
+describe('the pressure a rehearsal is running at', () => {
+  const AT = (id: string, rehearsalId: string, startedAt: string, level: number | null) => ({
+    id,
+    rehearsalId,
+    rehearsalName: null,
+    state: 'settled',
+    startedAt,
+    endReason: 'user_ended',
+    settledAt: startedAt,
+    archetypes: ['cfo'],
+    materialIds: [],
+    difficultyLevel: level,
+    recording: { state: 'not_recorded' as const, expiresAt: null },
+  });
+
+  it('is the rung the newest attempt actually ran at', () => {
+    // "Run it again" restores the panel and the deck; it has to restore the
+    // pressure too, or the button hands back a different room than it names.
+    // The setup screen shows this so it cannot state one rung and start another.
+    expect(
+      pressureOf(
+        [
+          AT('b', 'a', '2026-08-20T09:00:00Z', 3),
+          AT('a', 'a', '2026-08-11T09:00:00Z', 1),
+        ],
+        'a'
+      )
+    ).toBe(3);
+  });
+
+  it('ignores rooms belonging to a different rehearsal', () => {
+    // The whole point. A badly handled demo day must not decide how hard the
+    // board readout presses.
+    expect(
+      pressureOf(
+        [
+          AT('z', 'z', '2026-08-20T09:00:00Z', 1),
+          AT('a', 'a', '2026-08-11T09:00:00Z', 3),
+        ],
+        'a'
+      )
+    ).toBe(3);
+  });
+
+  it('skips a room that never became one', () => {
+    // A session that failed to provision has no rung, because there was no
+    // room. Inheriting a null would be inheriting nothing and reading as zero.
+    expect(
+      pressureOf(
+        [
+          AT('b', 'a', '2026-08-20T09:00:00Z', null),
+          AT('a', 'a', '2026-08-11T09:00:00Z', 2),
+        ],
+        'a'
+      )
+    ).toBe(2);
+  });
+
+  it('says nothing about a rehearsal that has never run', () => {
+    // Null, so the screen falls back to the account's rung rather than
+    // inventing a number for a rehearsal with nothing behind it.
+    expect(pressureOf([AT('a', 'a', '2026-08-11T09:00:00Z', null)], 'a')).toBeNull();
   });
 });

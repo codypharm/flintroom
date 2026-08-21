@@ -208,3 +208,129 @@ async def test_a_name_longer_than_a_heading_is_refused(
     )
 
     assert response.status_code == 422
+
+
+# --- What a re-run reproduces ------------------------------------------------
+#
+# "Run it again" restores the panel and the material. It did not restore the
+# **pressure**, so the button gave back a different room than the one it named:
+# the rung was read from the account, and every debrief moves that — including
+# debriefs of entirely unrelated arguments.
+#
+#     Board readout, attempt 1, runs at Relentless.
+#     Demo day rehearsed badly, and the account drops to Gentle.
+#     Board readout, attempt 2, runs at Gentle.
+#
+# Two adjacent attempts at one pitch, pressed differently for reasons nothing to
+# do with that pitch. That breaks the same-rung comparison in `docs/rehearsals.md`
+# decision 9 exactly where it is wanted, and it puts a rung on the Progress
+# screen that the person reading it cannot explain.
+#
+# So a room that repeats another opens at the rung that rehearsal last ran at.
+# The account's rung is untouched and keeps meaning what
+# `docs/difficulty-calibration.md` decision 3 says it means — it is simply no
+# longer what a *repeat* reads.
+
+from datetime import timedelta
+
+from sqlalchemy import update
+
+from app.agents.difficulty import GENTLE, RELENTLESS, STANDARD
+from app.modules.billing.models import Account
+
+
+async def _account_at(db, account, level, *, chosen_at=None):
+    """Put the account on a rung, optionally as an explicit user choice."""
+    await db.execute(
+        update(Account)
+        .where(Account.user_id == account.user_id)
+        .values(difficulty_level=level, difficulty_chosen_at=chosen_at)
+    )
+    await db.commit()
+
+
+async def test_a_rerun_opens_at_the_rung_that_rehearsal_last_ran_at(
+    db, sessions, settlement, funded_account
+):
+    """The tracer. The account moved; the rehearsal did not."""
+    first = await settled(sessions, settlement, db, funded_account)
+    await sessions.ran_at(session_id=first.id, level=RELENTLESS)
+    await _account_at(db, funded_account, GENTLE)
+
+    again = await settled(sessions, settlement, db, funded_account, repeats=first.id)
+
+    assert await sessions.difficulty_of(session_id=again.id) == RELENTLESS
+
+
+async def test_a_fresh_argument_opens_at_the_account_rung(
+    db, sessions, settlement, funded_account
+):
+    """Nothing is repeated, so there is no rehearsal to inherit from.
+
+    This is decision 3 still doing its job: resilience earned across arguments
+    is what a new argument starts from.
+    """
+    await _account_at(db, funded_account, STANDARD)
+
+    fresh = await settled(sessions, settlement, db, funded_account)
+
+    assert await sessions.difficulty_of(session_id=fresh.id) == STANDARD
+
+
+async def test_choosing_a_rung_after_the_last_attempt_beats_the_pin(
+    db, sessions, settlement, funded_account
+):
+    """The control on the setup screen still overrides.
+
+    Without this the pin is a trap: a rehearsal stuck at Gentle could never be
+    made harder, and the one control the user has over pressure would silently
+    do nothing on the screen where it matters most.
+    """
+    first = await settled(sessions, settlement, db, funded_account)
+    await sessions.ran_at(session_id=first.id, level=GENTLE)
+
+    again = await settled(sessions, settlement, db, funded_account, repeats=first.id)
+    # Chosen after that attempt ran, which is what makes it an answer to it.
+    await _account_at(db, funded_account, RELENTLESS, chosen_at=again.started_at)
+
+    assert await sessions.difficulty_of(session_id=again.id) == RELENTLESS
+
+
+async def test_a_choice_made_before_the_last_attempt_does_not_beat_the_pin(
+    db, sessions, settlement, funded_account
+):
+    """An old preference is not an instruction about this rehearsal.
+
+    Somebody who set Relentless months ago, then ran this rehearsal at Gentle,
+    has said the more recent thing with the room they actually ran.
+    """
+    first = await settled(sessions, settlement, db, funded_account)
+    await sessions.ran_at(session_id=first.id, level=GENTLE)
+
+    again = await settled(sessions, settlement, db, funded_account, repeats=first.id)
+    # Strictly before that attempt. A choice made at the same instant is the
+    # ordinary case — tap the rung, tap Start — and that one is meant to win.
+    await _account_at(
+        db,
+        funded_account,
+        RELENTLESS,
+        chosen_at=first.started_at - timedelta(days=30),
+    )
+
+    assert await sessions.difficulty_of(session_id=again.id) == GENTLE
+
+
+async def test_a_rehearsal_whose_rooms_never_ran_falls_back_to_the_account(
+    db, sessions, settlement, funded_account
+):
+    """A room started and never joined has no rung, because there was no room.
+
+    `ran_at` is written when the room is assembled, so a lineage of rooms that
+    all failed to provision has nothing to inherit and the account answers.
+    """
+    first = await settled(sessions, settlement, db, funded_account)
+    await _account_at(db, funded_account, STANDARD)
+
+    again = await settled(sessions, settlement, db, funded_account, repeats=first.id)
+
+    assert await sessions.difficulty_of(session_id=again.id) == STANDARD

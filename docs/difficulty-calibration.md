@@ -205,8 +205,10 @@ Risk #1 describes.
 
 ## Reopened: where the level lives (#87)
 
-**Status: proposed, 2026-08-21. Not decided, not built.** Decision 3 stands until
-the architect replaces it.
+**Status: decided 2026-08-21 and built — the architect chose option B.** Decision
+3 is *not* replaced: the account's rung still means what it says and still
+calibrates on every debrief. What changed is narrower, and it is stated as
+decision 8 at the end of this section.
 
 ### What changed
 
@@ -255,46 +257,83 @@ remembers — *"it got harder because you handled the last one"* becomes literal
 true and locally checkable. Per account, there is no sentence that explains a
 Gentle board readout to somebody who has not thought about last Tuesday.
 
-### Proposed shape
+### The three options, and why the middle one won
 
-- **A new argument seeds from the account's current level.** A seasoned user is
-  not dropped back to Gentle on a fresh pitch, which is what decision 3 was
-  really protecting and what Open Risk #1 is about: a *first-timer* needs
-  gentleness because they have never been attacked, not because this deck is new.
-- **From then on, a lineage's rung moves on that lineage's own results only.**
-- **No `rehearsals` table.** `sessions.calibrated_to`, nullable `smallint`,
-  written by the debrief. A lineage's level is the newest non-null in the group,
-  falling back to the account's — the same *"newest non-null in the group wins"*
-  fold `modules/sessions/rehearsals.py` already performs for the name.
+**A — leave it.** One dial per account, calibrating from every room. Costs
+nothing; the same-rung comparison fires only when nothing else was rehearsed in
+between, and the rung drawn on a room stays unexplainable.
 
-### Open before any code
+**B — the rung becomes part of what a re-run restores.** A room that repeats
+another opens at the rung that rehearsal last ran at, alongside the same panel
+and the same deck. Calibration is untouched. **Chosen.**
 
-- **The manual control.** `PUT /v1/panels/difficulty` writes the account level
-  today. On a re-run it has to be able to set *this* lineage, or the user loses
-  per-rehearsal control the moment the dial moves. Probably means the chosen
-  level travels in `SessionStart` and the account number becomes purely the seed
-  for new arguments — which is a bigger change than the column.
+**C — the dial itself moves onto the rehearsal**, seeded from the account and
+then calibrating per lineage. Needs a `calibrated_to` column, the debrief's
+comparison rescoped, and the manual control reworked.
+
+B won on two grounds. It does not require overturning decision 3 — the argument
+that pressure tolerance transfers between subjects survives intact, because the
+account dial keeps doing exactly that job. And it stands up without reference to
+the comparison at all: **a button labelled "Run it again" that quietly changes
+how hard the room presses is wrong regardless.** Seen that way this was never a
+difficulty decision; it was an incomplete re-run.
+
+**C was rejected for a reason worth recording, because it is counter-intuitive.**
+C escalates a rehearsal as the presenter improves — which *hides* the
+improvement. They get better, the room gets harder, the tally stays flat. C is
+good for training and bad for measuring, because it moves the ruler every time
+somebody grows. Under B the two questions get two honest homes: *am I answering
+better* is the run of tallies at a held rung, and *am I harder to rattle* is the
+account dial climbing across arguments.
+
+What B gives up is escalation inside one rehearsal, and it is close to
+worthless: attempt four of a board readout is about nailing that pitch, not
+about being pressed harder than attempt three. Somebody who wants the harder
+room asks for it, and Progress then reports the two runs separately.
+
+C is not foreclosed. The pin is the same lookup C needs.
+
+### Decision 8 — a re-run inherits the pressure it ran at
+
+`SessionService.difficulty_of` takes a session rather than a user, and resolves:
+
+1. No `rehearsal_id` — a fresh argument — the account's rung. Decision 3, intact.
+2. Otherwise the rung the **newest attempt in that lineage actually ran at**.
+   `ran_at` writes on assembly, so a lineage whose rooms all failed to provision
+   has nothing to inherit and the account answers — right, because there was no
+   room to reproduce.
+3. Unless the user set a rung **after** that attempt, in which case the account's
+   number wins.
+
+**Rule 3 needs `accounts.difficulty_chosen_at`, and that is the whole of the new
+schema.** Calibration and preference write the same column, and once written the
+two are indistinguishable — so without a timestamp there is no way to ask
+whether the person spoke after that attempt, and the setup screen's control
+would silently do nothing on the one screen where it matters. `PanelService.
+choose` stamps it; `calibrate` deliberately does not. **The machine moving the
+number is not the user asking.**
+
+A choice made at the same instant as an attempt started counts as *after* it —
+that is the ordinary case, tapping a rung and then tapping Start.
+
+The setup screen shows the inherited rung rather than the account's, via
+`pressureOf` in `lib/library/rooms.ts`, which resolves the same lineage rule on
+the client. A picker that displayed the account's number would state one rung
+and start another. Touching the control clears the pin on screen at the same
+moment `choose` makes the server prefer the account, so the two never disagree.
+
+### Still open, and untouched by this
+
 - **The debrief's sentence.** `_moved` compares this room's rung against the
-  previous room by `started_at` across the whole account. It has to compare
-  within the lineage, or the same cross-contamination reappears as words.
-- **Fewer readings per dial.** Ten lineages is ten dials, each moving on one or
-  two readings from a model that can be wrong, losing the averaging one account
-  dial gets for free. Bounded by the one-rung-per-move cap and the three-rung
-  ladder — the worst case is a lineage sitting one rung off for one room — but it
-  makes `FUMBLED = 0.5` and `HANDLED = 0.2` matter more than they did, and those
-  are still, by their own comment, *"a judgement with no data behind it"*.
+  previous room by `started_at` across the whole account. Under B the rung a
+  re-run runs at is now the lineage's, so the comparison should be scoped to the
+  lineage too — otherwise *"they pressed harder this time than last"* can be
+  measured against an unrelated argument. Not fixed here; it is a sentence
+  rather than a room.
+- **The thresholds.** `FUMBLED = 0.5` and `HANDLED = 0.2` are still, by their
+  own comment, *"a judgement with no data behind it."*
 - **Nothing changes for deletion.** `sessions` and `accounts` are both already
   destroyed by `billing/deletion.py`.
-
-### What was considered and would be worse
-
-**Dropping the same-rung gate instead** and letting Progress compare across
-rungs. Cheaper, and it restores exactly the comparison the escalating ladder
-makes dishonest — the thing decision 9 exists to prevent.
-
-**Leaving it per account and accepting an occasional comparison.** Defensible
-only if people rehearse one thing at a time, which is the assumption the
-grouping work was built because they do not.
 
 ---
 

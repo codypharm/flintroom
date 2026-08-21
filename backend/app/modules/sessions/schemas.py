@@ -362,6 +362,14 @@ class SessionRead(BaseModel):
     #: have to answer from memory.
     material_ids: list[uuid.UUID] = Field(default_factory=list)
 
+    #: The rung this room ran at, or null if it never became a room.
+    #:
+    #: Published so the setup screen can show the pressure a *re-run* will
+    #: actually open at. A room that repeats another inherits the rung its
+    #: rehearsal last ran at, and a picker still showing the account's number
+    #: would state one thing and start another.
+    difficulty_level: int | None = None
+
     #: Whether this room can still be heard. Never a URL — see `RecordingRead`.
     recording: RecordingRead = Field(
         default_factory=lambda: RecordingRead(state=RecordingState.NOT_RECORDED)

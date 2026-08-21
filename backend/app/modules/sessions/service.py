@@ -278,23 +278,79 @@ class SessionService:
         await self._db.commit()
         return session
 
-    async def difficulty_of(self, *, user_id: uuid.UUID) -> int:
-        """The rung this account is on.
+    async def difficulty_of(self, *, session_id: uuid.UUID) -> int:
+        """The rung this room should run at.
 
-        A read rather than a resolve: the number is a stored fact, and the
-        clamping that makes it safe lives in `difficulty.pressure_at` where
-        every reader passes through it. Returning it raw keeps one clamp rather
-        than two that can disagree.
+        **A room that repeats another runs at the pressure that rehearsal last
+        ran at.** "Run it again" already restores the panel and the material; it
+        did not restore the pressure, so the button handed back a different room
+        than the one it named. The rung came from the account, and every debrief
+        moves that — including debriefs of unrelated arguments, which is how a
+        badly-handled demo day made somebody's board readout gentler.
 
-        Defaults to the gentle rung for an account that somehow has no row.
-        That cannot happen on the session path — a session requires an account —
-        and if it ever did, the wrong answer to give a stranger is the hardest
-        room we have.
+        Two things broke. The same-rung comparison (`docs/rehearsals.md`
+        decision 9) went silent exactly where it is wanted, and the rung drawn on
+        each room in Progress became something the reader could not explain.
+
+        **The account's rung is untouched and still means what
+        `docs/difficulty-calibration.md` decision 3 says it means.** Resilience
+        under pressure transfers between arguments, so it is what a *fresh*
+        argument starts from and what calibration keeps moving. It is simply no
+        longer what a repeat reads.
+
+        **An explicit choice made after that attempt still wins.** Otherwise the
+        pin is a trap: a rehearsal stuck at the gentle rung could never be made
+        harder, and the one control the user has over pressure would do nothing
+        on the screen where it matters most. `difficulty_chosen_at` is what makes
+        that answerable — calibration and preference both write the same number,
+        and only the timestamp says which one spoke last.
+
+        Defaults to the gentle rung for an account that somehow has no row. That
+        cannot happen on the session path, and if it ever did, the wrong answer
+        to give a stranger is the hardest room we have.
         """
-        stored = await self._db.execute(
-            select(Account.difficulty_level).where(Account.user_id == user_id)
-        )
-        return stored.scalar_one_or_none() or GENTLE
+        session = await self._load(session_id)
+
+        account = (
+            await self._db.execute(
+                select(Account.difficulty_level, Account.difficulty_chosen_at).where(
+                    Account.user_id == session.user_id
+                )
+            )
+        ).one_or_none()
+
+        level = (account.difficulty_level if account else None) or GENTLE
+
+        if session.rehearsal_id is None:
+            return level
+
+        # The newest attempt in this rehearsal that actually became a room.
+        # `ran_at` writes on assembly, so a lineage of rooms that all failed to
+        # provision has nothing to inherit and the account answers — which is
+        # right, because there was no room to reproduce.
+        pinned = (
+            await self._db.execute(
+                select(Session.difficulty_level, Session.started_at)
+                .where(
+                    Session.user_id == session.user_id,
+                    func.coalesce(Session.rehearsal_id, Session.id)
+                    == session.rehearsal,
+                    Session.id != session.id,
+                    Session.difficulty_level.is_not(None),
+                )
+                .order_by(Session.started_at.desc())
+                .limit(1)
+            )
+        ).one_or_none()
+
+        if pinned is None:
+            return level
+
+        chosen = account.difficulty_chosen_at if account else None
+        if chosen is not None and chosen >= pinned.started_at:
+            return level
+
+        return pinned.difficulty_level
 
     async def ran_at(self, *, session_id: uuid.UUID, level: int) -> None:
         """Record the rung a room was assembled at.
