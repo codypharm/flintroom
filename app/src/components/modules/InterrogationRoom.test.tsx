@@ -319,3 +319,88 @@ describe('the room moving while it works', () => {
     expect(screen.queryByText(/Working on it/)).toBeNull();
   });
 });
+
+
+describe('the safelight', () => {
+  /**
+   * Room temperature, and it is the ambient ground rather than a gauge.
+   *
+   * The surface brief: *"Convinced warms and lifts the amber; Skeptical is
+   * neutral; Losing the room cools and dims toward gray. No gauge, no needle,
+   * no number — perceivable without looking directly at it, which is the only
+   * way a hands-free user perceives anything."*
+   *
+   * Two casts over the neutral ground rather than one animated colour, because
+   * `backgroundColor` cannot be driven natively and this is the one screen that
+   * must not drop frames — opacity can. Which cast is lit is what these assert;
+   * how fast it gets there is motion and belongs to the device.
+   */
+  /**
+   * Found deliberately past the accessibility tree.
+   *
+   * The casts are hidden from a screen reader on purpose — see the test below —
+   * so RNTL will not return them by default, and a query that did would be
+   * asserting the opposite of what this screen wants.
+   */
+  const cast = (mark: string) =>
+    screen.queryByTestId(mark, { includeHiddenElements: true });
+
+  it('lays no cast over the ground while the room is merely skeptical', async () => {
+    // The resting state, and the reason `skeptical` is the neutral value rather
+    // than a fourth "unknown" band: a panel opens unconvinced, so the ground it
+    // opens on is already telling the truth.
+    await show({ temperature: 'skeptical' });
+
+    expect(cast('warmth')).toBeNull();
+    expect(cast('chill')).toBeNull();
+  });
+
+  it('warms the ground when the panel is convinced', async () => {
+    await show({ temperature: 'convinced' });
+
+    expect(cast('warmth')).toBeTruthy();
+    expect(cast('chill')).toBeNull();
+  });
+
+  it('cools it when the room is being lost', async () => {
+    await show({ temperature: 'losing_the_room' });
+
+    expect(cast('chill')).toBeTruthy();
+    expect(cast('warmth')).toBeNull();
+  });
+
+  it('is invisible to a screen reader, which is the decision and not an omission', async () => {
+    // A live region reading "losing the room" over a panelist mid-question
+    // would heckle somebody who cannot hear it coming, and the brief's
+    // anti-goals forbid a score on this screen in any form. What carries the
+    // same finding for that reader is the debrief, in words, with the questions
+    // attached — a band with no evidence is a verdict.
+    await show({ temperature: 'losing_the_room' });
+
+    expect(screen.queryByTestId('chill')).toBeNull();
+    expect(cast('chill')).toBeTruthy();
+  });
+
+  it('says nothing about it in words, to anybody', async () => {
+    // **Not a caption, and deliberately not announced.** The brief's anti-goals
+    // forbid a score on this screen, and a live region reading "losing the room"
+    // over a panelist mid-question would be the product heckling somebody who
+    // cannot hear it coming — worse for the reader captions exist for than
+    // saying nothing.
+    //
+    // What carries it for a screen-reader user is the debrief, in words, with
+    // the actual questions attached. A band with no evidence is a verdict.
+    await show({ temperature: 'losing_the_room' });
+
+    expect(screen.queryByText(/losing|convinced|skeptical/i)).toBeNull();
+  });
+
+  it('does not colonise the ground with anything else', async () => {
+    // #41 kept every other live signal off the ambient ground so this had
+    // somewhere to land — the floor indicator at the nearest edge, the speaker
+    // in the trays. The cast covers the screen, so it must not eat taps.
+    await show({ temperature: 'convinced' });
+
+    expect(cast('warmth')?.props.pointerEvents).toBe('none');
+  });
+});

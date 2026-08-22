@@ -54,6 +54,7 @@ inspect a payload to know whether it is holding audio or an instruction.
 | `transcript` | `text`, `speaker` | Show this as the panel's current line, from that archetype. |
 | `turn_finished` | — | The panel is done. The floor is the presenter's. |
 | `attending` | `state` | What the room is doing while the floor is the presenter's: `listening`, `heard`, `working`, `unheard`. |
+| `temperature` | `state` | How the panel is receiving the argument: `convinced`, `skeptical`, `losing_the_room`. |
 
 `discard_playback` is barge-in. Audio runs ahead of playback, so when the user
 talks over a panelist the device is still holding frames of a sentence that will
@@ -71,6 +72,24 @@ for audio the client is already playing. Any word-by-word emergence is the
 client's animation; the wire carries finished lines. A provider that revises an
 utterance after the fact is ignored — by the time a correction lands the line has
 been spoken aloud, and retracting it would be the room contradicting itself.
+
+`temperature` is `Product.md` §3.4's directional read, and on the live screen it
+is the **safelight itself** rather than a gauge — the interrogation brief has
+Convinced warming the amber, Skeptical neutral, and Losing the room cooling
+toward gray. So it carries a band and never a number: a score on that screen
+would be the delivery-metrics product §1 exists to refuse, and `CLAUDE.md` fixes
+these three words and forbids the retired investor scale.
+
+**The client cannot derive it.** It is read from the routing reason on panel
+lines — `chosen_by == "finding"` means the Auditor caught the answer before that
+line — and the routing reason is internal and never goes over this socket.
+Sending it instead would put an internal decision on the wire and leave a client
+free to draw a different room from the one the server read.
+
+It arrives on transitions and repeats on every heartbeat, the same discipline as
+`attending`: transitions for speed, repetition for correctness, so a client that
+dropped one message is wrong for one beat rather than for the rest of the room.
+A client should treat it as the current value and never accumulate it.
 
 `speaker` is the archetype's name as `POST /v1/sessions` returned it in
 `archetypes`, and as the stored transcript spells it — one vocabulary, so the

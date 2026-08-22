@@ -84,6 +84,21 @@ export function DeckAttach({ material, limits, onAttach, onRemove }: DeckAttachP
         {reading && (
           <ActivityIndicator color={color.primary} accessibilityLabel="Reading your deck" />
         )}
+
+        {/*
+          **Only while the face is a target**, which is the rule `AuthorRow`
+          two inches down this screen already follows and `TablePlan` states
+          from the other side: a chevron on a statement is a lie about what a
+          tap does. With a deck attached this face stops being a button and
+          Replace and Remove carry the actions instead.
+
+          Reported from a device — the tappable parts of setup do not read as
+          tappable — and this card was the worst of them. The whole face is the
+          target, and everything drawn on it was type or `hairline`, which
+          measures **1.70:1** against the card. Nothing said "button" and
+          nothing was above the WCAG 2.2 non-text floor.
+        */}
+        {material === null && <View testID="deck-open" style={styles.chevron} />}
       </Pressable>
 
       {material === null ? (
@@ -103,8 +118,16 @@ export function DeckAttach({ material, limits, onAttach, onRemove }: DeckAttachP
 
 /** A page with two ruled lines on it. Drawn, because nothing here ships icons. */
 function Mark({ tone }: { tone: 'empty' | 'held' | 'failed' }) {
+  // `onSurfaceVariant` for the empty slot rather than `hairline`, which was
+  // 1.70:1 against the card — a divider's ink, used to draw the icon for this
+  // screen's second-largest action. Quieter than the held state's `primary`
+  // and still a page somebody can see: 9.34:1.
   const ink =
-    tone === 'failed' ? color.danger : tone === 'held' ? color.primary : color.hairline;
+    tone === 'failed'
+      ? color.danger
+      : tone === 'held'
+        ? color.primary
+        : color.onSurfaceVariant;
 
   return (
     <View style={[styles.page, { borderColor: ink }]}>
@@ -237,6 +260,23 @@ const styles = StyleSheet.create({
   },
   rule: { height: 2, borderRadius: 1 },
   ruleShort: { width: '60%' },
+
+  /**
+   * The affordance, drawn rather than shipped as an icon — the same two borders
+   * on a rotated square that `AuthorRow` and `PanelSetup`'s rail end use, so
+   * one shape means one thing across the screen.
+   */
+  chevron: {
+    width: 10,
+    height: 10,
+    borderRightWidth: 2,
+    borderTopWidth: 2,
+    borderColor: color.onSurfaceVariant,
+    transform: [{ rotate: '45deg' }],
+    // The mass sits left of centre once rotated; this puts the point on the
+    // row's right edge rather than the bounding box.
+    marginRight: 3,
+  },
 
   hairline: { height: 1, backgroundColor: color.hairline, opacity: 0.5 },
 });

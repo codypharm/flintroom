@@ -87,6 +87,9 @@ class FakeClientChannel:
 
         #: What the room said it was doing, in order (#24).
         self.attended: list[str] = []
+
+        #: How the panel was said to be receiving the argument, in order (#74).
+        self.temperatures: list[str] = []
     async def send_audio(self, pcm: bytes) -> None:
         self.sent.append(pcm)
 
@@ -95,6 +98,9 @@ class FakeClientChannel:
 
     async def attending(self, state: str) -> None:
         self.attended.append(state)
+
+    async def temperature(self, state: str) -> None:
+        self.temperatures.append(state)
 
     async def turn_finished(self) -> None:
         self.yielded += 1

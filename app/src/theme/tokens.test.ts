@@ -42,6 +42,11 @@ it.each([
   // exception to the warm off-white and must not be reachable by accident from
   // a light screen.
   ['interrogation-ground', () => color.roomGround],
+  // #74's safelight. Two more grounds on the same derivation, and the reason
+  // they are tokens rather than literals in one component is the reason every
+  // other value here is: a colour nobody can find is a colour that drifts.
+  ['interrogation-ground-warm', () => color.roomGroundWarm],
+  ['interrogation-ground-cool', () => color.roomGroundCool],
   ['interrogation-tray', () => color.roomTray],
   ['interrogation-tray-lit', () => color.roomTrayLit],
   // Already in the palette, and used unchanged: these are the light-on-dark

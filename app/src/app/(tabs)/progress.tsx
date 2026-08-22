@@ -147,6 +147,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     backgroundColor: color.primary,
   },
-  retryLabel: { ...type.labelLg, color: color.surface },
+  // `onPrimary`, not `surface`. Text on the primary fill has always been
+  // `onPrimary`'s job, and reaching for the ground colour only worked while the
+  // ground happened to be near-white — which stopped being true when it was
+  // darkened to make cards visible.
+  retryLabel: { ...type.labelLg, color: color.onPrimary },
   pressed: { opacity: 0.6 },
 });

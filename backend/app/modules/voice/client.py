@@ -33,6 +33,9 @@ TURN_FINISHED = {"type": "turn_finished"}
 #: What the room is doing with the floor. See `events.Attention`.
 ATTENDING = "attending"
 
+#: How the panel is receiving the argument. See `agents/temperature.py`.
+TEMPERATURE = "temperature"
+
 
 class WebSocketClientChannel:
     """One connected client."""
@@ -75,6 +78,15 @@ class WebSocketClientChannel:
         — the one where nothing was heard at all.
         """
         await self._websocket.send_json({"type": ATTENDING, "state": state})
+
+    async def temperature(self, state: str) -> None:
+        """How the panel is receiving the argument, so the safelight can say it.
+
+        Read from the routing reason on panel lines, which never leaves the
+        server — so unlike a caption there is nothing here the phone could have
+        worked out for itself.
+        """
+        await self._websocket.send_json({"type": TEMPERATURE, "state": state})
 
     async def turn_finished(self) -> None:
         """The panel is done, and the floor is the presenter's again.

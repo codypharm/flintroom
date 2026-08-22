@@ -64,6 +64,30 @@ export type Attending = 'listening' | 'heard' | 'working' | 'unheard';
 /** Every value this build understands. Anything else is dropped, not rendered. */
 const ATTENDING: readonly Attending[] = ['listening', 'heard', 'working', 'unheard'];
 
+/**
+ * How the panel is receiving the argument — #74, and `Product.md` §3.4.
+ *
+ * Three words, fixed by `CLAUDE.md` and neutral on purpose: they have to travel
+ * from a board readout to a seed round, which the retired "Investable →
+ * Delusional" scale did not. A band, never a number — on the live screen this
+ * *is* the ambient ground rather than a gauge, and a score there would be the
+ * delivery-metrics product the wedge exists to refuse.
+ *
+ * **Nothing on this device can derive it.** The server reads it from the
+ * routing reason on panel lines — the Auditor having caught a figure that moved
+ * — and the routing reason is internal and never crosses this socket. Unlike
+ * the sound bar there is no local signal to fall back on, and unlike a caption
+ * there is nothing here the phone could have worked out.
+ */
+export type RoomTemperature = 'convinced' | 'skeptical' | 'losing_the_room';
+
+/** Every band this build understands. Anything else is dropped, not rendered. */
+const TEMPERATURES: readonly RoomTemperature[] = [
+  'convinced',
+  'skeptical',
+  'losing_the_room',
+];
+
 export interface PanelLine {
   speaker: string;
   text: string;
@@ -109,6 +133,19 @@ export interface ConnectionOptions {
    * racing a network and would be wrong in exactly the case that matters.
    */
   onAttending?: (state: Attending) => void;
+  /**
+   * How the panel is receiving the argument — #74.
+   *
+   * Reported rather than inferred for a stronger reason than the state above:
+   * this one is read from the routing reason on panel lines, and the routing
+   * reason never crosses the socket at all. There is no local signal to fall
+   * back on and nothing here to race.
+   *
+   * Arrives on transitions and repeats on every heartbeat, so a dropped message
+   * costs one beat rather than the rest of the room. Treat it as the current
+   * value; never accumulate it.
+   */
+  onTemperature?: (state: RoomTemperature) => void;
   /** Barge-in: drop everything buffered and unplayed, immediately. */
   onDiscardPlayback?: () => void;
   /** The room is over, and why. Called once. */
@@ -198,6 +235,15 @@ export function openConnection(options: ConnectionOptions): Promise<Connection> 
       // last state it understood rather than blanking it.
       if (ATTENDING.includes(control.state as Attending)) {
         options.onAttending?.(control.state as Attending);
+      }
+    } else if (control.type === 'temperature') {
+      // Checked against what this build knows, like the state above. A server
+      // ahead of a phone is the ordinary case for a shipped app, and an
+      // unrecognised band must leave the ambient ground on the last one this
+      // build understood — blanking it would be the screen going dark
+      // mid-room, on the one surface nobody is looking directly at.
+      if (TEMPERATURES.includes(control.state as RoomTemperature)) {
+        options.onTemperature?.(control.state as RoomTemperature);
       }
     } else if (control.type === 'turn_finished') {
       options.onTurnFinished?.();

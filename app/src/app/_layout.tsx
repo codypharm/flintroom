@@ -1,18 +1,41 @@
 import { useFonts } from 'expo-font';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  useColorScheme,
-} from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { FONTS } from '../theme/fonts';
 import { Gateway, useGateway } from '../lib/auth/gateway';
 import { color, radius, space, type } from '../theme/tokens';
+
+/**
+ * The navigator's own palette, which is this app's palette.
+ *
+ * **It followed the system appearance until a black header showed up on a
+ * device.** `DarkTheme` on a phone set to dark gave every stack header a
+ * near-black bar with a light chevron, under a status bar this app sets to dark
+ * glyphs unconditionally — on screens whose content is `#fcf9f8` either way. On
+ * a light-mode emulator it looked correct, which is exactly why it survived.
+ *
+ * The `StatusBar` below already made this decision and said why: *"`auto`
+ * follows the system appearance; this product does not. `tokens.ts` holds one
+ * palette."* The theme provider was the one place still disagreeing.
+ *
+ * It also removes a whole class of bug rather than one instance. Four routes
+ * pin `headerStyle` themselves and a fifth — `/minutes` — did not, and there was
+ * nothing to notice: an unpinned header simply inherited whatever the phone was
+ * set to. Now there is no wrong thing to inherit.
+ */
+const FLINTROOM = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: color.surface,
+    card: color.surface,
+    text: color.onSurface,
+    border: color.hairline,
+    primary: color.primary,
+  },
+};
 
 /**
  * A stack around a tab bar.
@@ -51,7 +74,6 @@ export default function RootLayout() {
  */
 function Shell() {
   const { who, recheck } = useGateway();
-  const colorScheme = useColorScheme();
   const [fontsLoaded] = useFonts(FONTS);
 
   // Nothing renders until the brand face is registered. React Native does not
@@ -78,7 +100,7 @@ function Shell() {
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={FLINTROOM}>
       {/*
         Dark glyphs, unconditionally, and not `auto`.
 
@@ -263,6 +285,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     backgroundColor: color.primary,
   },
-  retryLabel: { ...type.labelLg, color: color.surface },
+  // `onPrimary`, not `surface`. Text on the primary fill has always been
+  // `onPrimary`'s job, and reaching for the ground colour only worked while the
+  // ground happened to be near-white — which stopped being true when it was
+  // darkened to make cards visible.
+  retryLabel: { ...type.labelLg, color: color.onPrimary },
   pressed: { opacity: 0.6 },
 });

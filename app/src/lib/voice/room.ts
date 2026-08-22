@@ -3,6 +3,7 @@ import {
   type Attending,
   type Ending,
   type PanelLine,
+  type RoomTemperature,
   type SocketFactory,
 } from './connection';
 import { createPlayback, type PlaybackContext } from './playback';
@@ -61,6 +62,14 @@ export interface RoomOptions {
    * answered.
    */
   onAttending?: (state: Attending) => void;
+  /**
+   * How the panel is receiving the argument. Straight through, unexamined.
+   *
+   * #74, and there is nothing to reason about on this side even in principle:
+   * the band is read from the routing reason on panel lines, which never
+   * crosses the socket. The screen turns it into the ambient ground.
+   */
+  onTemperature?: (state: RoomTemperature) => void;
   /**
    * How loud each captured buffer was, in dBFS.
    *
@@ -157,6 +166,7 @@ export async function joinRoom(options: RoomOptions): Promise<Room> {
     },
     onTranscript: options.onTranscript,
     onAttending: options.onAttending,
+    onTemperature: options.onTemperature,
     onTurnFinished: () => {
       sent = true;
       handOver();

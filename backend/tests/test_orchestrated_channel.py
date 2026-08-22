@@ -135,17 +135,19 @@ def mid_room() -> OpeningFloor:
 
 
 def sequence(events) -> list[str]:
-    """The events in order, without the room narrating what it is doing.
+    """The events in order, without the room narrating about itself.
 
-    #24 added `Attending`, which the room emits on every transition and on
-    every heartbeat — orthogonal to the orderings these tests are about, and
-    noisy enough to bury them. It has its own coverage in
-    `test_opening_in_the_room.py`, where the ordering that matters is its own.
+    #24 added `Attending` and #74 added `RoomTemperature`. Both are emitted on
+    transitions and on every heartbeat, both are orthogonal to the orderings
+    these tests are about, and together they are noisy enough to bury them.
+    Each has its own coverage — `test_opening_in_the_room.py` and
+    `test_room_temperature.py` — where the ordering that matters is its own.
     """
+    narration = {"Attending", "RoomTemperature"}
     return [
         type(event).__name__
         for event in events
-        if type(event).__name__ != "Attending"
+        if type(event).__name__ not in narration
     ]
 
 
@@ -183,6 +185,10 @@ async def test_the_room_reports_itself_open_before_anyone_speaks():
         # #24: what the room is doing, said before anything can change it, so a
         # room that opens and waits says so rather than saying nothing.
         "Attending",
+        # #74: and how it is receiving the argument, on the same terms. A
+        # safelight with no value would be the screen's ambient ground picking
+        # its own colour until the first turn landed.
+        "RoomTemperature",
         "AgentTranscript",
         "AgentFinished",
     ]

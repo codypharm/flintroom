@@ -28,8 +28,9 @@ from app.agents.difficulty import STANDARD_PRESSURE, Pressure
 from app.agents.model import PanelModel
 from app.agents.opening import Chooser, NoOneToOpen, OpeningFloor, opener_from
 from app.agents.panel import interrogate, select_speaker
-from app.agents.silence import Silence, nudge_from
 from app.agents.routing import choose
+from app.agents.silence import Silence, nudge_from
+from app.agents.temperature import Temperature, temperature_of
 from app.core.logging import get_logger
 from app.modules.voice.events import (
     AgentAudio,
@@ -40,6 +41,7 @@ from app.modules.voice.events import (
     ChannelReady,
     Heartbeat,
     Interrupted,
+    RoomTemperature,
     Spent,
     UserSpoke,
     VoiceEvent,
@@ -293,6 +295,16 @@ class OrchestratedChannel:
         # itself. Never read as the truth — `_attention` is the truth, and this
         # only decides whether saying it again is worth a message.
         self._attended: Attention | None = None
+        # #74. The band the phone was last told, which is what the hysteresis
+        # reads — a room already losing needs a clear window to leave, and one
+        # that is convinced cools on the first catch.
+        #
+        # Not a cached reading. `temperature_of` derives the band from lines
+        # already written every time it is asked, so nothing here can be
+        # stranded by a turn that dies; this only holds which side of the
+        # threshold the room was on, and the resting value is the honest place
+        # to start from — a panel opens unconvinced.
+        self._warmth: Temperature = Temperature.SKEPTICAL
         # #24. Whether this stretch of quiet has earned its one question, and
         # whether it got it. Changes nothing about the clock — see `Silence`.
         self._silence = Silence()
@@ -381,6 +393,11 @@ class OrchestratedChannel:
         # Before the opener, so there is never a window in which the phone has
         # heard the room speak but does not know what it is doing.
         await self._attend(out)
+        # #74, on the same terms. The safelight *is* the screen's ambient
+        # ground, so a room that opened without one would have the ground
+        # picking its own colour until the first turn landed — on the one
+        # surface whose premise is that nobody looks directly at it.
+        await self._read_the_room(out, always=True)
 
         await self._open_the_room(out)
 
@@ -653,6 +670,32 @@ class OrchestratedChannel:
             self._attended = state
             await out.put(Attending(state))
 
+    async def _read_the_room(
+        self,
+        out: asyncio.Queue[VoiceEvent | BaseException | None],
+        *,
+        always: bool = False,
+    ) -> None:
+        """Say how the panel is receiving the argument, if it has changed.
+
+        The same discipline as `_attend`, and for the same two reasons.
+        Transitions go out immediately, because the safelight is the screen's
+        ambient ground and a lag in it is a lag in the only signal a hands-free
+        presenter perceives without looking. The heartbeat repeats whatever is
+        true, because suppressing it would leave a phone that dropped one
+        message showing the wrong room for the rest of the session.
+
+        **The band is remembered; the reading is not.** `_temperature` is a pure
+        function of lines already written, so there is no state to be stranded
+        by a turn that dies — and `_warmth` exists only as the previous band the
+        hysteresis needs, which is a fact about what the phone was last told
+        rather than a claim about the room.
+        """
+        state = temperature_of(self._transcript, was=self._warmth)
+        if always or state is not self._warmth:
+            self._warmth = state
+            await out.put(RoomTemperature(state))
+
     async def _beat(self, out: asyncio.Queue[VoiceEvent | BaseException | None]) -> None:
         """Report that the room is open, until it is not.
 
@@ -669,6 +712,10 @@ class OrchestratedChannel:
             await out.put(Heartbeat())
             # Unconditional, and that is the safety net. See `_attend`.
             await self._attend(out, always=True)
+            # Beside the attention and on the same terms: repeated deliberately,
+            # because a phone that dropped the one transition message would
+            # otherwise show the wrong room for the rest of the session.
+            await self._read_the_room(out, always=True)
             # On the beat that already exists rather than on a timer of its
             # own. Ten seconds of resolution is ample for a sixty-second
             # threshold, and a second clock is a second thing to get wrong.
@@ -1127,6 +1174,21 @@ class OrchestratedChannel:
         )
         self._transcript.append(asked)
         await self._keep(asked)
+
+        # **The only line that can move it**, and read here rather than on every
+        # attention change: the band is a function of panel lines, so deriving
+        # it when the presenter starts or stops speaking would ask the same
+        # question of the same list and answer it the same way.
+        #
+        # With the caption rather than after the audio, so the ground and the
+        # words move together — the caption goes out ahead of its own speech
+        # already, and a safelight that shifted a sentence later would read as
+        # the screen reacting to something the presenter had stopped hearing.
+        #
+        # After the append, so this line counts. A turn cut off by barge-in is
+        # still on record as having been asked, which is exactly the case where
+        # the read must not quietly revert.
+        await self._read_the_room(out)
 
         if turn.disputed:
             self._disputes += 1

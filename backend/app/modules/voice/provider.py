@@ -75,6 +75,18 @@ class ClientChannel(Protocol):
         """
         ...
 
+    async def temperature(self, state: str) -> None:
+        """How the panel is receiving the argument — #74.
+
+        `convinced`, `skeptical` or `losing_the_room`. On the live screen this
+        is the safelight rather than a gauge, so it arrives as a band and never
+        as a number.
+
+        Only the server can answer it: it is read from the routing reason on
+        panel lines, which is internal and never goes over this socket.
+        """
+        ...
+
     async def discard_playback(self) -> None:
         """Drop whatever is buffered and unplayed.
 

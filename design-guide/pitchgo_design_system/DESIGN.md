@@ -1,9 +1,9 @@
 ---
 name: PitchGo Design System
 colors:
-  surface: '#fcf9f8'
+  surface: '#f0e9e5'
   surface-dim: '#dcd9d9'
-  surface-bright: '#fcf9f8'
+  surface-bright: '#f0e9e5'
   surface-container-lowest: '#ffffff'
   surface-container-low: '#f6f3f2'
   surface-container: '#f0eded'
@@ -14,7 +14,7 @@ colors:
   inverse-surface: '#313030'
   inverse-on-surface: '#f3f0ef'
   outline: '#8f7066'
-  outline-variant: '#e3bfb2'
+  outline-variant: '#bba295'
   surface-tint: '#a83900'
   primary: '#a43700'
   on-primary: '#ffffff'
@@ -45,10 +45,12 @@ colors:
   tertiary-fixed-dim: '#c6c6c7'
   on-tertiary-fixed: '#1a1c1c'
   on-tertiary-fixed-variant: '#454747'
-  background: '#fcf9f8'
+  background: '#f0e9e5'
   on-background: '#1c1b1b'
   surface-variant: '#e5e2e1'
   interrogation-ground: '#15110f'
+  interrogation-ground-warm: '#18100c'
+  interrogation-ground-cool: '#100f0e'
   interrogation-tray: '#413c3a'
   interrogation-tray-lit: '#675f5b'
 typography:
@@ -132,7 +134,13 @@ The style leverages **Modern Minimalism** with a **Tactile** twist. By combining
 The palette is designed to reduce eye strain while maintaining clear visual hierarchies.
 
 - **Primary (#E65100):** A vibrant burnt orange used for critical actions, progress indicators, and brand-defining elements. It evokes energy and success.
-- **Surface Background (#FDF9F6):** A soft, warm off-white that acts as the canvas. This creates a gentle contrast with container cards.
+- **Surface Background (#f0e9e5):** A soft, warm off-white that acts as the canvas, at `hsl(20, 28%, 92%)` — the same hue the primary and the interrogation grounds are derived from.
+
+  **It was `#fcf9f8` until 2026-08-22, and a white card on it measured 1.05:1.** That is below the threshold of perception on a phone held at a desk angle: reported from a device as controls that did not read as controls, and the cause was not the affordances but that nothing on the screen had an edge at all. At `#f0e9e5` a white card reads at **1.20:1** — about 3.7× the luminance separation, which is the difference between a sheet you cannot see and a sheet lying on a desk.
+
+  **It does not reach 3:1, and nothing that stays an off-white can.** A ground at WCAG 1.4.11's non-text floor against white needs a relative luminance near 0.30 — roughly `#c2bab6`, a mid grey rather than a canvas. So this is a *surface* relationship and never a control boundary: every control carries its own affordance, and the ones that identify it are the chevron on a row that opens something, `primary` on a seated card, and a filled pill for a primary action. Nothing may rely on the card edge alone to say it can be pressed.
+
+  Everything on the ground was re-measured against it: `on-surface` 14.3:1, `on-surface-variant` 7.8:1, `primary` 5.6:1.
 - **Surface Container (#FFFFFF):** Pure white used for cards and interactive inputs to provide a clean, elevated look.
 - **On-Surface High Emphasis (#1A1A1A):** Dark charcoal for headers and primary titles to ensure maximum readability and a professional tone.
 - **On-Surface Medium Emphasis (#757575):** A medium warm grey for body text, descriptions, and labels to create a natural hierarchy.
@@ -160,6 +168,37 @@ than a second palette that happens to live in the same app.
 - **Interrogation Tray Lit (#675f5b)** — `hsl(20, 6%, 38%)`. The archetype
   holding the floor, at exactly **3:1** against the ground — the WCAG 2.2
   non-text contrast floor, solved for rather than eyeballed.
+
+### The safelight, which is the room temperature
+
+`Product.md` §3.4 asks for a directional read on how the panel is receiving the
+argument, and the interrogation surface brief makes it the **ambient ground
+itself** rather than a gauge: *"Convinced warms and lifts the amber; Skeptical is
+neutral; Losing the room cools and dims toward gray. No gauge, no needle, no
+number — perceivable without looking directly at it, which is the only way a
+hands-free user perceives anything."*
+
+Two more grounds, derived on exactly the terms above — hue 20°, moving only
+saturation and lightness.
+
+- **Interrogation Ground Warm (#18100c)** — `hsl(20, 34%, 7%)`. Convinced.
+- **Interrogation Ground Cool (#100f0e)** — `hsl(20, 6%, 6%)`. Losing the room.
+
+**Warm is warmer without being lighter, and that is a measurement rather than a
+preference.** The brief's "lifts the amber" first read as raising lightness, and
+lightness is exactly what the ground cannot spend: *Interrogation Tray Lit* sits
+at **3.05:1** against the neutral ground, four hundredths above the WCAG 2.2
+non-text floor, so any ground brighter than about `hsl(20, 18%, 7.3%)` drops the
+speaking archetype below 3:1. `hsl(20, 26%, 10%)` — the obvious first attempt —
+measures **2.84:1** and would have shipped a screen whose accessibility failed
+only when things were going *well*.
+
+Warming by chroma at constant lightness gets the read the brief asked for and
+moves contrast the right way: more saturation at hue 20 pushes green and blue
+down further than it pushes red up, so the warm ground is fractionally *darker*
+in luminance and the tray reaches **3.08:1**. The cool ground is darker again at
+**3.14:1**. All three bands clear the floor, and the warmest one clears it by
+more than today's neutral does.
 
 Text on this ground uses the inverse tokens already in the palette:
 `inverse-on-surface` (#f3f0ef) for the line, at 16.5:1, and `inverse-primary`
@@ -193,7 +232,7 @@ The spacing rhythm is strictly based on a 4px baseline, ensuring that every elem
 
 Hierarchy is established through **Ambient Shadows** and tonal layering. The design avoids harsh borders, preferring to let depth define boundaries.
 
-- **Level 0 (Background):** The soft off-white surface (#FDF9F6).
+- **Level 0 (Background):** The soft off-white surface (#f0e9e5).
 - **Level 1 (Cards/Containers):** Pure white surfaces (#FFFFFF) with a very soft, diffused drop shadow. Shadow specs: `X: 0, Y: 8, Blur: 24, Spread: -4, Color: rgba(26, 26, 26, 0.04)`.
 - **Level 2 (Interactive/Floating):** Higher elevation for floating action buttons or active state items. Shadow specs: `X: 0, Y: 12, Blur: 32, Spread: -8, Color: rgba(26, 26, 26, 0.08)`.
 

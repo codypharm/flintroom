@@ -387,3 +387,46 @@ describe('what the room says it is doing', () => {
     expect(said).toEqual([]);
   });
 });
+
+describe('how the panel is receiving it', () => {
+  /**
+   * #74, and the phone cannot work it out for itself.
+   *
+   * The band is read from the routing reason on panel lines — the Auditor
+   * having caught a figure that moved — and the routing reason never goes over
+   * this socket. So unlike a caption there is nothing here the device could
+   * have derived, and unlike the sound bar there is no local signal to fall
+   * back on.
+   */
+  it('carries the room temperature through', async () => {
+    const read: string[] = [];
+    const { socket } = await connected({ onTemperature: (state) => read.push(state) });
+
+    socket.receive(JSON.stringify({ type: 'temperature', state: 'losing_the_room' }));
+    socket.receive(JSON.stringify({ type: 'temperature', state: 'skeptical' }));
+
+    expect(read).toEqual(['losing_the_room', 'skeptical']);
+  });
+
+  it('ignores a band it does not recognise', async () => {
+    // The scale is `CLAUDE.md`'s and it is fixed, but a server ahead of a phone
+    // is the ordinary case for a shipped app. An unknown band must leave the
+    // ambient ground on the last one this build understood — blanking it would
+    // be the screen going dark mid-room.
+    const read: string[] = [];
+    const { socket } = await connected({ onTemperature: (state) => read.push(state) });
+
+    socket.receive(JSON.stringify({ type: 'temperature', state: 'investable' }));
+
+    expect(read).toEqual([]);
+  });
+
+  it('ignores a band message with nothing in it', async () => {
+    const read: string[] = [];
+    const { socket } = await connected({ onTemperature: (state) => read.push(state) });
+
+    socket.receive(JSON.stringify({ type: 'temperature' }));
+
+    expect(read).toEqual([]);
+  });
+});

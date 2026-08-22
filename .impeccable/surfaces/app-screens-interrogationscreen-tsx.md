@@ -83,10 +83,9 @@ inline `POST /v1/sessions`) is deleted.
 one caption as the near field's content, the dark ground.
 
 **Deferred, each with its own task and its reason:** room temperature as the
-safelight (#74 — nothing anywhere computes it, and it is a model call asking for
-a judgement on a scale whose vocabulary is the architect's); the developing
-challenger (#75 — the Auditor's finding outranks the early selection, so a tray
-that emerged and then did not speak would have lied mid-argument).
+safelight (#74 — now built, see below); the developing challenger (#75 — the
+Auditor's finding outranks the early selection, so a tray that emerged and then
+did not speak would have lied mid-argument).
 **Nothing else was allowed to colonise the ambient ground,** so #74 has
 somewhere to land: the floor indicator is at the nearest edge and the speaker
 indicator is in the trays.
@@ -118,6 +117,59 @@ indicator is in the trays.
 - **End confirms in place** — one tap arms it, the second ends. One touch
   target, no modal, no hidden gesture, and a brushed thumb cannot end a
   rehearsal that has no resume.
+
+## The safelight, built 2026-08-22 (#74)
+
+The brief's *"Convinced warms and lifts the amber; Skeptical is neutral; Losing
+the room cools and dims toward gray"* is shipped. Four things it turned out to
+require, each of which could have gone the other way.
+
+**It is not a model call, and that is a measurement.** The obvious build asks a
+model how the room is going, once a turn. Asked *"did the presenter dodge?"* a
+model said yes on 4 of 4 dodges **and** 4 of 4 genuine answers (#43) — the same
+finding that made the difficulty dial two integers rather than an adjective. A
+gauge is that question in a friendlier coat, asked eight to fifteen times a room
+on the *metered* path whose margins §4.3 has not reconciled against an invoice.
+So the band is read from `Said.chosen_by == "finding"`: the Auditor having caught
+a figure that moved or a claim contradicting an earlier one. An event, not an
+opinion, and the same signal `weakness.py` already ranks on.
+
+**It errs warm, deliberately.** #74 names the harmful failure — telling somebody
+they are losing the room while they are doing well, mid-session, when they cannot
+argue back. So cooling takes two catches inside four challenges and warming takes
+six consecutive clean ones: being caught is evidence, not being caught is the
+absence of it, and absence is cheap early in a deckless room where the Auditor's
+reference is still accumulating. Disputes are excluded entirely, which is #56's
+rule applied live — a question waved away by a colleague is not the presenter's
+fault.
+
+**Every route between the extremes passes through neutral**, which is what holds
+a twelve-minute room to two or three changes rather than one per turn. It also
+means the safelight always crosses the resting ground rather than swinging.
+
+**Warm is warmer without being lighter.** "Lifts the amber" first read as raising
+lightness, and lightness is the one thing this ground cannot spend:
+*Interrogation Tray Lit* sits at 3.05:1 against the neutral ground, four
+hundredths above the WCAG 2.2 non-text floor. `hsl(20, 26%, 10%)` — the obvious
+warm — measures **2.84:1**, which would have shipped a screen whose accessibility
+failed only when things were going *well*. Warming by chroma at constant
+lightness gets the read and moves contrast the right way: the warm ground
+measures 3.08:1 and the cool one 3.14:1. Both are now in DESIGN.md.
+
+**Drawn as two casts over the neutral ground, not three grounds.** React Native
+cannot drive `backgroundColor` on the native thread, and this is the screen that
+must not drop a frame; opacity is native, and at full opacity each cast *is* its
+token exactly. Hidden from the accessibility tree on purpose — a live region
+reading "losing the room" over a panelist mid-question would heckle somebody who
+cannot hear it coming, and the anti-goals forbid a score here in any form. The
+debrief carries the same finding in words with the questions attached, which is
+what makes it evidence rather than a verdict.
+
+**Still open:** whether the band belongs in the debrief as well. Argued against
+for now on the grounds that the debrief already ranks weak answers from the same
+underlying record, in words — a coarser second version of one fact, free to
+disagree with the first, is the argument `context.py` already makes about storing
+a finding's summary beside the line that states it.
 
 ### Resolved from the Unresolved list
 

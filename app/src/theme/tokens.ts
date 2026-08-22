@@ -16,8 +16,28 @@
  */
 
 export const color = {
-  /** The warm off-white ground. Not white — the whole world sits on this. */
-  surface: '#fcf9f8',
+  /**
+   * The warm off-white ground. Not white — the whole world sits on this.
+   *
+   * **It was `#fcf9f8` and a white card on it measured 1.05:1**, which is below
+   * the threshold of perception on a phone at a desk angle. Reported from a
+   * device as "little contrast issue, clickable parts are not clearly
+   * clickable", and the diagnosis was not the affordances: nothing on the
+   * screen had an edge, so a card and the page it sat on were one surface.
+   *
+   * `hsl(20, 28%, 92%)` — the family's own hue, moving only saturation and
+   * lightness, like the room's grounds. A white card now reads at **1.20:1**,
+   * about 3.7× the luminance separation, which is the difference between a
+   * sheet you cannot see and a sheet lying on a desk.
+   *
+   * **It does not reach 3:1 and nothing that stays an off-white can.** A ground
+   * at WCAG 1.4.11's non-text floor against white needs a relative luminance
+   * near 0.30 — roughly `#c2bab6`, a mid grey and not a canvas. So the boundary
+   * is a *surface* relationship here, and every control still carries its own
+   * affordance: a chevron where a row opens something, `primary` on a seated
+   * card, a filled pill for a primary action.
+   */
+  surface: '#f0e9e5',
   /** Cards and raised surfaces. Pure white, for the paper-on-surface read. */
   card: '#ffffff',
   /** Headings and primary content. */
@@ -28,8 +48,23 @@ export const color = {
    * ground.
    */
   onSurfaceVariant: '#5a4138',
-  /** Hairlines and dividers. */
-  hairline: '#e3bfb2',
+  /**
+   * Hairlines and dividers.
+   *
+   * **Moved with the ground on 2026-08-22**, because it had to. `#e3bfb2` was
+   * picked against a near-white canvas and measured 1.62:1 on it; darkening the
+   * ground to `#f0e9e5` moved the canvas *toward* the rule and left it at
+   * 1.42:1 — fainter than before, on the same pass that was meant to make
+   * things visible. The rehearsal-name field on Home is a bare underline and
+   * nothing else, so that regression would have landed on the one control the
+   * change was supposed to help.
+   *
+   * `hsl(20, 22%, 66%)` — the family's hue again. A fine rule that reads on
+   * both planes now: **2.41:1** on a card and **2.01:1** on the ground, against
+   * 1.70 and 1.62 before. At `StyleSheet.hairlineWidth` that is a crisp
+   * separator rather than a box, which is how the platform draws its own.
+   */
+  hairline: '#bba295',
   /** Burnt orange. Primary actions and brand moments, used sparingly. */
   primary: '#a43700',
   onPrimary: '#ffffff',
@@ -53,6 +88,28 @@ export const color = {
    * reading of the same identity rather than a second palette.
    */
   roomGround: '#15110f',
+  /**
+   * The same room, warmer — the panel is convinced. #74.
+   *
+   * **Warmer without being lighter**, and that is solved for rather than
+   * chosen. `roomTrayLit` sits at 3.05:1 against the neutral ground, four
+   * hundredths above the WCAG 2.2 non-text floor, so lightness is the one thing
+   * this ground cannot spend: the obvious warm — `hsl(20, 26%, 10%)` — measures
+   * 2.84:1 and would fail the speaking archetype's contrast only when the room
+   * was going *well*.
+   *
+   * More saturation at hue 20 pushes green and blue down further than it pushes
+   * red up, so this reads warmer and measures fractionally darker. The tray
+   * reaches 3.08:1 against it.
+   */
+  roomGroundWarm: '#18100c',
+  /**
+   * The same room, cooled and dimmed toward gray — losing them. #74.
+   *
+   * Saturation out rather than a grey mixed in, so it is still the same hue at
+   * the bottom of its range and not a second palette. 3.14:1 for the lit tray.
+   */
+  roomGroundCool: '#100f0e',
   /** An archetype who is seated and not speaking. */
   roomTray: '#413c3a',
   /**

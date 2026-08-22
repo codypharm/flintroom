@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import type { Attending, PanelLine } from '../../lib/voice/connection';
+import type { Attending, PanelLine, RoomTemperature } from '../../lib/voice/connection';
 import { portraitOf } from '../../lib/archetypes/portraits';
 import { useReduceMotion } from '../../lib/a11y/reduceMotion';
 import { color, radius, space, type } from '../../theme/tokens';
@@ -107,6 +107,22 @@ export interface InterrogationRoomProps {
    * a clock quietly approaching twelve is how somebody is not surprised by it.
    */
   elapsed: number | null;
+  /**
+   * How the panel is receiving the argument — #74, and `Product.md` §3.4.
+   *
+   * **It is the ambient ground, not a gauge.** The surface brief: *"Convinced
+   * warms and lifts the amber; Skeptical is neutral; Losing the room cools and
+   * dims toward gray. No gauge, no needle, no number — perceivable without
+   * looking directly at it, which is the only way a hands-free user perceives
+   * anything."* #41 kept every other live signal off this ground so that this
+   * would have somewhere to land: the floor indicator is at the nearest edge
+   * and the speaker is in the trays.
+   *
+   * Read by the server from the routing reason on panel lines and never derived
+   * here — see `connection.ts`. Defaults to the resting band, which is not an
+   * "unknown" value: a panel opens unconvinced.
+   */
+  temperature?: RoomTemperature;
   onEnd: () => void;
 }
 
@@ -126,6 +142,7 @@ export function InterrogationRoom({
   phase,
   elapsed,
   attending,
+  temperature = 'skeptical',
   onEnd,
 }: InterrogationRoomProps) {
   const calm = useReduceMotion();
@@ -160,6 +177,25 @@ export function InterrogationRoom({
 
   return (
     <View style={styles.room}>
+      {/*
+        **The safelight, as a cast over the ground rather than a ground of its
+        own.** Two absolutely-positioned fills, one warm and one cool, of which
+        at most one is ever lit.
+
+        Opacity rather than an animated `backgroundColor`, and that is a
+        constraint rather than a preference: React Native cannot drive a colour
+        on the native thread, so a ground that interpolated between three hexes
+        would be doing it in JavaScript, on the one screen in this app that is
+        rendering audio and must not drop a frame. Opacity is native, and the
+        colour underneath each cast is exact at full opacity — so the three
+        bands are the three tokens and nothing in between is invented.
+
+        `pointerEvents="none"` because it covers the whole screen and there is
+        exactly one touch target on it.
+      */}
+      <Cast lit={temperature === 'convinced'} tint={color.roomGroundWarm} mark="warmth" calm={calm} />
+      <Cast lit={temperature === 'losing_the_room'} tint={color.roomGroundCool} mark="chill" calm={calm} />
+
       {/*
         Small, high, and out of the way. It recedes by size and position rather
         than by being dimmed: on a dark ground, dimming text is how contrast
@@ -625,8 +661,87 @@ const EDGE = 0.15;
 /** How much of the cycle one bar spends rising and falling. Under `EDGE`. */
 const RAMP = 0.12;
 
+/**
+ * One half of the safelight: a tint that fades in over the neutral ground.
+ *
+ * Unmounted when it has nothing to say, so the resting room is the ground alone
+ * and a test can ask which cast is lit rather than reading an opacity.
+ *
+ * **Reduce Motion cuts rather than shortens**, which is the brief's rule for
+ * this screen and right for the same reason a bounce is still a bounce: what
+ * somebody has asked not to see is the movement, not the duration of it.
+ */
+function Cast({
+  lit,
+  tint,
+  mark,
+  calm,
+}: {
+  lit: boolean;
+  tint: string;
+  mark: string;
+  calm: boolean;
+}) {
+  // `useState` with a lazy initialiser rather than `useRef(new ...)`, which is
+  // the shape `Tray` uses and which the React Compiler rules flag twice over —
+  // constructing during render and reading a ref during render. One value per
+  // mount either way, and this one is pure.
+  const [shown] = useState(() => new Animated.Value(lit ? 1 : 0));
+  // Whether the fade has finished arriving where it was going. Only the
+  // animation writes it, and only from its own completion callback.
+  const [settled, setSettled] = useState(!lit);
+
+  useEffect(() => {
+    Animated.timing(shown, {
+      toValue: lit ? 1 : 0,
+      duration: calm ? 0 : DEVELOP_MS,
+      easing: Easing.inOut(Easing.ease),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      // Only when it actually got there. An animation interrupted by the band
+      // moving back would otherwise settle against the direction it is now
+      // travelling in.
+      if (finished) setSettled(!lit);
+    });
+  }, [lit, calm, shown]);
+
+  // **Kept mounted through the fade out**, which is why this is derived rather
+  // than stored: unmounting the moment `lit` goes false would cut the cast
+  // instead of lifting it, and a hard change on the ambient ground is the most
+  // attention-capturing thing possible in peripheral vision — the argument the
+  // floor indicator already makes about moving objects.
+  //
+  // Derived at render rather than set from the effect, so there is no frame in
+  // which the band has changed and the cast has not been drawn yet.
+  if (!lit && settled) return null;
+
+  return (
+    <Animated.View
+      testID={mark}
+      pointerEvents="none"
+      // Hidden from a screen reader, and that is a decision rather than an
+      // omission. A live region reading "losing the room" over a panelist
+      // mid-question would heckle somebody who cannot hear it coming, and the
+      // brief's anti-goals forbid a score on this screen in any form. The
+      // debrief carries the same finding in words, with the questions attached.
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[styles.cast, { backgroundColor: tint, opacity: shown }]}
+    />
+  );
+}
+
 const styles = StyleSheet.create({
   room: { flex: 1, backgroundColor: color.roomGround },
+
+  /**
+   * Over the whole ground, under everything on it.
+   *
+   * Written out rather than `StyleSheet.absoluteFill`, which is a registered
+   * style *id* rather than an object — spreading it here would put a number
+   * where the four insets belong.
+   */
+  cast: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
 
   clock: {
     ...type.bodySm,

@@ -31,6 +31,7 @@ from app.modules.voice.recording import RoomRecordings
 from app.modules.voice.events import (
     AgentAudio,
     Attending,
+    RoomTemperature,
     AgentFinished,
     AgentTranscript,
     ChannelReady,
@@ -319,6 +320,11 @@ class VoiceRelay:
             # channel derives this per send; the relay's only job is that the
             # phone hears it.
             await self._client.attending(event.state.value)
+        elif isinstance(event, RoomTemperature):
+            # Straight through, like `Attending` above and for the same reason:
+            # the channel derives it per send and it carries no session state,
+            # so the relay's whole job is that the phone hears it.
+            await self._client.temperature(event.state.value)
         elif isinstance(event, AgentFinished):
             # The floor, handed back explicitly. Nothing else on this socket
             # marks where an utterance ends — the caption goes out ahead of its

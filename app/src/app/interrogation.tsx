@@ -33,7 +33,7 @@ import { createSessionsApi, type StartedRoom } from '../lib/api/sessionsApi';
 import { API_BASE_URL, auth } from '../lib/auth';
 import { joinRoom, type Room } from '../lib/voice/room';
 import { Refused } from '../lib/api/refused';
-import type { Attending, Ending } from '../lib/voice/connection';
+import type { Attending, Ending, RoomTemperature } from '../lib/voice/connection';
 import type { PanelLine } from '../lib/voice/connection';
 import { color, radius, space, type } from '../theme/tokens';
 
@@ -113,6 +113,15 @@ export default function InterrogationScreen() {
     state: 'listening',
     since: Date.now(),
   });
+  /**
+   * How the panel is receiving the argument — #74.
+   *
+   * The resting band rather than null, because there is no fourth "unknown"
+   * value and there does not need to be: a panel opens unconvinced, so the
+   * ground the room opens on is already true. Held flat, unlike `attending`,
+   * because nothing on this screen cares how long a band has been held.
+   */
+  const [temperature, setTemperature] = useState<RoomTemperature>('skeptical');
   const [heard, setHeard] = useState<Hearing>('silent');
   const [volume, setVolume] = useState(0);
   const [phase, setPhase] = useState<'opening' | 'live' | 'ending'>('opening');
@@ -338,6 +347,11 @@ export default function InterrogationScreen() {
             setAttending((held) =>
               held.state === state ? held : { state, since: Date.now() }
             ),
+          // #74. Straight into state: the server sends it on transitions and
+          // repeats it on every heartbeat, so a dropped message costs one beat
+          // rather than the rest of the room, and there is nothing here to
+          // de-duplicate that the sender has not already.
+          onTemperature: setTemperature,
           onTurnFinished: () => {
             setSpeaking(null);
             setFloor('yours');
@@ -510,6 +524,7 @@ export default function InterrogationScreen() {
         floor={floor}
         hearing={heard}
         attending={attending}
+        temperature={temperature}
         loudness={volume}
         phase={phase}
         elapsed={elapsed}

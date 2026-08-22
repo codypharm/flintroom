@@ -16,6 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from app.agents.temperature import Temperature
+
 
 @dataclass(frozen=True, slots=True)
 class ChannelReady:
@@ -227,6 +229,30 @@ class Attending:
     state: Attention
 
 @dataclass(frozen=True, slots=True)
+class RoomTemperature:
+    """How the panel is receiving the argument — #74.
+
+    `Product.md` §3.4's directional read, and on the live screen it is the
+    safelight itself rather than a gauge: the interrogation brief has Convinced
+    warming the amber, Skeptical neutral, and Losing the room cooling toward
+    gray. So this carries a band and never a number; a score on that screen
+    would be the delivery-metrics product §1 exists to refuse.
+
+    **The phone cannot derive this and must not try.** It is read from
+    `Said.chosen_by == "finding"` — the Auditor having caught the answer before
+    a line — and `chosen_by` never goes over the socket. Sending the routing
+    reason instead would put an internal decision on the wire and leave a client
+    free to draw a different room from the one the server read.
+
+    Derived per send like `Attending`, never stored, and sent on transitions for
+    speed and on every heartbeat for correctness. See `agents/temperature.py`
+    for what the bands mean and why none of it is a model call.
+    """
+
+    state: Temperature
+
+
+@dataclass(frozen=True, slots=True)
 class Spent:
     """What one turn cost, in the units the providers bill in.
 
@@ -279,5 +305,6 @@ VoiceEvent = (
     | AgentFinished
     | Interrupted
     | Attending
+    | RoomTemperature
     | Spent
 )
