@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { WeaknessKind } from '../../lib/api/debriefApi';
@@ -133,7 +134,9 @@ export function Progress({ rooms, habits, askers, now, onOpenRoom }: ProgressPro
         contentContainerStyle={styles.content}
         accessibilityLabel="How you are holding up"
       >
-        <Text style={styles.title}>How you are holding up</Text>
+        <Text style={styles.title} accessibilityRole="header">
+          How you are holding up
+        </Text>
 
         {counted.length < A_TREND ? (
           <Text style={styles.thin}>
@@ -278,7 +281,7 @@ export function Progress({ rooms, habits, askers, now, onOpenRoom }: ProgressPro
             <Pressable
               key={room.sessionId}
               accessibilityRole="button"
-              accessibilityLabel={`${howLongAgo(room.startedAt, now)}, ${room.held} held of ${room.challenged}`}
+              accessibilityLabel={`${howLongAgo(room.startedAt, now)}, ${room.held} held of ${room.challenged}, ${rung(room.level)}`}
               onPress={() => onOpenRoom(room.sessionId)}
               style={({ pressed }) => [styles.room, pressed && styles.pressed]}
             >
@@ -327,13 +330,24 @@ function Trend({
 }) {
   const oldestFirst = [...rooms].reverse();
   const tallest = lesser ? SHORTER : TALLEST;
+  const run = useRef<ScrollView>(null);
 
   return (
     <ScrollView
+      ref={run}
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.trend}
       accessibilityLabel={label}
+      /*
+        Opens at the newest end. The run reads oldest-to-newest so a direction
+        draws left to right, but the viewport holds about eight columns and a
+        longer history put the *first* eight in it — the recent rooms, which
+        are what somebody opening this tab is asking about, sat off-screen
+        with the indicator hidden and nothing saying so. The half column cut
+        off at the left edge is the affordance that there is more behind it.
+      */
+      onContentSizeChange={() => run.current?.scrollToEnd({ animated: false })}
     >
       {oldestFirst.map((room) => {
         const share = room.held / room.challenged;
@@ -346,18 +360,24 @@ function Trend({
             onPress={() => onOpenRoom(room.sessionId)}
             style={({ pressed }) => [styles.column, pressed && styles.pressed]}
           >
-            <View style={[styles.track, lesser && { height: SHORTER }]}>
+            <View style={[styles.track, lesser && styles.trackLesser]}>
               {/*
                 The bar carries the rung in its fill, not only in the label
                 beneath it: a harder room is drawn solid and a gentler one
                 outlined, so the eye cannot compare two heights without also
                 seeing that they were different rooms.
+
+                The floor differs by fill. A solid mark at 2pt is a tick; the
+                outlined one carries 2pt of border top and bottom, so at 2pt
+                it is over-constrained and renders as a smear — on exactly
+                the room where nothing was held, which is the one that most
+                needs to look deliberate.
               */}
               <View
                 style={[
                   styles.bar,
                   lesser && styles.barLesser,
-                  { height: Math.max(2, share * tallest) },
+                  { height: Math.max(room.level === 1 ? 8 : 2, share * tallest) },
                   room.level === 3 && styles.hardest,
                   room.level === 1 && styles.gentlest,
                 ]}
@@ -503,6 +523,7 @@ const styles = StyleSheet.create({
   column: { alignItems: 'center', width: 44 },
   /** A fixed track, so every bar is measured from the same baseline. */
   track: { height: TALLEST, justifyContent: 'flex-end' },
+  trackLesser: { height: SHORTER },
   bar: {
     width: 26,
     borderRadius: radius.control,

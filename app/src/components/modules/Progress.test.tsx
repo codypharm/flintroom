@@ -88,6 +88,17 @@ describe('the run of rooms', () => {
     expect(screen.getAllByText(/Gentle/).length).toBeGreaterThanOrEqual(1);
   });
 
+  it('reads the rung to a screen reader wherever the eye would see it', async () => {
+    // The fill on a bar and the word on a row are both invisible to VoiceOver,
+    // so both carry the rung in their label — otherwise the one rule that
+    // keeps the series honest holds for sighted readers only.
+    await setup();
+
+    // Three places r-5 is drawn, three labels: its bar on the whole-run
+    // trend, its bar on the rehearsal's own chart, and its "Room by room" row.
+    expect(screen.getAllByLabelText(/8 held of 9, Relentless/)).toHaveLength(3);
+  });
+
   it('leaves out a room where nobody was asked anything', async () => {
     // A room that ended before the panel spoke has no proportion. Drawing it as
     // zero would put a trough in the trend that describes a technical failure
