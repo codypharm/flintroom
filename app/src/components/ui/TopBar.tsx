@@ -50,9 +50,14 @@ const MARK_HEIGHT = 22;
 export interface TopBarProps {
   /** The account's time, or null until it arrives. Never a spinner. */
   held: Held | null;
+  /**
+   * Where a tap on the time goes — the screen that sells more of it.
+   * Optional so the bar can be drawn bare; see `TimeInTheRoom.onPress`.
+   */
+  onTime?: () => void;
 }
 
-export function TopBar({ held }: TopBarProps) {
+export function TopBar({ held, onTime }: TopBarProps) {
   const inset = useSafeAreaInsets();
 
   return (
@@ -77,7 +82,9 @@ export function TopBar({ held }: TopBarProps) {
             chip would be the app pretending to know something it does not, and
             the row's height is fixed so nothing below it moves when the real
             one arrives. */}
-        {held !== null && <TimeInTheRoom minutes={held.minutes} any={held.any} />}
+        {held !== null && (
+          <TimeInTheRoom minutes={held.minutes} any={held.any} onPress={onTime} />
+        )}
       </View>
     </View>
   );

@@ -366,3 +366,13 @@ describe('the shape of the screen', () => {
     expect(order[0]).toHaveTextContent(/not available on this build/i);
   });
 });
+
+it('draws no heading over an empty shelf', async () => {
+  // With the plans read failed there is nothing to put under "Every month",
+  // and a heading over nothing reads as a shelf somebody emptied — the same
+  // rule the packs section already followed.
+  await setup({ plans: null, packs: [] });
+
+  expect(screen.queryByText('Every month')).toBeNull();
+  expect(screen.queryByText('Just this once')).toBeNull();
+});

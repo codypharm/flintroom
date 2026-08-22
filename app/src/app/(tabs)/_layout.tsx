@@ -1,5 +1,5 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import { Tabs, useFocusEffect } from 'expo-router';
+import { router, Tabs, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { StyleSheet } from 'react-native';
 
@@ -107,7 +107,10 @@ export default function TabsLayout() {
            * titles stay: this bar carries the *product*, and they carry the
            * *screen*. `design-guide/library/code.html` draws exactly that pair.
            */
-          header: () => <TopBar held={held} />,
+          // The chip is the one reading of the balance that is always on
+          // screen, so it is also a door to the screen that sells more of it —
+          // pushed, so §4.5's "one tap to decline, always" holds by shape.
+          header: () => <TopBar held={held} onTime={() => router.push('/minutes')} />,
           headerShown: true,
           tabBarActiveTintColor: color.primary,
           tabBarInactiveTintColor: color.onSurfaceVariant,

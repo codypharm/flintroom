@@ -55,7 +55,9 @@ export function PlanCard({ plan, sold, above, lead, busy, onBuy }: PlanCardProps
           <Text style={styles.yours}>Your plan</Text>
         ) : (
           sold !== null && (
-            <Text style={[styles.price, lead && styles.onLead]}>{sold.price}</Text>
+            // `front` like every sibling — `lead` alone was identical only
+            // because the lead can never be the plan already held.
+            <Text style={[styles.price, front && styles.onLead]}>{sold.price}</Text>
           )
         )}
       </View>

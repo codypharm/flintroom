@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { color, radius, space, type } from '../../theme/tokens';
 
@@ -46,20 +46,26 @@ export interface TimeInTheRoomProps {
   minutes: number;
   /** Whether there is any at all. The server decides it; this only draws it. */
   any: boolean;
+  /**
+   * Where a tap on the fact goes — the screen that sells more of it.
+   *
+   * Optional, and the chip stays a plain statement without it: a bar rendered
+   * with no destination must not grow a control that goes nowhere. With it,
+   * the fact you tap is the fact the screen answers — the chip is the one
+   * place the balance is always visible, and it was the only reading of the
+   * balance that led nowhere.
+   */
+  onPress?: () => void;
 }
 
-export function TimeInTheRoom({ minutes, any }: TimeInTheRoomProps) {
-  return (
-    <View
-      style={styles.chip}
-      accessibilityRole="text"
-      // Word for word what is drawn. These used to disagree — the label said
-      // "until your next top-up" while the screen said "right now" — which is
-      // the same defect as a button whose visible and spoken names differ.
-      accessibilityLabel={
-        any ? `You have ${minutes} minutes` : 'No minutes right now'
-      }
-    >
+export function TimeInTheRoom({ minutes, any, onPress }: TimeInTheRoomProps) {
+  // Word for word what is drawn. These used to disagree — the label said
+  // "until your next top-up" while the screen said "right now" — which is
+  // the same defect as a button whose visible and spoken names differ.
+  const label = any ? `You have ${minutes} minutes` : 'No minutes right now';
+
+  const said = (
+    <>
       <Clock />
       <Text style={styles.said}>
         {any ? (
@@ -74,7 +80,32 @@ export function TimeInTheRoom({ minutes, any }: TimeInTheRoomProps) {
           <Text style={styles.unit}>No minutes right now</Text>
         )}
       </Text>
-    </View>
+    </>
+  );
+
+  if (onPress === undefined) {
+    return (
+      <View style={styles.chip} accessibilityRole="text" accessibilityLabel={label}>
+        {said}
+      </View>
+    );
+  }
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      // The action, separate from the fact: the label keeps stating what is
+      // held, and the hint says where the tap goes.
+      accessibilityHint="Opens more time in the room"
+      onPress={onPress}
+      // The chip stands 36pt in a 52pt bar; the slop is what carries the
+      // target to the 44pt floor without growing the pill.
+      hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+      style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
+    >
+      {said}
+    </Pressable>
   );
 }
 
@@ -149,6 +180,8 @@ const styles = StyleSheet.create({
     borderRadius: 1,
     transform: [{ rotate: '90deg' }, { translateY: -2.75 }],
   },
+
+  pressed: { opacity: 0.6 },
 
   said: { ...type.bodyMd },
   /** The figure carries the weight; the unit stays quiet beside it. */

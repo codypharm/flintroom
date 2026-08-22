@@ -109,7 +109,10 @@ export function MoreMinutes({
   const lead = leading(plans, options);
   const said = note(state, shut);
 
-  const Plans = (
+  // Null over nothing, the rule the packs already follow: with the plans
+  // unread there is nothing to put under "Every month", and a heading over an
+  // empty shelf reads as a shelf somebody emptied.
+  const Plans = offered.length === 0 ? null : (
     <View style={styles.section}>
       <Text style={styles.heading} accessibilityRole="header">
         Every month

@@ -2,7 +2,7 @@ import { StyleSheet } from 'react-native';
 
 import { color } from '../../theme/tokens';
 
-import { render, screen } from '@testing-library/react-native';
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 
 import { TopBar, type TopBarProps } from './TopBar';
@@ -136,4 +136,25 @@ it('says whose the minutes are, not just how many there are', async () => {
 
   expect(screen.getByText(/You have/)).toBeTruthy();
   expect(screen.queryByText(/remaining|left|available|allowance/i)).toBeNull();
+});
+
+it('takes a tap on the time to where more of it is sold', async () => {
+  // The chip is the one place the balance is always visible, and it was inert
+  // text — the only doors to the buy screen were Settings and a room that
+  // refused to open. The fact you tap is the fact the screen answers.
+  const onTime = jest.fn();
+  await show({ held: { minutes: 55, any: true }, onTime });
+
+  await userEvent.press(screen.getByLabelText('You have 55 minutes'));
+
+  expect(onTime).toHaveBeenCalled();
+});
+
+it('keeps the chip a statement where no destination is wired', async () => {
+  // Without a handler the chip stays what it always was — a fact, not a
+  // button — so a screen that renders the bar bare does not grow a control
+  // that goes nowhere.
+  await show({ held: { minutes: 55, any: true } });
+
+  expect(screen.getByLabelText('You have 55 minutes').props.accessibilityRole).toBe('text');
 });
