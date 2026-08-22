@@ -29,6 +29,7 @@ from app.agents.model import PanelModel
 from app.agents.opening import Chooser, NoOneToOpen, OpeningFloor, opener_from
 from app.agents.panel import interrogate, select_speaker, who_takes_the_floor
 from app.agents.routing import choose
+from app.agents.closing import TimeCall, closer_from
 from app.agents.silence import Silence, nudge_from
 from app.agents.temperature import Temperature, temperature_of
 from app.core.logging import get_logger
@@ -335,6 +336,13 @@ class OrchestratedChannel:
         # #24. Whether this stretch of quiet has earned its one question, and
         # whether it got it. Changes nothing about the clock — see `Silence`.
         self._silence = Silence()
+        # The room calling time on itself as the session cap nears, once. The
+        # meter still owns the money and the close; this only decides whether
+        # the ending gets said before it happens. The clock starts here rather
+        # than at the cap's own anchor (the active span, on Postgres' clock) —
+        # the two are seconds apart at most, and CALL_BEFORE_SECS absorbs it.
+        self._time = TimeCall()
+        self._opened_at = time.monotonic()
         # When the room last heard them, on the same monotonic clock the floor
         # uses. Set at the open so a presenter who never speaks is still asked.
         self._heard_at = time.monotonic()
@@ -655,6 +663,63 @@ class OrchestratedChannel:
                 await out.put(AgentAudio(pcm))
         await out.put(AgentFinished())
 
+    async def _call_time_if_due(
+        self, out: asyncio.Queue[VoiceEvent | BaseException | None]
+    ) -> None:
+        """Say the room is ending, before the meter ends it.
+
+        The architect's room hit the session cap at 12:12 mid-sentence and it
+        read as a malfunction — a meeting ends, a call drops, and the whole
+        difference is one spoken line. The meter is untouched: it still closes
+        and settles at `SESSION_LIMIT` exactly as before, so this line changes
+        what the ending feels like and nothing about what it costs.
+
+        **After whoever is speaking, never over them** — the architect's
+        second constraint, and the same floor discipline the nudge above
+        holds. A panelist mid-line defers it to the next beat; a presenter
+        mid-flow does too, read as a gap in what the room has heard shorter
+        than a breath. If the presenter talks clean through the final margin,
+        the call is never made — there is no moment to make it in, and
+        interrupting to announce the end would be the drop this exists to
+        soften.
+        """
+        if self._speaking is not None and not self._speaking.done():
+            return
+        # A breath, not a silence: long enough that a comma does not count as
+        # the floor being free, far too short for the idle machinery to care.
+        if time.monotonic() - self._heard_at < 2.0:
+            return
+        if not self._time.worth_calling(elapsed=time.monotonic() - self._opened_at):
+            return
+
+        try:
+            who, line = (
+                closer_from(self._panel, choose=self._choose)
+                if self._choose is not None
+                else closer_from(self._panel)
+            )
+        except NoOneToOpen:
+            # Marked as called even though nothing was said: a room that
+            # cannot say it once cannot say it on the next beat either, and
+            # retrying would log the same warning every ten seconds to the
+            # end of the room.
+            self._time.called()
+            log.warning("nobody_could_call_time")
+            return
+
+        self._time.called()
+        log.info("time_called", archetype=who.name)
+
+        # The same three events an ordinary turn uses — relay, mixer,
+        # recording and captions all treat it as a panelist speaking — and,
+        # like the nudge, deliberately not filed in the transcript: it is not
+        # a challenge, and the debrief must not rank it.
+        await out.put(AgentTranscript(line, speaker=who.name))
+        if self._opener_speaker is not None:
+            async for pcm in self._opener_speaker.speak(text=line, voice=who.voice):
+                await out.put(AgentAudio(pcm))
+        await out.put(AgentFinished())
+
     def _attention(self) -> Attention:
         """What the room is doing with the floor, worked out rather than recalled.
 
@@ -757,6 +822,10 @@ class OrchestratedChannel:
             # own. Ten seconds of resolution is ample for a sixty-second
             # threshold, and a second clock is a second thing to get wrong.
             await self._ask_if_anybody_is_there(out)
+            # On the same beat and the same terms: only when the floor is
+            # free, and at ten-second resolution against a thirty-second
+            # margin.
+            await self._call_time_if_due(out)
 
     async def _listen(self, out: asyncio.Queue[VoiceEvent | BaseException | None]) -> None:
         """Read transcription forever; start, and stop, turns as it goes."""

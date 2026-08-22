@@ -132,6 +132,12 @@ class Archetype(BaseModel):
     #: table. It is the one moment the panel is not interrogating, and the
     #: manner is what keeps it from sounding like a system prompt.
     nudges: tuple[str, ...] = Field(default=())
+    #: How this archetype calls time as the session cap nears — the one line
+    #: that separates a meeting ending from a call dropping. Hand-written for
+    #: the same reasons as `nudges`: short, unmistakable, and spoken at a
+    #: moment no model call should gate. Empty on authored archetypes, which
+    #: is one more reason every room seats a shipped one.
+    closers: tuple[str, ...] = Field(default=())
 
     #: How this panelist says the room is getting nothing at all.
     #:
@@ -171,6 +177,10 @@ LIBRARY: tuple[Archetype, ...] = (
     Archetype(
         name="cfo",
         title="The CFO",
+        closers=(
+            'That is time. If there is one number you want us to keep, say it now.',
+            'We are at time. Last figure, if you have one.',
+        ),
         blurb=(
             "Unhurried, unimpressed, and not interested in vision until the arithmetic holds."
         ),
@@ -225,6 +235,10 @@ LIBRARY: tuple[Archetype, ...] = (
     Archetype(
         name="technical_skeptic",
         title="The Technical Skeptic",
+        closers=(
+            'That is time. Tell us the one thing you need us to remember.',
+            'We are out of time. Say the part you cannot afford to have us forget.',
+        ),
         blurb=(
             "A senior engineer who has watched confident demos fail in production."
         ),
@@ -265,6 +279,10 @@ LIBRARY: tuple[Archetype, ...] = (
     Archetype(
         name="champion",
         title="The Champion",
+        closers=(
+            'That is time. Land your last point.',
+            'We are at time. Finish it the way you want it remembered.',
+        ),
         blurb=(
             "On your side, and will have to defend this in a room you are not in."
         ),
@@ -304,6 +322,10 @@ LIBRARY: tuple[Archetype, ...] = (
     Archetype(
         name="growth_maximalist",
         title="The Growth Maximalist",
+        closers=(
+            'That is time. One sentence on where this goes, and we are done.',
+            'We are at time. Leave us with the trajectory.',
+        ),
         blurb=(
             "Impatient with caution. Treats a conservative estimate as a confession."
         ),
@@ -342,6 +364,10 @@ LIBRARY: tuple[Archetype, ...] = (
     Archetype(
         name="distracted_executive",
         title="The Distracted Executive",
+        closers=(
+            'We have to stop there. Anything you want to leave us with?',
+            'That is time. Quick last word if you want it.',
+        ),
         blurb=(
             "Half-listening, and deciding within ninety seconds whether this deserves attention."
         ),
@@ -384,6 +410,10 @@ LIBRARY: tuple[Archetype, ...] = (
     Archetype(
         name="internal_blocker",
         title="The Internal Blocker",
+        closers=(
+            'That is time. Last word, if you want it.',
+            'We are stopping there. Say anything you still need to.',
+        ),
         blurb=(
             "The peer whose team loses something if this wins. Unfailingly reasonable about it."
         ),
@@ -427,6 +457,10 @@ LIBRARY: tuple[Archetype, ...] = (
     Archetype(
         name="customer_advocate",
         title="The Customer Advocate",
+        closers=(
+            'We are at time. Close it out for us.',
+            'That is time. What should we carry out of this room?',
+        ),
         blurb=(
             "Speaks for the people who will actually have to use this."
         ),
@@ -466,6 +500,10 @@ LIBRARY: tuple[Archetype, ...] = (
     Archetype(
         name="risk_officer",
         title="The Risk Officer",
+        closers=(
+            'That is time. If something is still unsaid, say it now.',
+            'We are at time. Anything material left, put it on the record.',
+        ),
         blurb=(
             "Paid to find the thing that ends badly, and comfortable being why it does not ship."
         ),
