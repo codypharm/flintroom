@@ -46,10 +46,21 @@ jobs:
       # `docs/ingestion.md`: a shim cannot do direct-to-storage PUT without
       # proxying, so it would leave the presigned path untested until deploy.
       #
-      # `--wait` blocks on the healthchecks the compose file already declares,
-      # and returns cleanly when `storage-init` exits after creating the bucket.
+      # **Two steps, and the first CI run is why.** A bare `docker compose up -d
+      # --wait` fails: `storage-init` is a one-shot that creates the bucket and
+      # exits, and `--wait` reads any container exiting as the stack failing to
+      # come up — even on exit 0, which it logs as `exited (0)` immediately
+      # before failing. It appeared to work when tested against an
+      # already-running stack, where that container had finished long before.
+      #
+      # Naming the two long-running services keeps `--wait` to the healthchecks
+      # the compose file declares. `run --rm` then executes the bucket creation
+      # to completion and returns its exit code, so a failure there is still a
+      # failure here rather than a confusing 404 four steps later.
       - name: Start Postgres and MinIO
-        run: docker compose up -d --wait
+        run: |
+          docker compose up -d --wait db storage
+          docker compose run --rm storage-init
 
       - uses: astral-sh/setup-uv@v5
         with:
