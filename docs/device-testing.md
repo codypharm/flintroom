@@ -36,9 +36,19 @@ does it hold up in a hand, on a desk, over real air.
    placeholder is `REVENUECAT_WEBHOOK_SECRET`, which only billing needs.
    `app/.env.local` is also right as it is — `EXPO_PUBLIC_API_URL` stays unset
    in development, and the app follows the host it reached Metro on.
-3. **Phone and laptop on the same Wi-Fi.** Install the dev build over USB with
+3. **`S3_ENDPOINT_URL` carries the laptop's LAN address, not `localhost`.**
+   The phone uploads decks and downloads recordings *directly* against
+   presigned URLs minted from this value — none of that traffic goes through
+   the API — and a URL naming `localhost` tells the phone to talk to itself.
+   The symptom is exactly one thing failing while everything else works:
+   attaching a deck dies with "We could not reach the server", or playback
+   refuses, while sign-in and the room itself are fine. Set it to
+   `http://<laptop LAN IP>:59000` (find the IP with `ipconfig getifaddr en0`),
+   restart uvicorn, and re-set it when the laptop changes networks — the IP
+   changes with the Wi-Fi.
+4. **Phone and laptop on the same Wi-Fi.** Install the dev build over USB with
    `cd app && npx expo run:android --device`, then it connects to Metro.
-4. **Volume up, phone flat on the desk.** The interrogation is designed for a
+5. **Volume up, phone flat on the desk.** The interrogation is designed for a
    phone you are not holding; test it that way.
 
 ---
