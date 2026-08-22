@@ -15,7 +15,6 @@ import { SettingsScreen, type Holdings, type Recording } from './SettingsScreen'
 const NOTHING: Holdings = {
   rooms: 0,
   oldestExpiry: null,
-  materials: 0,
 };
 
 /**
@@ -25,15 +24,20 @@ const NOTHING: Holdings = {
 const SAVING: Recording = { recordsRooms: true, retentionDays: 30 };
 
 async function show(
-  holdings: Partial<Holdings> = {},
+  held: Partial<Holdings> & { materials?: number | null } = {},
   props = {},
   recording: Recording | null = SAVING,
 ) {
+  // `materials` is its own prop for the same reason `recording` is — it arrives
+  // from its own request and fails on its own. Split here rather than at every
+  // call site so the existing ones read unchanged.
+  const { materials = 0, ...holdings } = held;
   // Its own prop since the buy screen needed a way in that survives a failed
   // count — see `TimeUnderFire`. Overridable through `props` like the rest.
   await render(
     <SettingsScreen
       holdings={{ ...NOTHING, ...holdings }}
+      materials={materials}
       recording={recording}
       minutesRemaining={15}
       onRecordingChange={jest.fn()}
@@ -157,6 +161,7 @@ describe('before the account has been read, and when it cannot be', () => {
     await render(
       <SettingsScreen
         holdings={null}
+        materials={null}
         // Null by default, because this block is about a screen that has no
         // answers yet or could not get them — and the preference is one of the
         // answers. A test that wants it known passes it through `props`.
@@ -304,6 +309,7 @@ describe('when one read failed and another did not', () => {
     await render(
       <SettingsScreen
         holdings={null}
+        materials={null}
         recording={{ recordsRooms: true, retentionDays: 365 }}
         onRecordingChange={jest.fn()}
         onDeleteAccount={jest.fn()}
@@ -322,6 +328,7 @@ describe('when one read failed and another did not', () => {
     await render(
       <SettingsScreen
         holdings={null}
+        materials={null}
         recording={{ recordsRooms: true, retentionDays: 365 }}
         onRecordingChange={jest.fn()}
         onDeleteAccount={jest.fn()}
@@ -339,6 +346,7 @@ describe('when one read failed and another did not', () => {
     await render(
       <SettingsScreen
         holdings={null}
+        materials={null}
         recording={null}
         onRecordingChange={jest.fn()}
         onDeleteAccount={jest.fn()}
@@ -367,6 +375,7 @@ describe('the way to more time', () => {
     await render(
       <SettingsScreen
         holdings={null}
+        materials={null}
         recording={null}
         minutesRemaining={54}
         onGetMore={jest.fn()}
@@ -387,6 +396,7 @@ describe('the way to more time', () => {
     await render(
       <SettingsScreen
         holdings={null}
+        materials={null}
         recording={null}
         minutesRemaining={54}
         onGetMore={onGetMore}
@@ -399,5 +409,57 @@ describe('the way to more time', () => {
     fireEvent.press(screen.getByText('Time under fire'));
 
     expect(onGetMore).toHaveBeenCalled();
+  });
+});
+
+
+/**
+ * Each count fails on its own — #92 finished.
+ *
+ * #92 split the recording SWITCH out of the counts, because a 502 on
+ * `/v1/materials` was taking a privacy control down with it. It left the counts
+ * themselves gathered in one `Promise.all`, on the reasoning that a number
+ * smaller than the truth is the worst way to be wrong on a screen whose job is
+ * to state what we hold.
+ *
+ * That reasoning is right and the conclusion did not follow. Reported from a
+ * device: *"i still see text saying it cannot read my data in the setting
+ * spage"* — with `/v1/sessions`, `/v1/preferences/recording` and `/v1/balance`
+ * all answering 200 and only `/v1/materials` failing. The screen said "I could
+ * not read your account just now", which was false of three reads out of four,
+ * and it withheld a room count it was holding.
+ *
+ * So: never a `0` that was not read — that part stands — but a read that
+ * answered is drawn, and only the row that failed says so. The copy for it
+ * already existed on `TimeUnderFire`.
+ */
+describe('one failed read', () => {
+  it('does not blank a room count that was read', async () => {
+    await show({ rooms: 4, materials: null });
+
+    expect(screen.getByText(/4 rooms saved/i)).toBeOnTheScreen();
+  });
+
+  it('never invents a zero for the count that failed', async () => {
+    // The half of #92's reasoning that stands: "0 attached" on a privacy screen
+    // is a claim we no longer hold somebody's deck. Understating what is held
+    // is the one direction this screen must not err in.
+    await show({ rooms: 4, materials: null });
+
+    expect(screen.queryByText(/nothing attached/i)).toBeNull();
+    expect(screen.getByText(/could not read this just now/i)).toBeOnTheScreen();
+  });
+
+  it('does not blank a material count when the rooms read failed', async () => {
+    await show({ materials: 2 }, { holdings: null });
+
+    expect(screen.getByText(/2 attached/i)).toBeOnTheScreen();
+  });
+
+  it('only says it could not read the account when nothing came back at all', async () => {
+    // The sentence is true here and was false in every other case above.
+    await show({}, { holdings: null, materials: null });
+
+    expect(screen.getByText(/could not read your account/i)).toBeOnTheScreen();
   });
 });

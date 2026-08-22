@@ -64,11 +64,35 @@ async function setup(overrides: Partial<LibraryProps> = {}) {
   return props;
 }
 
-it('places each room in time the way somebody would say it', async () => {
+it('places each room by how long ago AND by when, not one or the other', async () => {
+  // The architect's ask: "days ago or years ago or seconds ago basically diff
+  // from current time along side date instead of days of the week."
+  //
+  // The weekday it replaces was right for the week you are living in and wrong
+  // the moment a history got long enough to be worth having — "Monday" could be
+  // any Monday, and past a week it fell back to a bare date that said when
+  // without saying how long. Which answer you got depended on when you asked.
+  // Drawn as two registers rather than one string. The headline scans — it is
+  // how you find the room — and the date sits quiet underneath, because it is
+  // the half you look up rather than the half you sweep past. A 20pt headline
+  // holding both clipped its own date on a phone.
   await setup();
 
-  expect(screen.getByText('Today')).toBeTruthy();
-  expect(screen.getByText('Monday')).toBeTruthy();
+  expect(screen.getByText('4 hours ago')).toBeTruthy();
+  expect(screen.getByText('20 August')).toBeTruthy();
+  expect(screen.getByText('3 days ago')).toBeTruthy();
+  expect(screen.getByText('17 August')).toBeTruthy();
+});
+
+it('still says the whole placement in one breath to a screen reader', async () => {
+  // The split is visual. Read aloud, "4 hours ago · 20 August" is one fact
+  // about when a room ran, and a reader that had to stitch it back together
+  // from two nodes several lines apart would be worse off than the eye.
+  await setup();
+
+  expect(
+    screen.getByLabelText('4 hours ago · 20 August, The CFO and The Technical Skeptic'),
+  ).toBeTruthy();
 });
 
 it('says who was in the room, so it can be told from the others', async () => {
@@ -83,7 +107,7 @@ it('says who was in the room, so it can be told from the others', async () => {
 it('opens the room that was tapped', async () => {
   const { onOpen } = await setup();
 
-  await userEvent.press(screen.getByLabelText('Today, The CFO and The Technical Skeptic'));
+  await userEvent.press(screen.getByLabelText('4 hours ago · 20 August, The CFO and The Technical Skeptic'));
 
   expect(onOpen).toHaveBeenCalledWith('room-2');
 });
@@ -163,7 +187,7 @@ describe('what the room was about', () => {
   it('leads with the name when the rehearsal has one', async () => {
     // What actually distinguishes two rooms is one line of text, and until the
     // presenter could name a rehearsal the best this screen had was a date and
-    // a panel. "Q3 board readout" is what somebody is looking for; "Monday" is
+    // a panel. "Q3 board readout" is what somebody is looking for; "3 days ago" is
     // how they narrow it down once they have found the right pile.
     await setup({
       rooms: [{ ...ROOMS[0], rehearsalName: 'Q3 board readout' }],
@@ -171,7 +195,7 @@ describe('what the room was about', () => {
 
     expect(screen.getByText('Q3 board readout')).toBeTruthy();
     expect(
-      screen.getByLabelText('Q3 board readout, Today, The CFO and The Technical Skeptic')
+      screen.getByLabelText('Q3 board readout, 4 hours ago · 20 August, The CFO and The Technical Skeptic')
     ).toBeTruthy();
   });
 
@@ -182,14 +206,16 @@ describe('what the room was about', () => {
       rooms: [{ ...ROOMS[0], rehearsalName: 'Q3 board readout' }],
     });
 
-    expect(screen.getByText(/Today/)).toBeTruthy();
+    expect(screen.getByText(/4 hours ago/)).toBeTruthy();
   });
 
-  it('heads an unnamed room with its date, as it always did', async () => {
-    // Nothing is invented. A heading derived from the panel or the deck would
-    // be a label the presenter never chose and cannot correct.
+  it('heads an unnamed room with how long ago it ran, and invents nothing', async () => {
+    // A heading derived from the panel or the deck would be a label the
+    // presenter never chose and cannot correct. So the fallback is a fact:
+    // when it was. The relative half takes the headline because it is what
+    // somebody scans by; the date is on the line below.
     await setup();
 
-    expect(screen.getByText('Today')).toBeTruthy();
+    expect(screen.getByText('4 hours ago')).toBeTruthy();
   });
 });

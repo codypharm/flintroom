@@ -195,7 +195,7 @@ describe('the same argument, put more than once', () => {
     // runs, and reading them as one list of five would answer neither.
     await setup();
 
-    const rehearsal = within(screen.getByLabelText('One argument, oldest first, started 11 August'));
+    const rehearsal = within(screen.getByLabelText('One argument, oldest first, started 9 days ago'));
 
     expect(rehearsal.getAllByLabelText(/held of/)).toHaveLength(3);
   });
@@ -205,7 +205,7 @@ describe('the same argument, put more than once', () => {
     // time runs is how one chart comes to disagree with the other.
     await setup();
 
-    const rehearsal = within(screen.getByLabelText('One argument, oldest first, started 11 August'));
+    const rehearsal = within(screen.getByLabelText('One argument, oldest first, started 9 days ago'));
     const attempts = rehearsal.getAllByLabelText(/held of/);
 
     expect(attempts[0]).toHaveProp('accessibilityLabel', expect.stringContaining('0 held of 4'));
@@ -250,7 +250,7 @@ describe('the same argument, put more than once', () => {
 
 describe('what the rehearsal is called', () => {
   it('heads the run with its name when it has one', async () => {
-    // "Started 11 August" is honest and nearly useless. "Am I getting better at
+    // "Started 9 days ago" is honest and nearly useless. "Am I getting better at
     // my Q3 board readout" needs the words, and this is the only screen where
     // they answer the question the presenter came with.
     await setup({
@@ -269,7 +269,7 @@ describe('what the rehearsal is called', () => {
     // only what is true.
     await setup();
 
-    expect(screen.getByText('Started 11 August')).toBeTruthy();
+    expect(screen.getByText('Started 9 days ago')).toBeTruthy();
   });
 });
 
@@ -303,5 +303,80 @@ describe('the one comparison it will make', () => {
     for (const verdict of [/better/i, /worse/i, /improv/i, /↑/, /↓/, /%/]) {
       expect(screen.queryByText(verdict)).toBeNull();
     }
+  });
+});
+
+/**
+ * The ladder, which the screen was drawing only as a caption.
+ *
+ * `difficulty_level` was on every room from the start and read three ways —
+ * a fill on each bar, a word on each row of "Room by room", and nothing else.
+ * All three describe one room. None of them answers the question the screen
+ * exists for, which is what has happened across the run, and the ladder is the
+ * one series in this product where the answer is not a matter of opinion:
+ * `calibration.py` moves it only on measured performance.
+ *
+ * **It speaks about the room and never about the presenter.** That is not
+ * softness, it is the same line every other decision here holds — the screen
+ * refuses totals, averages and verdicts because difficulty escalates
+ * underneath them. "The room you get now is Relentless" is a fact about a room
+ * somebody sat in. "You have improved" is a grade, and a grade is what this
+ * screen exists without.
+ */
+describe('how hard the room has become', () => {
+  it('says where the ladder started and where it stands now', async () => {
+    // The default fixture: r-1 opened its lineage at Gentle, r-4 opened a
+    // second one at Relentless. Those two read the account's dial; r-2, r-3
+    // and r-5 inherited a rung from the lineage they repeat.
+    await setup();
+
+    expect(
+      screen.getByText(/Your first room was Gentle\. The room you get now is Relentless\./),
+    ).toBeOnTheScreen();
+  });
+
+  it('explains that the panel moves on its own, so nobody reads it as a setting', async () => {
+    // Without this the sentence is a mystery: a presenter who does not know
+    // the ladder exists has no way to tell whether something was done to them
+    // or by them, and the answer is neither.
+    await setup();
+
+    expect(screen.getByText(/presses harder or eases off on its own/i)).toBeOnTheScreen();
+  });
+
+  it('says nothing at all when the ladder has not moved', async () => {
+    // Two arguments, both opened at Standard. Nothing has happened, and a
+    // sentence reporting that is a sentence about nothing — the same null
+    // `DebriefService.pressed` returns in the identical case.
+    await setup({
+      rooms: [
+        { sessionId: 'b', rehearsalId: 'b', rehearsalName: null, startedAt: '2026-08-19T09:00:00Z', challenged: 6, held: 5, level: 2 },
+        { sessionId: 'a', rehearsalId: 'a', rehearsalName: null, startedAt: '2026-08-11T09:00:00Z', challenged: 4, held: 3, level: 2 },
+      ],
+    });
+
+    expect(screen.queryByText(/The room you get now/)).toBeNull();
+  });
+
+  it('says the room eased off without saying anybody got worse', async () => {
+    // The ladder descends at half a room fumbled, and that is #55 protecting
+    // somebody rather than grading them: "a first session that destroys the
+    // user produces churn, not resilience."
+    //
+    // So the descent is shown — hiding it would make the sentence a reward
+    // rather than a fact — and it is shown as something the room did.
+    await setup({
+      rooms: [
+        { sessionId: 'b', rehearsalId: 'b', rehearsalName: null, startedAt: '2026-08-19T09:00:00Z', challenged: 6, held: 1, level: 1 },
+        { sessionId: 'a', rehearsalId: 'a', rehearsalName: null, startedAt: '2026-08-11T09:00:00Z', challenged: 4, held: 3, level: 3 },
+      ],
+    });
+
+    expect(
+      screen.getByText(/Your first room was Relentless\. The room you get now is Gentle\./),
+    ).toBeOnTheScreen();
+    // Never a grade, in either direction. This is the guard on the copy: the
+    // sentence has to keep describing the room if somebody edits it later.
+    expect(screen.queryByText(/better|worse|improv|declin/i)).toBeNull();
   });
 });

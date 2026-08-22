@@ -1,7 +1,13 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { PastRoom } from '../../lib/api/sessionsApi';
-import { howLongItRan, whenItRan, whoWasThere } from '../../lib/library/rooms';
+import {
+  howLongAgo,
+  howLongItRan,
+  theDateItRan,
+  whenItRan,
+  whoWasThere,
+} from '../../lib/library/rooms';
 import { color, radius, space, type } from '../../theme/tokens';
 
 /**
@@ -100,7 +106,11 @@ function Room({
   onOpen: (roomId: string) => void;
   onRunAgain: (room: PastRoom) => void;
 }) {
+  // Spoken as one string and drawn as two. A screen reader should hear the
+  // whole placement in one breath; the eye wants it in registers.
   const when = whenItRan(room.startedAt, now);
+  const ago = howLongAgo(room.startedAt, now);
+  const date = theDateItRan(room.startedAt, now);
   const who = whoWasThere(room.archetypes);
   const ran = howLongItRan(room.startedAt, room.settledAt);
   const named = room.rehearsalName;
@@ -125,8 +135,18 @@ function Room({
             had was a date and a panel, which is how you narrow down a pile
             rather than how you find a thing.
           */}
+          {/*
+            **`ago` rather than the full placement, and that is a fix.** This is
+            20pt in a column it shares with the duration — about 170pt once the
+            duration and its margin are out — and it holds one line. It used to
+            carry "Monday", which fitted. It now carries what `whenItRan`
+            returns, and "3 days ago · 17 August" at this size is 200pt, so an
+            unnamed room clipped its own date. The date moves to the meta line
+            below, where it has the whole width and is the half you look up
+            rather than the half you scan by.
+          */}
           <Text style={styles.when} numberOfLines={1}>
-            {named ?? when}
+            {named ?? ago}
           </Text>
           {/*
             Only when there is one. A room that never settled has no duration,
@@ -135,7 +155,21 @@ function Room({
           */}
           {ran !== null && <Text style={styles.ran}>{ran}</Text>}
         </View>
-        <Text style={styles.who}>{named === null ? who : `${when} · ${who}`}</Text>
+        {/*
+          THREE REGISTERS, NOT TWO SENTENCES JOINED BY MIDDOTS.
+
+          The panel gets its own line because it is the fact that tells two
+          rooms apart — the thesis at the top of this file says so — and it was
+          sharing one with the date, the relative time and, on a named room, all
+          three. Four facts middot-joined at 16pt wrap to three lines and read
+          as one long clause about nothing.
+
+          The date sits under it, quiet, with the relative time repeated only
+          where the headline could not carry it. An unnamed room reads
+          "3 days ago" / panel / "17 August" and says each thing once.
+        */}
+        <Text style={styles.who}>{who}</Text>
+        <Text style={styles.meta}>{named === null ? date : `${ago} · ${date}`}</Text>
         <Hearing recording={room.recording} />
       </Pressable>
 
@@ -211,9 +245,22 @@ const styles = StyleSheet.create({
    */
   room: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    /**
+     * Centred, not top-aligned.
+     *
+     * "Run it again" used to sit level with the headline, competing with the
+     * one line on the row that identifies the room. It belongs beside the
+     * entry, not on top of it.
+     */
+    alignItems: 'center',
     gap: space.base,
-    paddingVertical: space.loose,
+    /**
+     * `base`, not `loose`. The entry grew a third register and a taller
+     * control; 24 above and below on top of that made a list of four rooms a
+     * full screen, against a thesis that wants a month of rehearsals in one
+     * scroll. There is a hairline doing the separating as well.
+     */
+    paddingVertical: space.base,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: color.hairline,
   },
@@ -241,10 +288,31 @@ const styles = StyleSheet.create({
     marginLeft: space.base,
   },
 
-  who: { ...type.bodyMd, color: color.onSurfaceVariant, marginTop: space.hair },
+  /** The panel, on its own line — the fact that tells two rooms apart. */
+  who: { ...type.bodyMd, color: color.onSurface, marginTop: space.hair },
+  /** When it ran, quiet, under the thing it dates. */
+  meta: { ...type.bodySm, color: color.onSurfaceVariant, marginTop: space.hair },
   gone: { ...type.bodySm, color: color.onSurfaceVariant, marginTop: space.tight },
 
-  again: { paddingTop: space.hair },
+  /**
+   * A bordered control, not a word.
+   *
+   * **This starts a metered room.** It sat as bare 14pt text immediately beside
+   * a tap area covering the rest of the row, with nothing between them but a
+   * 16pt gap — two adjacent targets, no boundary, and the expensive one
+   * looking like a label. The outline is what makes it read as a thing you
+   * press on purpose.
+   *
+   * 12 + 20 + 12 is 44 exactly, so the visible target meets the floor on its
+   * own and the `hitSlop` is margin rather than the whole of it.
+   */
+  again: {
+    paddingVertical: space.snug,
+    paddingHorizontal: space.base,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.hairline,
+  },
   againLabel: { ...type.labelLg, color: color.primary },
 
   empty: { paddingTop: space.section },
@@ -262,5 +330,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     backgroundColor: color.primary,
   },
-  startLabel: { ...type.labelLg, color: color.surface },
+  // `onPrimary`, not `surface`. Text on the primary fill has always been
+  // `onPrimary`'s job, and reaching for the ground colour only worked while the
+  // ground happened to be near-white — which stopped being true when it was
+  // darkened to make cards visible.
+  startLabel: { ...type.labelLg, color: color.onPrimary },
 });

@@ -82,3 +82,71 @@ export function atTheSameRung(rooms: RoomHeld[]): HeldAtOneRung[] {
         .map((room) => ({ held: room.held, challenged: room.challenged })),
     }));
 }
+
+/**
+ * Where the account's own ladder started and where it stands now.
+ *
+ * The second question the screen was not answering. `atTheSameRung` above holds
+ * difficulty constant to compare performance; this one does the opposite — it
+ * reads the *difficulty itself* as the series, because the ladder moves only on
+ * measured performance. `calibration.py` drops a rung when half a room's
+ * questions were fumbled and raises it at a fifth or fewer, so a presenter now
+ * being handed a harder room has been assessed into it. That is the closest
+ * thing this product has to "am I getting better", and it was drawn as a
+ * caption under bars the screen warns you not to compare.
+ *
+ * **Openers only, and everything rests on it.** Since
+ * `docs/difficulty-calibration.md` decision 8, a room's rung has two possible
+ * sources: a re-run inherits whatever its own rehearsal last ran at, and a
+ * fresh argument opens at the account's. `DebriefService.pressed` names the
+ * hazard of crossing that seam exactly — *"two rehearsals sitting at different
+ * rungs would make every debrief say 'harder', then 'easier', then 'harder',
+ * while nothing about them changed"* — and a line drawn through every room
+ * would be that sawtooth, presenting bookkeeping as an arc.
+ *
+ * An opener is `rehearsalId === sessionId`. The server sends
+ * `COALESCE(rehearsal_id, id)`, so the two are equal exactly when the column is
+ * null, which is exactly when the room read the account's dial. No new field,
+ * and nothing inferred that the server did not already state.
+ *
+ * **Two ends, not a chart.** The screen puts the trend at the top because it
+ * "cannot be said in a sentence"; this can, and drawing a second chart beside
+ * the first would compete with it for the same glance while carrying less.
+ *
+ * **A descent is returned like a climb.** Suppressing it would make the
+ * sentence a reward rather than a fact, and the room easing off is #55
+ * protecting somebody — the framing that keeps that honest belongs at the
+ * screen, which speaks about the room and never about the person.
+ */
+export interface LadderMoved {
+  /** The rung of the earliest room that read the account's dial. */
+  first: number;
+  /** The rung of the most recent one. */
+  now: number;
+}
+
+/**
+ * The two ends of the account's ladder, or nothing.
+ *
+ * Null when it has not moved, for the reason `pressed()` answers null in the
+ * same case: a sentence reporting that nothing happened is a sentence about
+ * nothing. Null below two openers, because one room is a dot.
+ */
+export function ladderMoved(rooms: RoomHeld[]): LadderMoved | null {
+  const opened = [...rooms]
+    // Newest first from the server, which is right for a list and wrong for
+    // anything read as a sequence — the same reversal `atTheSameRung` makes.
+    .reverse()
+    .filter((room) => room.rehearsalId === room.sessionId && room.level !== null);
+
+  if (opened.length < A_COMPARISON) return null;
+
+  const first = opened[0].level;
+  const now = opened[opened.length - 1].level;
+
+  // Narrowing the nulls the filter already removed. `level` is `number | null`
+  // on the wire and TypeScript cannot carry a predicate through `.filter`.
+  if (first === null || now === null || first === now) return null;
+
+  return { first, now };
+}

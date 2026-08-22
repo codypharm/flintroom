@@ -2,8 +2,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { WeaknessKind } from '../../lib/api/debriefApi';
 import type { RoomHeld, Tally } from '../../lib/api/progressApi';
-import { whenItRan } from '../../lib/library/rooms';
-import { atTheSameRung } from '../../lib/progress/rungs';
+import { howLongAgo } from '../../lib/library/rooms';
+import { atTheSameRung, ladderMoved } from '../../lib/progress/rungs';
 import { KINDS, panelistName } from '../../lib/panel/vocabulary';
 import { color, radius, space, type } from '../../theme/tokens';
 
@@ -65,6 +65,21 @@ const A_TREND = 2;
 /** How tall the tallest bar stands. Everything else is a share of it. */
 const TALLEST = 96;
 
+/**
+ * And how tall a rehearsal's own chart stands.
+ *
+ * **The main trend and a rehearsal's were drawn identically**, at the same
+ * height, the same bar width and the same treatment — so a screen with two
+ * rehearsals on it was three interchangeable charts and the squint test found
+ * no lead at all. They are not equal claims: the top one is the whole run and
+ * the others are evidence inside a section, repeated per argument.
+ *
+ * Subordinated by size rather than by colour or opacity, because size is what
+ * the eye sorts first and because the fill already carries the rung — a fourth
+ * treatment on the same mark would say nothing new and hide what does.
+ */
+const SHORTER = 56;
+
 export interface ProgressProps {
   /** Newest first, as the server returns them. */
   rooms: RoomHeld[];
@@ -96,6 +111,11 @@ export function Progress({ rooms, habits, askers, now, onOpenRoom }: ProgressPro
   const habit = habits.filter((one) => one.rooms >= A_PATTERN);
   const asker = askers.filter((one) => one.rooms >= A_PATTERN);
 
+  // The account's own ladder, read off the rooms that opened a lineage — the
+  // only ones that read the account's dial rather than inheriting a rehearsal's.
+  // Null unless it has actually moved. See `ladderMoved`.
+  const ladder = ladderMoved(counted);
+
   const rehearsals = rehearsalsIn(counted);
 
   // Withheld when there is exactly one rehearsal and it is the whole history:
@@ -124,9 +144,47 @@ export function Progress({ rooms, habits, askers, now, onOpenRoom }: ProgressPro
           <Trend rooms={counted} onOpenRoom={onOpenRoom} label="Every room, oldest first" />
         )}
 
+        {/*
+          THE LADDER, AND IT IS A SENTENCE RATHER THAN A SECOND CHART.
+
+          This screen puts the trend at the top because it "is the only thing on
+          this screen that cannot be said in a sentence". The ladder can be, and
+          a second chart beside the first would take the same glance while
+          carrying two numbers.
+
+          Directly under the trend because it is the caption that chart has been
+          missing: the bars carry the rung in their fill precisely so nobody
+          compares two heights without seeing they were different rooms, and
+          this says what those different rooms add up to.
+
+          **It describes the room. It never grades the presenter.** The rung
+          moved because `calibration.py` read a room, so a climb IS the product
+          saying somebody handled the last one — but saying it back as praise
+          would be the single number this screen exists without, and it would be
+          a verdict on a person rather than a fact about a room. Somebody who
+          reads the credit into it has read it correctly; nothing here reads it
+          for them.
+        */}
+        {ladder !== null && (
+          <View style={styles.ladder}>
+            <Text style={styles.moved}>
+              {`Your first room was ${rung(ladder.first)}. The room you get now is ${rung(ladder.now)}.`}
+            </Text>
+            {/*
+              Said once, and needed: without it a presenter cannot tell whether
+              this was done to them, chosen by them, or earned — and the answer
+              is the third, which is the only one that is not obvious.
+            */}
+            <Text style={styles.why}>
+              The panel presses harder or eases off on its own, from how the last
+              room went.
+            </Text>
+          </View>
+        )}
+
         {rehearsed.length > 0 && (
           <Section heading="What you keep rehearsing">
-            {rehearsed.map((run) => {
+            {rehearsed.map((run, at) => {
               // The oldest room in the run, which is where it started. Read
               // from the tail because the rooms arrive newest first.
               const oldest = run.rooms[run.rooms.length - 1];
@@ -135,19 +193,38 @@ export function Progress({ rooms, habits, askers, now, onOpenRoom }: ProgressPro
               // began if they did not. Nothing is derived from the panel or
               // the deck: a heading somebody never chose is one they have no
               // way to correct, and a date at least says only what is true.
-              const called = oldest.rehearsalName ?? `Started ${whenItRan(oldest.startedAt, now)}`;
+              const called = oldest.rehearsalName ?? `Started ${howLongAgo(oldest.startedAt, now)}`;
 
               return (
-                <View key={run.id}>
-                  <Row left={called} right={inRooms(run.rooms.length)} />
+                /*
+                  A run is the largest content unit on this screen — a label, a
+                  chart and its comparisons — and consecutive runs used to be
+                  separated by nothing but the hairline on the next one's row.
+                  Sections got 32 and the things inside them got 0, which is
+                  the rhythm exactly inverted.
+                */
+                <View key={run.id} style={at > 0 && styles.nextRun}>
+                  {/*
+                    A LABEL FOR THE CHART BELOW IT, not a row in a list. It was
+                    `Row`, which carries a top hairline and list padding, so a
+                    rehearsal's name read as an item among the tallies further
+                    down rather than as the heading of the thing under it.
+                  */}
+                  <View style={styles.runHead}>
+                    <Text style={styles.runName} numberOfLines={1}>
+                      {called}
+                    </Text>
+                    <Text style={styles.runCount}>{inRooms(run.rooms.length)}</Text>
+                  </View>
                   <Trend
                     rooms={run.rooms}
                     onOpenRoom={onOpenRoom}
+                    lesser
                     // Named after the run itself, which is what makes the two
                     // charts on this screen tellable apart by a screen reader.
                     label={
                       oldest.rehearsalName === null
-                        ? `One argument, oldest first, started ${whenItRan(oldest.startedAt, now)}`
+                        ? `One argument, oldest first, started ${howLongAgo(oldest.startedAt, now)}`
                         : `${oldest.rehearsalName}, oldest first`
                     }
                   />
@@ -201,11 +278,11 @@ export function Progress({ rooms, habits, askers, now, onOpenRoom }: ProgressPro
             <Pressable
               key={room.sessionId}
               accessibilityRole="button"
-              accessibilityLabel={`${whenItRan(room.startedAt, now)}, ${room.held} held of ${room.challenged}`}
+              accessibilityLabel={`${howLongAgo(room.startedAt, now)}, ${room.held} held of ${room.challenged}`}
               onPress={() => onOpenRoom(room.sessionId)}
               style={({ pressed }) => [styles.room, pressed && styles.pressed]}
             >
-              <Text style={styles.when}>{whenItRan(room.startedAt, now)}</Text>
+              <Text style={styles.when}>{howLongAgo(room.startedAt, now)}</Text>
               <Text style={styles.tally}>
                 {room.held} of {room.challenged}
               </Text>
@@ -233,6 +310,7 @@ function Trend({
   rooms,
   onOpenRoom,
   label,
+  lesser = false,
 }: {
   rooms: RoomHeld[];
   onOpenRoom: (sessionId: string) => void;
@@ -242,8 +320,13 @@ function Trend({
    * name is a screen reader announcing the wrong one.
    */
   label: string;
+  /** A rehearsal's own run, drawn as evidence under a heading rather than as
+   *  the screen's lead. Height and bar width only — the rung's fill is
+   *  untouched, because it means the same thing in both. */
+  lesser?: boolean;
 }) {
   const oldestFirst = [...rooms].reverse();
+  const tallest = lesser ? SHORTER : TALLEST;
 
   return (
     <ScrollView
@@ -263,7 +346,7 @@ function Trend({
             onPress={() => onOpenRoom(room.sessionId)}
             style={({ pressed }) => [styles.column, pressed && styles.pressed]}
           >
-            <View style={styles.track}>
+            <View style={[styles.track, lesser && { height: SHORTER }]}>
               {/*
                 The bar carries the rung in its fill, not only in the label
                 beneath it: a harder room is drawn solid and a gentler one
@@ -273,7 +356,8 @@ function Trend({
               <View
                 style={[
                   styles.bar,
-                  { height: Math.max(2, share * TALLEST) },
+                  lesser && styles.barLesser,
+                  { height: Math.max(2, share * tallest) },
                   room.level === 3 && styles.hardest,
                   room.level === 1 && styles.gentlest,
                 ]}
@@ -382,23 +466,52 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { padding: space.screen, paddingBottom: space.major },
 
-  title: { ...type.headlineLg, color: color.onSurface },
-  thin: {
-    ...type.bodyLg,
-    color: color.onSurfaceVariant,
-    marginTop: space.base,
-  },
+  /**
+   * The title states the interval below it, once, for both branches.
+   *
+   * It used to state none: the chart declared `paddingTop: loose` and the
+   * one-room sentence declared `marginTop: base`, so the gap under the title
+   * was 24 or 16 depending on how many rooms somebody had run.
+   */
+  title: { ...type.headlineLg, color: color.onSurface, marginBottom: space.snug },
+  thin: { ...type.bodyLg, color: color.onSurfaceVariant },
 
-  trend: { gap: space.snug, paddingTop: space.loose, paddingBottom: space.tight },
+  /**
+   * The ladder's two ends, tight under the chart they explain.
+   *
+   * `space.base` rather than a section's `space.section`: this belongs to the
+   * trend above it, and putting a section's worth of air between them would
+   * make it a separate claim about nothing in particular.
+   */
+  ladder: { marginTop: space.base, gap: space.hair },
+  moved: { ...type.bodyLg, color: color.onSurface },
+  why: { ...type.bodySm, color: color.onSurfaceVariant },
+
+  /**
+   * No gap between columns, and that is the chart's main readability fix.
+   *
+   * A 22pt bar inside a 44pt column already carries 11pt of air either side;
+   * the 12pt gap on top of that made the pitch 56 for a 22pt mark, so the
+   * bars read as scattered dots rather than as a series, and only six fitted
+   * on a phone. Adjacent columns give a 44pt pitch and eight bars, which is
+   * what makes a run look like one.
+   *
+   * The 44pt column stays — it is the touch target, and every bar opens its
+   * room.
+   */
+  trend: { paddingTop: space.snug, paddingBottom: space.tight },
   column: { alignItems: 'center', width: 44 },
   /** A fixed track, so every bar is measured from the same baseline. */
   track: { height: TALLEST, justifyContent: 'flex-end' },
   bar: {
-    width: 22,
+    width: 26,
     borderRadius: radius.control,
     backgroundColor: color.primary,
     opacity: 0.55,
   },
+  /** Narrower on a rehearsal's own chart, with its height. */
+  barLesser: { width: 16 },
+
   /** Solid for the hardest rung, outlined for the gentlest. */
   hardest: { opacity: 1 },
   gentlest: {
@@ -425,11 +538,27 @@ const styles = StyleSheet.create({
     ...type.bodySm,
     color: color.onSurfaceVariant,
     fontVariant: ['tabular-nums'],
-    marginTop: space.tight,
+    marginTop: space.snug,
   },
 
   section: { marginTop: space.section },
-  heading: { ...type.headlineSm, color: color.onSurface, marginBottom: space.tight },
+  /**
+   * `snug` rather than `tight`: every row below a heading draws a top hairline,
+   * and at 8pt that rule sat close enough to read as an underline on the
+   * heading rather than as the separator between two rows.
+   */
+  heading: { ...type.headlineSm, color: color.onSurface, marginBottom: space.snug },
+
+  /** One rehearsal from the next. See the comment at the call site. */
+  nextRun: { marginTop: space.loose },
+  runHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    gap: space.base,
+  },
+  runName: { ...type.labelLg, color: color.onSurface, flexShrink: 1 },
+  runCount: { ...type.bodySm, color: color.onSurfaceVariant },
 
   line: {
     flexDirection: 'row',

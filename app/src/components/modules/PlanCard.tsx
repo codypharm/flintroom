@@ -15,6 +15,12 @@ import { color, radius, space, type } from '../../theme/tokens';
  * The price is the store's and is *absent* rather than invented when there is
  * none. A card that says what you get and cannot yet say the price is a real
  * card; §4.4's table is our pricing intent, not what a till will charge.
+ *
+ * **The card is read top-down in one order and is spaced to say so.** Its four
+ * registers used to be 24 / 18 / 18 / 14, which is three sizes for four jobs —
+ * the allowance, which is the whole point of the rung, sat at the same weight
+ * as the line beneath it. They are now title, allowance, promise, facts, and
+ * the facts sit under a rule because they are specification rather than sell.
  */
 
 export interface PlanCardProps {
@@ -36,11 +42,15 @@ export interface PlanCardProps {
 
 export function PlanCard({ plan, sold, above, lead, busy, onBuy }: PlanCardProps) {
   const on = plan.current;
+  /** The lead's own ground, and only where it is not also the plan they hold. */
+  const front = lead && !on;
 
   return (
-    <View style={[styles.card, lead && !on && styles.leading]}>
+    <View style={[styles.card, front && styles.leading]}>
       <View style={styles.head}>
-        <Text style={[styles.title, lead && !on && styles.onLead]}>{plan.title}</Text>
+        <Text style={[styles.title, front && styles.onLead]} numberOfLines={1}>
+          {plan.title}
+        </Text>
         {on ? (
           <Text style={styles.yours}>Your plan</Text>
         ) : (
@@ -54,23 +64,40 @@ export function PlanCard({ plan, sold, above, lead, busy, onBuy }: PlanCardProps
         The allowance first, in the largest honest unit — §4.6: "'3 hours of
         executive-level interrogation every month' reads generously. '15
         credits' reads rationed. Identical product."
+
+        Given its own register rather than sharing one with the line below it.
+        It is the answer to the only question this card exists to answer.
       */}
-      <Text style={[styles.gets, lead && !on && styles.onLead]}>{allowance(plan)}</Text>
+      <Text style={[styles.gets, front && styles.onLead]}>{allowance(plan)}</Text>
 
       {/*
         Unlimited coaching on EVERY card rather than once at the bottom. §4.6
         asks for it "at the top of every tier card, not in a footnote", and it
         is the metering boundary made visible: §4.1 meters the room and nothing
         after it, so this is the differentiator rather than a perk.
+
+        Full contrast and directly under the allowance — one register down, not
+        one rank down. Demoting it to the grey of the facts row would put it in
+        exactly the footnote §4.6 forbids.
       */}
-      <Text style={[styles.gets, lead && !on && styles.onLead]}>
+      <Text style={[styles.promise, front && styles.onLead]}>
         Unlimited coaching and sparring
       </Text>
 
-      <Text style={[styles.detail, lead && !on && styles.onLead]}>
-        {`${plan.seats} panelists · rooms kept ${plan.retentionDays} days · ${plan.maxUploadMb}MB decks`}
-        {plan.mayAuthor ? ' · write your own panelist' : ''}
-      </Text>
+      {/*
+        The specification, under a rule because it is a different kind of
+        sentence — checked rather than read. Each fact is its own Text so the
+        row wraps BETWEEN facts; the single joined string it replaces broke
+        mid-fact on a narrow screen and read as one long sentence about
+        nothing.
+      */}
+      <View style={[styles.facts, front && styles.factsOnLead]}>
+        {specifics(plan).map((fact) => (
+          <Text key={fact} style={[styles.fact, front && styles.onLead]}>
+            {fact}
+          </Text>
+        ))}
+      </View>
 
       {/*
         A button only for a rung above this one, priced, and not the one they
@@ -85,12 +112,12 @@ export function PlanCard({ plan, sold, above, lead, busy, onBuy }: PlanCardProps
           onPress={() => onBuy(sold)}
           style={({ pressed }) => [
             styles.buy,
-            lead && styles.buyOnLead,
+            front && styles.buyOnLead,
             pressed && styles.pressed,
             busy && styles.busy,
           ]}
         >
-          <Text style={[styles.buyLabel, lead && styles.buyLabelOnLead]}>
+          <Text style={[styles.buyLabel, front && styles.buyLabelOnLead]}>
             {`Get ${plan.title}`}
           </Text>
         </Pressable>
@@ -119,29 +146,69 @@ export function allowance(plan: Plan): string {
     : `${plan.minutes} minutes a month`;
 }
 
+/**
+ * What else the rung carries, as separate facts rather than one sentence.
+ *
+ * Same words as the joined string this replaces — the middots are gone because
+ * the gap between them does that job, and a separator that only exists to be
+ * wrapped past is a character somebody has to read.
+ */
+function specifics(plan: Plan): string[] {
+  const facts = [
+    `${plan.seats} panelists`,
+    `rooms kept ${plan.retentionDays} days`,
+    `${plan.maxUploadMb}MB decks`,
+  ];
+  return plan.mayAuthor ? [...facts, 'write your own panelist'] : facts;
+}
+
 const styles = StyleSheet.create({
   card: {
     backgroundColor: color.card,
     borderRadius: radius.card,
     padding: space.base,
-    gap: space.tight,
   },
-  /** The rung §4.5 puts first. Brand ground, used once on the screen. */
-  leading: { backgroundColor: color.primary },
+  /**
+   * The rung §4.5 puts first. Brand ground, used once on the screen.
+   *
+   * **It also takes more room**, which is the half that was missing: on a
+   * scrolling screen a card that leads only by colour has the same footprint
+   * as every card it is meant to lead, and the eye reads footprint first.
+   * `radius.container` is §9's brand radius and this is the one card on the
+   * screen entitled to it.
+   */
+  leading: { backgroundColor: color.primary, padding: space.loose, borderRadius: radius.container },
 
-  head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
-  title: { ...type.headlineMd, color: color.onSurface },
+  head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: space.snug },
+  /** Shrinks rather than pushing the price off the card in a long locale. */
+  title: { ...type.headlineMd, color: color.onSurface, flexShrink: 1 },
   price: { ...type.bodyLg, color: color.onSurfaceVariant },
   onLead: { color: color.onPrimary },
 
   /** Stated rather than sold: a fact about the plan, in the reading size. */
   yours: { ...type.labelLg, color: color.onSurfaceVariant },
 
-  gets: { ...type.bodyLg, color: color.onSurface },
-  detail: { ...type.bodySm, color: color.onSurfaceVariant },
+  /** The point of the rung, one register under its name. */
+  gets: { ...type.headlineSm, color: color.onSurface, marginTop: space.snug },
+  /** Tight to the allowance, because the two together are "what you get". */
+  promise: { ...type.bodyMd, color: color.onSurface, marginTop: space.hair },
+
+  facts: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: space.snug,
+    rowGap: space.hair,
+    marginTop: space.snug,
+    paddingTop: space.snug,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.hairline,
+  },
+  /** The warm hairline vanishes on burnt orange; the rule inverts with it. */
+  factsOnLead: { borderTopColor: color.onPrimary },
+  fact: { ...type.bodySm, color: color.onSurfaceVariant },
 
   buy: {
-    marginTop: space.tight,
+    marginTop: space.base,
     paddingVertical: space.snug,
     borderRadius: radius.pill,
     backgroundColor: color.primary,

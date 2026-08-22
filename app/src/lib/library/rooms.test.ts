@@ -1,4 +1,11 @@
-import { howLongItRan, pressureOf, whenItRan, whoWasThere } from './rooms';
+import {
+  howLongAgo,
+  howLongItRan,
+  pressureOf,
+  theDateItRan,
+  whenItRan,
+  whoWasThere,
+} from './rooms';
 
 /**
  * A past room, said the way somebody would say it.
@@ -13,30 +20,43 @@ import { howLongItRan, pressureOf, whenItRan, whoWasThere } from './rooms';
 const NOW = new Date('2026-08-20T14:00:00Z');
 
 describe('when it ran', () => {
-  it('says today rather than a date, for the room you just left', () => {
-    // The commonest row by a wide margin: the debrief hands you here, and the
-    // room you are looking for is the one you were in ninety seconds ago.
-    expect(whenItRan('2026-08-20T09:12:00Z', NOW)).toBe('Today');
+  it('says how long ago in the smallest unit that still means something', () => {
+    // The architect's ask: "days ago or years ago or seconds ago basically diff
+    // from current time along side date instead of days of the week."
+    expect(howLongAgo('2026-08-20T13:59:30Z', NOW)).toBe('Just now');
+    expect(howLongAgo('2026-08-20T13:45:00Z', NOW)).toBe('15 minutes ago');
+    expect(howLongAgo('2026-08-20T09:12:00Z', NOW)).toBe('4 hours ago');
   });
 
-  it('says yesterday, which nobody reads as a date', () => {
-    expect(whenItRan('2026-08-19T20:39:00Z', NOW)).toBe('Yesterday');
+  it('counts midnights once a day has been crossed, not elapsed hours', () => {
+    // Two clocks on purpose. A room at 8:39pm read at 2pm the next day is
+    // seventeen hours old and one DAY old, and "0 days ago" would be arithmetic
+    // rather than English.
+    expect(howLongAgo('2026-08-19T20:39:00Z', NOW)).toBe('1 day ago');
+    expect(howLongAgo('2026-08-17T10:00:00Z', NOW)).toBe('3 days ago');
   });
 
-  it('names the day inside the last week, because that is how people place it', () => {
-    // "Monday" locates a rehearsal better than "17 August" does when it is
-    // still inside the week you are living in.
-    expect(whenItRan('2026-08-17T10:00:00Z', NOW)).toBe('Monday');
+  it('rolls up to months and then to years, because nobody holds 400 days', () => {
+    expect(howLongAgo('2026-07-04T10:00:00Z', NOW)).toBe('2 months ago');
+    expect(howLongAgo('2025-11-02T10:00:00Z', NOW)).toBe('10 months ago');
+    expect(howLongAgo('2024-06-02T10:00:00Z', NOW)).toBe('2 years ago');
   });
 
-  it('falls back to the date once the day name stops meaning anything', () => {
-    // Past a week, "Monday" is ambiguous — it could be any Monday — so the
-    // date is the more useful answer rather than the more formal one.
-    expect(whenItRan('2026-07-04T10:00:00Z', NOW)).toBe('4 July');
+  it('never says "1 days ago"', () => {
+    expect(howLongAgo('2026-08-19T20:39:00Z', NOW)).toBe('1 day ago');
   });
 
-  it('carries the year once it is not this one', () => {
-    expect(whenItRan('2025-11-02T10:00:00Z', NOW)).toBe('2 November 2025');
+  it('carries the year on the date once it is not this one', () => {
+    expect(theDateItRan('2026-07-04T10:00:00Z', NOW)).toBe('4 July');
+    expect(theDateItRan('2025-11-02T10:00:00Z', NOW)).toBe('2 November 2025');
+  });
+
+  it('says both, because they answer different questions', () => {
+    // "3 days ago" places a room against the meeting you are preparing for.
+    // "17 August" is how you find it again and how you refer to it to anybody
+    // else. The old form gave one OR the other depending on the room's age, so
+    // which answer you got depended on when you asked.
+    expect(whenItRan('2026-08-17T10:00:00Z', NOW)).toBe('3 days ago · 17 August');
   });
 });
 
@@ -47,6 +67,14 @@ describe('how long it ran', () => {
 
   it('pads the seconds so a column of rooms lines up', () => {
     expect(howLongItRan('2026-08-20T09:12:00Z', '2026-08-20T09:13:05Z')).toBe('1:05');
+  });
+
+  it('names the hour once a room has run for one', () => {
+    // Reachable: a room has no length cap — the allowance is monthly minutes,
+    // not minutes per room — so a long readout really can pass sixty. "90:00"
+    // is a count of minutes wearing a clock's punctuation, and nobody reads it
+    // as an hour and a half.
+    expect(howLongItRan('2026-08-20T09:12:00Z', '2026-08-20T10:42:07Z')).toBe('1:30:07');
   });
 
   it('says nothing at all about a room that never settled', () => {

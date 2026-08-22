@@ -35,7 +35,6 @@ export interface Holdings {
   rooms: number;
   /** When the earliest-expiring room stops being playable. */
   oldestExpiry: Date | null;
-  materials: number;
 }
 
 /**
@@ -66,6 +65,25 @@ export interface SettingsScreenProps {
    * A zero is a claim, and the claim it makes is the reassuring one.
    */
   holdings: Holdings | null;
+
+  /**
+   * How many decks are still attached, or null if that read failed.
+   *
+   * **Its own value rather than a field on `Holdings` — #92, finished.** That
+   * task split the recording *switch* out of the counts and left the counts
+   * gathered in one `Promise.all`, reasoning that a number smaller than the
+   * truth is the worst way to be wrong on a screen whose job is to state what
+   * we hold. The reasoning is right; the conclusion did not follow.
+   *
+   * Reported from a device with `/v1/sessions`, `/v1/preferences/recording` and
+   * `/v1/balance` all answering 200 and only `/v1/materials` failing: the
+   * screen said *"I could not read your account just now"*, which was false of
+   * three reads out of four, and withheld a room count it was already holding.
+   *
+   * So a read that answered is drawn, a read that failed says so on its own
+   * row, and nothing is ever shown as `0` that was not actually counted.
+   */
+  materials: number | null;
   /**
    * The recording preference, or null when that read is what failed.
    *
@@ -205,12 +223,35 @@ function SaveRooms({
       disabled={writing}
       onValueChange={onRecordingChange}
       trackColor={{ true: color.primary, false: color.hairline }}
+      /*
+        #93 — the track was ours and the thumb was Android's.
+
+        `trackColor` alone leaves the knob at the platform default, which on
+        Android is a teal this design system does not contain: the one switch in
+        the app rendered brand-orange on iOS and orange-with-a-teal-knob on
+        Android. `CLAUDE.md` calls for one shared design language across both,
+        and a colour nobody chose is the plainest way to lose it.
+
+        `card` in both positions rather than a colour per state. iOS draws its
+        own white knob and ignores `thumbColor` entirely, so this is what makes
+        the two platforms agree instead of adding a third look — and the knob is
+        the moving part, not the state: the track already says which way it is.
+      */
+      thumbColor={color.card}
+      /*
+        The off track on iOS, which animates from this rather than from the
+        `false` entry above. Left unset it shows the system grey through the
+        transition — a fourth colour, visible for 200ms, on the one control
+        somebody watches while deciding whether their rooms are recorded.
+      */
+      ios_backgroundColor={color.hairline}
     />
   );
 }
 
 export function SettingsScreen({
   holdings,
+  materials,
   recording,
   minutesRemaining = null,
   reading = false,
@@ -230,7 +271,9 @@ export function SettingsScreen({
    * successful fetch traps them — and in-app deletion is an App Store
    * requirement rather than a screen detail.
    */
-  if (holdings === null) {
+  // Only when NOTHING came back. With either count in hand the screen has
+  // something true to say, and the sentence below would be false.
+  if (holdings === null && materials === null) {
     return (
       <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
         <Text style={styles.title} accessibilityRole="header">
@@ -310,7 +353,11 @@ export function SettingsScreen({
         <View style={styles.row}>
           <View style={styles.rowText}>
             <Text style={styles.rowTitle}>Rooms</Text>
-            <Text style={styles.rowDetail}>{rooms(holdings, recording)}</Text>
+            <Text style={styles.rowDetail}>
+              {holdings === null
+                ? 'I could not read this just now.'
+                : rooms(holdings, recording)}
+            </Text>
           </View>
           {/*
             The control sits on the thing it governs. In a Privacy section this
@@ -354,9 +401,16 @@ export function SettingsScreen({
           <View style={styles.rowText}>
             <Text style={styles.rowTitle}>Material</Text>
             <Text style={styles.rowDetail}>
-              {holdings.materials === 0
-                ? 'Nothing attached yet.'
-                : `${holdings.materials} attached. Only the claims and a thumbnail — the file itself is deleted after it is read.`}
+              {/*
+                Never a `0` that was not counted. "Nothing attached yet" is a
+                claim that we no longer hold somebody's deck, and understating
+                what is held is the one direction this screen must not err in.
+              */}
+              {materials === null
+                ? 'I could not read this just now.'
+                : materials === 0
+                  ? 'Nothing attached yet.'
+                  : `${materials} attached. Only the claims and a thumbnail — the file itself is deleted after it is read.`}
             </Text>
           </View>
           {onOpenMaterial === undefined ? null : (

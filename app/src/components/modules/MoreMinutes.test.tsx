@@ -329,3 +329,40 @@ describe('buying time just this once', () => {
     expect(screen.getByText(/did not go through/i)).toBeOnTheScreen();
   });
 });
+
+/**
+ * The two groups, and the band that explains them.
+ *
+ * These are layout invariants, which is unusual to assert — but the ordering
+ * rule is the reason. §4.5 swaps the two offers per user, so the screen has no
+ * fixed sequence to learn, and the group headings are the only thing that
+ * survives the swap. Before this, only the packs were labelled: flip the order
+ * and the screen opened with three unheaded cards.
+ */
+describe('the shape of the screen', () => {
+  it('names both offers when the pack leads', async () => {
+    await setup({ options: { upgradeFirst: false, nextTier: 'pro' } });
+
+    expect(screen.getByText(/just this once/i)).toBeOnTheScreen();
+    expect(screen.getByText(/every month/i)).toBeOnTheScreen();
+  });
+
+  it('names both offers when the plan leads', async () => {
+    // Separate from the test above rather than a re-render: `screen` keeps
+    // pointing at the torn-down tree, and every test after it reads nothing.
+    await setup({ options: { upgradeFirst: true, nextTier: 'pro' } });
+
+    expect(screen.getByText(/just this once/i)).toBeOnTheScreen();
+    expect(screen.getByText(/every month/i)).toBeOnTheScreen();
+  });
+
+  it('explains a shut shop beside the balance, not below the offers', async () => {
+    // It used to sit after both sections — three hundred points beneath the
+    // missing prices it was explaining, which is why the architect read it as
+    // the screen being broken rather than as the store being unconfigured.
+    await setup({ sells: [] });
+
+    const order = screen.getAllByText(/not available on this build|Quick top-up/);
+    expect(order[0]).toHaveTextContent(/not available on this build/i);
+  });
+});

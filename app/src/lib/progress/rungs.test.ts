@@ -1,4 +1,4 @@
-import { atTheSameRung } from './rungs';
+import { atTheSameRung, ladderMoved } from './rungs';
 
 /**
  * The one comparison this product is allowed to make.
@@ -83,4 +83,116 @@ it('counts a room where nobody was asked anything out', () => {
   // is a technical failure, and pairing it with a real attempt would read as
   // somebody collapsing.
   expect(atTheSameRung([AT('b', 2, 4, 7), AT('a', 2, 0, 0)])).toEqual([]);
+});
+
+/**
+ * How hard the room you are handed has become — the account's own ladder.
+ *
+ * The architect asked whether the Progress screen had better data now, and this
+ * is the strongest thing already on the wire and never drawn: `difficulty_level`
+ * is on every room, the ladder moves *because* of measured performance
+ * (`calibration.py` drops a rung at half its questions fumbled and raises at a
+ * fifth), so climbing it IS improvement by the product's own definition. It was
+ * a per-row caption on a chart the screen explicitly warns you not to compare
+ * heights across, which is the weakest instrument available for it.
+ *
+ * **ONLY LINEAGE-OPENERS, AND THAT IS THE WHOLE SUBTLETY.** Since
+ * `docs/difficulty-calibration.md` decision 8 a room's rung comes from one of
+ * two places: a re-run inherits the rung its own rehearsal last ran at, and a
+ * fresh argument opens at the account's. `DebriefService.pressed` refuses to
+ * compare across that seam in so many words — *"two rehearsals sitting at
+ * different rungs would make every debrief say 'harder', then 'easier', then
+ * 'harder', while nothing about them changed"* — and a series drawn over every
+ * room would be exactly that sawtooth, reporting bookkeeping as progress.
+ *
+ * An opener is `rehearsalId === sessionId`, because the server sends
+ * `COALESCE(rehearsal_id, id)`: they are equal precisely when the column is
+ * null, which is precisely when the room read the account's dial.
+ */
+
+/** A room that opened its own lineage — one that read the account's rung. */
+const OPENED = (sessionId: string, level: number | null, startedAt: string) => ({
+  sessionId,
+  rehearsalId: sessionId,
+  rehearsalName: null,
+  startedAt,
+  challenged: 8,
+  held: 6,
+  level,
+});
+
+/** A re-run, which inherited its rehearsal's rung and read no dial. */
+const AGAIN = (sessionId: string, level: number | null, startedAt: string) => ({
+  ...OPENED(sessionId, level, startedAt),
+  rehearsalId: 'r-older',
+});
+
+it('says where the ladder started and where it stands now', () => {
+  // Rooms arrive newest first, as the server sends them.
+  const moved = ladderMoved([
+    OPENED('c', 3, '2026-08-20T09:00:00Z'),
+    OPENED('b', 2, '2026-08-14T09:00:00Z'),
+    OPENED('a', 1, '2026-08-01T09:00:00Z'),
+  ]);
+
+  expect(moved).toEqual({ first: 1, now: 3 });
+});
+
+it('ignores re-runs, which inherit a rung rather than earning one', () => {
+  // The sawtooth `pressed()` refuses to draw. Both re-runs sit at Relentless
+  // because their lineage does; reading them as the account's ladder would
+  // report a climb that never happened.
+  const moved = ladderMoved([
+    AGAIN('d', 3, '2026-08-20T09:00:00Z'),
+    AGAIN('c', 3, '2026-08-18T09:00:00Z'),
+    OPENED('b', 1, '2026-08-14T09:00:00Z'),
+    OPENED('a', 1, '2026-08-01T09:00:00Z'),
+  ]);
+
+  expect(moved).toBeNull();
+});
+
+it('says nothing when the ladder has not moved', () => {
+  // Nothing happened, and `pressed()` answers null in the same case for the
+  // same reason: a sentence saying so is a sentence about nothing.
+  const moved = ladderMoved([
+    OPENED('b', 2, '2026-08-14T09:00:00Z'),
+    OPENED('a', 2, '2026-08-01T09:00:00Z'),
+  ]);
+
+  expect(moved).toBeNull();
+});
+
+it('says nothing about a single room, which is a dot rather than an arc', () => {
+  expect(ladderMoved([OPENED('a', 2, '2026-08-01T09:00:00Z')])).toBeNull();
+});
+
+it('skips rooms that predate the ladder rather than folding them in', () => {
+  // A null rung is difficulty nobody recorded. Treating it as a level would
+  // invent the very comparison the screen exists without — the same refusal
+  // `atTheSameRung` makes one function above.
+  const moved = ladderMoved([
+    OPENED('c', 3, '2026-08-20T09:00:00Z'),
+    OPENED('b', null, '2026-08-14T09:00:00Z'),
+    OPENED('a', 2, '2026-08-01T09:00:00Z'),
+  ]);
+
+  expect(moved).toEqual({ first: 2, now: 3 });
+});
+
+it('reports a descent as readily as a climb', () => {
+  // The ladder goes down at half a room fumbled, and that is the product
+  // protecting somebody rather than grading them — #55 exists because "a first
+  // session that destroys the user produces churn, not resilience".
+  //
+  // Hiding it would be the false-comfort mirror of the false-hope trap the
+  // screen is built against, and it would make the sentence a reward rather
+  // than a fact. What carries the difference is the framing at the screen: the
+  // room eased off. Nothing here says anybody got worse.
+  const moved = ladderMoved([
+    OPENED('b', 1, '2026-08-14T09:00:00Z'),
+    OPENED('a', 3, '2026-08-01T09:00:00Z'),
+  ]);
+
+  expect(moved).toEqual({ first: 3, now: 1 });
 });

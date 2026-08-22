@@ -30,6 +30,14 @@ import { PlanCard } from './PlanCard';
  * deliberately, because the rule exists to catch somebody at the point where
  * repeat top-ups stop being good for them.
  *
+ * THREE GROUPS, AND THAT IS THE LAYOUT. The standing — what you hold, and any
+ * reason buying might not work. The two offers, each named, in the order §4.5
+ * chose. Then housekeeping, past a rule. What the screen used to be was one
+ * flat column at a single interval, where the only labelled group was whichever
+ * one happened to be the packs: flip the order and the screen led with three
+ * unheaded cards. **Both offers are labelled now, so the ordering rule can
+ * swap them without the reader losing the boundary.**
+ *
  * WHAT THE MOCKUP CONTRIBUTED: density, and nothing else.
  * `design-guide/billing_tokens/` is fully retired — "Tokens", "4 / 10
  * remaining" (the depleting counter §4.6 forbids, as the first thing read),
@@ -99,20 +107,26 @@ export function MoreMinutes({
   const offered = plans ?? [];
   const shut = sells !== null && sells.length === 0;
   const lead = leading(plans, options);
+  const said = note(state, shut);
 
   const Plans = (
     <View style={styles.section}>
-      {offered.map((plan) => (
-        <PlanCard
-          key={plan.name}
-          plan={plan}
-          sold={priceFor(plan, sells)}
-          above={above(offered, plan)}
-          lead={plan.name === lead}
-          busy={busy}
-          onBuy={onBuy}
-        />
-      ))}
+      <Text style={styles.heading} accessibilityRole="header">
+        Every month
+      </Text>
+      <View style={styles.cards}>
+        {offered.map((plan) => (
+          <PlanCard
+            key={plan.name}
+            plan={plan}
+            sold={priceFor(plan, sells)}
+            above={above(offered, plan)}
+            lead={plan.name === lead}
+            busy={busy}
+            onBuy={onBuy}
+          />
+        ))}
+      </View>
     </View>
   );
 
@@ -121,35 +135,49 @@ export function MoreMinutes({
       <Text style={styles.heading} accessibilityRole="header">
         Just this once
       </Text>
-      {(packs ?? []).map((pack) => {
-        // Ours describes it; the store prices it. A pack with no price is still
-        // worth naming — it says what could be bought once there is a till.
-        const sold = (sells ?? []).find((what) => what.grants === pack.name) ?? null;
 
-        return (
-          <Pressable
-            key={pack.name}
-            testID="sellable"
-            accessibilityRole="button"
-            accessibilityLabel={
-              sold === null ? pack.title : `${pack.title}, ${sold.price}`
-            }
-            disabled={busy || sold === null}
-            onPress={() => sold !== null && onBuy(sold)}
-            style={({ pressed }) => [
-              styles.pack,
-              pressed && styles.pressed,
-              busy && styles.busy,
-            ]}
-          >
-            <View>
-              <Text style={styles.packTitle}>{pack.title}</Text>
-              <Text style={styles.packDetail}>{`${pack.minutes} minutes`}</Text>
-            </View>
-            {sold !== null && <Text style={styles.packPrice}>{sold.price}</Text>}
-          </Pressable>
-        );
-      })}
+      {/*
+        One grouped list rather than three floating cards, because a pack IS a
+        different kind of object from a plan and should not be drawn as one: a
+        row you pick off a short list, against a card you consider. The plans
+        keep the card, and the difference in density is what stops six
+        near-identical white rectangles reading as one undifferentiated column.
+      */}
+      <View style={styles.group}>
+        {(packs ?? []).map((pack, at) => {
+          // Ours describes it; the store prices it. A pack with no price is
+          // still worth naming — it says what could be bought once there is a
+          // till.
+          const sold = (sells ?? []).find((what) => what.grants === pack.name) ?? null;
+
+          return (
+            <Pressable
+              key={pack.name}
+              testID="sellable"
+              accessibilityRole="button"
+              accessibilityLabel={
+                sold === null ? pack.title : `${pack.title}, ${sold.price}`
+              }
+              disabled={busy || sold === null}
+              onPress={() => sold !== null && onBuy(sold)}
+              style={({ pressed }) => [
+                styles.pack,
+                at > 0 && styles.divided,
+                pressed && styles.pressed,
+                busy && styles.busy,
+              ]}
+            >
+              {/* Shrinks rather than crushing the price in a long locale. */}
+              <View style={styles.packWords}>
+                <Text style={styles.packTitle}>{pack.title}</Text>
+                <Text style={styles.packDetail}>{`${pack.minutes} minutes`}</Text>
+              </View>
+              {sold !== null && <Text style={styles.packPrice}>{sold.price}</Text>}
+            </Pressable>
+          );
+        })}
+      </View>
+
       {/*
         §4.5 point 3 — "the minutes are the credit". Beside the packs rather
         than the plans, because it is the answer to "am I wasting this if I
@@ -161,6 +189,10 @@ export function MoreMinutes({
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      {/*
+        The standing. Title and balance are one unit and are spaced as one —
+        they used to sit the same distance apart as two unrelated cards.
+      */}
       <Text style={styles.title} accessibilityRole="header">
         More time in the room
       </Text>
@@ -169,22 +201,25 @@ export function MoreMinutes({
         <Text style={styles.holding}>{`You have ${holding} minutes.`}</Text>
       )}
 
-      {state === 'waiting' && (
-        <Text style={styles.pending} accessibilityLiveRegion="polite">
-          Thank you — adding them now. This can take a moment.
-        </Text>
-      )}
-
       {/*
-        Only where there was a store to fail. Against `unconfiguredStore()` the
-        refusal is ours rather than a till's, and "your store will have the
-        details" sends somebody looking for details nobody has — which is what
-        the architect saw after tapping Restore on a build with no offering.
+        Anything the screen has to say about buying, in one band directly under
+        the balance — never as a loose grey line in the flow.
+
+        Position is the fix as much as the ground is. "Buying is not available
+        on this build yet" used to sit BELOW both sections, three hundred points
+        beneath the missing prices it was explaining; and "adding them now",
+        which is the most important sentence on the screen the moment it
+        appears, was set in the smallest type on it.
       */}
-      {state === 'failed' && !shut && (
-        <Text style={styles.wrong} accessibilityLiveRegion="polite">
-          That did not go through. Your store will have the details.
-        </Text>
+      {said !== null && (
+        <View style={[styles.band, said.wrong && styles.bandWrong]}>
+          <Text
+            style={[styles.said, said.wrong && styles.saidWrong]}
+            accessibilityLiveRegion={said.live ? 'polite' : 'none'}
+          >
+            {said.text}
+          </Text>
+        </View>
       )}
 
       {/* §4.5's ordering, and the only thing the store decides about layout. */}
@@ -200,21 +235,66 @@ export function MoreMinutes({
         </>
       )}
 
-      {shut && (
-        <Text style={styles.shut}>
-          Buying is not available on this build yet.
-        </Text>
-      )}
-
-      <Pressable
-        onPress={onRestore}
-        accessibilityRole="button"
-        style={({ pressed }) => [styles.restore, pressed && styles.pressed]}
-      >
-        <Text style={styles.restoreText}>Restore a previous purchase</Text>
-      </Pressable>
+      {/*
+        Housekeeping, past a rule and a full gap. Restore is not an offer and
+        must not read as one — but it is also an App Store requirement and a
+        real case (reinstall, second device), so it is never conditional on
+        there being a store to restore from. An empty `sells` is the same
+        answer for "no store configured" as for "the store did not respond",
+        and hiding this on the second would take it away from a paying customer
+        at the exact moment they need it.
+      */}
+      <View style={styles.housekeeping}>
+        <Pressable
+          onPress={onRestore}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.restore, pressed && styles.pressed]}
+        >
+          <Text style={styles.restoreText}>Restore a previous purchase</Text>
+        </Pressable>
+      </View>
     </ScrollView>
   );
+}
+
+/**
+ * The one thing the screen has to say about buying right now, or nothing.
+ *
+ * At most one is ever true, and the order encodes which fact dominates. A shut
+ * shop first: against `unconfiguredStore()` there was no attempt and no till,
+ * so "your store will have the details" would send somebody looking for
+ * details nobody has — which is what the architect saw after tapping Restore
+ * on a build with no offering.
+ *
+ * `live` is false for the shut shop alone. It is true on arrival rather than
+ * newly true, and a live region exists to announce a change.
+ */
+function note(
+  state: MoreMinutesProps['state'],
+  shut: boolean,
+): { text: string; wrong: boolean; live: boolean } | null {
+  if (shut) {
+    return {
+      text: 'Buying is not available on this build yet.',
+      wrong: false,
+      live: false,
+    };
+  }
+  if (state === 'waiting') {
+    return {
+      text: 'Thank you — adding them now. This can take a moment.',
+      wrong: false,
+      live: true,
+    };
+  }
+  if (state === 'failed') {
+    return {
+      text: 'That did not go through. Your store will have the details.',
+      wrong: true,
+      live: true,
+    };
+  }
+  return null;
 }
 
 /**
@@ -255,9 +335,9 @@ function above(plans: Plan[], plan: Plan): boolean {
 /**
  * What the store charges for this rung, or null.
  *
- * Matched on `tier` rather than on `id`, because the product identifiers belong
- * to the console and neither store lets one be renamed once created — so the
- * join is carried explicitly by whoever configures it.
+ * Matched on `grants` rather than on `id`, because the product identifiers
+ * belong to the console and neither store lets one be renamed once created —
+ * so the join is carried explicitly by whoever configures it.
  */
 function priceFor(plan: Plan, sells: Sellable[] | null): Sellable | null {
   return (sells ?? []).find((what) => what.grants === plan.name) ?? null;
@@ -265,40 +345,65 @@ function priceFor(plan: Plan, sells: Sellable[] | null): Sellable | null {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.surface },
-  content: { padding: space.screen, paddingBottom: space.major, gap: space.snug },
+  /**
+   * No `gap`. Every interval on this screen is stated by the thing that owns
+   * it, because a container gap ADDS to a child's margin — the sections used
+   * to sit 28 apart, which is a number nobody chose and was the only spacing
+   * contrast on the screen.
+   */
+  content: { padding: space.screen, paddingBottom: space.major },
 
   title: { ...type.headlineLg, color: color.onSurface },
-  holding: { ...type.bodyLg, color: color.onSurfaceVariant },
+  /** Tight to the title: the two are one statement of where you stand. */
+  holding: { ...type.bodyLg, color: color.onSurfaceVariant, marginTop: space.hair },
 
-  pending: { ...type.bodySm, color: color.onSurfaceVariant },
-  wrong: { ...type.bodySm, color: color.danger },
-  shut: { ...type.bodySm, color: color.onSurfaceVariant },
+  band: {
+    marginTop: space.base,
+    padding: space.snug,
+    borderRadius: radius.control,
+    backgroundColor: color.card,
+  },
+  /** A failure is bounded rather than coloured in — the words carry it. */
+  bandWrong: { borderWidth: StyleSheet.hairlineWidth, borderColor: color.danger },
+  said: { ...type.bodyMd, color: color.onSurfaceVariant },
+  saidWrong: { color: color.danger },
 
-  section: { gap: space.snug, marginTop: space.base },
-  heading: { ...type.labelLg, color: color.onSurfaceVariant },
+  /** The interval between the two offers, and from the standing to the first. */
+  section: { marginTop: space.section },
+  heading: { ...type.labelLg, color: color.onSurfaceVariant, marginBottom: space.snug },
+  cards: { gap: space.snug },
 
+  /** The packs as one list, in the app's established grouped-row idiom. */
+  group: {
+    backgroundColor: color.card,
+    borderRadius: radius.card,
+    paddingHorizontal: space.base,
+  },
   pack: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: color.card,
-    borderRadius: radius.card,
-    padding: space.base,
+    gap: space.base,
+    paddingVertical: space.base,
     minHeight: 44,
   },
+  divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.hairline },
+  packWords: { flexShrink: 1 },
   packTitle: { ...type.labelLg, color: color.onSurface },
   packDetail: { ...type.bodySm, color: color.onSurfaceVariant },
   packPrice: { ...type.bodyLg, color: color.onSurfaceVariant },
-  kept: { ...type.bodySm, color: color.onSurfaceVariant },
+  kept: { ...type.bodySm, color: color.onSurfaceVariant, marginTop: space.snug },
 
   pressed: { opacity: 0.7 },
   busy: { opacity: 0.5 },
 
-  restore: {
-    marginTop: space.base,
-    paddingVertical: space.base,
-    minHeight: 44,
-    justifyContent: 'center',
+  /** Past a rule and a full gap: not an offer, and drawn as not one. */
+  housekeeping: {
+    marginTop: space.major,
+    paddingTop: space.base,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.hairline,
   },
-  restoreText: { ...type.bodySm, color: color.onSurfaceVariant },
+  restore: { paddingVertical: space.snug, minHeight: 44, justifyContent: 'center' },
+  restoreText: { ...type.bodySm, color: color.onSurfaceVariant, textAlign: 'center' },
 });

@@ -57,7 +57,7 @@ const preferences = createPreferencesApi({
   accessToken: () => auth.accessToken(),
 });
 
-/** Everything this screen reads for itself — the balance is the app bar's. */
+/** The rooms half. The attached count is its own state — see the effect. */
 type Inventory = Holdings;
 
 /**
@@ -90,6 +90,10 @@ export default function SettingsRoute() {
   const held = useHeld();
 
   const [inventory, setInventory] = useState<Inventory | null>(null);
+  // Its own state, because `/v1/materials` is its own request and fails on its
+  // own — reported from a device as "i still see text saying it cannot read my
+  // data" while every other read on this screen had answered 200.
+  const [attached, setAttached] = useState<number | null>(null);
   // Beside the counts rather than inside them — #92. It arrives from its own
   // request and fails on its own, and it is a control rather than a figure.
   const [saving, setSaving] = useState<Recording | null>(null);
@@ -114,31 +118,40 @@ export default function SettingsRoute() {
         if (error instanceof SignedOut) recheck();
       };
 
-      // **Two reads, not one gathered promise — #92.** These fail
-      // independently and `Promise.all` rejects on the first rejection, so a
-      // 502 on `/v1/materials` used to discard a `/v1/preferences/recording`
-      // that had answered 200. What that removed was the switch which turns
-      // saving off, a control `docs/privacy-policy.md` promises by name.
+      // **Three reads, three promises — #92 finished.** They fail
+      // independently, and gathering any two of them means the first rejection
+      // discards an answer already in memory. #92 lifted the recording switch
+      // out for that reason and left the two counts inside one `Promise.all`,
+      // on the reasoning that a number smaller than the truth is the worst way
+      // to be wrong on a screen whose job is to state what we hold.
       //
-      // The counts stay all-or-nothing, and that half of the old reasoning is
-      // kept: this screen's job is to state what is held, and a number smaller
-      // than the truth is the worst way to be wrong here. What changed is that
-      // an unrelated failure no longer takes a *control* down with the counts.
-      Promise.all([sessions.list(), materials.list()])
-        .then(([rooms, attached]) => {
-          if (!live) return;
-          setInventory({ ...saved(rooms), materials: attached.length });
-        })
+      // That reasoning is right and it does not require them to be gathered.
+      // What it forbids is showing `0` for a count nobody took — and each read
+      // can say that about itself. Gathering them meant a 502 on
+      // `/v1/materials` blanked a room count `/v1/sessions` had answered, and
+      // the screen then said "I could not read your account just now" with
+      // three of four reads sitting in memory.
+      sessions
+        .list()
+        .then((rooms) => live && setInventory(saved(rooms)))
         .catch((error) => {
           if (!live) return;
           gone(error);
-          // Stated by the screen rather than drawn as an empty account. Partial
-          // counts are still not shown: rendering three of four rows and
-          // quietly dropping the fourth would understate what we hold.
           setInventory(null);
         })
         .finally(() => {
           if (live) setReading(false);
+        });
+
+      materials
+        .list()
+        .then((mine) => live && setAttached(mine.length))
+        .catch((error) => {
+          if (!live) return;
+          gone(error);
+          // Null, never zero. "Nothing attached yet" is a claim that we no
+          // longer hold somebody's deck.
+          setAttached(null);
         });
 
       preferences
@@ -202,13 +215,10 @@ export default function SettingsRoute() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: color.surface }} edges={[]}>
       <SettingsScreen
-        holdings={
-          inventory === null
-            ? null
-            : // The balance is nullable on its own: the app bar swallows its
-              // failures, so it can be unknown while the inventory is fine.
-              inventory
-        }
+        holdings={inventory}
+        // Its own request, its own failure. A 502 here no longer takes the room
+        // count — or the sentence "I could not read your account" — with it.
+        materials={attached}
         reading={reading}
         writing={writing}
         onRetry={() => setAttempt((made) => made + 1)}

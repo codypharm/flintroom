@@ -1,5 +1,6 @@
 import type { PastRoom } from '../api/sessionsApi';
 import { panelistName } from '../panel/vocabulary';
+import { clock } from '../replay/clock';
 
 /**
  * A past room, said the way somebody would say it.
@@ -16,32 +17,86 @@ import { panelistName } from '../panel/vocabulary';
  * global clock can only be tested by freezing one.
  */
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
 
-/** Inside this many days, the weekday name still places a room. Past it, it does not. */
-const WITHIN_THE_WEEK = 7;
+/** Past this many days, "N days ago" stops being a number anybody holds. */
+const IN_MONTHS = 30;
 
-export function whenItRan(startedAt: string, now: Date): string {
+/** And past this, months stop being one too. */
+const IN_YEARS = 365;
+
+/**
+ * How long ago, as elapsed time rather than as a calendar name.
+ *
+ * **This replaced weekday names, and the architect asked for it directly:**
+ * *"library should work with days ago or years ago or seconds ago basically
+ * diff from current time along side date instead of days of the week"*. The
+ * weekday was right for the week you are living in and wrong the moment a
+ * history got long enough to be worth having — "Monday" could be any Monday,
+ * and the fallback to a bare date told you when without telling you how long.
+ *
+ * **Elapsed under a day, midnights over one.** Two clocks, deliberately: an
+ * hour is a duration and a day is a calendar fact. A room at 11pm read at 1am
+ * is two hours old, and calling it "0 days ago" would be arithmetic rather than
+ * English — so anything that crossed a midnight counts midnights, and anything
+ * inside one counts the clock.
+ *
+ * Months and years are approximated from days, which is the honest precision
+ * for a figure nobody checks: "4 months ago" is a placement, not a measurement.
+ */
+export function howLongAgo(startedAt: string, now: Date): string {
   const ran = new Date(startedAt);
+  const elapsed = Math.max(0, now.getTime() - ran.getTime());
   const days = midnightsBetween(ran, now);
 
-  if (days === 0) return 'Today';
-  if (days === 1) return 'Yesterday';
-
-  // "Monday" locates a rehearsal better than "17 August" while it is still
-  // inside the week somebody is living in. Past that it is ambiguous — it could
-  // be any Monday — and the date becomes the more useful answer.
-  if (days < WITHIN_THE_WEEK) {
-    return ran.toLocaleDateString('en-GB', { weekday: 'long' });
+  if (days === 0) {
+    if (elapsed < MINUTE_MS) return 'Just now';
+    if (elapsed < HOUR_MS) return ago(Math.floor(elapsed / MINUTE_MS), 'minute');
+    return ago(Math.max(1, Math.floor(elapsed / HOUR_MS)), 'hour');
   }
+
+  if (days < IN_MONTHS) return ago(days, 'day');
+  if (days < IN_YEARS) return ago(Math.max(1, Math.round(days / IN_MONTHS)), 'month');
+
+  return ago(Math.max(1, Math.round(days / IN_YEARS)), 'year');
+}
+
+/** "3 days ago", and "1 day ago" rather than "1 days ago". */
+function ago(count: number, unit: string): string {
+  return `${count} ${unit}${count === 1 ? '' : 's'} ago`;
+}
+
+/**
+ * The date a room ran, plainly.
+ *
+ * The year only when it is not this one. A year on every row is noise on the
+ * rows somebody actually reads, to disambiguate the ones they rarely do.
+ */
+export function theDateItRan(startedAt: string, now: Date): string {
+  const ran = new Date(startedAt);
 
   return ran.toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'long',
-    // Only when it is not this year. A year on every row is noise on the rows
-    // somebody actually reads, to disambiguate the ones they rarely do.
     ...(ran.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
   });
+}
+
+/**
+ * How long ago, and when — both, because they answer different questions.
+ *
+ * "3 days ago" is how you place a room against the meeting you are preparing
+ * for. "17 August" is how you find it again, and how you talk about it to
+ * anybody else. The old form gave one or the other depending on how old the
+ * room was, so the answer you got depended on when you asked.
+ *
+ * Compact surfaces take `howLongAgo` alone — a dense row has space for the
+ * placement and not the date, and the date is the half you can look up.
+ */
+export function whenItRan(startedAt: string, now: Date): string {
+  return `${howLongAgo(startedAt, now)} · ${theDateItRan(startedAt, now)}`;
 }
 
 /**
@@ -50,16 +105,18 @@ export function whenItRan(startedAt: string, now: Date): string {
  * Null rather than zero, and the difference is a claim: a room that failed to
  * provision has a start and no end, and "0:00" says it ran for no time rather
  * than that it never ran. The first is a measurement nobody took.
+ *
+ * Said by `clock`, which the playhead on `RoomPlayback` also uses. A room's
+ * length and how far into it you are are the same figure read twice, and this
+ * used to spell it itself — which is why an hour-long room read "90:00" here
+ * and would have read "1:30:00" three lines below it.
  */
 export function howLongItRan(startedAt: string, settledAt: string | null): string | null {
   if (settledAt === null) return null;
 
-  const seconds = Math.max(
-    0,
+  return clock(
     Math.round((new Date(settledAt).getTime() - new Date(startedAt).getTime()) / 1000)
   );
-
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
 /**
