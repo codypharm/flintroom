@@ -46,6 +46,28 @@ const purchases = createPurchaseApi({
 
 const store: Store = unconfiguredStore();
 
+/**
+ * The bar carries the back button and nothing else — an empty `headerTitle`
+ * so nothing is drawn twice, and `edges={[]}` on the screen because the
+ * header owns the top inset.
+ *
+ * The rest is what every other pushed route pins and this one did not, which
+ * left it the app's one bar with a drop shadow, an inherited tint, and a
+ * background that could disagree with the screen under it. Android draws no
+ * back label, so the generic word costs nothing there; when iOS arrives (#99)
+ * it reads as the plain control it is — three doors lead here (Settings, the
+ * time chip on every tab, a room that refused to open), so no single name
+ * would be true.
+ */
+const BAR = {
+  headerShown: true,
+  headerTitle: '',
+  headerBackTitle: 'Back',
+  headerTintColor: color.onSurface,
+  headerShadowVisible: false,
+  headerStyle: { backgroundColor: color.surface },
+} as const;
+
 export default function MoreMinutesRoute() {
   const { recheck } = useGateway();
 
@@ -143,8 +165,8 @@ export default function MoreMinutesRoute() {
 
   if (options === null && sells === null) {
     return (
-      <SafeAreaView style={styles.screen} edges={['top']}>
-        <Stack.Screen options={{ headerShown: true, headerTitle: '' }} />
+      <SafeAreaView style={styles.screen} edges={[]}>
+        <Stack.Screen options={BAR} />
         <View style={styles.centred}>
           <ActivityIndicator color={color.primary} accessibilityLabel="Loading" />
         </View>
@@ -154,14 +176,7 @@ export default function MoreMinutesRoute() {
 
   return (
     <SafeAreaView style={styles.screen} edges={[]}>
-      {/*
-        The bar carries the back button and nothing else. `_layout.tsx` hides
-        headers by default because every screen draws its own title, and the
-        two routes that opt back in do it exactly this way — an empty
-        `headerTitle` so nothing is drawn twice, and `edges={[]}` because the
-        header now owns the top inset.
-      */}
-      <Stack.Screen options={{ headerShown: true, headerTitle: '' }} />
+      <Stack.Screen options={BAR} />
       <MoreMinutes
         holding={holding}
         options={options}
