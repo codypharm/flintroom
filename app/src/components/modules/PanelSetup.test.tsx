@@ -238,6 +238,24 @@ it('shows why it cannot start instead of the room, when it cannot start', async 
   expect(screen.queryByText(/They push/)).toBeNull();
 });
 
+it('says why before the button it is holding up, never after it', async () => {
+  // One slot, on one side. The reason used to sit below Start while the summary
+  // sat above it, so seating the first archetype added a block above the button
+  // and removed one below it in the same frame — the control moved under the
+  // thumb reaching for it.
+  //
+  // It is also the order the screen is read in. A reader landing on a dimmed
+  // Start was told it could not be pressed, then had to swipe past it to find
+  // out what to do about that.
+  await setup({ seated: [] });
+
+  const drawn = JSON.stringify(screen.toJSON());
+  const why = drawn.indexOf('"Seat at least one of them."');
+
+  expect(why).toBeGreaterThan(-1);
+  expect(why).toBeLessThan(drawn.indexOf('"Start"'));
+});
+
 it('says how many archetypes there are, because the rail cannot', async () => {
   // The rail shows two cards and a sliver of a third, and that sliver is a
   // white card against a warm off-white margin — present on screen and

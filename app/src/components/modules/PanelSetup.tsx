@@ -143,15 +143,6 @@ export interface PanelSetupProps {
   onAttach: () => void;
   onRemoveMaterial: () => void;
   onDifficultyChange: (level: number) => void;
-  /**
-   * Drawn above the title, inside this screen's own scroll.
-   *
-   * A slot rather than a second scroll view stacked on top, because two
-   * scrollers on one screen is a screen where a flick sometimes moves the wrong
-   * thing. What goes in it is Home's business — how the last room went, and how
-   * much time is available — and this component stays ignorant of both.
-   */
-  header?: React.ReactNode;
   onStart: () => void;
   /**
    * Open the panelist author, or null where it cannot be opened.
@@ -209,7 +200,6 @@ export function PanelSetup({
   onAttach,
   onRemoveMaterial,
   onDifficultyChange,
-  header,
   onStart,
   onAuthor,
 }: PanelSetupProps) {
@@ -238,8 +228,6 @@ export function PanelSetup({
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      {header}
-
       <Text style={styles.title} accessibilityRole="header">
         Set the room
       </Text>
@@ -434,7 +422,7 @@ export function PanelSetup({
         difficulty dial off the bottom of a screen that has to be taken in at
         once before anybody presses Start.
       */}
-      <View>
+      <View style={styles.bleed}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -569,7 +557,21 @@ export function PanelSetup({
         once says what any of it added up to, and Start is a button at the
         bottom of a scroll rather than the door into a specific room.
       */}
-      {held === null && <Text style={styles.assembled}>{assembled(room, seated, material)}</Text>}
+      {/*
+        One line, always, and always here.
+
+        The summary and the refusal are the same slot said two ways — what the
+        room is, or why it cannot open yet — and they used to sit on opposite
+        sides of the button. Seating the first archetype therefore added a block
+        above Start and removed one below it in the same frame, so the control
+        somebody was reaching for jumped under the thumb. Now only the sentence
+        changes and Start does not move.
+
+        Above rather than below is also the order it is read in: a screen reader
+        landing on a dimmed button was told it could not be pressed and had to
+        swipe past it to find out why.
+      */}
+      <Text style={styles.assembled}>{held ?? assembled(room, seated, material)}</Text>
 
       <Pressable
         accessibilityRole="button"
@@ -584,8 +586,6 @@ export function PanelSetup({
       >
         <Text style={styles.startLabel}>Start</Text>
       </Pressable>
-
-      {held !== null && <Text style={styles.footnote}>{held}</Text>}
     </ScrollView>
   );
 }
@@ -727,20 +727,6 @@ const styles = StyleSheet.create({
   },
 
   /**
-   * The screen's one question, and the only thing at display size.
-   *
-   * No top margin: `content` already carries the inset, and a heading that
-   * adds its own to a container's is the commonest way a screen ends up with
-   * two different top edges depending on which one you measure.
-   */
-  /**
-   * A line to write on, not a box to fill in.
-   *
-   * A bordered field would read as a form and pull rank over the deck and the
-   * panel, which are what the screen is for. A single rule under body-sized
-   * text reads as a caption somebody may edit — which is what it is.
-   */
-  /**
    * The audience note, on a card so it reads as a sibling of the deck.
    *
    * `DeckAttach` owns its own card of exactly this shape; this matches it
@@ -805,6 +791,13 @@ const styles = StyleSheet.create({
    */
   audienceLow: { color: color.danger },
 
+  /**
+   * A line to write on, not a box to fill in.
+   *
+   * A bordered field would read as a form and pull rank over the deck and the
+   * panel, which are what the screen is for. A single rule under body-sized
+   * text reads as a caption somebody may edit — which is what it is.
+   */
   rehearsal: {
     ...type.bodyLg,
     color: color.onSurface,
@@ -813,6 +806,13 @@ const styles = StyleSheet.create({
     borderBottomColor: color.hairline,
   },
 
+  /**
+   * The screen's one question, and the only thing at display size.
+   *
+   * No top margin: `content` already carries the inset, and a heading that
+   * adds its own to a container's is the commonest way a screen ends up with
+   * two different top edges depending on which one you measure.
+   */
   title: {
     ...type.headlineLg,
     color: color.onSurface,
@@ -865,42 +865,42 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.base,
   },
 
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.base,
-    paddingVertical: space.base,
-    minHeight: 44,
-  },
-
   pressed: { opacity: 0.7 },
 
-  rowText: { flex: 1, gap: space.hair },
-  rowTitle: { ...type.labelLg, color: color.onSurface },
-  rowDetail: { ...type.bodySm, color: color.onSurfaceVariant },
-
-  seat: { ...type.labelLg, color: color.primary },
-
-  /** A stated fact beside a row — never an action. */
-  aside: { ...type.bodySm, color: color.onSurfaceVariant },
-
   /**
-   * A row the room has no seat for, and the Start it is holding up.
+   * Start, while something is holding it up.
    *
    * Light enough to stay legible: WCAG exempts inactive controls from the
-   * contrast floor, but somebody has to be able to read *which* archetype they
-   * cannot seat, or the cap reads as the list being broken.
+   * contrast floor, but the button still has to read as a button that is
+   * waiting rather than as one that has been taken away — the reason is stated
+   * immediately above it, and a control faded past reading turns that sentence
+   * into an epitaph instead of an instruction.
    */
-  // Not lower. A full room dims five rows at once, and at the depth this was
-  // they read as permanently unavailable rather than as waiting for a seat —
-  // which is how somebody concludes the panel cannot be changed at all.
   closed: { opacity: 0.72 },
 
-  // Breaks the screen margin on purpose: a rail that stopped at the gutter
-  // reads as a finished row, and nothing about it invites a swipe. Running the
-  // last card off the edge is what says there is more.
+  /**
+   * What lets the rail break the screen margin, which it claimed to do and
+   * could not.
+   *
+   * The rail sits inside `content`, and `content` is inset by `space.screen`.
+   * So the rail's own `paddingHorizontal` was a *second* inset: the first card
+   * began forty points from the edge while the title, the deck, the heading
+   * above it, the pills and Start all began at twenty — the rail was the one
+   * element on a strictly aligned screen that was not on the margin. At the
+   * other end the viewport stopped twenty points short of the glass, so the
+   * card that is supposed to be cut off ended against a strip of ground and
+   * read as a row that had simply finished.
+   *
+   * Pulling the wrapper back out by the same inset restores both: the first
+   * card lands on the screen margin with everything else, and the last one runs
+   * under the edge of the phone, which is the only thing on this screen that
+   * says the list continues.
+   */
+  bleed: { marginHorizontal: -space.screen },
+
   rail: {
     gap: space.snug,
+    // Puts the first card back on the screen margin the wrapper just escaped.
     paddingHorizontal: space.screen,
     paddingBottom: space.hair,
   },
@@ -963,7 +963,7 @@ const styles = StyleSheet.create({
   startLabel: { ...type.labelLg, fontSize: 16, color: color.onPrimary },
 
   /**
-   * The assembled room, directly above Start.
+   * The room, or what is holding it up — directly above Start.
    *
    * Centred, unlike every other note on this screen, and deliberately: it
    * belongs to the button rather than to the group above it, and it is the one
@@ -983,13 +983,4 @@ const styles = StyleSheet.create({
     marginTop: space.snug,
   },
 
-  /** A note about the button above it, which is centred, so this is too. */
-  footnote: {
-    ...type.bodySm,
-    color: color.onSurfaceVariant,
-    marginTop: space.snug,
-    textAlign: 'center',
-  },
-
-  hairline: { height: 1, backgroundColor: color.hairline, opacity: 0.5 },
 });

@@ -1,7 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PanelSetup } from '../../components/modules/PanelSetup';
@@ -16,17 +16,23 @@ import { railFor } from '../../lib/panel/rail';
 import { nameFromDeck } from '../../lib/room/deckName';
 import { intendRoom } from '../../lib/room/intent';
 import { API_BASE_URL, auth } from '../../lib/auth';
+import { useGateway } from '../../lib/auth/gateway';
 import { SignedOut } from '../../lib/auth/session';
-import { color, space, type } from '../../theme/tokens';
+import { color, radius, space, type } from '../../theme/tokens';
 
 /**
  * The front door, which is the room being built.
  *
  * Home and setup were two screens and the first was a landing page whose only
  * job was a button to the second. The architect called it what it was. So this
- * is one screen: how the last room went, how much time is available, and then
- * the room you are assembling — a tab you can leave and come back to with the
- * seating still on it.
+ * is one screen: the room you are assembling, on a tab you can leave and come
+ * back to with the seating still on it.
+ *
+ * It carried two other things for a while — how the last room went, and how
+ * much time is available — and both have since found somewhere better to live:
+ * Progress is a destination of its own, and the balance sits in `TopBar`, where
+ * all four tabs read it from one fetch. `PanelSetup` kept an unused `header`
+ * slot documenting that arrangement long after nothing filled it; it is gone.
  *
  * **The tab bar stays**, which is the reason this could be merged at all.
  * Library and Settings are peers reachable from here without unwinding a stack,
@@ -73,6 +79,7 @@ const ACCEPTS = ['application/pdf', 'application/vnd.openxmlformats-officedocume
 const ASK_AGAIN_MS = 3000;
 
 export default function HomeScreen() {
+  const { recheck } = useGateway();
   // Set once by onboarding, and never by a link, a back gesture or a fresh
   // launch. A string because route params are strings; the comparison is
   // explicit so a truthy `'0'` cannot creep in later.
@@ -97,6 +104,12 @@ export default function HomeScreen() {
   const [room, setRoom] = useState<Catalogue | null>(null);
   const [mine, setMine] = useState<MyArchetype[]>([]);
   const [refused, setRefused] = useState<string | null>(null);
+  // What Try again turns. Home is the one screen a failed read used to park
+  // somebody on permanently: the catalogue is fetched on mount, this route
+  // stays mounted behind the tab bar, and there was no control to ask again —
+  // so a single timeout at launch left the product's primary screen dead until
+  // the app was killed. Every other screen in the app already had the way out.
+  const [attempt, setAttempt] = useState(0);
   const [seated, setSeated] = useState<string[]>([]);
   // The empty string rather than null, because it is a text input's value and
   // a `TextInput` handed null quietly becomes uncontrolled. Emptiness means
@@ -267,14 +280,20 @@ export default function HomeScreen() {
           setSeated((chosen) => (chosen.length === 0 ? fetched.seated : chosen));
         }
       })
-      .catch((error) =>
-        live &&
-        setRefused(
-          error instanceof SignedOut
-            ? 'Sign in to assemble a room.'
-            : 'Could not reach the server. Try again in a moment.'
-        )
-      );
+      .catch((error) => {
+        if (!live) return;
+        if (error instanceof SignedOut) {
+          // The gate decides where a signed-out person goes, not this screen —
+          // the same call `library.tsx` and `settings.tsx` make. Home used to
+          // print "Sign in to assemble a room." and stop there, which left an
+          // expired credential sitting on a sentence with no sign-in anywhere
+          // near it. `Stack.Protected` moves them the moment the answer
+          // changes.
+          recheck();
+          return;
+        }
+        setRefused('I could not reach the panel. Try that again in a moment.');
+      });
 
     // Separately, and allowed to fail. The screen states the formats it
     // accepts either way — those are a fact about the product — and only the
@@ -295,7 +314,11 @@ export default function HomeScreen() {
     return () => {
       live = false;
     };
-  }, []);
+    // `attempt` is what Try again turns, and `revealing` is read inside — a
+    // param that only ever changes on the way in from onboarding, so listing
+    // it costs nothing and stops the reveal reading a stale value. `recheck`
+    // is `useCallback([])` on the gate, so it never moves and never re-fetches.
+  }, [attempt, revealing, recheck]);
 
   // Stopped on unmount as well as on settling, or a screen somebody left keeps
   // asking about a deck nobody is waiting for.
@@ -429,7 +452,18 @@ export default function HomeScreen() {
   if (refused !== null) {
     return (
       <Ground>
-        <Text style={styles.refused}>{refused}</Text>
+        <Text style={styles.refusalTitle}>That did not load</Text>
+        <Text style={styles.refusalBody}>{refused}</Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            setRefused(null);
+            setAttempt((made) => made + 1);
+          }}
+          style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
+        >
+          <Text style={styles.retryLabel}>Try again</Text>
+        </Pressable>
       </Ground>
     );
   }
@@ -544,10 +578,32 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: space.screen,
+    padding: space.screen,
+    gap: space.snug,
   },
 
-  refused: { ...type.bodyMd, color: color.onSurfaceVariant, textAlign: 'center' },
+  /**
+   * A read that failed, and the way out of it — the shape `library.tsx`,
+   * `prep-sheet/[id].tsx` and the root `Unreachable` all already draw.
+   *
+   * Home was the exception, and the worst screen to be one on: it is where the
+   * product starts, and its catalogue is fetched on mount from a route that
+   * never unmounts.
+   */
+  refusalTitle: { ...type.headlineSm, color: color.onSurface },
+  refusalBody: { ...type.bodyLg, color: color.onSurfaceVariant, textAlign: 'center' },
 
-  standing: { marginBottom: space.section },
+  retry: {
+    marginTop: space.snug,
+    paddingVertical: space.snug,
+    paddingHorizontal: space.loose,
+    borderRadius: radius.pill,
+    backgroundColor: color.primary,
+  },
+  // `onPrimary`, not `surface`. Text on the primary fill has always been
+  // `onPrimary`'s job, and reaching for the ground colour only worked while the
+  // ground happened to be near-white — which stopped being true when it was
+  // darkened to make cards visible.
+  retryLabel: { ...type.labelLg, color: color.onPrimary },
+  pressed: { opacity: 0.6 },
 });

@@ -47,6 +47,42 @@ The title moved to "Set the room" as a consequence: a screen that opens on the
 deck cannot be titled with the panel's question, and "Who is in the room" is
 better used where it belongs, over the rail.
 
+## The polish pass, 2026-08-21
+
+Three things the sections above described correctly and the code did not do.
+
+**The rail was never full-bleed.** "Breaks the screen margin on purpose" was in
+the style's own comment, and the rail sits inside a container already inset by
+`space.screen` — so its `paddingHorizontal` was a *second* inset. The first card
+began forty points in while the title, the deck, the heading directly above it,
+the pills and Start all began at twenty, and the rail was the one element on a
+strictly aligned screen that was off the margin. At the far end the viewport
+stopped twenty points short of the glass, so the card that is supposed to be cut
+off ended against a strip of ground and read as a row that had simply finished —
+which is the "does the peek read as more" question in Unresolved, answered: it
+could not, because there was no peek. A wrapper pulled back by the same inset
+fixes both ends at once.
+
+**The summary and the refusal were on opposite sides of Start.** One slot said
+two ways — what the room is, or why it cannot open — and seating the first
+archetype added a block above the button while removing one below it in the same
+frame, so the control moved under the thumb reaching for it. They are one slot
+now, above the button, which is also the order a screen reader reads: landing on
+a dimmed Start used to mean being told you could not press it and having to swipe
+past it to find out why.
+
+**`header` was a slot nothing filled.** It documented Home drawing "how the last
+room went, and how much time is available" above the title; Progress became a
+destination of its own and the balance moved into `TopBar`, and the prop outlived
+both. Removed, along with seven style objects describing the text rows the card
+rail replaced.
+
+Home's own refusal state was the other half of the pass and is not this
+component's: a failed catalogue read had no Try again, on a route that never
+unmounts, so one timeout at launch killed the product's first screen until the
+app was. It now draws the shape `library.tsx` and the root `Unreachable` already
+use, and a `SignedOut` calls the gate instead of printing a sentence.
+
 ## Telling the rail it continues
 
 Two devices, because one is visual and one is spoken.
@@ -87,6 +123,6 @@ Everything else on the screen is a state flip and should stay one.
 
 ## Unresolved
 
-- The rail's last card sits close to the right margin at three seats; whether the peek reads as "more" needs a second device.
+- Whether the peek now reads as "more" needs a device. The pointer and the count carry it regardless; what changed is that the cut card runs under the edge of the glass rather than stopping short of it.
 - `/v1/materials/limits` 502s without object storage (#72), so the deck row states formats without sizes. The fallback is load-bearing, not defensive.
 - Custom archetypes have no endpoint (#65) — the author card is a statement, deliberately not a control.
