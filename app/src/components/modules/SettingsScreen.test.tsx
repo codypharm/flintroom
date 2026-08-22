@@ -278,7 +278,7 @@ it('opens what is attached rather than only counting it', async () => {
   const onOpenMaterial = jest.fn();
   await show({ materials: 2 }, { onOpenMaterial });
 
-  await userEvent.press(screen.getByLabelText('Attached material'));
+  await userEvent.press(screen.getByLabelText(/^Material\./));
 
   expect(onOpenMaterial).toHaveBeenCalledTimes(1);
 });
@@ -289,7 +289,7 @@ it('offers the way in even with nothing attached', async () => {
   const onOpenMaterial = jest.fn();
   await show({ materials: 0 }, { onOpenMaterial });
 
-  await userEvent.press(screen.getByLabelText('Attached material'));
+  await userEvent.press(screen.getByLabelText(/^Material\./));
 
   expect(onOpenMaterial).toHaveBeenCalledTimes(1);
 });
@@ -462,4 +462,23 @@ describe('one failed read', () => {
 
     expect(screen.getByText(/could not read your account/i)).toBeOnTheScreen();
   });
+});
+
+it('reads the material count to a screen reader, not just the row name', async () => {
+  // The row is one collapsed accessible node, so a static "Attached material"
+  // label hid the count and the deletion note from VoiceOver — on a screen
+  // whose whole job is stating what is held.
+  await render(
+    <SettingsScreen
+      holdings={{ rooms: 2, oldestExpiry: null }}
+      materials={3}
+      recording={{ recordsRooms: true, retentionDays: 30 }}
+      onRecordingChange={jest.fn()}
+      onOpenMaterial={jest.fn()}
+      onDeleteAccount={jest.fn()}
+      onSignOut={jest.fn()}
+    />
+  );
+
+  expect(screen.getByLabelText(/Material\. 3 attached/)).toBeTruthy();
 });

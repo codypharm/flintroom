@@ -276,7 +276,7 @@ export function SettingsScreen({
   if (holdings === null && materials === null) {
     return (
       <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-        <Text style={styles.title} accessibilityRole="header">
+        <Text style={[styles.title, styles.firstTitle]} accessibilityRole="header">
           What we hold
         </Text>
 
@@ -345,7 +345,7 @@ export function SettingsScreen({
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.title} accessibilityRole="header">
+      <Text style={[styles.title, styles.firstTitle]} accessibilityRole="header">
         What we hold
       </Text>
 
@@ -393,7 +393,17 @@ export function SettingsScreen({
         */}
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Attached material"
+          // The row is one collapsed accessible node, so the label carries
+          // what the row says — a static "Attached material" hid the count and
+          // the deletion note from VoiceOver, on a screen whose whole job is
+          // stating what is held.
+          accessibilityLabel={`Material. ${
+            materials === null
+              ? 'I could not read this just now.'
+              : materials === 0
+                ? 'Nothing attached yet.'
+                : `${materials} attached.`
+          }`}
           onPress={onOpenMaterial}
           disabled={onOpenMaterial === undefined}
           style={({ pressed }) => [styles.row, pressed && styles.pressed]}
@@ -561,10 +571,13 @@ const styles = StyleSheet.create({
     ...type.headlineSm,
     color: color.onSurface,
     // More above than below, so a heading belongs to what follows it rather
-    // than floating between two groups.
+    // than floating between two groups. The first heading opts out: stacked on
+    // the content's own top padding it put 56pt of air before anything was
+    // said, on a screen whose brief wants the errand done in one scroll.
     marginTop: space.section,
     marginBottom: space.snug,
   },
+  firstTitle: { marginTop: 0 },
 
   group: {
     backgroundColor: color.card,
@@ -584,15 +597,22 @@ const styles = StyleSheet.create({
   rowTitle: { ...type.labelLg, color: color.onSurface },
   rowDetail: { ...type.bodySm, color: color.onSurfaceVariant },
 
-  hairline: { height: 1, backgroundColor: color.hairline, opacity: 0.5 },
+  // `hairlineWidth` at the token's own colour, as every other separator in the
+  // app draws it — this one was `height: 1` at half opacity, a third reading
+  // of a rule `tokens.ts` already settled ("a crisp separator rather than a
+  // box, which is how the platform draws its own").
+  hairline: { height: StyleSheet.hairlineWidth, backgroundColor: color.hairline },
 
   /** Inside the group rather than centred on the screen: the failure is one
    * row's worth of the account, not the whole destination. */
   again: {
     alignSelf: 'flex-start',
     marginTop: space.snug,
-    paddingVertical: space.hair,
-    paddingHorizontal: space.snug,
+    // 12 + 20 + 12 is 44 exactly — the same arithmetic the Library's control
+    // documents. At `hair` this was a 28pt target on the one control a person
+    // with a failing read has.
+    paddingVertical: space.snug,
+    paddingHorizontal: space.base,
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: color.hairline,
@@ -623,7 +643,10 @@ const styles = StyleSheet.create({
 
   pressed: { opacity: 0.7 },
 
-  destructiveLabel: { ...type.labelLg, fontSize: 16, color: color.danger },
+  // `labelLg` as the system ships it. The 16 this carried was a size the type
+  // scale does not own, and the control's weight is already in its width, its
+  // red, and the 48pt of separation above it.
+  destructiveLabel: { ...type.labelLg, color: color.danger },
 
   footnote: {
     ...type.bodySm,
