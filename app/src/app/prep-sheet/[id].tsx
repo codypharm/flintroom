@@ -1,4 +1,3 @@
-import { shareAsync } from 'expo-sharing';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -11,7 +10,6 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { captureRef } from 'react-native-view-shot';
 
 import { PrepSheet } from '../../components/modules/PrepSheet';
 import { createDebriefApi, type WeakAnswer } from '../../lib/api/debriefApi';
@@ -140,6 +138,15 @@ export default function PrepSheetRoute() {
           // is the decision #60 recorded and the reason this was never
           // stubbed with a text share.
           try {
+            // Loaded at the tap, not at the top of the file. Both are native
+            // modules, and a dev client built before they were added throws
+            // on the *import* — which took this whole route down, not just
+            // the button. Deferred, the route always loads; on a stale build
+            // the tap lands in the catch instead of a red screen.
+            const [{ captureRef }, { shareAsync }] = await Promise.all([
+              import('react-native-view-shot'),
+              import('expo-sharing'),
+            ]);
             const shot = await captureRef(printable, { format: 'png', quality: 1 });
             await shareAsync(shot, { mimeType: 'image/png' });
           } catch {
