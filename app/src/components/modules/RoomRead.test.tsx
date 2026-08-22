@@ -252,3 +252,58 @@ describe('destroying this room’s audio', () => {
     expect(screen.getByText(/did not delete/i)).toBeOnTheScreen();
   });
 });
+
+
+describe('hearing the moment a line happened', () => {
+  /**
+   * #69 wrote the offset, published it and carried it into the client type,
+   * and until this nothing read it. The ticket's own case for the column was
+   * that *"a fifteen-minute file starting at zero mostly is not"* worth
+   * playing — so a transcript that cannot seek leaves the column half-built.
+   */
+  it('offers to hear the moment a line was said', async () => {
+    const onSeek = jest.fn();
+    await setup({ onSeek });
+
+    await userEvent.press(screen.getByLabelText('Hear this from 0:15'));
+
+    expect(onSeek).toHaveBeenCalledWith(15.2);
+  });
+
+  it('draws no such control for a room that was never timed', async () => {
+    // Every room recorded before #69 has no offset, and a control that cannot
+    // work is worse than one that is absent — the rule `DeckAttach` and
+    // `AuthorRow` already follow, and `TablePlan` states from the other side:
+    // an affordance on a statement is a lie about what a tap does.
+    const onSeek = jest.fn();
+    await setup({
+      onSeek,
+      lines: LINES.map((line) => ({ ...line, beganAtSeconds: null })),
+    });
+
+    expect(screen.queryByLabelText(/^Hear this from/)).toBeNull();
+  });
+
+  it('draws no such control where there is nothing to play', async () => {
+    // A room whose recording was never made, has expired, or was deleted a
+    // moment ago. The route passes no `onSeek` in exactly the cases it passes
+    // no player, so the two cannot disagree about whether audio exists.
+    await setup({});
+
+    expect(screen.queryByLabelText(/^Hear this from/)).toBeNull();
+  });
+
+  it('labels a line with where it actually falls in the recording', async () => {
+    // The offset used to be derived from `saidAt` relative to the first line —
+    // approximate by construction, and measured from the first line rather than
+    // the session start to avoid counting provisioning seconds nobody spoke in.
+    //
+    // The true offset does not carry that flaw: the mixer only advances once
+    // audio is flowing, so provisioning is already excluded. So it takes over
+    // the label as well as the seek, and the number somebody taps is the number
+    // the audio jumps to.
+    await setup({ onSeek: jest.fn() });
+
+    expect(screen.getByText('0:15')).toBeTruthy();
+  });
+});

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 
 import { Refused } from '../../lib/api/refused';
 import { AudioElement, useAudioTagContext } from '../../lib/replay/element';
@@ -33,12 +33,58 @@ export interface RoomPlayerProps {
    * The caller owns which room and which credential; this owns the moment.
    */
   findIt: () => Promise<string>;
+  /**
+   * How the transcript above asks for a moment — #69's payoff.
+   *
+   * **A command, not a prop, and the shape is the decision.** Somebody tapping
+   * a timestamp wants both halves at once: the link signed if it is not
+   * already, and the playhead put on that second. Expressed as a changing prop
+   * that would be an effect kicking off a fetch and setting state — which React
+   * rightly warns about, and which needs a nonce beside the seconds so that
+   * tapping the *same* line twice is not silently a no-op.
+   *
+   * A handle needs none of that. Two taps are two calls, and the request looks
+   * like the imperative thing it is.
+   */
+  ref?: React.Ref<RoomPlayerHandle>;
 }
 
-export function RoomPlayer({ findIt }: RoomPlayerProps) {
+/** What a caller may ask of a mounted player. */
+export interface RoomPlayerHandle {
+  /**
+   * Open the room if it is not open, and land on this second.
+   *
+   * Safe before anything is mounted, which is the ordinary case rather than a
+   * corner: the tap almost always arrives while the transcript is all that is
+   * on screen. The position waits for an element to exist and is spent the
+   * moment one is ready.
+   */
+  hearFrom: (seconds: number) => void;
+}
+
+export function RoomPlayer({ findIt, ref }: RoomPlayerProps) {
   const [url, setUrl] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
+  /**
+   * A seek waiting for an element to play it on.
+   *
+   * The tap that asks for a moment usually arrives while nothing is mounted —
+   * the ordinary case, not a corner — so the position is held here and spent by
+   * `Chrome` once there is a tag to spend it on.
+   *
+   * **State rather than a ref, and `nth` rather than the seconds alone.** A ref
+   * was tried first and is quietly broken: writing one does not re-render, so a
+   * second request while the element is already mounted sat there until some
+   * unrelated tag update happened to re-run the effect. It appeared to work
+   * only because position tracking re-renders constantly, which is a thing that
+   * works by accident.
+   *
+   * `nth` makes asking for the *same* second twice a new request. Tapping one
+   * line twice is a real thing to do — you missed it the first time — and
+   * without the counter the second tap would be a no-op.
+   */
+  const [wanted, setWanted] = useState<{ seconds: number; nth: number } | null>(null);
 
   const hearIt = useCallback(() => {
     setAsking(true);
@@ -68,6 +114,21 @@ export function RoomPlayer({ findIt }: RoomPlayerProps) {
         );
       });
   }, [findIt]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      hearFrom: (seconds: number) => {
+        setWanted((asked) => ({ seconds, nth: (asked?.nth ?? 0) + 1 }));
+        // Signing here as well as on the transport's own control, because the
+        // two taps mean the same thing to the person making them. A second
+        // call while a link is in flight signs a second one and the last to
+        // land wins — which costs a presign and never a wrong position.
+        hearIt();
+      },
+    }),
+    [hearIt]
+  );
 
   if (url === null) {
     return (
@@ -104,7 +165,7 @@ export function RoomPlayer({ findIt }: RoomPlayerProps) {
         setUrl(null);
       }}
     >
-      <Chrome refusal={refusal} />
+      <Chrome refusal={refusal} wanted={wanted} />
     </AudioElement>
   );
 }
@@ -116,8 +177,39 @@ export function RoomPlayer({ findIt }: RoomPlayerProps) {
  * published only on that context — the imperative handle carries the verbs and
  * none of the readings — so anything that shows a position has to be inside.
  */
-function Chrome({ refusal }: { refusal: string | null }) {
+function Chrome({
+  refusal,
+  wanted,
+}: {
+  refusal: string | null;
+  wanted: { seconds: number; nth: number } | null;
+}) {
   const tag = useAudioTagContext();
+
+  /**
+   * The last request actually spent, so position updates do not replay it.
+   *
+   * This effect re-runs on every `tag` change — which is constantly, because
+   * `currentTime` advances — and without a mark, one tapped timestamp would
+   * drag the playhead back to it forever.
+   */
+  const spent = useRef(0);
+
+  /**
+   * Land on a moment somebody asked for, once there is something to land on.
+   *
+   * Waits for `ready`: seeking an element that has not loaded is discarded
+   * silently by the platform, which would look exactly like a timestamp that
+   * does nothing — on the one control whose entire point is that it lands
+   * somewhere.
+   */
+  useEffect(() => {
+    if (wanted === null || wanted.nth === spent.current || !tag.ready) return;
+
+    spent.current = wanted.nth;
+    tag.seekToTime(wanted.seconds);
+    tag.play();
+  }, [wanted, tag]);
 
   /**
    * Whether Play would start at the end of the room.

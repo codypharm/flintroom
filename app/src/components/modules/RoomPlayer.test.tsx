@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { createContext, type ReactNode } from 'react';
+import { createContext, createRef, type ReactNode } from 'react';
 
 import { Refused } from '../../lib/api/refused';
-import { RoomPlayer } from './RoomPlayer';
+import { RoomPlayer, type RoomPlayerHandle } from './RoomPlayer';
 
 /**
  * Fetching the link, and what the screen says when that goes wrong.
@@ -95,6 +95,17 @@ async function show(findIt: () => Promise<string>) {
     </mockTagContext.Provider>
   );
   return findIt;
+}
+
+/** Mounted with a handle, the way `rooms/[id]` holds one. */
+async function shown(findIt: () => Promise<string>) {
+  const handle = createRef<RoomPlayerHandle>();
+  await render(
+    <mockTagContext.Provider value={mockTag}>
+      <RoomPlayer findIt={findIt} ref={handle} />
+    </mockTagContext.Provider>
+  );
+  return handle;
 }
 
 beforeEach(() => {
@@ -218,4 +229,52 @@ it('goes on from where it was paused, which is not the top', async () => {
 
   expect(mockTag.seekToTime).not.toHaveBeenCalled();
   expect(mockTag.play).toHaveBeenCalled();
+});
+
+
+it('opens the room and lands on the moment somebody asked for', async () => {
+  // #69's payoff. Tapping a timestamp in the transcript on a room that is not
+  // playing has to do both halves — sign the link and seek — because the
+  // alternative is a control that starts from the top and leaves somebody to
+  // find the moment themselves, which is the offer that already existed.
+  const findIt = jest.fn().mockResolvedValue('https://store.test/room.opus');
+  const handle = await shown(findIt);
+
+  await act(async () => {
+    handle.current?.hearFrom(92);
+  });
+
+  expect(findIt).toHaveBeenCalledTimes(1);
+  expect(mockTag.seekToTime).toHaveBeenCalledWith(92);
+  expect(mockTag.play).toHaveBeenCalled();
+});
+
+it('seeks again when the same moment is asked for twice', async () => {
+  // Tapping one line twice is a real thing to do — you missed it the first
+  // time. Two calls are two seeks, which is the plain reading of a command and
+  // the reason this is a handle rather than a changing prop: a prop holding the
+  // same number would be unchanged, and the control would look broken exactly
+  // when somebody leaned on it.
+  const findIt = jest.fn().mockResolvedValue('https://store.test/room.opus');
+  const handle = await shown(findIt);
+
+  await act(async () => {
+    handle.current?.hearFrom(92);
+  });
+  mockTag.seekToTime.mockClear();
+  await act(async () => {
+    handle.current?.hearFrom(92);
+  });
+
+  expect(mockTag.seekToTime).toHaveBeenCalledWith(92);
+});
+
+it('signs nothing until somebody asks for a moment or presses play', async () => {
+  // The guard that keeps the presign lazy. Merely holding a handle must not
+  // spend a signature — that would put a request on every visit to a past room,
+  // which is the thing this component exists to avoid.
+  const findIt = jest.fn().mockResolvedValue('https://store.test/room.opus');
+  await shown(findIt);
+
+  expect(findIt).not.toHaveBeenCalled();
 });

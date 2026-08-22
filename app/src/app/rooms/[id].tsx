@@ -1,9 +1,9 @@
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { RoomPlayer } from '../../components/modules/RoomPlayer';
+import { RoomPlayer, type RoomPlayerHandle } from '../../components/modules/RoomPlayer';
 import { RoomRead } from '../../components/modules/RoomRead';
 import { createSessionsApi, type PastRoom, type SaidLine } from '../../lib/api/sessionsApi';
 import { API_BASE_URL, auth } from '../../lib/auth';
@@ -50,6 +50,21 @@ export default function RoomRoute() {
   // because destroying it changes what this screen holds without re-reading
   // the room — and because "gone because you deleted it just now" is a
   // different sentence from "gone because it expired".
+  /**
+   * The mounted player, so a tapped timestamp can reach it — #69.
+   *
+   * A handle rather than state, because the two halves are on opposite sides of
+   * a boundary: `RoomRead` renders the timestamps and cannot reach the audio
+   * layer (it is not importable under Jest, which is why the player arrives as
+   * a node), and `RoomPlayer` owns the element and never sees a transcript.
+   * The route is the only thing that sees both.
+   *
+   * Null whenever there is nothing to hear, which is the same condition that
+   * withholds the player — so the transcript never offers a jump into audio
+   * that does not exist.
+   */
+  const player = useRef<RoomPlayerHandle>(null);
+
   const [deleting, setDeleting] = useState(false);
   const [deleted, setDeleted] = useState(false);
   const [audioRefusal, setAudioRefusal] = useState<string | null>(null);
@@ -179,8 +194,21 @@ export default function RoomRoute() {
         // and offering to play any of them is a control that cannot work.
         player={
           room !== null && room.recording.state === 'available' && !deleted ? (
-            <RoomPlayer findIt={async () => (await sessions.playback(id)).url} />
+            <RoomPlayer
+              findIt={async () => (await sessions.playback(id)).url}
+              ref={player}
+            />
           ) : null
+        }
+        // Passed on exactly the condition the player is, so the transcript
+        // cannot offer to jump into audio that is not there. Undefined rather
+        // than a no-op function: `RoomRead` draws the control only where a tap
+        // would work, and a handler that did nothing would be the affordance
+        // lying about what pressing it does.
+        onSeek={
+          room !== null && room.recording.state === 'available' && !deleted
+            ? (seconds) => player.current?.hearFrom(seconds)
+            : undefined
         }
         // Null while the room is not in the list, which is not the same as a
         // room with nothing to destroy: not knowing is not an answer, and the

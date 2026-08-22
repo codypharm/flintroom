@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { SaidLine } from '../../lib/api/sessionsApi';
 import { panelistName } from '../../lib/panel/vocabulary';
+import { clock } from '../../lib/replay/clock';
 import { color, radius, space, type } from '../../theme/tokens';
 
 /**
@@ -93,6 +94,19 @@ export interface RoomReadProps {
    * file never reaches through.
    */
   player?: React.ReactNode;
+  /**
+   * Jump the recording to a moment, or absent where there is nothing to play.
+   *
+   * #69 wrote `began_at_seconds` and published it, and until this nothing read
+   * it — which left the column half-built, because the ticket's own case for it
+   * was that a fifteen-minute file starting at zero is barely worth playing.
+   *
+   * Passed by the route in exactly the cases it passes a `player`, so the two
+   * cannot disagree about whether audio exists. Seconds, not a line — the
+   * transport takes a position, and handing it an ordinal would make it look
+   * one up.
+   */
+  onSeek?: (seconds: number) => void;
   /** Null when the room row was not found, which is not the same as nothing. */
   recording?: RoomAudio | null;
 }
@@ -103,6 +117,7 @@ export function RoomRead({
   lines,
   onDebrief,
   player = null,
+  onSeek,
   recording = null,
 }: RoomReadProps) {
   const opened = lines.length > 0 ? new Date(lines[0].saidAt).getTime() : 0;
@@ -149,7 +164,9 @@ export function RoomRead({
             </Text>
           </View>
         ) : (
-          lines.map((line) => <Line key={line.ordinal} line={line} opened={opened} />)
+          lines.map((line) => (
+            <Line key={line.ordinal} line={line} opened={opened} onSeek={onSeek} />
+          ))
         )}
 
         {/*
@@ -244,8 +261,37 @@ function Audio({ recording }: { recording: RoomAudio }) {
   );
 }
 
-function Line({ line, opened }: { line: SaidLine; opened: number }) {
+function Line({
+  line,
+  opened,
+  onSeek,
+}: {
+  line: SaidLine;
+  opened: number;
+  onSeek?: (seconds: number) => void;
+}) {
   const mine = line.speaker === 'user';
+
+  /**
+   * Where this line falls, preferring the offset the room actually recorded.
+   *
+   * `beganAtSeconds` is a position in the mixed file, taken from the room's own
+   * clock while it ran. The derived one below is a reading aid computed from
+   * when a row was *written*, and it survives only for rooms that ran before
+   * #69 — where it is the best thing available and still better than nothing.
+   */
+  const at = line.beganAtSeconds ?? null;
+  const shown = at === null ? into(line.saidAt, opened) : clock(at);
+
+  /**
+   * Tappable only where a tap would work.
+   *
+   * Both conditions are real and neither implies the other: a room with no
+   * audio left has no `onSeek`, and a room recorded before #69 has no offset on
+   * any line. An affordance on either would be the lie about what a tap does
+   * that `AuthorRow` and `DeckAttach` both already refuse.
+   */
+  const hearable = at !== null && onSeek !== undefined;
 
   return (
     <View style={styles.line}>
@@ -257,7 +303,24 @@ function Line({ line, opened }: { line: SaidLine; opened: number }) {
         <Text style={[styles.speaker, mine && styles.me]}>
           {mine ? 'You' : panelistName(line.speaker)}
         </Text>
-        <Text style={styles.at}>{into(line.saidAt, opened)}</Text>
+        {hearable ? (
+          <Pressable
+            accessibilityRole="button"
+            // Names the moment, not the mechanism. "Seek to 15.2" is what the
+            // transport does; this is what the person gets.
+            accessibilityLabel={`Hear this from ${shown}`}
+            onPress={() => onSeek(at)}
+            // The timestamp is small type by design — it is the quiet half of
+            // the attribution row — so the target comes from slop rather than
+            // from padding, which would push the two halves off one baseline.
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            style={({ pressed }) => pressed && styles.pressed}
+          >
+            <Text style={[styles.at, styles.hearable]}>{shown}</Text>
+          </Pressable>
+        ) : (
+          <Text style={styles.at}>{shown}</Text>
+        )}
       </View>
       <Text style={styles.said}>{line.text}</Text>
     </View>
@@ -276,8 +339,12 @@ function Line({ line, opened }: { line: SaidLine; opened: number }) {
  * seconds that nothing on this screen can answer.
  *
  * Approximate by construction. `said_at` is when a line was *written*, so this
- * is a reading aid rather than a seek position; #69 is the offset that would be
- * exact, and it does not exist yet.
+ * is a reading aid rather than a seek position.
+ *
+ * **A fallback now, not the answer.** #69 records `began_at_seconds` — a true
+ * position in the mixed recording — and every room run since has one. This
+ * survives for the rooms that ran before it, where it remains the best thing
+ * available. Nothing seeks with it.
  */
 function into(saidAt: string, opened: number): string {
   const seconds = Math.max(0, Math.round((new Date(saidAt).getTime() - opened) / 1000));
@@ -297,6 +364,16 @@ const styles = StyleSheet.create({
   audioWords: { ...type.bodySm, color: color.onSurfaceVariant },
   audioRefusal: { ...type.bodySm, color: color.danger },
   audioActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: space.snug },
+
+  /**
+   * A timestamp you can press, in the tint the rest of the product uses for
+   * exactly that — the same `primary` on `Library`'s "Run it again".
+   *
+   * Colour is not the only channel: it is also the only element in the
+   * attribution row with a touch target, and a screen reader gets the button
+   * role and a sentence rather than a bare number.
+   */
+  hearable: { color: color.primary },
   gone: { ...type.bodySm, color: color.onSurfaceVariant },
 
   quiet: {
