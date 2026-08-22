@@ -66,7 +66,7 @@ export default function LibraryRoute() {
     return () => {
       live = false;
     };
-  }, [attempt]);
+  }, [attempt, recheck]);
 
   /**
    * Run this room again — the same panel, the same material, a new session,

@@ -54,7 +54,13 @@ jest.mock('../../lib/replay/element', () => {
   // Required inside rather than imported above, for the hoisting reason the
   // names carry: the factory runs before this file's imports have been
   // evaluated.
+  // `require`, because `jest.mock`'s factory is hoisted above this file's
+  // imports — an `import` would not have been evaluated yet. Suppressed with
+  // the reason attached rather than left as a standing warning that implies
+  // somebody should have known better.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { useContext } = require('react');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { View } = require('react-native');
 
   return {

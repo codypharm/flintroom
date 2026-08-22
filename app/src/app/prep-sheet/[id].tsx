@@ -73,7 +73,7 @@ export default function PrepSheetRoute() {
     return () => {
       live = false;
     };
-  }, [id, attempt]);
+  }, [id, attempt, recheck]);
 
   if (refused !== null) {
     return (

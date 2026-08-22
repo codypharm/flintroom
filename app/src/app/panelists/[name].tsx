@@ -85,7 +85,7 @@ export default function PanelistRoute() {
     return () => {
       live = false;
     };
-  }, [name, writing]);
+  }, [name, writing, recheck]);
 
   const save = async (draft: ArchetypeDraft) => {
     setBusy(true);

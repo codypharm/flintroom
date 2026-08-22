@@ -44,8 +44,23 @@ export function WhenPicker(props: WhenPickerProps) {
  * offered by default, and somebody with a date three months out will want it.
  */
 function Compose({ value, onPick, onClose }: WhenPickerProps) {
+  /*
+   * `require`, not `import`, and it is the point rather than a shortcut.
+   *
+   * `@expo/ui/jetpack-compose` and `@expo/ui/swift-ui` are platform modules:
+   * a static import of either is evaluated on both platforms, and the one that
+   * does not belong there fails at load — taking the screen with it rather
+   * than the control. Requiring inside the component that only renders on one
+   * platform is how the other never touches it.
+   *
+   * eslint-disable-next-line is deliberate and carries its reason, which is
+   * the rule `CLAUDE.md` sets for suppressions: a bare ignore outlives the
+   * thing it suppressed.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { DatePickerDialog } = require('@expo/ui/jetpack-compose') as
     typeof import('@expo/ui/jetpack-compose');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Host } = require('@expo/ui/jetpack-compose') as
     typeof import('@expo/ui/jetpack-compose');
 
@@ -80,6 +95,8 @@ function Compose({ value, onPick, onClose }: WhenPickerProps) {
  * past on the way.
  */
 function Cupertino({ value, onPick, onClose }: WhenPickerProps) {
+  // Same platform-lazy require as the Compose half above, and the same reason.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { DatePicker, Host } = require('@expo/ui/swift-ui') as
     typeof import('@expo/ui/swift-ui');
 

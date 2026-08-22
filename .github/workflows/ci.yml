@@ -39,7 +39,7 @@ jobs:
         working-directory: backend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # The same Postgres and MinIO the suite expects locally, from the same
       # file. `tests/conftest.py` refuses a filesystem shim on purpose —
@@ -118,9 +118,9 @@ jobs:
         working-directory: app
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -136,17 +136,21 @@ jobs:
       - name: Types
         run: npx tsc --noEmit
 
-      # Errors fail the run; warnings do not. That is eslint's default and it is
-      # the right ratchet here — there are still warnings in the tree, and a
-      # threshold pinned to today's count would either age into noise or fail on
-      # a file somebody merely moved.
+      # `--max-warnings 0`, now that there are none.
       #
-      # The rules that matter are React's own: `react-hooks/refs`,
-      # `set-state-in-effect` and `purity` are what the React Compiler needs to
-      # be able to reason about a component, and this app has one screen that
-      # genuinely cannot drop a frame.
+      # This was warnings-tolerant for one commit, on the argument that a
+      # threshold pinned to today's count ages into noise. Zero is not a count
+      # though — it is a floor, and the reason to hold it is that a warning
+      # nobody must act on is a warning nobody reads. Every one that was in the
+      # tree has since been fixed or suppressed with its reason beside it, which
+      # is the rule `CLAUDE.md` sets for the backend and is worth here too.
+      #
+      # The rules that matter most are React's own: `react-hooks/refs`,
+      # `set-state-in-effect` and `purity` are what the React Compiler needs in
+      # order to reason about a component, and this app has one screen that
+      # genuinely cannot afford a dropped frame.
       - name: Lint
-        run: npm run lint
+        run: npm run lint -- --max-warnings 0
 
       - name: Tests
         run: npx jest

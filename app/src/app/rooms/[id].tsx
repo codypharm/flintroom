@@ -97,7 +97,7 @@ export default function RoomRoute() {
     return () => {
       live = false;
     };
-  }, [id, attempt]);
+  }, [id, attempt, recheck]);
 
   const destroyRecording = async () => {
     setDeleting(true);

@@ -164,7 +164,7 @@ export default function DebriefRoute() {
     return () => {
       live = false;
     };
-  }, [id, attempt, speak]);
+  }, [id, attempt, speak, recheck]);
 
   /**
    * Stop the hardware, whatever ended the turn.
@@ -232,7 +232,7 @@ export default function DebriefRoute() {
       }
       setTurnRefusal(refusedTurn(error));
     }
-  }, [id, speak, opening]);
+  }, [id, speak, opening, recheck]);
 
   const finish = useCallback(async () => {
     const gathering = clip.current;
@@ -284,7 +284,7 @@ export default function DebriefRoute() {
     } finally {
       setListening({ state: 'idle' });
     }
-  }, [id, release, speak]);
+  }, [id, release, speak, recheck]);
 
   const start = useCallback(
     async (at: number | null) => {

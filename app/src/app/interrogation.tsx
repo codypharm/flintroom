@@ -32,7 +32,6 @@ import { takeIntent } from '../lib/room/intent';
 import { createSessionsApi, type StartedRoom } from '../lib/api/sessionsApi';
 import { API_BASE_URL, auth } from '../lib/auth';
 import { joinRoom, type Room } from '../lib/voice/room';
-import { Refused } from '../lib/api/refused';
 import type { Attending, Ending, RoomTemperature , PanelLine } from '../lib/voice/connection';
 import { color, radius, space, type } from '../theme/tokens';
 

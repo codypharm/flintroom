@@ -72,7 +72,17 @@ export default function ProgressRoute() {
       return () => {
         live = false;
       };
-    }, [attempt])
+      // `attempt` is not read in here and is not meant to be: it is what Try
+      // again turns, and changing it changes this callback's identity, which is
+      // what makes `useFocusEffect` re-subscribe and fetch again. The rule sees
+      // an unread dependency on a `useCallback` and is right about the letter of
+      // it; the re-run is the whole point.
+      //
+      // Suppressed with the reason beside it — `CLAUDE.md`'s rule — rather than
+      // left as a standing warning, and rather than removing the dependency and
+      // silently breaking the retry.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [attempt, recheck])
   );
 
   if (refused !== null) {

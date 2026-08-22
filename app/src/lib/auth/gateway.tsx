@@ -26,15 +26,15 @@ const me = createMeApi({
 
 export type AtTheDoor = WhoIsThere | 'checking';
 
-interface Gateway {
+interface AtTheGate {
   who: AtTheDoor;
   /** Ask again. Called after signing in, and after the survey lands. */
   recheck: () => void;
 }
 
-const Context = createContext<Gateway>({ who: 'checking', recheck: () => undefined });
+const Context = createContext<AtTheGate>({ who: 'checking', recheck: () => undefined });
 
-export function useGateway(): Gateway {
+export function useGateway(): AtTheGate {
   return useContext(Context);
 }
 
