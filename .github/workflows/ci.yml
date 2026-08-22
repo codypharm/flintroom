@@ -62,6 +62,19 @@ jobs:
           docker compose up -d --wait db storage
           docker compose run --rm storage-init
 
+      # `docs/deployment.md` already had a section for this — "LibreOffice is in
+      # the image, or PPTX quietly stops working". The extraction sweep converts
+      # a deck to PDF by running headless `soffice`, so a machine without it
+      # fails only on the one file type that needs it. That doc's own remedy is
+      # `apt-get install -y libreoffice`; `impress` plus `--no-install-recommends`
+      # is the same thing without ~400 MB of Writer, Calc and Base.
+      #
+      # It is also what a green run now proves. Five tests exercise a real
+      # conversion rather than a stub, for the reason `tests/conftest.py` uses a
+      # real MinIO: a shim would leave the path untested until deploy.
+      - name: Install LibreOffice
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-impress
+
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true

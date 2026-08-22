@@ -266,6 +266,12 @@ first attempt rather than at some later scale.
 
 ## LibreOffice is in the image, or PPTX quietly stops working
 
+> **CI installs it since 2026-08-22**, and the first run without it is what
+> proved this section was not hypothetical: five PPTX tests failed with
+> `FileNotFoundError: 'soffice'` on a runner where everything else passed. They
+> pass on a developer machine because a developer installed it once and forgot.
+
+
 The extraction sweep converts a PPTX to PDF by running headless LibreOffice as a
 subprocess. It is the only system package this backend needs, and the only input
 type that needs it — `apt-get install -y libreoffice` on Debian, `brew install
