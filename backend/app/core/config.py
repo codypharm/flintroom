@@ -94,7 +94,10 @@ class Settings(BaseSettings):
     and wrong is the whole of debugging it, and knowing its value is not.
     """
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # `env_ignore_empty`: a `KEY=` line is a blank left to fill, not a value.
+    # Without it an empty ELEVENLABS_DEFAULT_VOICE_ID would reach the vendor
+    # as a real, empty voice id, and an empty float field would refuse to boot.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
 
     def __repr__(self) -> str:
         # `getattr` with a default, because pydantic reprs a half-built object

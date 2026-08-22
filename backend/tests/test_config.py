@@ -262,3 +262,26 @@ def test_every_secret_shaped_field_is_covered_by_the_guard():
     for name in Settings.model_fields:
         if any(hint in name for hint in SECRET_ISH):
             assert _is_secret(name), name
+
+
+def test_an_empty_value_means_unset_not_an_empty_credential(environment):
+    """`KEY=` in a `.env` is a blank left to fill, not a value.
+
+    The distinction is load-bearing for `ELEVENLABS_DEFAULT_VOICE_ID`: the
+    speaker uses it as the fallback in a dict lookup, so an empty *string*
+    would be sent to the vendor as a real voice id mid-room, where `None`
+    means "no fallback voice" and fails the turn cleanly. And for the typed
+    fields it is the difference between booting and a validation error about
+    a float that was never meant to be set.
+    """
+    environment(
+        ELEVENLABS_DEFAULT_VOICE_ID="",
+        VAD_SILENCE_THRESHOLD_SECS="",
+        EXTRACTION_PROVIDER="",
+    )
+
+    settings = Settings(_env_file=None)
+
+    assert settings.elevenlabs_default_voice_id is None
+    assert settings.vad_silence_threshold_secs is None
+    assert settings.extraction_provider == "gemini"
