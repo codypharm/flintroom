@@ -14,7 +14,7 @@
  */
 
 /** What kind of room this is — Q1. */
-export const SITUATIONS: ReadonlyArray<{ key: string; label: string }> = [
+export const SITUATIONS: readonly { key: string; label: string }[] = [
   { key: 'board_review', label: 'A board or exec review' },
   { key: 'client_defense', label: 'A client meeting or a bid' },
   { key: 'roadmap_review', label: 'A roadmap or launch review' },
@@ -30,7 +30,7 @@ export const SITUATIONS: ReadonlyArray<{ key: string; label: string }> = [
 ];
 
 /** What the presenter is, when they stand up — Q3. */
-export const ROLES: ReadonlyArray<{ key: string; label: string }> = [
+export const ROLES: readonly { key: string; label: string }[] = [
   { key: 'exec', label: 'Leading a function or a business' },
   { key: 'pm', label: 'Running a product or a programme' },
   { key: 'consultant', label: 'Consulting, or working for clients' },
@@ -48,7 +48,7 @@ export const ROLES: ReadonlyArray<{ key: string; label: string }> = [
  * somebody choosing their own room and being shown it back. The translation is
  * the payoff, and it happens on the server.
  */
-export const SEATS: ReadonlyArray<{ key: string; label: string }> = [
+export const SEATS: readonly { key: string; label: string }[] = [
   { key: 'budget', label: 'Controls the budget' },
   { key: 'technical', label: 'The technical lead' },
   { key: 'ally', label: 'Already on your side' },
@@ -59,7 +59,7 @@ export const SEATS: ReadonlyArray<{ key: string; label: string }> = [
 ];
 
 export function labelFor(
-  vocabulary: ReadonlyArray<{ key: string; label: string }>,
+  vocabulary: readonly { key: string; label: string }[],
   key: string | null
 ): string | null {
   return vocabulary.find((entry) => entry.key === key)?.label ?? null;

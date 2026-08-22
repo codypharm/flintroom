@@ -35,6 +35,7 @@ from app.agents.opening import OpeningFloor
 from app.modules.voice.orchestrated import HEARTBEAT_SECONDS, OrchestratedChannel
 from app.modules.voice.transcribers.elevenlabs import SAMPLE_RATE
 from app.modules.ingestion.schemas import QuantitativeClaim, Unit
+from app.modules.voice.mixing import RoomMixer
 from app.modules.voice.transcription import Transcription
 
 pytestmark = pytest.mark.asyncio
@@ -1725,3 +1726,45 @@ async def test_an_utterance_that_produced_no_partial_announces_nobody():
     # And the room still answers. The absence is of an announcement, never of a
     # turn — a silent tray must not cost the presenter a question.
     assert [e.speaker for e in events if isinstance(e, AgentTranscript)] == ["cfo"]
+
+
+async def test_the_rooms_two_clocks_agree_about_what_time_it_is():
+    """#98. Two counters answer "how far into the room are we", and must not drift.
+
+    `RoomMixer.elapsed()` counts user samples in the relay and stamps
+    `session_transcript_lines.began_at_seconds` (#69).
+    `OrchestratedChannel._seconds_elapsed()` counts the same audio one call
+    later, in `send_audio`, and stamps every Auditor finding — the same field
+    also drives `_seconds_heard`, which is what METERS the room.
+
+    So a finding saying "at second 47" and the line it belongs to are the same
+    fact derived twice. They agree because the relay hands both halves the same
+    bytes, and until this nothing anywhere said so.
+
+    **A test rather than a refactor, deliberately.** Merging them means touching
+    the counter a user is charged from, which `CLAUDE.md` makes non-negotiable
+    and which deserves its own pass. This converts a silent future divergence —
+    a frame dropped on one path, a cursor stalled on one and not the other —
+    into a failing test, and moves no authority at all.
+
+    Fed directly rather than through a relay, because what is under test is the
+    arithmetic rather than the wiring: the relay calling both on every frame is
+    one line, and the thing that would rot is the two counters disagreeing about
+    what a frame is worth.
+    """
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=FakeTranscription([]),
+        model=ScriptedPanelModel(),
+        grounding=Grounding(),
+    )
+    mixer = RoomMixer()
+
+    # Three and a bit seconds, in the frame size the phone actually sends.
+    for _ in range(40):
+        frame = b"\x01\x00" * 800
+        mixer.heard(frame)
+        await channel.send_audio(frame)
+
+    assert int(mixer.elapsed()) == channel._seconds_elapsed()
+    assert mixer.elapsed() > 0, "a clock that never moved agrees with anything"

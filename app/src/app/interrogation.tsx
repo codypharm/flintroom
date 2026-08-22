@@ -33,8 +33,7 @@ import { createSessionsApi, type StartedRoom } from '../lib/api/sessionsApi';
 import { API_BASE_URL, auth } from '../lib/auth';
 import { joinRoom, type Room } from '../lib/voice/room';
 import { Refused } from '../lib/api/refused';
-import type { Attending, Ending, RoomTemperature } from '../lib/voice/connection';
-import type { PanelLine } from '../lib/voice/connection';
+import type { Attending, Ending, RoomTemperature , PanelLine } from '../lib/voice/connection';
 import { color, radius, space, type } from '../theme/tokens';
 
 /**
@@ -109,10 +108,14 @@ export default function InterrogationScreen() {
    * somebody can act on, where a hang stated as nothing is the silence this
    * whole thing replaces.
    */
-  const [attending, setAttending] = useState<{ state: Attending; since: number }>({
+  // A lazy initialiser, because `Date.now()` in the argument position runs on
+  // every render — `react-hooks/purity` flags it, and it is right: the value is
+  // thrown away every time after the first, so the reads are pure waste on the
+  // one screen that cannot drop a frame. Wrapped, it runs once.
+  const [attending, setAttending] = useState<{ state: Attending; since: number }>(() => ({
     state: 'listening',
     since: Date.now(),
-  });
+  }));
   /**
    * How the panel is receiving the argument — #74.
    *
@@ -435,13 +438,25 @@ export default function InterrogationScreen() {
       return;
     }
 
+    // Zero first, and scheduled rather than written straight into the effect
+    // body. `react-hooks/set-state-in-effect` objects to the synchronous write,
+    // and the fix is also the more honest one: this is the clock *starting*, so
+    // it belongs on the same footing as the ticks that follow it rather than
+    // being a render the room pays for before the first second exists.
+    //
+    // A whole second of latency would be visible here — the clock is on screen
+    // — so it is a task rather than a timeout: the reset lands before the first
+    // tick either way, and `elapsed` was already null until this ran.
+    const start = setTimeout(() => setElapsed(0), 0);
     const tick = setInterval(
       () => setElapsed(Math.floor((Date.now() - opened.current) / 1000)),
       1000
     );
-    setElapsed(0);
 
-    return () => clearInterval(tick);
+    return () => {
+      clearTimeout(start);
+      clearInterval(tick);
+    };
   }, [phase]);
 
   const end = useCallback(() => {

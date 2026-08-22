@@ -483,8 +483,14 @@ function useHeldFor(since: number, ticking: boolean): number {
 
   useEffect(() => {
     if (!ticking) {
-      setHeld(0);
-      return;
+      // Not synchronous, and `react-hooks/set-state-in-effect` is right to ask.
+      // Resetting inside the effect body makes this a cascading render on every
+      // frame the room is not counting; scheduling it puts the write on the
+      // next tick, which is where an effect's own writes belong. The value is
+      // read as elapsed seconds and nothing measures the gap, so a tick of
+      // latency is not observable.
+      const settle = setTimeout(() => setHeld(0), 0);
+      return () => clearTimeout(settle);
     }
 
     const tick = setInterval(
@@ -535,10 +541,21 @@ function SoundBar({
   working: boolean;
 }) {
   const calm = useReduceMotion();
-  const bars = useRef(
+  // Lazy `useState` rather than `useRef(...).current`, like the values above:
+  // both of these are read during render — the bars to draw them, the history
+  // to write into — and `react-hooks/refs` is right that a ref read in render
+  // is invisible to the React Compiler. Identical at run time; the arrays are
+  // built once and never replaced, only mutated in place.
+  const [bars] = useState(() =>
     Array.from({ length: SPAN }, () => new Animated.Value(QUIET))
-  ).current;
-  const history = useRef<number[]>(Array.from({ length: SPAN }, () => 0)).current;
+  );
+  // Still a ref, and deliberately unlike `bars` above. This is a scratch buffer
+  // written in place and never read during render — which is what a ref is for.
+  // What `react-hooks/refs` objected to was binding `.current` in the render
+  // body; reaching for it inside the effect is the sanctioned shape, and making
+  // it state would mean rebuilding the array on every reading to satisfy an
+  // immutability rule it has no business being subject to.
+  const history = useRef<number[]>(Array.from({ length: SPAN }, () => 0));
   /**
    * The room's own motion, nought to one, once per cycle.
    *
@@ -554,7 +571,13 @@ function SoundBar({
    * already alive with their own voice and a second animation would be fighting
    * them for the same pixels.
    */
-  const swell = useRef(new Animated.Value(0)).current;
+  // `useState` with a lazy initialiser rather than `useRef(...).current`, which
+  // is what this was. An `Animated.Value` is exactly the thing a ref looks made
+  // for, but reading `.current` during render is what `react-hooks/refs`
+  // forbids and what the React Compiler cannot reason about — and this is the
+  // one screen that cannot afford the compiler bailing out. Identical at run
+  // time: the initialiser runs once and the value is never replaced.
+  const [swell] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     if (!working || calm) {
@@ -581,13 +604,14 @@ function SoundBar({
   }, [calm, swell, working]);
 
   useEffect(() => {
-    history.unshift(loudness);
-    history.length = SPAN;
+    history.current.unshift(loudness);
+    history.current.length = SPAN;
 
     bars.forEach((bar, index) => {
       // Distance from the middle picks how old a reading this bar shows: the
       // centre is now, the edges are half a second ago.
-      const height = QUIET + (history[Math.abs(index - MIDDLE)] ?? 0) * (1 - QUIET);
+      const height =
+        QUIET + (history.current[Math.abs(index - MIDDLE)] ?? 0) * (1 - QUIET);
 
       Animated.timing(bar, {
         toValue: lit ? height : QUIET,

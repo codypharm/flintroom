@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useReduceMotion } from '../../lib/a11y/reduceMotion';
@@ -179,7 +179,13 @@ function shortened(words: string[]): string {
  * less".
  */
 function useSeated(taken: boolean): Animated.Value {
-  const settled = useRef(new Animated.Value(taken ? 1 : 0)).current;
+  // `useState` with a lazy initialiser rather than `useRef(...).current`, which
+  // is what this was. An `Animated.Value` is exactly the thing a ref looks made
+  // for, but reading `.current` during render is what `react-hooks/refs`
+  // forbids and what the React Compiler cannot reason about — and this is the
+  // one screen that cannot afford the compiler bailing out. Identical at run
+  // time: the initialiser runs once and the value is never replaced.
+  const [settled] = useState(() => new Animated.Value(taken ? 1 : 0));
   const calm = useReduceMotion();
 
   useEffect(() => {

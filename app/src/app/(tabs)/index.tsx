@@ -156,46 +156,48 @@ export default function HomeScreen() {
    * still works — somebody re-running a room usually wants it as it was, and
    * occasionally wants it as it was plus one more voice.
    */
-  useEffect(() => {
-    if (again) {
-      setSeated(again.split(',').filter(Boolean));
-    }
-  }, [again]);
-
   // Seeded rather than locked, like the seating. Somebody re-running a
   // rehearsal usually wants it called what it is called, and occasionally
   // wants to correct the name — typing over it renames the whole lineage,
   // because the server reads the newest name in a group as the group's.
-  useEffect(() => {
-    if (called) {
-      setRehearsalName(called);
-    }
-  }, [called]);
-
-  // #66, and seeded on exactly the same terms — except that this one is the
-  // room's rather than the rehearsal's, so it comes from the row that was
-  // tapped rather than from the newest attempt in the lineage.
   //
-  // Prefilled and editable, which is the whole reason the note is stored per
-  // room. Somebody re-running the same argument for the same committee should
-  // not retype it; somebody taking it to a different room on Friday must be
-  // able to see what is in the box and change it before Start. Inheriting it
-  // silently would get the second case wrong every time.
-  useEffect(() => {
-    if (facing) {
-      setAudience(facing);
-    }
-  }, [facing]);
+  // #66's note is seeded on the same terms, except that it is the *room's*
+  // rather than the rehearsal's: it comes from the row that was tapped rather
+  // than from the newest attempt in the lineage. Prefilled and editable is the
+  // whole reason it is stored per room — somebody re-running the same argument
+  // for the same committee should not retype it, and somebody taking it to a
+  // different room on Friday must be able to see it and change it before Start.
+  //
+  // **One adjustment during render, not four effects, and React prefers it.**
+  // These were four `useEffect`s that set state, which `react-hooks/set-state-in-effect`
+  // flags for a real reason: each was a second render pass to write a value
+  // that was knowable during the first. React's documented shape for "reset
+  // state when a prop changes" is exactly this — compare against what was last
+  // seeded, and adjust while rendering.
+  //
+  // Keyed on all four together because they arrive together: one navigation
+  // from the Library carries the whole seeding, and treating them separately
+  // implied they could arrive apart, which they cannot.
+  //
+  // `null` initially rather than the first arrival, so a fresh mount *with*
+  // params still seeds. That was the effects' behaviour and losing it would
+  // mean "Run it again" worked only when the tab was already open.
+  const arrival = `${again ?? ''}|${called ?? ''}|${facing ?? ''}|${rung ?? ''}`;
+  const [seeded, setSeeded] = useState<string | null>(null);
 
-  useEffect(() => {
+  if (arrival !== seeded) {
+    setSeeded(arrival);
+
+    if (again) setSeated(again.split(',').filter(Boolean));
+    if (called) setRehearsalName(called);
+    if (facing) setAudience(facing);
+
     // Guarded on a real number rather than on truthiness. The Library sends an
     // empty string for a rehearsal that has never run, and `Number('')` is 0 —
     // a rung off the ladder, which would draw no pill as selected at all.
     const at = Number(rung);
-    if (rung && Number.isFinite(at) && at > 0) {
-      setPinned(at);
-    }
-  }, [rung]);
+    if (rung && Number.isFinite(at) && at > 0) setPinned(at);
+  }
 
   useEffect(() => {
     let live = true;

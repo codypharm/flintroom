@@ -667,3 +667,4 @@ async def test_the_phone_is_told_when_the_floor_comes_back(
     await relay.run(session_id=session.id)
 
     assert client.yielded == 1
+

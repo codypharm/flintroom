@@ -531,8 +531,17 @@ replaces is a state where every check ran only when somebody happened to run
 one, which made "the suite is green" a statement about a person rather than
 about the repository.
 
-Two jobs, five checks: `pytest` and `uvx ty@0.0.73 check app` on the backend,
-`tsc --noEmit` and `jest` on the app, and one drift check described below.
+Two jobs, six checks: `pytest` and `uvx ty@0.0.73 check app` on the backend,
+`tsc --noEmit`, `eslint` and `jest` on the app, and one drift check described
+below.
+
+**Lint fails on errors and not on warnings**, which is eslint's default and the
+right ratchet: there are still warnings in the tree, and a threshold pinned to
+today's count would either age into noise or fail on a file somebody merely
+moved. The rules that matter are React's own — `react-hooks/refs`,
+`set-state-in-effect` and `purity` are what the React Compiler needs in order to
+reason about a component, and this app has one screen that genuinely cannot
+afford a dropped frame.
 
 **`ty` is pinned there for the reason `pyproject.toml` gives.** It is
 preview-stage, so an unpinned run can report differently on unchanged source and

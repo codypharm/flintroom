@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Image, StyleSheet, Text, View } from 'react-native';
 
 import { color, type } from '../../theme/tokens';
@@ -60,9 +60,15 @@ export interface TrayProps {
 }
 
 export function Tray({ speaking, emerging, label, portrait, toCentre, develop }: TrayProps) {
-  const held = useRef(new Animated.Value(speaking ? 1 : 0)).current;
-  const breath = useRef(new Animated.Value(0)).current;
-  const coming = useRef(new Animated.Value(0)).current;
+  // `useState` with a lazy initialiser rather than `useRef(...).current`, which
+  // is what this was. An `Animated.Value` is exactly the thing a ref looks made
+  // for, but reading `.current` during render is what `react-hooks/refs`
+  // forbids and what the React Compiler cannot reason about — and this is the
+  // one screen that cannot afford the compiler bailing out. Identical at run
+  // time: the initialiser runs once and the value is never replaced.
+  const [held] = useState(() => new Animated.Value(speaking ? 1 : 0));
+  const [breath] = useState(() => new Animated.Value(0));
+  const [coming] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     Animated.timing(held, {

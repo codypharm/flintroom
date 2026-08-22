@@ -55,7 +55,7 @@ class FakeBuffer {
 class FakeQueueSource {
   readonly enqueued: FakeBuffer[] = [];
   started = 0;
-  startedWith: Array<[number | undefined, number | undefined]> = [];
+  startedWith: [number | undefined, number | undefined][] = [];
   dequeued: string[] = [];
   onBufferEnded:
     | ((event: { bufferId: string; isLastBufferInQueue: boolean }) => void)
