@@ -75,6 +75,15 @@ export interface PrepSheetProps {
   onSpar: (rank: number) => void;
   onShare: () => void;
   /**
+   * The sheet as it leaves the phone. #60's export, rendered rather than
+   * screenshotted: every finding open so the image needs no taps, the
+   * verbatim answers absent so the fumbled words never leave the device, and
+   * no controls, because a button in a picture is a lie about what a tap
+   * does. The route captures this render off-screen and hands the image to
+   * the native share sheet.
+   */
+  printing?: boolean;
+  /**
    * The way back, drawn at the **foot** rather than the head.
    *
    * The one screen in this app where that is not a whim. This sheet is "a
@@ -90,13 +99,37 @@ export interface PrepSheetProps {
   back: { where: string; onPress: () => void };
 }
 
-export function PrepSheet({ answers, onSpar, onShare, back }: PrepSheetProps) {
+export function PrepSheet({ answers, onSpar, onShare, back, printing = false }: PrepSheetProps) {
   if (answers.length === 0) {
     return <CleanRoom back={back} />;
   }
 
   const yours = grouped(answers, 'them');
   const theirs = grouped(answers, 'room');
+
+  if (printing) {
+    return (
+      <View style={[styles.screen, styles.content]} accessibilityLabel="Your prep sheet, as shared">
+        <Text style={styles.title}>Before you go in</Text>
+        <Text style={styles.standfirst}>
+          The room found these. They are the questions you will get again.
+        </Text>
+        {yours.length > 0 && (
+          <Section heading="On you" groups={yours} onSpar={onSpar} answers={answers} printing />
+        )}
+        {theirs.length > 0 && (
+          <Section
+            heading="Not on you"
+            note="You will still be asked these."
+            groups={theirs}
+            onSpar={onSpar}
+            answers={answers}
+            printing
+          />
+        )}
+      </View>
+    );
+  }
 
   return (
     <ScrollView
@@ -200,12 +233,14 @@ function Section({
   groups,
   answers,
   onSpar,
+  printing = false,
 }: {
   heading: string;
   note?: string;
   groups: Group[];
   answers: WeakAnswer[];
   onSpar: (rank: number) => void;
+  printing?: boolean;
 }) {
   return (
     <View style={styles.section}>
@@ -222,6 +257,7 @@ function Section({
               key={item.ordinal}
               answer={item}
               onSpar={() => onSpar(answers.indexOf(item))}
+              printing={printing}
             />
           ))}
         </View>
@@ -238,8 +274,35 @@ function Section({
  * something out loud, which is the only thing that rebuilds an answer in the
  * hour before it is needed.
  */
-function Question({ answer, onSpar }: { answer: WeakAnswer; onSpar: () => void }) {
+function Question({
+  answer,
+  onSpar,
+  printing = false,
+}: {
+  answer: WeakAnswer;
+  onSpar: () => void;
+  printing?: boolean;
+}) {
   const [open, setOpen] = useState(false);
+
+  if (printing) {
+    // Open, wordless about what was said, and inert. The image is read in a
+    // corridor, so the finding and the sentence worth having are on it; the
+    // answer that fumbled is not, and neither is anything shaped like a
+    // button.
+    return (
+      <View style={styles.question}>
+        <View style={styles.questionHit}>
+          <Text style={styles.asker}>{panelistName(answer.askedBy)}</Text>
+          <Text style={styles.questionText}>{answer.question}</Text>
+        </View>
+        <View style={styles.opened}>
+          <Text style={styles.why}>{answer.why}</Text>
+          {answer.nextTime ? <Text style={styles.reach}>{answer.nextTime}</Text> : null}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.question}>

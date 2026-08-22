@@ -1,7 +1,17 @@
+import { shareAsync } from 'expo-sharing';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { captureRef } from 'react-native-view-shot';
 
 import { PrepSheet } from '../../components/modules/PrepSheet';
 import { createDebriefApi, type WeakAnswer } from '../../lib/api/debriefApi';
@@ -41,6 +51,7 @@ export default function PrepSheetRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const [answers, setAnswers] = useState<WeakAnswer[] | null>(null);
+  const printable = useRef<View>(null);
   const [refused, setRefused] = useState<RoomRefusal | null>(null);
   const [attempt, setAttempt] = useState(0);
 
@@ -104,6 +115,16 @@ export default function PrepSheetRoute() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+      {/*
+        The sheet as it leaves the phone, drawn off-screen and captured on
+        demand. `collapsable={false}` is load-bearing on Android — a view with
+        no visual effect is otherwise flattened out of the native tree and
+        there is nothing to capture. Rendered always rather than on tap: it is
+        cheap, and mounting it during the tap would race the capture.
+      */}
+      <View ref={printable} collapsable={false} style={styles.print} pointerEvents="none">
+        <PrepSheet answers={answers} printing onSpar={() => {}} onShare={() => {}} back={{ where: '', onPress: () => {} }} />
+      </View>
       <PrepSheet
         answers={answers}
         onSpar={() => {
@@ -112,12 +133,18 @@ export default function PrepSheetRoute() {
           // the thing you take into the room, not the place you rehearse.
           router.replace(`/debrief/${id}`);
         }}
-        onShare={() => {
-          // Rendering the view to an image and handing it to the native share
-          // sheet is the whole of the export, and it drops the verbatim answers
-          // on the way out. Deliberately not stubbed with a text share: the
-          // point of that decision was what leaves the phone.
-          Alert.alert('Not yet built', 'Sharing this sheet as an image is still to come.');
+        onShare={async () => {
+          // The whole of the export: rasterise the printing render and hand
+          // the file to the native share sheet. What leaves the phone is that
+          // render — findings and coaching, never the verbatim answers, which
+          // is the decision #60 recorded and the reason this was never
+          // stubbed with a text share.
+          try {
+            const shot = await captureRef(printable, { format: 'png', quality: 1 });
+            await shareAsync(shot, { mimeType: 'image/png' });
+          } catch {
+            Alert.alert('That did not share', 'Try again in a moment.');
+          }
         }}
         // The same destination the Library's room screen now names. `BackTo` wants
         // a place rather than a verb, and "the coach" is who is on that screen —
@@ -137,6 +164,15 @@ function Centred({ children }: { children: React.ReactNode }) {
 }
 
 const styles = StyleSheet.create({
+  /**
+   * Parked beyond the left edge at screen width, never display:none — a view
+   * that does not lay out cannot be captured. The height is its content's.
+   */
+  print: {
+    position: 'absolute',
+    left: -Dimensions.get('window').width * 2,
+    width: Dimensions.get('window').width,
+  },
   screen: { flex: 1, backgroundColor: color.surface },
   centred: {
     flex: 1,

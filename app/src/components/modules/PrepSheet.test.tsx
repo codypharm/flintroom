@@ -168,3 +168,35 @@ it('carries what to reach for into the room, not only what went wrong', async ()
 
   expect(screen.getAllByText('Lead with the base, then the cost.').length).toBeGreaterThan(0);
 });
+
+describe('the sheet as it leaves the phone', () => {
+  /**
+   * #60 named the export from the start: render the sheet to an image, hand
+   * it to the native share sheet, and drop the verbatim answers on the way
+   * out. The route captures a `printing` render for exactly that — the
+   * findings expanded so the image needs no taps, the fumbled words absent
+   * so what leaves the phone is the questions and the coaching, and no
+   * controls, because a button in a picture is a lie about what a tap does.
+   */
+  it('shows the finding open, without needing a tap', async () => {
+    await show([answer()], { printing: true });
+
+    expect(screen.getByText('You answered with a feeling about the trend, not a base.')).toBeTruthy();
+    expect(screen.getByText('Lead with the base, then the cost.')).toBeTruthy();
+  });
+
+  it('never carries what was actually said', async () => {
+    await show([answer()], { printing: true });
+
+    expect(screen.queryByText('We are really pleased with the trajectory.')).toBeNull();
+    expect(screen.queryByText('You said')).toBeNull();
+  });
+
+  it('carries no controls into the picture', async () => {
+    await show([answer()], { printing: true });
+
+    expect(screen.queryByText('Share this sheet')).toBeNull();
+    expect(screen.queryByText('Answer it again')).toBeNull();
+    expect(screen.queryByText(/The coach/)).toBeNull();
+  });
+});
