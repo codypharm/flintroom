@@ -2,6 +2,8 @@ import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AudioContext, AudioManager, AudioRecorder } from 'react-native-audio-api';
+
+import { enterHandsFree, leaveHandsFree } from '../../../modules/audio-routing';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -180,6 +182,24 @@ export default function DebriefRoute() {
   }, []);
 
   useEffect(() => release, [release]);
+
+  /**
+   * The coach through the same speaker as the panel.
+   *
+   * The room forces speakerphone (#26) and this screen did not, so the coach
+   * came out on the default media route — reported from a device as the coach
+   * being quiet next to the panel. Same posture, same routing: the phone is
+   * still flat on the desk, and sparring records through the same hardware
+   * the room does. Entered on mount rather than at first speech, because the
+   * greeting plays on arrival and routing after the first samples have left
+   * is a race.
+   */
+  useEffect(() => {
+    void enterHandsFree();
+    return () => {
+      leaveHandsFree();
+    };
+  }, []);
 
   // The route is popped and the coach must not follow. `stop` rather than
   // `silence`: nothing after this screen should hear it.
