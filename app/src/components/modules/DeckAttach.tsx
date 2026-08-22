@@ -106,9 +106,16 @@ export function DeckAttach({ material, limits, onAttach, onRemove }: DeckAttachP
       ) : (
         <View style={styles.actions}>
           <View style={styles.hairline} />
+          {/*
+            Held, not hidden, while the deck is being read. Replace
+            mid-extraction races the poll watching the old material, and two
+            live controls under a spinner invite fixing something that is not
+            broken. Disabled rather than absent because the card would jump
+            when they returned — and a greyed control says they will.
+          */}
           <View style={styles.acts}>
-            <Act label="Replace" spoken="Replace this deck" onPress={onAttach} />
-            <Act label="Remove" spoken="Remove this deck" onPress={onRemove} />
+            <Act label="Replace" spoken="Replace this deck" onPress={onAttach} held={reading} />
+            <Act label="Remove" spoken="Remove this deck" onPress={onRemove} held={reading} />
           </View>
         </View>
       )}
@@ -142,19 +149,23 @@ function Act({
   label,
   spoken,
   onPress,
+  held = false,
 }: {
   label: string;
   spoken: string;
   onPress: () => void;
+  held?: boolean;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={spoken}
+      accessibilityState={{ disabled: held }}
+      disabled={held}
       onPress={onPress}
       style={({ pressed }) => [styles.act, pressed && styles.pressed]}
     >
-      <Text style={styles.actLabel}>{label}</Text>
+      <Text style={[styles.actLabel, held && styles.actHeld]}>{label}</Text>
     </Pressable>
   );
 }
@@ -245,6 +256,7 @@ const styles = StyleSheet.create({
     paddingRight: space.section,
   },
   actLabel: { ...type.labelLg, color: color.primary },
+  actHeld: { color: color.onSurfaceVariant },
 
   // The drawn page. These are icon geometry rather than layout, which is why
   // they are numbers here and not tokens — same as the chevron in `SignInSheet`

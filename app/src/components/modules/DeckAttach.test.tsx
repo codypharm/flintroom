@@ -110,14 +110,28 @@ it('shows the deck is being read, and says so out loud', async () => {
   expect(screen.getByText(/Being read/)).toBeTruthy();
 });
 
-it('can still take a deck off while it is being read', async () => {
-  // The commonest reason to want it gone is realising it is the wrong file,
-  // and that realisation arrives during the wait.
-  const { onRemove } = await show({ material: { ...DECK, state: 'extracting' } });
+it('holds both actions until the deck has been read', async () => {
+  // Reversed by the architect on device. This test used to assert the
+  // opposite — Remove stayed live during the wait, reasoning that realising
+  // it is the wrong file arrives mid-read. What the device showed is the
+  // other side of that trade: Replace mid-extraction races the poll watching
+  // the old material, and two live controls under a spinner read as an
+  // invitation to fix something that is not broken. Visible but disabled,
+  // rather than hidden: the card would jump when the actions returned, and a
+  // greyed control says they will.
+  const { onAttach, onRemove } = await show({
+    material: { ...DECK, state: 'extracting' },
+  });
 
-  fireEvent.press(screen.getByLabelText('Remove this deck'));
+  const replace = screen.getByLabelText('Replace this deck');
+  const remove = screen.getByLabelText('Remove this deck');
+  expect(replace.props.accessibilityState).toMatchObject({ disabled: true });
+  expect(remove.props.accessibilityState).toMatchObject({ disabled: true });
 
-  expect(onRemove).toHaveBeenCalled();
+  fireEvent.press(replace);
+  fireEvent.press(remove);
+  expect(onAttach).not.toHaveBeenCalled();
+  expect(onRemove).not.toHaveBeenCalled();
 });
 
 it('announces a deck that could not be read, rather than only greying it', async () => {
