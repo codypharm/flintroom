@@ -12,7 +12,11 @@ from fastapi import APIRouter, Depends, status
 
 from app.modules.auth.dependencies import CurrentUser, rate_limit_user
 from app.modules.auth.rate_limit import MATERIAL_REGISTER_LIMIT
-from app.modules.ingestion.dependencies import IngestionServiceDep, OwnedMaterial
+from app.modules.ingestion.dependencies import (
+    IngestionServiceDep,
+    OwnedMaterial,
+    TierLimitsDep,
+)
 from app.modules.ingestion.schemas import (
     MaterialDeclaration,
     MaterialLimits,
@@ -28,8 +32,18 @@ router = APIRouter(tags=["materials"])
 #: answer a malformed-UUID 422 — a failure nobody would think to look for in a
 #: line ordering.
 @router.get("/materials/limits", response_model=MaterialLimits)
+#: `TierLimitsDep`, not `IngestionServiceDep`, and #72 is the difference: this
+#: call stops at the database, and asking for the full dependency made an
+#: endpoint about what you *may* upload refuse whenever there was nowhere to
+#: upload to. It is the one ingestion call that can still answer honestly during
+#: a storage outage, which is also when the app most needs it.
+#:
+#: Kept out of the docstring on purpose. FastAPI publishes a handler's docstring
+#: as the endpoint's description, so it reaches `contracts/openapi.yaml` and
+#: every generated client — and a ticket number beside an internal dependency
+#: name is our note to ourselves, not something a caller can act on.
 async def read_limits(
-    user_id: CurrentUser, ingestion: IngestionServiceDep
+    user_id: CurrentUser, ingestion: TierLimitsDep
 ) -> MaterialLimits:
     """What this caller may upload, and what the rung above would allow.
 

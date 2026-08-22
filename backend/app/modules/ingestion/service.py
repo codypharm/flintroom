@@ -29,6 +29,7 @@ from app.core.errors import (
     MaterialNotReady,
     MaterialNotUploaded,
     MaterialTooLarge,
+    ProviderUnavailable,
     UnsupportedMaterialType,
 )
 from app.core.logging import get_logger
@@ -366,17 +367,51 @@ class IngestionService:
         self,
         db: AsyncSession,
         *,
-        storage: ObjectStorage,
+        storage: ObjectStorage | None = None,
         actor: ActorContext | None = None,
     ) -> None:
         self._db = db
-        self._storage = storage
+        #: The bucket, or none — #72.
+        #:
+        #: **Optional so that `limits` can be reached without one.** That method
+        #: reads the tier table and nothing else: no signed URL, no listing, no
+        #: `self._storage` anywhere in it. It was nonetheless unreachable in any
+        #: deployment without a bucket, because the handler resolved a service
+        #: that could not be *built* without one — an endpoint whose entire
+        #: purpose is to be readable before anybody uploads anything, gated on
+        #: the thing they would upload to.
+        #:
+        #: **The invariant it replaces is kept rather than dropped**, and moved
+        #: from construction to use: `_storage` below still hands out an
+        #: `ObjectStorage` or raises, so every method that signs, puts, lists or
+        #: deletes is unchanged and none of them grew a `None` check. What can no
+        #: longer happen is a whole service refusing to exist over a method the
+        #: caller was never going to call.
+        self._store = storage
         self._actor = actor or ActorContext.system()
         # Built here rather than injected, as in `SessionService`: provenance is
         # a property of the service, so a handler cannot attribute half its
         # writes to the user and half to the sweep. The sweep gets the default,
         # which is exactly what it is.
         self._audit = AuditService(db, self._actor, tag="ingestion")
+
+    @property
+    def _storage(self) -> ObjectStorage:
+        """The bucket, or the typed refusal — #72.
+
+        Raised here rather than at construction so that the methods which need
+        a store are the only ones that demand one. The error and the log line
+        are the dependency's own, deliberately: `object_storage_unconfigured` is
+        alerted on (`docs/deployment.md`), so both places that discover it must
+        spell it the same way or half the occurrences stop being found.
+
+        Vendor-anonymous, per `CLAUDE.md` — the client learns that attaching
+        material is unavailable, never which storage vendor we buy.
+        """
+        if self._store is None:
+            log.error("object_storage_unconfigured")
+            raise ProviderUnavailable(reason="storage_unconfigured")
+        return self._store
 
     async def limits(self, *, user_id: uuid.UUID) -> MaterialLimits:
         """What this caller may upload, and what the next rung would allow.

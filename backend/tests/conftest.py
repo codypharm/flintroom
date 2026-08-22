@@ -382,6 +382,33 @@ async def client_without_webhook_secret(
         yield client
 
 
+@pytest_asyncio.fixture
+async def client_without_object_storage(
+    db, google, apple, storage, weakness_reader, dictation, coach_model, speaker
+):
+    """The app as a deployment that came up with no bucket — #72.
+
+    Not a hypothetical: `build_object_storage` returns None when the variables
+    are absent and `main.py` logs `object_storage_unconfigured` and carries on,
+    deliberately, because auth, balances and the whole voice loop work without
+    one. So this is the ordinary shape of a dev box and of a partial outage.
+
+    The override is *removed* rather than replaced with a failing double, so
+    what runs is the real `get_object_storage` reading real (absent) app state.
+    A fake that raised would prove this test agrees with itself.
+    """
+    app = _configured_app(
+        db, google, apple, storage, weakness_reader, dictation,
+        coach_model, speaker, webhook_secret=WEBHOOK_SECRET,
+    )
+    del app.dependency_overrides[get_object_storage]
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        yield client
+
+
 class ScriptedWeaknessReader:
     """A reader whose answer a test sets, and which counts being asked.
 

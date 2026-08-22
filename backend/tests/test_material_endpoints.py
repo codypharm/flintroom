@@ -401,3 +401,46 @@ async def test_the_list_refuses_an_unauthenticated_caller(client):
     listed = await client.get("/v1/materials")
 
     assert listed.status_code == 401
+
+
+async def test_the_limits_are_readable_with_no_bucket_configured(
+    client_without_object_storage, account, bearer
+):
+    """#72. The one ingestion call that can still answer honestly in an outage.
+
+    `IngestionService.limits` reads the tier table and nothing else — no signed
+    URL, no bucket listing, no `self._storage` at all — but the handler took
+    `IngestionServiceDep`, which resolves object storage, which refuses when
+    there is none. So an endpoint whose entire purpose is to be readable
+    *before* anybody uploads anything was gated on the thing they would upload
+    to.
+
+    What that cost is stated in the endpoint's own docstring: the app refuses an
+    oversized file locally "before it reads a byte", and the tier table has "one
+    home rather than a second copy shipped in an app release". Both are lost
+    exactly when storage is degraded, which is the moment the app most needs to
+    say what is going on.
+    """
+    limits = await client_without_object_storage.get(
+        "/v1/materials/limits", headers=bearer(account.user_id)
+    )
+
+    assert limits.status_code == 200
+    assert limits.json()["tier"] == "free"
+    assert limits.json()["max_upload_bytes"] == 10 * 1024 * 1024
+
+
+async def test_registering_a_material_with_no_bucket_still_refuses(
+    client_without_object_storage, account, bearer
+):
+    """And the refusal that *should* happen still does.
+
+    The fix must narrow one endpoint's dependencies, not remove a wall. A
+    registration signs an upload URL, which needs a store — so this stays a 502,
+    and the client is never told which vendor is missing.
+    """
+    refused = await client_without_object_storage.post(
+        "/v1/materials", json=declaration(), headers=bearer(account.user_id)
+    )
+
+    assert refused.status_code == 502

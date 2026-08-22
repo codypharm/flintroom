@@ -59,6 +59,40 @@ async def get_ingestion_service(
 IngestionServiceDep = Annotated[IngestionService, Depends(get_ingestion_service)]
 
 
+async def get_tier_limits(
+    caller: CallerContext,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> IngestionService:
+    """Ingestion, for the one call that stops at the database — #72.
+
+    `limits` reads the tier table and nothing else: no signed URL, no listing,
+    no `self._storage` anywhere in it. Resolved through `IngestionServiceDep` it
+    was nonetheless unreachable in any deployment without a bucket, because that
+    dependency resolves object storage in order to *construct* a service — so an
+    endpoint whose entire purpose is to be readable before anybody uploads
+    anything answered 502 whenever there was nowhere to upload to.
+
+    That is not only a dev-box problem. The tier table has one home precisely so
+    the app does not ship its own copy, and the app refuses an oversized file
+    locally before it reads a byte. Both of those are lost exactly when storage
+    is degraded, which is the moment the app most needs to say what is going on
+    — and this is the one ingestion call that can still answer honestly then.
+
+    **The wall is not moved, only the wiring.** `IngestionService._storage`
+    raises the same typed, vendor-anonymous refusal the moment anything asks it
+    to sign or store, so a registration made against this service still fails
+    with a 502 rather than handing out a URL to nowhere.
+
+    A whole dependency rather than a default argument, so this is opt-in per
+    endpoint and readable in the signature. Nothing acquires a storage-free
+    service by forgetting to ask for one.
+    """
+    return IngestionService(db, actor=caller)
+
+
+TierLimitsDep = Annotated[IngestionService, Depends(get_tier_limits)]
+
+
 async def get_owned_material(
     material_id: uuid.UUID, user_id: CurrentUser, ingestion: IngestionServiceDep
 ) -> Material:

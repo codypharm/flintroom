@@ -107,6 +107,15 @@ Two more, in the same area:
   deployment that records nothing. **In one that does, this is the line that
   explains a missing sweep**, and the two are indistinguishable downstream, so
   check for it before concluding the loop died.
+
+  Since #72 the same line is also emitted *per request*, from
+  `IngestionService._storage`, whenever something actually reaches for the
+  bucket. Deliberately the same spelling — an alert that matched only the
+  startup line would miss every attempt made afterwards — so expect a burst
+  rather than one occurrence, and read the startup line as the cause. Reading
+  the upload limits no longer produces one at all: that call stops at the
+  database, and it is the one ingestion endpoint that still answers during an
+  outage.
 - `room_recording_failed` — a room finished and its audio could not be encoded
   or stored. Nothing is retried: the mixer's buffer died with the socket, so
   the recording is gone for good. Unlike the material line above, no user has
