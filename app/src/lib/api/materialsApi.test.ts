@@ -69,6 +69,33 @@ it('registers, uploads straight to storage, then reports the bytes landed', asyn
   expect(attached).toEqual({ id: 'm-1', filename: 'Q3 board deck.pdf', state: 'extracting' });
 });
 
+it('types the blob it uploads, because the wire takes the type from the blob', async () => {
+  // Found on a real phone and invisible to every laptop probe: React Native's
+  // networking layer sets a Blob body's Content-Type from the blob itself,
+  // overriding the headers object — and a blob read back from the picker's
+  // file is untyped. So the PUT went out with an empty Content-Type, the
+  // presign's signature (which covers content-type) stopped matching, and
+  // storage refused every upload from a device as a 403 the alert rounded off
+  // to "could not reach the server". The headers object cannot carry this
+  // fact; the blob has to.
+  const puts: RequestInit[] = [];
+  const fetcher = async (url: string, init: RequestInit = {}) => {
+    if (init.method === 'PUT') puts.push(init);
+    return url.endsWith('/signed-put')
+      ? ({ ok: true, status: 200 } as Response)
+      : ok(url.endsWith('/complete') ? { ...REGISTERED, state: 'pending' } : REGISTERED);
+  };
+  const api = createMaterialsApi({
+    baseUrl: 'https://api.example',
+    fetch: fetcher as unknown as typeof fetch,
+    accessToken: async () => 'access-1',
+  });
+
+  await api.attach(DECK, async () => new Blob(['pdf']));
+
+  expect((puts[0]?.body as Blob).type).toBe('application/pdf');
+});
+
 it('reports a deck the server refused without pretending it attached', async () => {
   // A file over the tier's cap is refused before anything is signed, so there
   // is no upload to undo — but the screen must not show a deck row for it.

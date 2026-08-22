@@ -156,10 +156,19 @@ export function createMaterialsApi({
       // Direct to storage, never through us. The URL is signed for exactly this
       // length and type, so a body of a different size is refused by the store
       // itself rather than by a check somebody could forget.
+      //
+      // The type rides on the blob, not only in the headers. React Native's
+      // wire layer sets a Blob body's Content-Type from the blob itself,
+      // overriding the headers object — and a blob read back from the
+      // picker's file is untyped, so the header went out empty and the
+      // signature stopped matching (403 on every device, while curl passed).
+      // `slice` is the only way to retype a blob; the header stays for any
+      // runtime that honours it.
+      const raw = await read(file.uri);
       const put = await fetcher(registered.upload_url, {
         method: 'PUT',
         headers: { 'Content-Type': contentType },
-        body: await read(file.uri),
+        body: raw.slice(0, raw.size, contentType),
       });
       if (!put.ok) {
         throw new Error(`upload failed with ${put.status}`);
