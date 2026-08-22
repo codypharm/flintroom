@@ -409,6 +409,28 @@ def test_a_panelist_who_has_already_pressed_is_marked_as_having_done_so():
     assert _silence_of(by_name("champion"), _PRESSED) == "silent for 2 turns"
 
 
+def test_a_question_to_the_panel_outranks_the_rotation_rules():
+    """A presenter asking back must reach the panelist they asked.
+
+    Observed on a device (2026-08-22, session fb4d48b5): the presenter asked
+    the CFO a question and, in one room, a different panelist took the floor
+    with an unrelated question of their own — because no rule covered a
+    presenter's counter-question, and rule 3 actively forbids the last speaker
+    from speaking again, which is exactly who such a question is usually aimed
+    at. In another exchange the model happened to route it right (line 43, the
+    CFO defining churn on request), which is the tell that this was whim, not
+    rule.
+
+    Deliberately not a test of the wording — what it pins is that the
+    instruction covers the case at all, and that it may return the floor to
+    the very panelist the rotation rules would otherwise forbid.
+    """
+    instruction = _SELECTION_INSTRUCTION.lower()
+
+    assert "asks the panel a question" in instruction
+    assert "even if they spoke last turn" in instruction
+
+
 def test_the_rules_and_the_roster_use_the_same_words_for_silence():
     """Two halves of one change, and nothing else couples them.
 
