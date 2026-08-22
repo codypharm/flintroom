@@ -1072,3 +1072,58 @@ line and an ordinary one are the same shape. Reconstructing which was which afte
 the fact is guesswork, so if the debrief needs to tell "a colleague waved this
 away" from "the presenter dodged it", that flag has to be persisted rather than
 inferred.
+
+## OpenAI against the incumbent, 2026-08-22
+
+#13, run with `scripts/panel_compare.py` — both vendors against the identical
+prompts (`openai.py` imports them from `gemini.py`, never copies), the same
+fixed roster and the same transcript `scripts/rotation.py` uses. The candidate
+was `gpt-5-mini` with `reasoning_effort: minimal`, the latency-comparable
+member of the current family, against the shipped `gemini-3.5-flash-lite`.
+Latencies are warm medians over 8 calls; rotation is three runs a column, per
+this doc's own one-run-is-not-evidence rule.
+
+| | Gemini flash-lite | OpenAI gpt-5-mini |
+| --- | --- | --- |
+| select, warm median (p90) | **0.57s** (0.60) | 0.82s (1.23, max 1.45) |
+| compose, warm median (p90) | **0.60s** (0.66) | 0.93s (1.20, max 1.53) |
+| select + compose, median | **1.17s** | 1.75s |
+| cost per turn, LIST rates | **~$0.00015** | ~$0.00042 (≈2.8×) |
+| invented figures (#45), 6 lines | **0/6** | 1/6 |
+| rotation lead on a money corpus | cfo 4–6 of 8 | technical_skeptic 5–6 of 8 |
+
+**Latency.** The room's budget to first audio is ~2.15s against the 1.5s
+illusion threshold (Open Risk #3). OpenAI adds ~0.6s at the median and its
+jitter is the worse half of the story — p90s past 1.2s per call put bad turns
+around 2.7s of model time alone. Gemini's spread over eight calls was 0.09s;
+OpenAI's was 0.75s.
+
+**Figure invention.** One OpenAI line asked about *"doubling to twenty-two
+engineers"* — the corpus says eleven engineers and a plan to double, and the
+model did the arithmetic. Derived numbers are exactly the class the
+extract/compute split exists to keep out of the room (#45): defensible math
+today, a hallucinated CAC tomorrow, and indistinguishable in kind. Gemini
+produced none in the sample. Six lines is a small sample; the direction, not
+the ratio, is the finding.
+
+**The #43 bias exists on both, pointed differently.** The corpus is
+deliberately money-weighted, so the CFO leading is the fair outcome. Gemini
+routes that way. OpenAI fixates on the Technical Skeptic instead — 5–6 of 8 in
+most runs, including one 3-word column that seated only two archetypes all
+room. A different model does not remove the over-picking failure; it moves it
+to a different chair, and to the wrong chair for this corpus.
+
+**Verdict: the incumbent holds.** Slower, ~3× the list price, one derived
+figure, and a worse rotation shape — nothing here argues for a switch, and the
+adapter is deliberately not wired into `build_panel_model`. What #13 leaves
+behind is the ability to re-ask cheaply: `openai.py` rides the shipped prompts,
+and one `scripts.panel_compare` run prices the question again whenever either
+vendor ships a new small model.
+
+**The task's open questions, answered by the run.** Which model: `gpt-5-mini`
+(`gpt-5-nano` was not measured; with mini already behind on quality axes, a
+smaller sibling could only win on price, and price is not what is holding the
+incumbent in). Per-call or deployment-wide: deployment-wide like
+`extraction_provider`, if ever — but not wired today. Mixed room: the numbers
+do not justify a second vendor's failure modes for a cheaper selection call
+that is already the cheap call.
