@@ -168,7 +168,31 @@ function Room({
           where the headline could not carry it. An unnamed room reads
           "3 days ago" / panel / "17 August" and says each thing once.
         */}
-        <Text style={styles.who}>{who}</Text>
+        {/*
+          **One line, cut where the row runs out.**
+
+          Three panelists with the long titles — "The Margin-Obsessed CFO, The
+          Growth Maximalist and The Technical Skeptic" — wrap to three lines at
+          16pt in a column that shares the row with "Run it again", so a room
+          with a full panel stood two and a half times the height of a room with
+          one. A list whose rows are different heights depending on how many
+          people were in them cannot be scanned, and the thesis at the top of
+          this file wants a month of rehearsals in one scroll.
+
+          Cut by width rather than by a character count, which is the same rule
+          measured in the unit that actually varies: the cap is where the row
+          ends on *this* phone at *this* text size, not a number picked against
+          one device.
+
+          **Nothing is lost that a reader needs.** The whole panel is in the
+          `accessibilityLabel` on the Pressable above, so VoiceOver hears every
+          name; the eye gets the first one and the fact that there are more,
+          which is what tells two rooms apart at a glance. The room itself is
+          one tap away and names all of them.
+        */}
+        <Text style={styles.who} numberOfLines={1}>
+          {who}
+        </Text>
         <Text style={styles.meta}>{named === null ? date : `${ago} · ${date}`}</Text>
         <Hearing recording={room.recording} />
       </Pressable>

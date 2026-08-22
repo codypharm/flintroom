@@ -126,3 +126,34 @@ Everything else on the screen is a state flip and should stay one.
 - Whether the peek now reads as "more" needs a device. The pointer and the count carry it regardless; what changed is that the cut card runs under the edge of the glass rather than stopping short of it.
 - `/v1/materials/limits` 502s without object storage (#72), so the deck row states formats without sizes. The fallback is load-bearing, not defensive.
 - Custom archetypes have no endpoint (#65) — the author card is a statement, deliberately not a control.
+
+
+## The way back to an empty room, added 2026-08-22
+
+The architect asked for a reset on a device. It is one control on the title row,
+and four things about it were decided rather than defaulted.
+
+**It is absent until there is something to clear.** `built` is derived from the
+props that are already there — seating, name, note, deck — rather than tracked
+as a flag, so it cannot disagree with the screen. That is what lets it sit
+beside the heading: on a fresh room there is no disabled control next to the
+title saying what the screen is for.
+
+**It arms rather than fires**, the shape End already uses on the interrogation
+screen. There is no undo behind it: the deck is destroyed on the server and the
+note is a paragraph somebody wrote about a room they are walking into. The label
+changes from "Reset" to "Tap again", and the ink to `danger` — two channels, so
+nothing is carried by colour alone. It forgets after four seconds, because an
+armed control that stays armed is a trap set for whoever touches the screen next.
+
+**It does not touch the rung.** Difficulty is the *account's* setting, stored
+server-side the moment it is tapped, and it outlives this room — a reset that
+moved it would silently undo something the next rehearsal inherits. What does go
+is `pinned`, the pressure a re-run carried in from the Library: a room that no
+longer repeats anything should show the account's rung rather than a rehearsal's.
+
+**It is text, not a bordered control.** `Library`'s "Run it again" needed the
+outline because it *starts a metered room* while sitting beside a bare tap area.
+This one spends nothing and undoes work; the burnt orange on this screen belongs
+to Start, and a reset in the same weight would put discarding a room level with
+building one.

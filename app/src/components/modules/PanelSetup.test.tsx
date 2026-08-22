@@ -44,6 +44,7 @@ async function setup(overrides: Partial<PanelSetupProps> = {}) {
     onRehearsalNameChange: jest.fn(),
     audience: '',
     onAudienceChange: jest.fn(),
+    onReset: jest.fn(),
     ...overrides,
   };
   await render(<PanelSetup {...props} />);
@@ -586,4 +587,60 @@ describe('what the room is like', () => {
       screen.getByLabelText('What they should know about this room').props.maxLength,
     ).toBe(400);
   });
+});
+
+
+it('offers nothing to reset until a room has been built', async () => {
+  // A control that would do nothing, beside the heading that says what the
+  // screen is for. It appears when there is something to put back and goes when
+  // there is not, which is why it never has to be drawn as a disabled thing.
+  await setup();
+
+  expect(screen.queryByLabelText('Clear the room')).toBeNull();
+});
+
+it('offers to reset once anything has been set, including only a name', async () => {
+  // Seating is the obvious case and the least likely to be the only one. A
+  // paragraph about the committee somebody is walking into is the expensive
+  // thing to lose track of — it is the one field here that is prose — and a
+  // reset that only appeared once somebody had seated a panel would be missing
+  // from the state where it matters most.
+  await setup({ rehearsalName: 'Q3 board readout' });
+
+  expect(screen.getByLabelText('Clear the room')).toBeTruthy();
+});
+
+it('asks once before it clears anything', async () => {
+  // There is no undo. The deck is destroyed on the server, and the note is
+  // prose somebody wrote — the same reason End on the interrogation screen arms
+  // rather than fires. The first tap teaches what the second does.
+  const props = await setup({ seated: ['cfo'], audience: 'My VP hates headcount.' });
+
+  await userEvent.press(screen.getByLabelText('Clear the room'));
+
+  expect(props.onReset).not.toHaveBeenCalled();
+  expect(screen.getByLabelText('Tap again to clear the room')).toBeTruthy();
+});
+
+it('clears the room on the second tap', async () => {
+  const props = await setup({ seated: ['cfo'] });
+
+  await userEvent.press(screen.getByLabelText('Clear the room'));
+  await userEvent.press(screen.getByLabelText('Tap again to clear the room'));
+
+  expect(props.onReset).toHaveBeenCalledTimes(1);
+});
+
+it('does not offer to reset the rung, which belongs to the account', async () => {
+  // `chooseDifficulty` stores the rung server-side the moment it is tapped, and
+  // it outlives this room — so a reset that moved it would silently undo a
+  // setting the next rehearsal inherits. The control says "the room", and the
+  // room is who is in it, what it is called, what they are told and what they
+  // are reading.
+  const props = await setup({ seated: ['cfo'] });
+
+  await userEvent.press(screen.getByLabelText('Clear the room'));
+  await userEvent.press(screen.getByLabelText('Tap again to clear the room'));
+
+  expect(props.onDifficultyChange).not.toHaveBeenCalled();
 });

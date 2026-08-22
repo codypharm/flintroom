@@ -382,24 +382,36 @@ export default function DebriefRoute() {
   }
 
   return (
-    <SafeAreaView style={styles.screen} edges={from === 'room' ? ['top', 'bottom'] : ['bottom']}>
+    <SafeAreaView style={styles.screen} edges={['bottom']}>
       {/*
-        **Shown or hidden, because sometimes there is nowhere back to.**
-        Arriving from a room that has just ended, "back" is a metered session
-        that is over — but the interrogation route is still on the stack, so a
-        header would draw a live back button onto a dead screen. Hiding the bar
-        entirely beats drawing an empty one, and the top inset returns to the
-        SafeAreaView in exactly that case.
+        **Always shown, and it used to be shown on exactly the wrong path.**
 
-        Otherwise somebody opened this from a past room, which is a place worth
-        returning to, and the bar carries the way there. Empty title: the
-        heading below is this screen's title.
+        The bar was conditional on `from !== 'room'`, written for a debrief
+        reached straight out of a live interrogation: back would have been a
+        metered session that is over, so hiding the bar beat drawing a chevron
+        onto a dead screen.
+
+        Two things were wrong with it. The condition was inverted against the
+        only caller that sets the param — `rooms/[id]` pushes `?from=room`,
+        meaning *from a past room*, which is the one arrival where back is a
+        real place — so the screen hid its way out precisely when there was one,
+        and somebody who opened a past room and tapped "Go through it with the
+        coach" was left with the edge-swipe and nothing else.
+
+        And the reason itself had expired. `interrogation.tsx` *replaces*
+        rather than pushes, so the room is not on the stack when the debrief
+        opens; back from there is the Home tab, which is a live screen and a
+        fine place to be. There is no arrival at this route where back leads
+        somewhere dead, which is why there is no longer a condition.
+
+        Empty title: the heading below is this screen's title. The back title
+        names the destination where we know it, the way `rooms/[id]` does.
       */}
       <Stack.Screen
         options={{
-          headerShown: from !== 'room',
+          headerShown: true,
           headerTitle: '',
-          headerBackTitle: 'This room',
+          headerBackTitle: from === 'room' ? 'This room' : 'Back',
           headerTintColor: color.onSurface,
           headerShadowVisible: false,
           headerStyle: { backgroundColor: color.surface },

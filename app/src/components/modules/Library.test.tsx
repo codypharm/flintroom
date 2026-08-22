@@ -219,3 +219,41 @@ describe('what the room was about', () => {
     expect(screen.getByText('4 hours ago')).toBeTruthy();
   });
 });
+
+
+it('keeps the panel to one line, so every room is the same height', async () => {
+  // Three panelists with the long titles wrap to three lines at 16pt in a
+  // column that shares the row with "Run it again" — so a fully seated room
+  // stood two and a half times the height of a room with one panelist, and a
+  // list whose rows change height by how many people were in them cannot be
+  // scanned.
+  //
+  // Asserted on the prop rather than on a measured height, because RNTL does
+  // not lay anything out: what is being fixed is a rule about the text, and the
+  // rule is the thing worth pinning.
+  await setup();
+
+  expect(
+    screen.getByText('The CFO and The Technical Skeptic').props.numberOfLines
+  ).toBe(1);
+});
+
+it('still says every panelist to a screen reader, whatever the row can show', async () => {
+  // The cut is visual. VoiceOver reads the label on the row, not the line
+  // inside it, so nothing a reader depends on is lost to the width of a phone
+  // — which is what makes truncating the visible line allowable at all.
+  await setup({
+    rooms: [
+      {
+        ...ROOMS[0],
+        archetypes: ['cfo', 'champion', 'technical_skeptic'],
+      },
+    ],
+  });
+
+  expect(
+    screen.getByLabelText(
+      '4 hours ago · 20 August, The CFO, The Champion and The Technical Skeptic'
+    )
+  ).toBeTruthy();
+});

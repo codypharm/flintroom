@@ -428,6 +428,32 @@ export default function HomeScreen() {
   }, [material]);
 
 
+  /**
+   * Put the screen back to an empty room.
+   *
+   * Every field on this screen at once, because a partial reset is worse than
+   * none — somebody who cleared the seating and kept a paragraph about last
+   * week's committee would carry it into the next room without seeing it.
+   *
+   * **The deck goes too, and that is a request rather than a blank.** `detach`
+   * clears the row first and then tells the server; a reset that only emptied
+   * the state would leave a material attached to this account with nothing on
+   * screen referring to it — an upload nobody can reach and nobody can delete.
+   *
+   * **The rung stays.** It is the account's setting, already stored server-side
+   * the moment it was tapped, and it outlives this room. `pinned` does go: that
+   * one is *this rehearsal's* inherited pressure, carried in from the Library,
+   * and a room that no longer repeats anything should show the account's rung
+   * rather than a rehearsal's.
+   */
+  const reset = useCallback(() => {
+    setSeated([]);
+    setRehearsalName('');
+    setAudience('');
+    setPinned(null);
+    void detach();
+  }, [detach]);
+
   const chooseDifficulty = useCallback(
     (level: number) => {
       // The pin stops applying the moment somebody sets a rung themselves, and
@@ -499,6 +525,7 @@ export default function HomeScreen() {
         onAttach={attach}
         onRemoveMaterial={() => void detach()}
         onDifficultyChange={chooseDifficulty}
+        onReset={reset}
         // Pro only, and the row states rather than refuses on any other plan
         // — `AuthorRow` draws the difference. Pushed rather than presented as
         // a modal: writing a panelist is considered work with several fields,

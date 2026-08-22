@@ -142,9 +142,8 @@ function Shell() {
         wants a bar now says so.
 
         The cost is that each screen owns its own top safe-area inset — the two
-        with headers drop `'top'` from their `SafeAreaView`, and the debrief
-        does it conditionally, because it hides its bar when there is nowhere
-        back to.
+        with headers drop `'top'` from their `SafeAreaView`, because the bar
+        already covers it.
       */}
       {/*
         **Nothing renders until we know who is there.** Until 2026-08-20 the app

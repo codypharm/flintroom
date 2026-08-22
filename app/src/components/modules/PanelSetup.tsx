@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import type { AttachedMaterial, MaterialLimits } from '../../lib/api/materialsApi';
@@ -153,6 +153,21 @@ export interface PanelSetupProps {
    * the way of a rehearsal.
    */
   onAuthor: (() => void) | null;
+  /**
+   * Put the screen back to an empty room.
+   *
+   * The route owns what that means, because half of it is not this screen's to
+   * undo: the seating, the name and the note are props it holds, but the deck
+   * is a file on a server and clearing it is a request. A reset that only blanked
+   * the fields would leave a material attached to an account with nothing on
+   * screen referring to it.
+   *
+   * Not the difficulty. That rung is the *account's* and is stored server-side
+   * the moment it is tapped — resetting it here would silently undo a setting
+   * that outlives this room, which is the one thing on the screen that is not
+   * part of the room being assembled.
+   */
+  onReset: () => void;
 }
 
 /**
@@ -174,6 +189,15 @@ const RUNGS = [
   { label: 'Firm', does: 'They follow up once, and they cut across each other.' },
   { label: 'Relentless', does: 'They press twice on an answer you dodge.' },
 ] as const;
+
+/**
+ * How long "Tap again" stands before Reset forgets it was asked.
+ *
+ * The same beat the End control on the interrogation screen uses, and for the
+ * same reason: an armed control that stays armed indefinitely is a trap set for
+ * whoever touches the screen next.
+ */
+const ARMED_MS = 4000;
 
 /** Counted in words, never numerals — the rule `PrepSheet.howOften` follows.
  *
@@ -202,6 +226,7 @@ export function PanelSetup({
   onDifficultyChange,
   onStart,
   onAuthor,
+  onReset,
 }: PanelSetupProps) {
   const full = seated.length >= room.seats;
 
@@ -226,11 +251,76 @@ export function PanelSetup({
 
   const held = holdingUpStart(seated, material);
 
+  // Whether there is anything to put back. Derived rather than tracked: every
+  // one of these is already a prop, and a `dirty` flag beside them would be a
+  // second account of the same fact, free to say the room is empty while three
+  // people sit in it.
+  const built =
+    seated.length > 0 ||
+    rehearsalName.trim().length > 0 ||
+    audience.trim().length > 0 ||
+    material !== null;
+
+  const [armed, setArmed] = useState(false);
+  const forget = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (forget.current !== null) clearTimeout(forget.current);
+    },
+    []
+  );
+
+  const reset = useCallback(() => {
+    if (armed) {
+      setArmed(false);
+      onReset();
+      return;
+    }
+
+    // Confirmed in place rather than in a dialog, the shape End already uses on
+    // the interrogation screen. What is behind this control is a paragraph
+    // somebody typed about the room they are walking into and a deck that took
+    // half a minute to read — and there is no undo, because the deck is
+    // destroyed on the server. One tap teaches what the second does.
+    setArmed(true);
+    forget.current = setTimeout(() => setArmed(false), ARMED_MS);
+  }, [armed, onReset]);
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.title} accessibilityRole="header">
-        Set the room
-      </Text>
+      {/*
+        The title, and the way back to an empty room beside it.
+
+        **Absent until there is something to clear**, which is why it can sit on
+        the title row at all: on a fresh screen it would be a control that does
+        nothing next to the heading that says what the screen is for. It appears
+        when the room has been built and disappears the moment it is emptied,
+        so it is never drawn as a disabled thing.
+
+        Quiet, in the variant ink rather than the primary. Start is where the
+        burnt orange goes on this screen, and a reset in the same colour would
+        put equal weight on assembling a room and on discarding one.
+      */}
+      <View style={styles.titleRow}>
+        <Text style={styles.title} accessibilityRole="header">
+          Set the room
+        </Text>
+        {built && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={armed ? 'Tap again to clear the room' : 'Clear the room'}
+            accessibilityHint={armed ? undefined : 'Asks once more before anything is cleared.'}
+            onPress={reset}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            style={({ pressed }) => [styles.reset, pressed && styles.pressed]}
+          >
+            <Text style={[styles.resetLabel, armed && styles.resetArmed]}>
+              {armed ? 'Tap again' : 'Reset'}
+            </Text>
+          </Pressable>
+        )}
+      </View>
 
       {/*
         First, and one line.
@@ -813,11 +903,44 @@ const styles = StyleSheet.create({
    * adds its own to a container's is the commonest way a screen ends up with
    * two different top edges depending on which one you measure.
    */
-  title: {
-    ...type.headlineLg,
-    color: color.onSurface,
+  title: { ...type.headlineLg, color: color.onSurface },
+
+  /**
+   * The title and Reset, on one baseline.
+   *
+   * The margin the title used to carry itself now lives here, so the spacing
+   * below the heading is the same whether or not there is anything to reset.
+   */
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: space.snug,
     marginBottom: space.base,
   },
+
+  /**
+   * Text, not a bordered control.
+   *
+   * The outline is what `Library`'s "Run it again" needed, because that one
+   * *starts a metered room* while sitting beside a bare tap area. This is the
+   * opposite kind of control — it spends nothing and undoes work — and giving
+   * it a border would make it compete with Start for the eye of somebody
+   * assembling a room.
+   *
+   * The 44pt floor comes from `hitSlop` rather than from padding, so the label
+   * stays on the heading's baseline instead of being pushed off it by a box.
+   */
+  reset: { paddingVertical: space.hair },
+  resetLabel: { ...type.labelLg, color: color.onSurfaceVariant },
+
+  /**
+   * Armed, in the colour the system reserves for a limit.
+   *
+   * A second channel, never the only one: the label itself changes from
+   * "Reset" to "Tap again", so nothing is carried by colour alone.
+   */
+  resetArmed: { color: color.danger },
 
   /**
    * The panel's heading and its count, on one baseline.

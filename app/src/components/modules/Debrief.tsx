@@ -96,14 +96,14 @@ export interface DebriefProps {
    */
   onReplayOpening: () => void;
   /**
-   * REMOVED — `debrief/[id]` shows or hides the stack header instead.
+   * REMOVED — the stack header on `debrief/[id]` is the way back.
    *
-   * The nullability was the interesting part and it survives: arriving from a
-   * room that has just ended, "back" is a metered session that is over, so
-   * there is genuinely nowhere to return to. A native header would still draw
-   * a back button there, because the interrogation route is still on the
-   * stack. The route answers that with `headerShown` rather than with a prop,
-   * which also spares this screen a 44pt bar holding nothing.
+   * It was nullable for a while, on the reasoning that a debrief reached
+   * straight out of a live room has nowhere to return to. That stopped being
+   * true when the interrogation route began *replacing* itself with this one:
+   * the room is off the stack by the time this draws, and back is the Home
+   * tab. The route now always shows the bar, and this screen never draws a
+   * chevron of its own.
    */
   onPrepSheet: () => void;
 }
