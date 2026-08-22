@@ -16,6 +16,19 @@
  * Every component test here awaits; a new one that does not will fail with that
  * message against a component that is perfectly fine.
  *
+ * **An act() scope left open poisons the *next* test.** Same family, different
+ * symptom. A bare `fireEvent` for a synthetic event — `layout` is the one that
+ * caught this — issued outside `await act(async () => ...)` can leave React 19's
+ * act scope open across the end of the test body, and React then discards the
+ * following test's tree. What you see is "unable to find an element" against a
+ * component that is perfectly fine, in a test three names further down, while
+ * the same test passes alone. The tell is `console.error: You seem to have
+ * overlapping act() calls` above the failures, and `screen.debug()` printing an
+ * empty tree. Wrap and await.
+ *
+ * **One `render` per test.** Two roots in one body leaves `screen` pointing at a
+ * tree cleanup has already detached, with the same misleading failure.
+ *
  * The preset is pinned to `jest-expo/ios` rather than the multi-platform one.
  * The default preset runs every test once per platform, which for logic with no
  * platform branches is the same assertion three times at three times the cost.

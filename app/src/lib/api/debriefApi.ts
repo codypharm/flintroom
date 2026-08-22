@@ -124,11 +124,6 @@ export interface CoachTurn {
   heard: string;
 }
 
-export interface Playback {
-  url: string;
-  expiresInSeconds: number;
-}
-
 /**
  * A refusal the server named, carried whole.
  *
@@ -156,7 +151,6 @@ export interface DebriefApi {
    * on a screen that merely redrew.
    */
   hearOpeningAgain(sessionId: string): Promise<CoachTurn>;
-  playback(sessionId: string): Promise<Playback>;
 }
 
 export interface DebriefApiOptions {
@@ -312,13 +306,5 @@ export function createDebriefApi({
           method: 'POST',
         })
       ).json()) as CoachTurn,
-
-    playback: async (sessionId) => {
-      const body = (await (
-        await send(`/v1/sessions/${sessionId}/recording`)
-      ).json()) as { url: string; expires_in_seconds: number };
-
-      return { url: body.url, expiresInSeconds: body.expires_in_seconds };
-    },
   };
 }

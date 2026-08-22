@@ -1,4 +1,5 @@
 import { render, screen, userEvent } from '@testing-library/react-native';
+import { Text } from 'react-native';
 
 import { RoomRead, type RoomReadProps } from './RoomRead';
 
@@ -29,6 +30,36 @@ async function setup(overrides: Partial<RoomReadProps> = {}) {
   const drawn = await render(<RoomRead {...props} />);
   return { ...props, ...drawn };
 }
+
+it('puts the player above the room it plays, and below the way to work on it', async () => {
+  // A slot rather than a component this file imports, and the reason is not
+  // taste: what streams a room is reached by a private path into
+  // `react-native-audio-api` (#68), and that module cannot even be *imported*
+  // under Jest — it throws "the native module could not be found" at load. Any
+  // screen that pulled it in transitively would need it mocked in every test it
+  // has, over a control none of them are about.
+  //
+  // Placement is the design. Under the coach, because going through a room is
+  // what this screen is for and hearing it again is not; above the transcript,
+  // because on a forty-turn room anything below the lines is out of reach.
+  await setup({ player: <Text>a player</Text> });
+
+  const drawn = JSON.stringify(screen.toJSON());
+  expect(drawn.indexOf('"Go through it with the coach"')).toBeLessThan(
+    drawn.indexOf('"a player"')
+  );
+  expect(drawn.indexOf('"a player"')).toBeLessThan(
+    drawn.indexOf('"We grew forty percent last quarter."')
+  );
+});
+
+it('draws no player where there is nothing to play', async () => {
+  // A room that was never recorded, or whose window has passed. The route
+  // decides; this only refuses to leave a gap where a control would be.
+  await setup({ player: null });
+
+  expect(screen.queryByText('a player')).toBeNull();
+});
 
 it('reads back as a script, with every line attributed', async () => {
   await setup();

@@ -316,6 +316,7 @@ Two tables, one rule: **a balance change is recorded exactly once.**
 - `components/ui/` — primitive, reusable, no business logic. `components/modules/` — feature-specific, may call the API, tied to one module.
 - No God components. If a file exceeds ~200 lines, split it.
 - API calls via a client generated from `contracts/openapi.yaml`. Never hardcode API paths in components. Regenerate with `npm run generate:api`; the generated `src/lib/api/schema.d.ts` is committed, so a clone builds without running codegen. The generator runs through a pinned `npx` rather than sitting in `devDependencies` — it peers on TypeScript 5 while the SDK ships TypeScript 6, and a build-time CLI has no reason to share the app's compiler version. Do not "fix" this with `--legacy-peer-deps`.
+- **`react-native-audio-api` is pinned to an exact version, and one file deep-imports it.** `app/src/lib/replay/element.ts` reaches `react-native-audio-api/lib/module/Audio` — the streaming `<Audio>` element, which the package does not re-export. #68 chose that over adding a second audio stack; the published decode API loads a whole room into memory before making a sound, which crashes on long rooms rather than refusing. No test can protect a private path — the module cannot even be imported under Jest — so the exact pin *is* the protection. Do not restore the caret, and do not name that path anywhere else in `src/`. See `docs/session-retention.md` → "How the phone actually plays it".
 
 ---
 

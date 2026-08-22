@@ -94,6 +94,35 @@ includes both sides, storage is the only mechanism.
 Consequence worth stating plainly, because it is the first question anyone asks:
 **playback consumes no ElevenLabs credits.** It costs egress and nothing else.
 
+### How the phone actually plays it — #68, resolved 2026-08-21
+
+`GET /v1/sessions/{id}/recording` signs a link that lives fifteen minutes. Two
+decisions on the client side follow from what is stored, and both are easy to get
+wrong in a way that only shows up on a long room or a slow reader.
+
+**The room is streamed, not decoded.** `react-native-audio-api`'s published
+playback route is `decodeAudioData(url)`, which decodes the whole file into a
+Float32 buffer before it makes a sound. A room has no length cap — the allowance
+is monthly minutes, not minutes per room — and thirty minutes at 16 kHz mono is
+about 115 MB of buffer. That is a crash on tapping play, and it lands on the
+longest and most valuable rooms first. The library's `<Audio>` element streams
+over HTTP ranges instead, and presigned GETs serve ranges, so the phone reads the
+object in pieces and holds none of it.
+
+The cost of that choice is recorded where it is paid: `<Audio>` is not exported
+from the package root, so `app/src/lib/replay/element.ts` is a deep import into
+`lib/module/Audio`, `package.json` pins the library to an exact `0.13.2`, and no
+test in the repo can protect either — the module cannot even be *imported* under
+Jest. Alternatives weighed and declined: `expo-audio` (a public API, but a second
+audio stack in an app whose #25 exists to consolidate the first), and deferring
+into #25 entirely.
+
+**The link is signed on the tap, never on arrival.** Fifteen minutes is longer
+than a room and shorter than a reading session, and this screen is mostly used
+for re-reading a transcript. Presigning on load hands a dead URL to anybody who
+scrolls forty turns first, and spends a signature on every glance at a past room.
+Signing costs nothing at the moment somebody asks.
+
 ### One mixed track, positioned where it was heard
 
 The stored artefact is a single Opus object: the user's continuous uplink, with

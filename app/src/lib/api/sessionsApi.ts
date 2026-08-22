@@ -209,6 +209,34 @@ export interface SessionsApi {
    * wanted gone is gone.
    */
   deleteRecording(sessionId: string): Promise<void>;
+  /**
+   * A short-lived link to hear one room again.
+   *
+   * **Called at the moment somebody taps play, never on the way in.** The link
+   * lives fifteen minutes (`DEFAULT_EXPIRY_SECONDS`), and a screen that
+   * presigned on load would hand a dead URL to anybody who read the transcript
+   * first — which is what this screen is mostly for. Signing costs nothing and
+   * a stale link costs a failure nobody can act on.
+   *
+   * Refuses distinctly for a room with nothing stored: recording can be off by
+   * preference, expired on the tier window, or deleted from this very screen a
+   * moment ago, and none of those is the same sentence as a store that could
+   * not be reached.
+   */
+  playback(sessionId: string): Promise<Playback>;
+}
+
+/**
+ * Where a room can be heard, and for how long that stays true.
+ *
+ * `expiresInSeconds` is published rather than folded into an absolute time
+ * because it is what the server actually knows — the two clocks are not the
+ * same, and a phone that is a minute out would silently shorten or extend a
+ * window it does not own.
+ */
+export interface Playback {
+  url: string;
+  expiresInSeconds: number;
 }
 
 export interface SessionsApiOptions {
@@ -311,6 +339,22 @@ export function createSessionsApi({
       // could change is the recorded reason, and stranding somebody on a dark
       // screen over that would be the worse outcome.
       await send(`/v1/sessions/${sessionId}/end`, { method: 'POST' });
+    },
+
+    playback: async (sessionId) => {
+      const path = `/v1/sessions/${sessionId}/recording`;
+      const response = await send(path, { method: 'GET' });
+
+      if (!response.ok) {
+        // The server's own diagnosis first. `recording_not_available` is the
+        // one the screen switches on, and throwing it away would leave a room
+        // whose audio expired reading the same as a store that fell over.
+        throw (await refusalIn(response)) ?? new Error(`${path} failed with ${response.status}`);
+      }
+
+      const body = (await response.json()) as { url: string; expires_in_seconds: number };
+
+      return { url: body.url, expiresInSeconds: body.expires_in_seconds };
     },
 
     deleteRecording: async (sessionId) => {

@@ -350,6 +350,79 @@ describe('reading a room back', () => {
   });
 });
 
+describe('a link to hear one room again', () => {
+  function asking(reply: Partial<Response> & { json?: () => Promise<unknown> }) {
+    const fetcher = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+      ...reply,
+    });
+
+    return {
+      fetcher,
+      sessions: createSessionsApi({
+        baseUrl: 'https://flintroom.test',
+        accessToken: async () => 'a-token',
+        fetch: fetcher as unknown as typeof fetch,
+      }),
+    };
+  }
+
+  it('reads the link and how long it lasts', async () => {
+    // `expires_in_seconds` is published so a caller can decide whether the link
+    // it holds is still worth using. Dropping it would leave playing and
+    // failing as the only way to find out.
+    const { fetcher, sessions } = asking({
+      json: async () => ({ url: 'https://store.test/room.opus', expires_in_seconds: 900 }),
+    });
+
+    await expect(sessions.playback('s1')).resolves.toEqual({
+      url: 'https://store.test/room.opus',
+      expiresInSeconds: 900,
+    });
+
+    // The same path `deleteRecording` uses, which is why this lives here rather
+    // than on the debrief client where it was first written.
+    expect(fetcher.mock.calls[0][0]).toBe('https://flintroom.test/v1/sessions/s1/recording');
+  });
+
+  it('refuses a room with nothing stored, distinctly from a broken one', async () => {
+    // Recording can be off by preference, or expired on the tier window, or
+    // deleted from this very screen a moment ago. All are ordinary, and none is
+    // the same sentence as a store that could not be reached.
+    const { sessions } = asking({
+      ok: false,
+      status: 404,
+      json: async () => ({
+        error: {
+          code: 'recording_not_available',
+          message: 'There is no saved audio for this room.',
+        },
+      }),
+    });
+
+    await expect(sessions.playback('s1')).rejects.toMatchObject({
+      code: 'recording_not_available',
+    });
+  });
+
+  it('reports a signed-out session as such', async () => {
+    const { sessions } = asking({ ok: false, status: 401 });
+
+    await expect(sessions.playback('s1')).rejects.toBeInstanceOf(SignedOut);
+  });
+
+  it('does not hand back a URL it never received', async () => {
+    // A 502 from the store or a gateway page in front of it. Returning
+    // `undefined` as a URL would mount a player against nothing and fail as a
+    // decode error, which is a diagnosis of the wrong thing.
+    const { sessions } = asking({ ok: false, status: 502, json: async () => ({}) });
+
+    await expect(sessions.playback('s1')).rejects.toThrow(/502/);
+  });
+});
+
 describe('destroying one room’s audio', () => {
   function deleting(reply: Partial<Response> = {}) {
     const fetcher = jest.fn().mockResolvedValue({

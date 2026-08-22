@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { RoomPlayer } from '../../components/modules/RoomPlayer';
 import { RoomRead } from '../../components/modules/RoomRead';
 import { createSessionsApi, type PastRoom, type SaidLine } from '../../lib/api/sessionsApi';
 import { API_BASE_URL, auth } from '../../lib/auth';
@@ -23,6 +24,12 @@ import { color, radius, space, type } from '../../theme/tokens';
  * transcript out of any list response — so the Library could not have handed
  * both down. Fetching the room again also means this route survives a deep link
  * or a cold restore, which a screen fed by the previous one does not.
+ *
+ * **A third request exists and is never made from here.** The link to the audio
+ * is signed by `RoomPlayer` at the moment somebody taps play, because it lives
+ * fifteen minutes and this screen is mostly used for reading — presigning on
+ * arrival would hand a dead URL to anybody who scrolled the transcript first,
+ * and would spend a signature on every glance at a past room.
  */
 
 const sessions = createSessionsApi({
@@ -166,6 +173,15 @@ export default function RoomRoute() {
         who={room ? whoWasThere(room.archetypes) : ''}
         lines={lines}
         onDebrief={() => router.push(`/debrief/${id}?from=room`)}
+        // Only where there is something to hear, and on the same fact the
+        // delete control reads — a room that was never recorded, one whose
+        // window has passed, and one deleted a moment ago all answer `false`,
+        // and offering to play any of them is a control that cannot work.
+        player={
+          room !== null && room.recording.state === 'available' && !deleted ? (
+            <RoomPlayer findIt={async () => (await sessions.playback(id)).url} />
+          ) : null
+        }
         // Null while the room is not in the list, which is not the same as a
         // room with nothing to destroy: not knowing is not an answer, and the
         // control must not be drawn on a guess.
@@ -213,6 +229,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     backgroundColor: color.primary,
   },
-  retryLabel: { ...type.labelLg, color: color.surface },
+  // `onPrimary`, not `surface`. Text on the primary fill has always been
+  // `onPrimary`'s job, and reaching for the ground colour only worked while the
+  // ground happened to be near-white — which stopped being true when it was
+  // darkened to make cards visible.
+  retryLabel: { ...type.labelLg, color: color.onPrimary },
   pressed: { opacity: 0.6 },
 });

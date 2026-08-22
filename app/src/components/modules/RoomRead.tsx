@@ -29,12 +29,23 @@ import { color, radius, space, type } from '../../theme/tokens';
  *
  * ---
  *
- * **Playback is not here, and its absence is deliberate.** #68 is an open
- * architecture decision: the public decode API loads a whole room into memory
- * before making a sound, which is a crash rather than a refusal on any long
- * one. A control that says a room can be heard, next to no way to hear it, is
- * worse than saying nothing — so this says nothing until that lands, and then
- * it belongs directly under the heading.
+ * **Playback arrives as a slot, not as a component this file imports.** #68
+ * settled the architecture: streaming a room means the `<Audio>` element from
+ * `react-native-audio-api`, reached by a path the package does not publish,
+ * because the published one decodes a whole room into memory before making a
+ * sound — a crash rather than a refusal on any long one.
+ *
+ * That module cannot be imported under Jest at all; it throws "the native
+ * module could not be found" at load. So a screen that pulled it in
+ * transitively would need it mocked in every test it has, over a control none
+ * of those tests are about. `player` keeps this file presentational and lets
+ * the route compose the thing that makes noise.
+ *
+ * **Where it goes.** Under the coach and above the transcript. This docstring
+ * used to say "directly under the heading", written before the coach moved up;
+ * that placement would now put hearing a room again ahead of going through it,
+ * and going through it is what the screen is for. Above the lines, though,
+ * because on a forty-turn room anything below them is out of reach.
  */
 
 /**
@@ -73,6 +84,15 @@ export interface RoomReadProps {
   /** Every line, in the order it happened. Empty is a real room. */
   lines: SaidLine[];
   onDebrief: () => void;
+  /**
+   * The transport for hearing this room again, or null when there is nothing
+   * to hear — never recorded, expired on the tier window, or just deleted.
+   *
+   * A node rather than a callback. See the note above: the audio layer is not
+   * importable in a test environment, so the boundary has to be something this
+   * file never reaches through.
+   */
+  player?: React.ReactNode;
   /** Null when the room row was not found, which is not the same as nothing. */
   recording?: RoomAudio | null;
 }
@@ -82,6 +102,7 @@ export function RoomRead({
   who,
   lines,
   onDebrief,
+  player = null,
   recording = null,
 }: RoomReadProps) {
   const opened = lines.length > 0 ? new Date(lines[0].saidAt).getTime() : 0;
@@ -116,6 +137,8 @@ export function RoomRead({
         >
           <Text style={styles.throughLabel}>Go through it with the coach</Text>
         </Pressable>
+
+        {player !== null && <View style={styles.player}>{player}</View>}
 
         {lines.length === 0 ? (
           <View style={styles.empty}>
@@ -321,6 +344,17 @@ const styles = StyleSheet.create({
     color: color.onSurfaceVariant,
     marginTop: space.snug,
   },
+
+  /**
+   * Between the coach and the first line.
+   *
+   * No top margin of its own: the coach button already carries thirty-two
+   * points below it, and a second interval added to that is the commonest way
+   * a screen ends up with two different gaps that were both meant to be one.
+   * The player draws its own card, so this carries spacing and nothing else —
+   * a background here would be a card inside a card.
+   */
+  player: { marginBottom: space.section },
 
   through: {
     // Was `marginTop: space.section` under the last line. Above the transcript

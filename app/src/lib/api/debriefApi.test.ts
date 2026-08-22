@@ -286,29 +286,3 @@ describe('spar', () => {
     await expect(promise).rejects.toMatchObject({ code: 'no_such_weak_answer' });
   });
 });
-
-describe('playback', () => {
-  it('reads the link and how long it lasts', async () => {
-    // `expires_in_seconds` is published so a client can decide whether to reuse
-    // the link it holds. Dropping it would leave playing and failing as the
-    // only way to find out.
-    const playback = await api(
-      answering(200, { url: 'https://store.test/room.opus', expires_in_seconds: 900 })
-    ).playback(SESSION);
-
-    expect(playback).toEqual({
-      url: 'https://store.test/room.opus',
-      expiresInSeconds: 900,
-    });
-  });
-
-  it('refuses a room with nothing stored, distinctly from a broken one', async () => {
-    // Recording can be off by preference, or expired on the tier window. Both
-    // are ordinary and neither is an error the user caused.
-    const promise = api(
-      refusing(404, 'recording_not_available', 'There is no saved audio for this room.')
-    ).playback(SESSION);
-
-    await expect(promise).rejects.toMatchObject({ code: 'recording_not_available' });
-  });
-});
