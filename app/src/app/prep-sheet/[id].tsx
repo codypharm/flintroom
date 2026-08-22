@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  NativeModules,
   Pressable,
   StyleSheet,
   Text,
@@ -137,12 +138,26 @@ export default function PrepSheetRoute() {
           // render — findings and coaching, never the verbatim answers, which
           // is the decision #60 recorded and the reason this was never
           // stubbed with a text share.
+          // Probed before imported. Both are native modules, and on a dev
+          // client built before they were added, merely *evaluating* their
+          // JavaScript throws — at the top of the file that took the route
+          // down, and even deferred to the tap the dev overlay shouts about
+          // the caught error. `requireOptionalNativeModule` answers null
+          // instead of throwing, so a stale build gets a sentence about
+          // rebuilding and the throwing module is never evaluated at all.
+          const { requireOptionalNativeModule } = await import('expo-modules-core');
+          const stale =
+            requireOptionalNativeModule('ExpoSharing') === null ||
+            NativeModules.RNViewShot == null;
+          if (stale) {
+            Alert.alert(
+              'Not in this build yet',
+              'Sharing needs one rebuild of the app. It will work after the next USB install.'
+            );
+            return;
+          }
+
           try {
-            // Loaded at the tap, not at the top of the file. Both are native
-            // modules, and a dev client built before they were added throws
-            // on the *import* — which took this whole route down, not just
-            // the button. Deferred, the route always loads; on a stale build
-            // the tap lands in the catch instead of a red screen.
             const [{ captureRef }, { shareAsync }] = await Promise.all([
               import('react-native-view-shot'),
               import('expo-sharing'),
