@@ -75,7 +75,13 @@ jobs:
       - name: Install LibreOffice
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-impress
 
-      - uses: astral-sh/setup-uv@v10
+      # Pinned exactly, not to a major. `astral-sh/setup-uv` stopped publishing
+      # rolling major tags after v7 — `@v10` does not resolve and fails the run
+      # outright, which is how the previous commit got caught. An exact pin is
+      # also the shape `pyproject.toml` uses for `ty`, and for a related reason:
+      # a version that can move under you makes "it was green" a statement about
+      # the day.
+      - uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
 
