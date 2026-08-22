@@ -5,6 +5,7 @@ import {
   Alert,
   Dimensions,
   NativeModules,
+  PixelRatio,
   Pressable,
   StyleSheet,
   Text,
@@ -51,6 +52,7 @@ export default function PrepSheetRoute() {
 
   const [answers, setAnswers] = useState<WeakAnswer[] | null>(null);
   const printable = useRef<View>(null);
+  const printSize = useRef<{ w: number; h: number } | null>(null);
   const [refused, setRefused] = useState<RoomRefusal | null>(null);
   const [attempt, setAttempt] = useState(0);
 
@@ -121,7 +123,18 @@ export default function PrepSheetRoute() {
         there is nothing to capture. Rendered always rather than on tap: it is
         cheap, and mounting it during the tap would race the capture.
       */}
-      <View ref={printable} collapsable={false} style={styles.print} pointerEvents="none">
+      <View
+        ref={printable}
+        collapsable={false}
+        style={styles.print}
+        pointerEvents="none"
+        onLayout={(laid) => {
+          printSize.current = {
+            w: laid.nativeEvent.layout.width,
+            h: laid.nativeEvent.layout.height,
+          };
+        }}
+      >
         <PrepSheet answers={answers} printing onSpar={() => {}} onShare={() => {}} back={{ where: '', onPress: () => {} }} />
       </View>
       <PrepSheet
@@ -162,7 +175,19 @@ export default function PrepSheetRoute() {
               import('react-native-view-shot'),
               import('expo-sharing'),
             ]);
-            const shot = await captureRef(printable, { format: 'png', quality: 1 });
+            // At the screen's own density, not the view's point size. Without
+            // width/height the bitmap comes out at logical resolution — a
+            // ~390px-wide image of a full sheet, which reads as terrible
+            // quality the moment it is opened anywhere. Scaled, Android
+            // redraws the view into the larger canvas, so text stays vector-
+            // crisp rather than being upsampled.
+            const scale = PixelRatio.get();
+            const laid = printSize.current;
+            const shot = await captureRef(printable, {
+              format: 'png',
+              quality: 1,
+              ...(laid ? { width: laid.w * scale, height: laid.h * scale } : {}),
+            });
             await shareAsync(shot, { mimeType: 'image/png' });
           } catch {
             Alert.alert('That did not share', 'Try again in a moment.');
