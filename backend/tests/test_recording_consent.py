@@ -93,6 +93,13 @@ async def test_a_room_started_with_saving_off_is_not_recorded(
 
     assert relay._mixer.mixed() == b"", "nothing was accumulated"
     assert await storage.get(recording_key(session.id)) is None
+    # #69. Recording off stops the *keeping*, never the clock. The gate used to
+    # sit around `self._mixer.heard(pcm)` in the relay, which stopped both — and
+    # the mixer is what a transcript line's offset is read from, so every line
+    # in a room like this one would have claimed to begin at second zero. The
+    # transcript is kept on every tier regardless of this preference, so those
+    # lines exist and would have been confidently wrong.
+    assert relay._mixer.elapsed() > 0, "the room still knew what time it was"
 
 
 async def test_deleting_a_room_removes_the_audio_and_leaves_the_proof(

@@ -25,6 +25,7 @@ from app.modules.sessions.service import SessionService
 from app.modules.sessions.transcript import SessionTranscript
 from app.modules.voice.grounding import session_grounding
 from app.agents.auditor import ClaimReader
+from app.modules.voice.clock import RoomClock
 from app.modules.voice.orchestrated import OrchestratedProvider
 from app.modules.voice.speech import Speaker
 from app.modules.voice.transcription import Transcriber
@@ -43,6 +44,7 @@ async def build_room(
     opener_speaker: Speaker | None = None,
     reader: ClaimReader | None = None,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
+    clock: RoomClock | None = None,
 ) -> OrchestratedProvider:
     """The room for one session: its panel, its grounding, its vendors.
 
@@ -151,4 +153,16 @@ async def build_room(
             if session_factory is not None
             else None
         ),
+        # #69. The relay's mixer, read rather than driven — the room only ever
+        # asks it what time it is. Passed in rather than made here for the
+        # reason the store is made here: the caller is the only place that
+        # knows both, and this one object has to be the same object the relay
+        # accumulates into or the offsets would be positions in a file nobody
+        # is writing.
+        #
+        # Optional on the same terms as everything else on this call. A room
+        # without one records a full transcript and files every line with no
+        # offset, which is what "no anchor" already means for every room that
+        # ran before this existed.
+        clock=clock,
     )

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import array
 
-from app.modules.voice.mixing import RoomMixer
+from app.modules.voice.mixing import SAMPLE_RATE, RoomMixer
 
 
 def pcm(*samples: int) -> bytes:
@@ -135,3 +135,83 @@ def test_a_room_that_runs_long_stops_growing_rather_than_growing_forever():
 
     assert mixer.mixed() == pcm(1, 2, 3, 4)
     assert mixer.truncated
+
+
+def test_the_room_clock_is_where_the_users_own_stream_has_reached():
+    """#69. The mix's timeline is the uplink, and the uplink is continuous.
+
+    `app/src/lib/audio/uplink.ts` sends every frame the recorder produces with
+    no voice-activity gating, so a second of samples is a second of room. That
+    is what makes a sample count usable as a clock at all, and it is the same
+    property the positioning above already leans on.
+    """
+    mixer = RoomMixer()
+
+    mixer.heard(pcm(*([0] * SAMPLE_RATE)))
+
+    assert mixer.elapsed() == 1.0
+
+
+def test_a_panelist_speaking_does_not_move_the_room_clock():
+    """The panel is positioned *against* the clock, never a source of it.
+
+    Synthesis streams faster than real time — an eight-second answer can arrive
+    inside one — so counting panel audio would make the room's clock run at
+    whatever rate the vendor happened to deliver at, and every offset after the
+    first turn would point somewhere the room never was.
+    """
+    mixer = RoomMixer()
+
+    mixer.heard(pcm(*([0] * SAMPLE_RATE)))
+    mixer.played(pcm(*([0] * (SAMPLE_RATE * 8))))
+
+    assert mixer.elapsed() == 1.0
+
+
+def test_a_room_nobody_wants_kept_still_knows_what_time_it_is():
+    """#52 turns off *keeping the audio*, not knowing when things happened.
+
+    The gate used to sit in the relay — `if self._records: self._mixer.heard()`
+    — which stopped the clock along with the recording. Every line in a room
+    with recording switched off would then have claimed to begin at second
+    zero, and the latency reading #69 exists to make possible would have been
+    a column of zeroes on exactly the accounts that never opted in.
+    """
+    mixer = RoomMixer(keeping=False)
+
+    mixer.heard(pcm(*([0] * SAMPLE_RATE)))
+
+    assert mixer.elapsed() == 1.0
+
+
+def test_a_room_nobody_wants_kept_holds_none_of_it():
+    """And "off" still means not gathered, which is the point of the gate.
+
+    `router.py` reads the preference before a single frame is accumulated so a
+    room the user asked not to record never holds their audio in memory at all.
+    Moving the gate in here must not quietly turn that into "gathered, then
+    discarded at the end".
+    """
+    mixer = RoomMixer(keeping=False)
+
+    mixer.heard(pcm(1, 2, 3))
+    mixer.played(pcm(4, 5))
+
+    assert mixer.mixed() == b""
+
+
+def test_a_room_nobody_wants_kept_has_no_ceiling_to_hit():
+    """Nothing is stored, so there is no memory to bound and nothing to drop.
+
+    A cap applied here would stall the clock at twenty minutes, and every line
+    after that would report the same offset — a wrong answer where the honest
+    one costs nothing, because the ceiling exists to bound an array this room
+    never fills.
+    """
+    mixer = RoomMixer(keeping=False, max_samples=4)
+
+    mixer.heard(pcm(1, 2, 3))
+    mixer.heard(pcm(4, 5, 6))
+
+    assert mixer.elapsed() == 6 / SAMPLE_RATE
+    assert not mixer.truncated

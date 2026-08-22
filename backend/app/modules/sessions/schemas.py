@@ -617,9 +617,27 @@ class TranscriptLineRead(BaseModel):
     #: can see where the long silence was — and withheld from any claim it
     #: cannot support. Lines are written as they are said, so it is close; but
     #: "close" is the difference between a reading aid and a playback offset,
-    #: and #69 exists because no true offset is recorded anywhere. Nothing
-    #: should seek audio with this.
+    #: and this is not it — see `began_at_seconds` below. Nothing should seek
+    #: audio with this one.
     said_at: datetime
+
+    #: How many seconds into the **mixed recording** this line began, or null.
+    #:
+    #: #69. A position in the file `GET /v1/sessions/{id}/recording` hands back,
+    #: read from the room's own mixer while it ran — so a client may seek
+    #: straight to it. That is what separates this from `said_at` above, which
+    #: is a wall clock a client would have to subtract a session start from and
+    #: hope nothing stalled in between.
+    #:
+    #: **Null is a real answer and must survive as one.** Every room that ran
+    #: before this existed has no offset, and so does any room whose channel
+    #: ran without a relay. A client that received `0.0` for those would offer
+    #: to play from the top of the room on every line — a control that looks
+    #: like it works and does the wrong thing.
+    #:
+    #: A start and no end: seeking needs only a start, and an end would be
+    #: wrong after a barge-in, which truncates the mix.
+    began_at_seconds: float | None
 
 
 class TranscriptRead(BaseModel):

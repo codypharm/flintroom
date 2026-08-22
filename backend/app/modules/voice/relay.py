@@ -59,6 +59,7 @@ class VoiceRelay:
         actor: ActorContext | None = None,
         recordings: RoomRecordings | None = None,
         records: bool = True,
+        mixer: RoomMixer | None = None,
     ) -> None:
         self._provider = provider
         self._client = client
@@ -76,7 +77,12 @@ class VoiceRelay:
         # "may we record this person" is a consent question that belongs to the
         # service that owns the preference.
         self._records = records
-        self._mixer = RoomMixer()
+        # Injected where the room's channel also needs to read it — #69 made
+        # this object the room's clock as well as its recording, and the
+        # transcript is written from the channel. `router.py` builds one and
+        # hands it to both. Built here otherwise, so a relay exercised on its
+        # own is unchanged.
+        self._mixer = mixer if mixer is not None else RoomMixer(keeping=records)
         self._actor = actor or ActorContext.system()
         # Built here rather than injected, for the reason `SessionService` gives
         # for its own audit service: every write this relay causes is attributed
@@ -200,8 +206,13 @@ class VoiceRelay:
             # Before the forward, not after. This is the room's clock, and a
             # frame counted only once the transcriber had accepted it would let
             # a slow provider bend time for everything positioned against it.
-            if self._records:
-                self._mixer.heard(pcm)
+            #
+            # Ungated, and #69 is why the gate moved rather than went. Whether
+            # this account keeps its audio is now the mixer's own business, so
+            # a room with recording switched off still knows what time it is —
+            # which is what a transcript line's offset is read from, on a
+            # transcript kept regardless of this preference.
+            self._mixer.heard(pcm)
             await channel.send_audio(pcm)
 
     async def _carry_provider_events(
@@ -349,6 +360,5 @@ class VoiceRelay:
             # direction — that is what the PCM-throughout transport decision
             # bought, and re-encoding here would put decode latency into the
             # path the ~1.5s illusion threshold is measured across.
-            if self._records:
-                self._mixer.played(event.pcm)
+            self._mixer.played(event.pcm)
             await self._client.send_audio(event.pcm)

@@ -205,7 +205,7 @@ async def test_a_room_files_its_words_where_they_will_outlive_it():
     kept: list[Said] = []
 
     class Keeping:
-        async def record(self, line: Said) -> None:
+        async def record(self, line: Said, *, at: float | None = None) -> None:
             kept.append(line)
 
     provider = OrchestratedProvider(

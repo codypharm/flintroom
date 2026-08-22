@@ -42,8 +42,23 @@ RECORDING_LIMIT_SECONDS = 20 * 60
 class RoomMixer:
     """One room, accumulating as it happens."""
 
-    def __init__(self, *, max_samples: int | None = None) -> None:
+    def __init__(self, *, keeping: bool = True, max_samples: int | None = None) -> None:
         self._room = array.array(_SAMPLE)
+        #: Whether this room's audio is being kept at all — #52's preference,
+        #: read once in `router.py` before a single frame arrives.
+        #:
+        #: **Ticking and keeping are separate, and #69 is why.** The gate used
+        #: to live in the relay as `if self._records: self._mixer.heard(pcm)`,
+        #: which stopped this object's clock along with its recording. Since the
+        #: clock is what a transcript line's offset is read from, every line in
+        #: a room with recording switched off would have claimed to begin at
+        #: second zero — and the transcript is kept on every tier regardless of
+        #: this preference, so those lines exist and would have been wrong.
+        #:
+        #: Not gathered rather than gathered-and-discarded. `router.py` is
+        #: explicit that "off" should mean the audio is never held in memory,
+        #: so nothing reaches `_room` and `mixed()` stays empty.
+        self._keeping = keeping
         self._max_samples = (
             max_samples
             if max_samples is not None
@@ -103,8 +118,31 @@ class RoomMixer:
         self._playing = self._heard
 
     def mixed(self) -> bytes:
-        """The room so far, as PCM16."""
+        """The room so far, as PCM16. Empty when nothing is being kept."""
         return self._room.tobytes()
+
+    def elapsed(self) -> float:
+        """How many seconds into the room the mix has reached — #69.
+
+        Read off the *user's* frontier and never the panel's, which is the same
+        choice `played` already makes from the other side. The uplink is
+        continuous and ungated, so this advances at one second per second of
+        room; synthesis streams faster than real time, so a clock that counted
+        panel audio would run at whatever rate a vendor happened to deliver at
+        and every offset after the first turn would point somewhere the room
+        never was.
+
+        Seconds rather than samples, because every reader of this is a
+        timestamp on a line or a seek into a file, and none of them has any use
+        for a sample rate. It is also the position a player seeks to in the
+        mixed object, exactly — not an approximation of it — because the array
+        this counts into *is* that object.
+
+        Barge-in does not disturb it. `interrupted` truncates the stored audio
+        back to this frontier and never moves the frontier itself, so an offset
+        written before a cut stays true after one.
+        """
+        return self._heard / SAMPLE_RATE
 
     def _mix(self, *, at: int, pcm: bytes) -> int:
         """Add samples into the room at a position, and say where they end.
@@ -119,6 +157,14 @@ class RoomMixer:
         exactly when both sources are loud at once.
         """
         samples = array.array(_SAMPLE, pcm)
+
+        # Nothing kept, so nothing to bound and nothing to drop — the clock is
+        # the only thing this room still does. A ceiling here would stall it at
+        # twenty minutes and every line after that would report one offset,
+        # which is a wrong answer where the honest one costs nothing: the
+        # ceiling exists to bound an array this room never fills.
+        if not self._keeping:
+            return at + len(samples)
 
         # Trimmed at the far end rather than refused outright, so a room that
         # reaches the ceiling mid-utterance keeps the part that fits.

@@ -66,8 +66,8 @@ class SessionTranscript:
         #: and "the fourth thing said" would stop meaning anything.
         self._next = 0
 
-    async def record(self, line: Said) -> None:
-        """Keep one line, whoever said it. One line, one transaction.
+    async def record(self, line: Said, *, at: float | None = None) -> None:
+        """Keep one line, and where the room had reached. One transaction each.
 
         Committed here rather than left to whoever owns the room's transaction,
         because otherwise nothing owns it: the relay commits a progress mark
@@ -98,6 +98,10 @@ class SessionTranscript:
                     text=line.text,
                     disputed=line.disputed,
                     chosen_by=line.chosen_by,
+                    # #69. Null rather than zero when nothing was keeping time —
+                    # a room with no relay behind it, or one that ran before the
+                    # clock existed. Zero would claim the top of the room.
+                    began_at_seconds=at,
                 )
             )
             await db.commit()

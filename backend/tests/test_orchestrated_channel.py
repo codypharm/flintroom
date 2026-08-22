@@ -113,9 +113,53 @@ class FakeTranscript:
 
     def __init__(self) -> None:
         self.lines: list[Said] = []
+        #: Every line with the offset it was filed at — #69. Kept beside
+        #: `lines` rather than folded into it so the tests that predate the
+        #: clock keep reading what they always read.
+        self.stamped: list[tuple[Said, float | None]] = []
 
-    async def record(self, line: Said) -> None:
+    async def record(self, line: Said, *, at: float | None = None) -> None:
         self.lines.append(line)
+        self.stamped.append((line, at))
+
+
+class ScriptedClock:
+    """The room's clock, moved by hand — #69.
+
+    Stands in for `RoomMixer`, which is the real one. What it stands in for is a
+    sample count, so a test can put the room at any second it likes without
+    feeding it a second's worth of audio.
+    """
+
+    def __init__(self) -> None:
+        self.at = 0.0
+
+    def elapsed(self) -> float:
+        return self.at
+
+
+class TimedTranscription:
+    """A transcriber that moves the room's clock as its results arrive.
+
+    Real time passes between a partial and the final that closes it, and that
+    gap is the entire thing under test: against a still clock, "stamped where
+    they started" and "stamped where they stopped" are the same number.
+    """
+
+    def __init__(
+        self, clock: ScriptedClock, script: Sequence[tuple[float, Transcription]]
+    ) -> None:
+        self._clock = clock
+        self._script = script
+        self.heard: list[bytes] = []
+
+    async def send_audio(self, pcm: bytes) -> None:
+        self.heard.append(pcm)
+
+    async def results(self) -> AsyncIterator[Transcription]:
+        for at, result in self._script:
+            self._clock.at = at
+            yield result
 
 
 def mid_room() -> OpeningFloor:
@@ -390,8 +434,8 @@ class WatchingTranscript(FakeTranscript):
         super().__init__()
         self.panel_spoke = asyncio.Event()
 
-    async def record(self, line: Said) -> None:
-        await super().record(line)
+    async def record(self, line: Said, *, at: float | None = None) -> None:
+        await super().record(line, at=at)
         if line.speaker != USER:
             self.panel_spoke.set()
 
@@ -1453,3 +1497,135 @@ async def test_a_final_with_nothing_in_it_is_not_an_utterance():
 
     assert not [event for event in events if isinstance(event, AgentTranscript)]
     assert not [event for event in events if type(event).__name__ == "UserSpoke"]
+
+
+async def test_a_users_line_is_stamped_where_they_started_not_where_they_stopped():
+    """#69, and the reason a stamp taken at `record()` would not do.
+
+    A user's line is written when the *final* lands, which is after they have
+    stopped talking. Somebody who answered for ninety seconds would have every
+    word of it filed at the moment they finished, and a player seeking there
+    would land past the thing it was asked to play.
+
+    The start is knowable without asking the vendor for anything: `_listen`
+    already reads partials to run selection early, so the first partial since
+    the last final *is* when this utterance began.
+    """
+    clock = ScriptedClock()
+    transcript = FakeTranscript()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=TimedTranscription(
+            clock,
+            [
+                (4.0, Transcription(text="Our gross", final=False)),
+                (
+                    11.5,
+                    Transcription(
+                        text="Our gross margin is seventy percent.", final=True
+                    ),
+                ),
+            ],
+        ),
+        model=ScriptedPanelModel(),
+        grounding=Grounding(),
+        floor=mid_room(),
+        transcript=transcript,
+        clock=clock,
+    )
+
+    await events_of(channel)
+
+    said = [(line, at) for line, at in transcript.stamped if line.speaker == USER]
+    assert [at for _, at in said] == [4.0]
+
+
+async def test_each_utterance_is_stamped_from_its_own_first_partial():
+    """The marker is per utterance, not per room.
+
+    Held once and never reset, every line in a twelve-minute room would carry
+    the offset of the first thing anybody said — which is worse than no offset,
+    because it is confidently wrong and looks like data.
+    """
+    clock = ScriptedClock()
+    transcript = FakeTranscript()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=TimedTranscription(
+            clock,
+            [
+                (4.0, Transcription(text="Our gross", final=False)),
+                (11.5, Transcription(text="Our gross margin is seventy.", final=True)),
+                (40.0, Transcription(text="Because the", final=False)),
+                (52.0, Transcription(text="Because the deck is old.", final=True)),
+            ],
+        ),
+        model=ScriptedPanelModel(),
+        grounding=Grounding(),
+        floor=mid_room(),
+        transcript=transcript,
+        clock=clock,
+    )
+
+    await events_of(channel)
+
+    said = [at for line, at in transcript.stamped if line.speaker == USER]
+    assert said == [4.0, 40.0]
+
+
+async def test_a_final_with_no_partial_before_it_is_stamped_where_it_landed():
+    """A transcriber that skipped straight to a final still gets an answer.
+
+    Interim results are a requirement of the seam and the whole latency plan
+    rests on them — but a vendor that emitted one final and nothing else would
+    otherwise leave the marker unset, and an unstamped line on an account that
+    can record is a hole in the record with no explanation attached to it.
+
+    The final's own reading is the honest fallback: late by the length of the
+    utterance, and never a guess about a moment nobody observed.
+    """
+    clock = ScriptedClock()
+    transcript = FakeTranscript()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=TimedTranscription(
+            clock,
+            [(11.5, Transcription(text="Our gross margin is seventy.", final=True))],
+        ),
+        model=ScriptedPanelModel(),
+        grounding=Grounding(),
+        floor=mid_room(),
+        transcript=transcript,
+        clock=clock,
+    )
+
+    await events_of(channel)
+
+    said = [at for line, at in transcript.stamped if line.speaker == USER]
+    assert said == [11.5]
+
+
+async def test_a_room_with_no_clock_files_its_lines_without_one():
+    """The seam is optional, exactly like the transcript store beside it.
+
+    A channel exercised without a relay has no mixer and therefore no clock,
+    and it must still record a full transcript — null means "no anchor", which
+    every reader already has to handle for the rooms that ran before this
+    existed.
+    """
+    transcript = FakeTranscript()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=FakeTranscription(
+            [Transcription(text="Our gross margin is seventy.", final=True)]
+        ),
+        model=ScriptedPanelModel(),
+        grounding=Grounding(),
+        floor=mid_room(),
+        transcript=transcript,
+    )
+
+    await events_of(channel)
+
+    assert transcript.stamped
+    assert all(at is None for _, at in transcript.stamped)

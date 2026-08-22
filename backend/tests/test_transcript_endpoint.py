@@ -17,8 +17,11 @@ may read it — it lets the person who said it read their own words back.
 
 from __future__ import annotations
 
+from sqlalchemy.ext.asyncio import async_sessionmaker
+
 from app.agents.context import USER, Said
 from app.modules.sessions.schemas import EndReason
+from app.modules.sessions.transcript import SessionTranscript
 
 from tests.conftest import create_funded_account
 from tests.test_debrief import room_that_happened
@@ -169,3 +172,60 @@ async def test_a_room_that_never_existed_is_a_404(client, funded_account, bearer
     )
 
     assert response.status_code == 404
+
+
+async def test_it_carries_where_in_the_recording_each_line_began(
+    client, db, engine, sessions, settlement, funded_account, bearer
+):
+    """#69, and the half that makes the column worth writing.
+
+    This screen already sits beside the player — `rooms/[id]` renders the
+    transcript and the audio together — so an offset on the line is what turns
+    "hear the room again, from the top" into "hear the CFO ask this". Without it
+    on the wire the column would be written and never read, which is the shape
+    of a field that quietly goes wrong.
+
+    Seconds into the *mixed recording*, not a wall clock. `said_at` beside it is
+    when the row was written and says so; nothing should seek with that one.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+    await sessions.activate(session_id=session.id)
+    await db.commit()
+
+    transcript = SessionTranscript(
+        async_sessionmaker(engine, expire_on_commit=False), session_id=session.id
+    )
+    await transcript.record(ROOM[0], at=0.0)
+    await transcript.record(ROOM[1], at=14.25)
+    await settlement.close(session_id=session.id, end_reason=EndReason.USER_ENDED)
+
+    response = await client.get(
+        f"/v1/sessions/{session.id}/transcript",
+        headers=bearer(funded_account.user_id),
+    )
+
+    assert response.status_code == 200
+    assert [line["began_at_seconds"] for line in response.json()["lines"]] == [0.0, 14.25]
+
+
+async def test_a_room_that_was_never_timed_says_so_rather_than_saying_zero(
+    client, db, engine, sessions, settlement, funded_account, bearer
+):
+    """Null travels as null. Every room recorded before #69 is one of these.
+
+    A client that received `0.0` here would offer to play from the top of the
+    room for every line in it — a control that looks like it works and does the
+    wrong thing, which is worse than one that is absent because there is nothing
+    to anchor to.
+    """
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+
+    response = await client.get(
+        f"/v1/sessions/{session.id}/transcript",
+        headers=bearer(funded_account.user_id),
+    )
+
+    assert response.status_code == 200
+    assert all(line["began_at_seconds"] is None for line in response.json()["lines"])

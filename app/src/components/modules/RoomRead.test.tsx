@@ -12,9 +12,9 @@ import { RoomRead, type RoomReadProps } from './RoomRead';
  */
 
 const LINES = [
-  { ordinal: 0, speaker: 'user', text: 'We grew forty percent last quarter.', saidAt: '2026-08-20T09:12:04Z' },
-  { ordinal: 1, speaker: 'cfo', text: 'Off what base, and at what cost?', saidAt: '2026-08-20T09:12:19Z' },
-  { ordinal: 2, speaker: 'user', text: 'We are really pleased with the trajectory.', saidAt: '2026-08-20T09:12:41Z' },
+  { ordinal: 0, speaker: 'user', text: 'We grew forty percent last quarter.', saidAt: '2026-08-20T09:12:04Z', beganAtSeconds: 0 },
+  { ordinal: 1, speaker: 'cfo', text: 'Off what base, and at what cost?', saidAt: '2026-08-20T09:12:19Z', beganAtSeconds: 15.2 },
+  { ordinal: 2, speaker: 'user', text: 'We are really pleased with the trajectory.', saidAt: '2026-08-20T09:12:41Z', beganAtSeconds: 37.9 },
 ];
 
 async function setup(overrides: Partial<RoomReadProps> = {}) {

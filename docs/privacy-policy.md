@@ -26,6 +26,14 @@ is streamed to a speech-to-text provider as you speak.
 debrief and sparring; without it there is no way to be told which of your
 answers was weak.
 
+Each line also carries **how many seconds into the room it began**, so a finding
+can point at the moment it happened rather than at a recording starting from the
+top. This is a number about a line, not a copy of it, and it is recorded whether
+or not you have rooms saved — turning recording off stops audio being kept, and
+the transcript is kept either way, so an offset on a line we are already keeping
+claims nothing further about you. Rooms that ran before this existed have none,
+and nothing was invented for them.
+
 **Material you attach.** PDFs, PowerPoint files, pasted text, and photographs of
 slides or whiteboards. These are read once, and the claims and figures found in
 them are kept. **The file itself is deleted as soon as it has been read** — what
@@ -86,6 +94,10 @@ removed at the next sweep.
 **Stop rooms being recorded.** A switch in Settings. It takes effect on your
 next room; rooms already saved are not deleted by it, because they were saved
 under a disclosure you accepted — removing them is a separate, deliberate act.
+
+With it off, no audio is held at any point — not gathered and later discarded,
+but never accumulated. The transcript is still kept, on every plan, because the
+debrief has nothing to work from without it.
 
 **Delete a room's recording.** Any room, at any time. Open it from the Library
 and the control is at the foot of the transcript — which is where it is on
@@ -176,6 +188,8 @@ So that this document can be checked against the system rather than trusted.
 | Attached material can be destroyed | `backend/app/modules/ingestion/service.py` → `delete`, reachable at `app/src/app/material.tsx` |
 | A recording can be destroyed on request | `backend/app/modules/sessions/router.py` → `delete_recording`, reachable at `app/src/app/rooms/[id].tsx` |
 | Deleting a recording keeps the transcript | `backend/app/modules/sessions/retention.py` → `delete` touches `session_recordings` only |
+| Recording off means never accumulated | `backend/app/modules/voice/mixing.py` → `RoomMixer(keeping=False)` stores nothing; `router.py` reads the preference before the first frame |
+| A line's offset is a number, not a copy of the audio | `backend/app/modules/sessions/models.py` → `TranscriptLine.began_at_seconds` |
 | The disclosure precedes the microphone prompt | `app/src/lib/consent/entry.ts` |
 
 The full reasoning behind these decisions is in `docs/session-retention.md`.

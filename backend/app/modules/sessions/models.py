@@ -9,6 +9,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -576,6 +577,38 @@ class TranscriptLine(Base):
     said_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+    #: How many seconds into the room this line began — #69.
+    #:
+    #: **Not an ordering key, and it does not compete with `ordinal`.** Two
+    #: lines can share a reading, and this one can be null; the reasoning above
+    #: stands untouched. What it adds is a separate, non-ordering fact: where in
+    #: the *mixed recording* the line falls, so a finding can point at the
+    #: moment it happened instead of at a file starting from zero.
+    #:
+    #: **A position in the mix, not a wall clock**, which is why `said_at` could
+    #: not do this job. `said_at` is when the row was written — close to when the
+    #: words were said, and "close" is the whole difference between a reading aid
+    #: and a seek. This is read from `RoomMixer.elapsed`, whose count of user
+    #: samples *is* the object a player scrubs.
+    #:
+    #: **Nullable, and never defaulted to zero.** Every room recorded before this
+    #: existed has no offset, and so does any room whose channel ran without a
+    #: relay. Zero would make all of them claim to begin at the top and a player
+    #: would seek confidently to the wrong place — a wrong answer that looks
+    #: like data, which is worse than a missing one.
+    #:
+    #: **Written even when the account has recording switched off.** It is still
+    #: true, the transcript it belongs to is kept on every tier regardless, and
+    #: it is what makes turn latency readable on the server (Open Risk #3). A
+    #: number about a line we already keep is a smaller claim than the line.
+    #:
+    #: A start and no end. Seeking needs only a start, nothing highlights a line
+    #: while it plays, and an end would be dishonest where it matters most:
+    #: barge-in truncates the mix, so a panel line cut off is shorter in the file
+    #: than it was when composed, and a stored end would point past its own
+    #: audio on exactly the utterances worth revisiting.
+    began_at_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class SessionRecording(Base):

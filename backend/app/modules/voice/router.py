@@ -30,6 +30,7 @@ from app.modules.voice.dependencies import (
     RoomRecordingsDep,
     VoiceTicketServiceDep,
 )
+from app.modules.voice.mixing import RoomMixer
 from app.modules.voice.relay import VoiceRelay
 from app.modules.voice.room import build_room
 
@@ -79,6 +80,25 @@ async def stream_session(
     await websocket.accept()
     log.info("stream_opened", user_id=str(user_id), session_id=str(session_id))
 
+    # Read once, here, before a single frame is accumulated. A room started by
+    # somebody who turned recording off never holds their audio in memory at all
+    # — "off" should mean not gathered, not merely not kept.
+    records = await PreferenceService(db).records_rooms(user_id=user_id)
+
+    # **One object, two readers, and #69 is why it is built here.** The mixer is
+    # the room's recording *and* its clock: the relay accumulates into it, and
+    # the channel reads `elapsed()` to stamp each transcript line with where in
+    # that recording it began. Two mixers would be two timelines, and the
+    # offsets would be positions in a file nobody was writing.
+    #
+    # This is the only place that can build it. `build_room` runs before the
+    # relay exists, and the relay is constructed from what `build_room` returns
+    # — so neither can hand one to the other, and the router is what sees both.
+    #
+    # `keeping` is the preference, not a second gate. The clock runs either way;
+    # what the preference decides is whether any samples are stored.
+    mixer = RoomMixer(keeping=records)
+
     try:
         # After the ticket, because the room needs to know whose it is: seats
         # and claims are per session, and the claims query is filtered by owner.
@@ -98,6 +118,9 @@ async def stream_session(
             # running beside the relay's loop, and one `AsyncSession` cannot be
             # flushed from two at once — see `SessionTranscript`.
             session_factory=session_factory,
+            # Read-only from this side: the room asks what time it is and
+            # never advances it. See `RoomClock`.
+            clock=mixer,
         )
     except ProviderUnavailable:
         # Nothing has been metered — the room never opened. Closed here rather
@@ -111,10 +134,9 @@ async def stream_session(
         client=WebSocketClientChannel(websocket),
         actor=ActorContext.user(user_id, request_id=current_request_id()),
         recordings=recordings,
-        # Read once, here, before a single frame is accumulated. A room started
-        # by somebody who turned recording off never holds their audio in
-        # memory at all — "off" should mean not gathered, not merely not kept.
-        records=await PreferenceService(db).records_rooms(user_id=user_id),
+        records=records,
+        # The same object the room above is reading its clock from.
+        mixer=mixer,
     )
 
     try:

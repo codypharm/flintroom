@@ -2863,12 +2863,18 @@ components:
           type: string
           format: date-time
           title: Said At
+        began_at_seconds:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Began At Seconds
       type: object
       required:
       - ordinal
       - speaker
       - text
       - said_at
+      - began_at_seconds
       title: TranscriptLineRead
       description: 'One line of one room, as it was said.
 

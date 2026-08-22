@@ -48,6 +48,7 @@ from app.modules.voice.events import (
 )
 from app.modules.voice.hearing import RoomHearing
 from app.modules.voice.speech import Speaker
+from app.modules.voice.clock import RoomClock
 from app.modules.voice.transcript import TranscriptStore
 from app.modules.voice.transcription import Transcriber, TranscriptionStream
 
@@ -107,6 +108,7 @@ class OrchestratedProvider:
         grounding: Grounding | None = None,
         reader: ClaimReader | None = None,
         transcript: TranscriptStore | None = None,
+        clock: RoomClock | None = None,
         pressure: Pressure = STANDARD_PRESSURE,
         audience: str = "",
     ) -> None:
@@ -143,6 +145,11 @@ class OrchestratedProvider:
         # per stream — it holds the room's ordinal counter, and a fresh one would
         # restart at zero and collide with the lines already written.
         self._transcript = transcript
+        # #69. The relay's mixer, read rather than driven — this side only ever
+        # asks it what time it is. Optional on exactly the terms the transcript
+        # store is: a channel exercised without a relay has no mixer, records a
+        # full transcript, and files every line with no offset.
+        self._clock = clock
 
     @asynccontextmanager
     async def open(self) -> AsyncIterator[OrchestratedChannel]:
@@ -170,6 +177,7 @@ class OrchestratedProvider:
                 # failure and a privacy one in the same object.
                 auditor=Auditor(reader=self._reader) if self._reader else None,
                 transcript=self._transcript,
+                clock=self._clock,
             )
 
 
@@ -199,6 +207,7 @@ class OrchestratedChannel:
         grounding: Grounding | None = None,
         auditor: Auditor | None = None,
         transcript: TranscriptStore | None = None,
+        clock: RoomClock | None = None,
         pressure: Pressure = STANDARD_PRESSURE,
         audience: str = "",
         heartbeat_seconds: float = HEARTBEAT_SECONDS,
@@ -225,6 +234,22 @@ class OrchestratedChannel:
         # persistence should not have to supply one. Production always does —
         # without it the debrief has nothing to be grounded in.
         self._transcript_store = transcript
+        # #69. Optional on exactly the same terms as the store above: a room
+        # without one still records a full transcript, and files every line with
+        # no offset — null means "no anchor", which every reader already handles
+        # for the rooms that ran before this existed.
+        self._clock = clock
+        #: Where the room was when the current utterance began, or None between
+        #: utterances — #69, and the reason a stamp taken at `record()` will not
+        #: do. A user's line is written when the *final* lands, which is after
+        #: they stopped: somebody who answered for ninety seconds would have
+        #: every word of it filed at the moment they finished, and a player
+        #: seeking there lands past the thing it was asked to play.
+        #:
+        #: Nothing is asked of the vendor for this. `_listen` already reads
+        #: partials to start selection early, so the first partial since the
+        #: last final *is* when this utterance began.
+        self._began_at: float | None = None
         # Optional, like the speaker: a room without one still transcribes,
         # routes, composes, speaks and captions. What it loses is the panel
         # catching a figure that moved.
@@ -316,17 +341,27 @@ class OrchestratedChannel:
         # and cannot tell a first gap from a broken microphone.
         self._ears = RoomHearing()
 
-    async def _keep(self, line: Said) -> None:
+    async def _keep(self, line: Said, *, at: float | None) -> None:
         """File one line where it will outlive the room, if anywhere.
 
         Paired with every `self._transcript.append`, because the room's own
         memory and the record it leaves behind must hold the same thing — a line
         the panel is shown but that never reaches the debrief is a contradiction
         the coach cannot see and cannot be told about.
+
+        `at` is passed rather than read here, and that is #69's whole shape: the
+        two sides of the room are stamped from different moments, and only the
+        caller knows which. A panel line is composed at the moment it belongs
+        to; a user's line is written when their final arrives, which is the end
+        of what they said rather than the start.
         """
         if self._transcript_store is None:
             return
-        await self._transcript_store.record(line)
+        await self._transcript_store.record(line, at=at)
+
+    def _at(self) -> float | None:
+        """Where the room is now, or None if nothing is keeping time."""
+        return None if self._clock is None else self._clock.elapsed()
 
     async def send_audio(self, pcm: bytes) -> None:
         """Straight through to the transcriber.
@@ -726,6 +761,14 @@ class OrchestratedChannel:
         try:
             async for result in self._transcription.results():
                 if result.final:
+                    # #69. Taken *and cleared* before the empty check below, so
+                    # the marker belongs to exactly one utterance. Held across
+                    # a dropped final it would stamp the next thing somebody
+                    # said with the moment they started the thing that was
+                    # discarded — a wrong answer that looks like data.
+                    began = self._began_at
+                    self._began_at = None
+
                     # **Nothing said is not an utterance.** Acting on `final`
                     # alone let an empty result do all four things a real one
                     # does: reset the idle clock, enter the transcript, wake the
@@ -785,7 +828,12 @@ class OrchestratedChannel:
                     # selection would then judge an answer it never saw.
                     said = Said(speaker=USER, text=result.text)
                     self._transcript.append(said)
-                    await self._keep(said)
+                    # Where they *started*, from the first partial of this
+                    # utterance. The final's own reading is the fallback for a
+                    # transcriber that emitted no partial at all — late by the
+                    # length of what was said, and never a guess about a moment
+                    # nobody observed.
+                    await self._keep(said, at=began if began is not None else self._at())
 
                     # **The floor is still theirs.** #79: everything above this
                     # line keeps running through the opening — the transcript
@@ -817,6 +865,15 @@ class OrchestratedChannel:
                     )
                     await self._attend(out)
                     continue
+
+                # #69. The first partial since the last final is when this
+                # utterance began, and it is the only observation of that moment
+                # anywhere in the room. Set once and left alone: every later
+                # partial of the same utterance is the same person still
+                # talking, and overwriting would walk the stamp forward to
+                # wherever they happened to stop.
+                if self._began_at is None:
+                    self._began_at = self._at()
 
                 # The user is mid-sentence, and this is where the latency budget
                 # is actually won. Selection measures 0.77s warm and wants the
@@ -1173,7 +1230,23 @@ class OrchestratedChannel:
             chosen_by=turn.chosen_by,
         )
         self._transcript.append(asked)
-        await self._keep(asked)
+        # #69. Where the room has reached *now*, which is a beat before this
+        # line is audible: the caption goes on the socket ahead of its own
+        # audio, and synthesis has not started. So a panel line's offset is
+        # early by the synthesis latency.
+        #
+        # That is not residual error, it is the measurement. The gap between a
+        # user line's offset and the next panel line's *is* the turn latency,
+        # taken on the server — which Open Risk #3 has had no way to read except
+        # from the client's own caption clock, on a dev build somebody is
+        # holding. Erring early is also the forgiving direction for a seek:
+        # landing a beat before a question beats landing inside it.
+        #
+        # The alternative was stamping where its audio actually lands, which is
+        # exact and means writing the line and then updating it — a second write
+        # to an append-only table, on the hot path of a live room, from a task
+        # that does not own the line.
+        await self._keep(asked, at=self._at())
 
         # **The only line that can move it**, and read here rather than on every
         # attention change: the band is a function of panel lines, so deriving

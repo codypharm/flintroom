@@ -43,8 +43,8 @@ from app.agents.context import Said
 class TranscriptStore(Protocol):
     """One room's record, for the length of one room."""
 
-    async def record(self, line: Said) -> None:
-        """Keep one line, whoever said it.
+    async def record(self, line: Said, *, at: float | None = None) -> None:
+        """Keep one line, whoever said it, and how far into the room it began.
 
         Takes a whole `Said` rather than a speaker and a string, so the caller
         cannot attribute a line to the wrong side by argument order — and so the
@@ -61,5 +61,16 @@ class TranscriptStore(Protocol):
         Never logged. `CLAUDE.md` forbids transcript text in logs and, unlike a
         secret, it cannot be caught by key-name redaction — it is indistinguishable
         from any other string. It must not be passed to a log call at all.
+
+        **`at` is passed rather than read, and #69 is why.** The two sides of a
+        room are stamped from different moments and only the caller knows which:
+        a panel line is composed at the moment it belongs to, while a user's
+        line is written when their final arrives — the end of what they said
+        rather than the start. A store that read a clock here would file a
+        ninety-second answer at the moment it finished.
+
+        `None` when the room has no clock, which is not zero. Zero is a line at
+        the very top of a room; `None` is a room that was never keeping time,
+        and a reader that confused them would seek to the wrong place.
         """
         ...

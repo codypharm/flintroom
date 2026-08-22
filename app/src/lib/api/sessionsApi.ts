@@ -117,10 +117,27 @@ export interface SaidLine {
    *
    * Enough to orient a reader — a room reads differently when you can see where
    * the long silence was — and not enough to seek audio with. Lines are written
-   * as they are said, so it is close, and "close" is exactly the difference #69
-   * exists about.
+   * as they are said, so it is close, and "close" is exactly the difference
+   * `beganAtSeconds` below exists about.
    */
   saidAt: string;
+
+  /**
+   * How many seconds into the **saved recording** this line began, or null.
+   *
+   * #69. A position in the file `playback` signs a link to, taken from the
+   * room's own mixer while it ran — so this may be handed straight to a seek.
+   * `saidAt` above cannot: it is a wall clock, and turning one into the other
+   * would mean subtracting a session start this screen does not have and
+   * assuming nothing stalled in between.
+   *
+   * **Null is a real answer.** Every room recorded before this existed has no
+   * offset. Treat it as "no anchor" and fall back to playing the room from the
+   * top; a client that read it as `0` would offer to jump to the start of the
+   * room on every line — a control that looks like it works and does the wrong
+   * thing.
+   */
+  beganAtSeconds: number | null;
 }
 
 export interface StartRoom {
@@ -327,6 +344,7 @@ export function createSessionsApi({
         speaker: line.speaker,
         text: line.text,
         saidAt: line.said_at,
+        beganAtSeconds: line.began_at_seconds,
       }));
     },
 
@@ -377,6 +395,7 @@ interface SaidLineBody {
   speaker: string;
   text: string;
   said_at: string;
+  began_at_seconds: number | null;
 }
 
 /** The wire's spelling, before the app renames it. */

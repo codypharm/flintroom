@@ -1795,6 +1795,8 @@ export interface components {
              * Format: date-time
              */
             said_at: string;
+            /** Began At Seconds */
+            began_at_seconds: number | null;
         };
         /**
          * TranscriptRead

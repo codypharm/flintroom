@@ -16,9 +16,11 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.agents.context import USER, Said
+from app.modules.sessions.models import TranscriptLine
 from app.modules.sessions.transcript import SessionTranscript
 from app.modules.voice.transcript import TranscriptStore
 
@@ -135,3 +137,64 @@ async def test_the_store_still_fits_the_seam_the_room_writes_through():
     the class of mistake nothing else here would catch.
     """
     assert isinstance(SessionTranscript(None, session_id=uuid.uuid4()), TranscriptStore)
+
+
+async def test_a_line_remembers_how_far_into_the_room_it_began(
+    db, engine, sessions, funded_account
+):
+    """#69. The offset is a position in the mix, not a wall-clock timestamp.
+
+    `said_at` already existed and could not do this job: it records when a line
+    was *written*, which is close to when it was said and not the same thing —
+    and "close" is exactly the difference between a reading aid and a seek. A
+    player handed a wall clock would have to subtract a session start it does
+    not know and hope nothing stalled in between.
+
+    Seconds as a float, because a sample count is meaningless off the server and
+    a whole second is coarser than a sentence.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+    await db.commit()
+
+    transcript = SessionTranscript(
+        async_sessionmaker(engine, expire_on_commit=False), session_id=session.id
+    )
+
+    await transcript.record(Said(speaker=USER, text="Margin is seventy."), at=0.0)
+    await transcript.record(
+        Said(speaker="cfo", text="The deck says sixty-one."), at=12.5
+    )
+
+    rows = await db.scalars(
+        select(TranscriptLine)
+        .where(TranscriptLine.session_id == session.id)
+        .order_by(TranscriptLine.ordinal)
+    )
+    assert [row.began_at_seconds for row in rows] == [0.0, 12.5]
+
+
+async def test_a_line_from_a_room_with_no_clock_carries_no_offset(
+    db, engine, sessions, funded_account
+):
+    """Null means "no anchor", and it has to stay distinguishable from zero.
+
+    Every room recorded before #69 has one, and so does any room whose channel
+    ran without a relay. A default of `0.0` would make all of them claim to have
+    begun at the top, and a player would seek confidently to the wrong place —
+    which the ticket names as worse than a missing offset, because nothing about
+    it looks wrong.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+    await db.commit()
+
+    transcript = SessionTranscript(
+        async_sessionmaker(engine, expire_on_commit=False), session_id=session.id
+    )
+
+    await transcript.record(Said(speaker=USER, text="Margin is seventy."))
+
+    row = await db.scalar(
+        select(TranscriptLine).where(TranscriptLine.session_id == session.id)
+    )
+    assert row is not None
+    assert row.began_at_seconds is None

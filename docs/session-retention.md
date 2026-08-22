@@ -154,6 +154,56 @@ seek for free, but ~16 objects per room and playback becomes clip scheduling
 against a clock rather than pressing play). The clip model is the natural v2 if
 "jump to the margin question" is ever wanted in the debrief.
 
+### The mixer is also the clock — #69, resolved 2026-08-22
+
+The free wall clock above turned out to be worth more than positioning panel
+audio. `RoomMixer` counts the user's samples, and because that uplink is
+continuous and ungated the count advances at one second per second of room — so
+`elapsed()` is not merely *a* clock but the position a player seeks to in the
+object this module is building. `session_transcript_lines.began_at_seconds`
+is read from it, and that is what turns "hear the room again, from the top" into
+"hear the CFO ask this".
+
+Four things it required, each of which could have gone the other way.
+
+**A wall clock was the obvious alternative and is wrong.** A monotonic clock
+started at `ChannelReady` drifts from the file the moment the uplink stalls —
+and a stalled uplink is precisely the case where it would look correct and be
+wrong. The sample count cannot drift from the file, because it *is* the file.
+
+**Ticking and keeping had to be separated.** The consent gate lived in the relay
+as `if self._records: self._mixer.heard(pcm)`, which stopped the clock along
+with the recording. The transcript is kept on every tier regardless of that
+preference, so every line in a room with recording switched off would have
+claimed to begin at second zero — a confidently wrong number, on the accounts
+that opted out. The gate now lives inside the mixer as `keeping`: the cursors
+advance always, nothing reaches the array, and "off means never accumulated"
+still holds.
+
+**Neither side of the room can be stamped where its line is written.** A user's
+line is written when the *final* arrives, after they stopped — a ninety-second
+answer filed at the moment it ended, which is past the thing a seek was asked
+for. A panel line is written when it is *composed*, before its audio exists,
+because the caption goes on the socket ahead of the voice. So the user's start
+comes from the first partial of that utterance, which `_listen` already reads to
+run selection early, and the panel's comes from the compose moment.
+
+That leaves the panel's offset early by the synthesis latency, and that is the
+measurement rather than the residue: **the gap between a user line's offset and
+the next panel line's is the turn latency, taken on the server.** Open Risk #3
+has had no reading of it except the client's own caption clock, on a dev build
+somebody is holding. Erring early is also the forgiving direction for a seek.
+
+**A start and no end.** Seeking needs only a start, nothing highlights a line
+while it plays, and an end would be dishonest where it matters most: barge-in
+truncates the mix, so a panel line cut off is shorter in the file than it was
+when composed, and a stored end would point past its own audio on exactly the
+utterances worth revisiting.
+
+Null is never backfilled. Every room that ran before this has no offset, and an
+invented one is not a gap in the record — it is a player seeking confidently to
+the wrong place, which is worse, because nothing about it looks wrong.
+
 ### Mixing needs no dependency. Encoding needs one
 
 `audioop` was removed from the standard library in Python 3.13 (PEP 594) and this
