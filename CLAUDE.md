@@ -226,8 +226,8 @@ gap worth naming once in a helper. If a suppression ever becomes the right
 answer, it carries the reason beside it; a bare ignore outlives the thing it
 suppressed.
 
-Nothing in CI enforces this yet, because there is no CI — see
-`docs/deployment.md`.
+`.github/workflows/ci.yml` runs it on every push, at the pinned version, beside
+`pytest`. It is a required check rather than a habit.
 
 ### Schemas
 

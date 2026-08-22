@@ -522,20 +522,49 @@ screen yet to fail. Closed the same day, with a real Android sign-in reaching
 
 ---
 
-## The type checker is not enforced by anything
+## What CI enforces, and what it deliberately does not
 
-`uvx ty@0.0.73 check app` runs clean as of 2026-08-21, and nothing makes it stay
-that way. There is no CI in this repository — no workflow file, no pipeline, no
-pre-commit hook — so the check runs only when somebody runs it.
+`.github/workflows/ci.yml`, added 2026-08-22. **Integration, not deployment** —
+where this ships is undecided and that file does not decide it: nothing in it
+builds an image, pushes an artefact, or holds a deployment credential. What it
+replaces is a state where every check ran only when somebody happened to run
+one, which made "the suite is green" a statement about a person rather than
+about the repository.
 
-That places it squarely in this document's remit: a requirement that no test
-enforces and that fails quietly. The failure mode is gradual rather than sudden.
-Diagnostics accumulate one at a time, each individually ignorable, until the
-count is high enough that nobody reads the output — which is exactly the state it
-started in, and the state in which it found a `None` being seated in a live room
-and an annotation naming the wrong `Enum`.
+Two jobs, five checks: `pytest` and `uvx ty@0.0.73 check app` on the backend,
+`tsc --noEmit` and `jest` on the app, and one drift check described below.
 
-**When CI exists, `ty` belongs in it as a required check**, next to `pytest` and
-the frontend's `tsc --noEmit` (which already runs clean and is already part of
-the loop). Until then it is a habit, and habits are what this document exists to
-write down.
+**`ty` is pinned there for the reason `pyproject.toml` gives.** It is
+preview-stage, so an unpinned run can report differently on unchanged source and
+"the checker is clean" would become a statement about the day. Its failure mode
+is also why it belongs in CI rather than in a habit: diagnostics accumulate one
+at a time, each individually ignorable, until nobody reads the output — which is
+the state it started in, and the state in which it found a `None` being seated
+in a live room and an annotation naming the wrong `Enum`.
+
+**The generated client is checked against the contract.** `test_contract` proves
+`contracts/openapi.yaml` matches the application. Nothing proved the committed
+`app/src/lib/api/schema.d.ts` still matches that contract — and it is committed
+on purpose, so a clone builds without running codegen. Both files live in the
+repository, so either can go stale against the other with every test still
+green. CI regenerates and fails on a diff.
+
+**A run builds its own `.env` from `.env.example`**, and that is not only
+plumbing. One test — `test_alembic_migrates_what_the_app_runs_on_when_nothing_says_otherwise`
+— unsets `DATABASE_URL` and asserts alembic still resolves the application's own
+database, which is #28's fix and is only provable when something other than the
+process environment can answer. Building the file from the example also proves
+that example is still complete enough to boot, which is the one property of it
+nothing else checks and exactly the kind this document exists for: it fails
+quietly, months later, on somebody's first clone. The signing key is generated
+per run, so no credential-shaped string sits in the workflow.
+
+**Postgres and MinIO come from `backend/docker-compose.yml`**, the same file a
+developer uses, so there is one description of what the suite needs. A
+filesystem stub was refused for the same reason `docs/ingestion.md` refuses one
+in development: it cannot do direct-to-storage PUT without proxying, so it would
+leave the presigned path untested until deploy.
+
+**Still not covered, and worth knowing:** nothing runs Maestro, so the E2E flows
+`CLAUDE.md` names as release gates are unenforced; nothing builds the app for
+either store; and no deployment step exists at all, by design.

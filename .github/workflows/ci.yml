@@ -1,0 +1,129 @@
+# Integration, not deployment.
+#
+# Where Flintroom ships is undecided and this file does not decide it: nothing
+# here builds an image, pushes an artefact, or holds a deployment credential.
+# What it does is run the checks that were previously only ever run by whoever
+# happened to be at a keyboard — which made "the suite is green" a statement
+# about a person rather than about the repository.
+#
+# Four checks, and they are the four `CLAUDE.md` already names:
+#   backend  — pytest, and `ty` at the pinned version
+#   app      — tsc, and jest
+# Plus one drift check the test suite structurally cannot make: whether the
+# committed frontend types still match the committed contract. `test_contract`
+# proves the contract matches the *application*; nothing proved the generated
+# client matches the contract, and that file is committed precisely so a clone
+# builds without running codegen.
+name: CI
+
+# Every push, on every branch. Deliberately not `pull_request` as well: work
+# here lands as branches pushed straight up, so a same-repo PR would run the
+# identical commit twice and halve the signal-to-noise of a red tick. Add the
+# trigger the day a fork opens one.
+on:
+  push:
+  workflow_dispatch:
+
+# A second push supersedes the first. Without this, pushing twice in a minute
+# queues two full runs and the older one's result arrives after the newer one's,
+# which is worse than no result.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The same Postgres and MinIO the suite expects locally, from the same
+      # file. `tests/conftest.py` refuses a filesystem shim on purpose —
+      # `docs/ingestion.md`: a shim cannot do direct-to-storage PUT without
+      # proxying, so it would leave the presigned path untested until deploy.
+      #
+      # `--wait` blocks on the healthchecks the compose file already declares,
+      # and returns cleanly when `storage-init` exits after creating the bucket.
+      - name: Start Postgres and MinIO
+        run: docker compose up -d --wait
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # `.env`, because one test genuinely needs the file rather than the
+      # environment: `test_alembic_migrates_what_the_app_runs_on_when_nothing_says_otherwise`
+      # unsets `DATABASE_URL` and asserts alembic still resolves the app's own
+      # database — which is #28's fix, and only provable when something other
+      # than the process environment can answer.
+      #
+      # Built from `.env.example` rather than written here, so a run also proves
+      # that file is still complete enough to boot. That is the one property of
+      # it nothing else checks, and the kind `docs/deployment.md` exists for:
+      # it fails quietly, months later, on somebody's first clone.
+      #
+      # The signing key is generated per run. Nothing depends on its value, and
+      # a fixed one committed here would be a credential-shaped string in the
+      # repository for a reader to have to think about.
+      - name: Configure
+        run: |
+          cp .env.example .env
+          sed -i \
+            -e "s|^JWT_SECRET=$|JWT_SECRET=$(openssl rand -hex 32)|" \
+            -e "s|^GOOGLE_CLIENT_ID=$|GOOGLE_CLIENT_ID=ci.invalid|" \
+            -e "s|^APPLE_CLIENT_ID=$|APPLE_CLIENT_ID=ci.invalid|" \
+            .env
+
+      - name: Tests
+        run: uv run pytest -q
+
+      # Pinned, and `pyproject.toml` says why: `ty` is preview-stage, so an
+      # unpinned run can report differently on unchanged source — and "the
+      # checker is clean" would become a statement about the day.
+      - name: Types
+        run: uvx ty@0.0.73 check app
+
+  app:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      # `ci`, not `install`: the lockfile is the input, and a run that resolved
+      # its own versions would be testing a tree nobody has. This also runs the
+      # `postinstall` hook, which reapplies `patches/` — see
+      # `docs/echo-cancellation.md` for what silently breaks without it.
+      - name: Install
+        run: npm ci
+
+      - name: Types
+        run: npx tsc --noEmit
+
+      - name: Tests
+        run: npx jest
+
+      # The half of the contract nothing else covers. `test_contract` on the
+      # backend proves `contracts/openapi.yaml` matches the application; this
+      # proves the committed `schema.d.ts` still matches that contract. Both are
+      # in the repository, so either can go stale against the other without a
+      # single test failing.
+      #
+      # Last, so a genuine test failure is not buried under a codegen diff.
+      - name: The committed client matches the contract
+        run: |
+          npm run generate:api
+          git diff --exit-code -- src/lib/api/schema.d.ts \
+            || { echo "::error::schema.d.ts is stale. Run 'npm run generate:api' and commit."; exit 1; }
