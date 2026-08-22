@@ -91,7 +91,7 @@ it('still says the whole placement in one breath to a screen reader', async () =
   await setup();
 
   expect(
-    screen.getByLabelText('4 hours ago · 20 August, The CFO and The Technical Skeptic'),
+    screen.getByLabelText('4 hours ago · 20 August, The CFO and The Technical Skeptic, ran 11:41'),
   ).toBeTruthy();
 });
 
@@ -107,7 +107,7 @@ it('says who was in the room, so it can be told from the others', async () => {
 it('opens the room that was tapped', async () => {
   const { onOpen } = await setup();
 
-  await userEvent.press(screen.getByLabelText('4 hours ago · 20 August, The CFO and The Technical Skeptic'));
+  await userEvent.press(screen.getByLabelText('4 hours ago · 20 August, The CFO and The Technical Skeptic, ran 11:41'));
 
   expect(onOpen).toHaveBeenCalledWith('room-2');
 });
@@ -195,7 +195,7 @@ describe('what the room was about', () => {
 
     expect(screen.getByText('Q3 board readout')).toBeTruthy();
     expect(
-      screen.getByLabelText('Q3 board readout, 4 hours ago · 20 August, The CFO and The Technical Skeptic')
+      screen.getByLabelText('Q3 board readout, 4 hours ago · 20 August, The CFO and The Technical Skeptic, ran 11:41')
     ).toBeTruthy();
   });
 
@@ -253,7 +253,33 @@ it('still says every panelist to a screen reader, whatever the row can show', as
 
   expect(
     screen.getByLabelText(
-      '4 hours ago · 20 August, The CFO, The Champion and The Technical Skeptic'
+      '4 hours ago · 20 August, The CFO, The Champion and The Technical Skeptic, ran 11:41'
     )
   ).toBeTruthy();
+});
+
+it('reads the duration and a closed window to a screen reader too', async () => {
+  // The row's Pressable collapses its children into one label, so anything not
+  // in that label does not exist for VoiceOver. The duration was sighted-only,
+  // and so was "The recording has passed its window" — which `Hearing` calls
+  // news, and news for the eye only is a screen contradicting itself.
+  await setup();
+
+  expect(
+    screen.getByLabelText(
+      '4 hours ago · 20 August, The CFO and The Technical Skeptic, ran 11:41',
+    ),
+  ).toBeTruthy();
+  expect(
+    screen.getByLabelText(
+      /The Champion, ran 5:12\. The recording has passed its window/,
+    ),
+  ).toBeTruthy();
+});
+
+it('announces its title as a header', async () => {
+  // The rotor finds sections by role, not by type size.
+  await setup();
+
+  expect(screen.getByRole('header', { name: 'Every room' })).toBeTruthy();
 });

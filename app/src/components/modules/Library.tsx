@@ -72,7 +72,9 @@ export function Library({ rooms, now, onOpen, onRunAgain, onStart }: LibraryProp
         contentContainerStyle={styles.content}
         accessibilityLabel="Every room you have run"
       >
-        <Text style={styles.title}>Every room</Text>
+        <Text style={styles.title} accessibilityRole="header">
+          Every room
+        </Text>
 
         {rooms.length === 0 ? (
           <Empty onStart={onStart} />
@@ -115,6 +117,15 @@ function Room({
   const ran = howLongItRan(room.startedAt, room.settledAt);
   const named = room.rehearsalName;
 
+  // Everything the eye gets from this row, in one string. The Pressable
+  // collapses its children into a single accessible node, so a fact left out
+  // of this label does not exist for VoiceOver — which made the duration and
+  // the expiry notice sighted-only, and the expiry is the one line `Hearing`
+  // keeps precisely because it is news.
+  const heard = [named, when, who, ran === null ? null : `ran ${ran}`]
+    .filter((part) => part !== null)
+    .join(', ');
+
   return (
     <View style={[styles.room, first && styles.firstRoom]}>
       <Pressable
@@ -123,7 +134,11 @@ function Room({
         // somebody says the room they are looking for out loud. The date stays
         // in even when there is a name, because a rehearsal run five times is
         // five rows sharing a headline and when is all that separates them.
-        accessibilityLabel={named === null ? `${when}, ${who}` : `${named}, ${when}, ${who}`}
+        accessibilityLabel={
+          room.recording.state === 'expired'
+            ? `${heard}. The recording has passed its window`
+            : heard
+        }
         onPress={() => onOpen(room.id)}
         style={({ pressed }) => [styles.open, pressed && styles.pressed]}
       >
