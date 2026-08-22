@@ -1010,14 +1010,22 @@ class OrchestratedChannel:
         )
 
     def _seconds_elapsed(self) -> int:
-        """How far into the room this utterance was, from audio forwarded.
+        """How far into the room this utterance was.
 
-        The bytes rather than a wall clock, because they are what the room
-        actually heard: a phone that reconnects, or a stream that stalls, is
-        wall-clock time nobody spoke into. It is also the same counter metering
-        already trusts, so a timestamp a panelist reads aloud and a second the
-        user was charged for cannot disagree.
+        The injected `RoomClock` when one is keeping time — #98. A finding's
+        moment exists so a panelist can put a second to somebody and the debrief
+        can seek there (#69), and "there" is a position in the mixed recording,
+        which is exactly what the clock measures. It is also the authority that
+        stamps `began_at_seconds` on the line the finding is about, so the two
+        cannot disagree by construction rather than by coincidence.
+
+        The bytes are the fallback, not a second opinion: a channel with no
+        relay behind it has no mixer, and audio actually forwarded is the best
+        it can say. Metering (`_seconds_heard`) stays on the bytes either way —
+        what a user is charged is not this method's question.
         """
+        if self._clock is not None:
+            return int(self._clock.elapsed())
         return self._heard_bytes // (SAMPLE_RATE * BYTES_PER_SAMPLE)
 
     async def _take_finding(self) -> Finding | None:

@@ -1737,15 +1737,13 @@ async def test_the_rooms_two_clocks_agree_about_what_time_it_is():
     later, in `send_audio`, and stamps every Auditor finding — the same field
     also drives `_seconds_heard`, which is what METERS the room.
 
-    So a finding saying "at second 47" and the line it belongs to are the same
-    fact derived twice. They agree because the relay hands both halves the same
-    bytes, and until this nothing anywhere said so.
-
-    **A test rather than a refactor, deliberately.** Merging them means touching
-    the counter a user is charged from, which `CLAUDE.md` makes non-negotiable
-    and which deserves its own pass. This converts a silent future divergence —
-    a frame dropped on one path, a cursor stalled on one and not the other —
-    into a failing test, and moves no authority at all.
+    The merge landed: with a clock injected, `_seconds_elapsed` reads it, so in
+    a real room the two are one authority by construction. What this test now
+    guards is the seam that remains — the byte-derived *fallback* a clockless
+    channel uses must still value a frame exactly as the mixer does, or a room
+    exercised without a relay stamps findings on a different scale than one
+    with. No clock is injected here, deliberately: the fallback is the path
+    under test.
 
     Fed directly rather than through a relay, because what is under test is the
     arithmetic rather than the wiring: the relay calling both on every frame is
@@ -1768,3 +1766,47 @@ async def test_the_rooms_two_clocks_agree_about_what_time_it_is():
 
     assert int(mixer.elapsed()) == channel._seconds_elapsed()
     assert mixer.elapsed() > 0, "a clock that never moved agrees with anything"
+
+
+async def test_a_findings_moment_reads_the_rooms_clock_when_one_is_keeping_time():
+    """#98's merge — the finding and the line it points at share one authority.
+
+    A finding's `at_seconds` exists so a panelist can put a moment to somebody
+    and the debrief can seek there (#69) — and "there" is a position in the
+    mixed recording, which is exactly what the injected `RoomClock` measures.
+    Derived from `_heard_bytes` instead, it is the meter's number: the same
+    value today, but a separate authority, free to drift the day a frame is
+    dropped on one path and not the other.
+
+    So with a clock keeping time, the finding reads it. The bytes remain the
+    meter's business, untouched — and the fallback for a room with no relay
+    behind it, which has no mixer and nothing better to offer.
+    """
+    clock = ScriptedClock()
+    reader = ScriptedClaimReader(
+        {"Our margin is seventy percent.": (claim("gross margin", 70.0),)}
+    )
+    auditor = Auditor(reader=reader)
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=TimedTranscription(
+            clock,
+            # The clock says 47.9 when the final lands; no audio ever reached
+            # `send_audio`, so the byte counter still says zero. The stamp
+            # tells us which one the finding believed.
+            [(47.9, Transcription(text="Our margin is seventy percent.", final=True))],
+        ),
+        model=ScriptedPanelModel(),
+        grounding=Grounding(),
+        auditor=auditor,
+        floor=mid_room(),
+        clock=clock,
+    )
+
+    await events_of(channel)
+    # The reading runs beside the loop and is collected on the *next* utterance
+    # — there is none here, so settle it by hand before looking.
+    if channel._reading is not None:
+        await asyncio.wait_for(channel._reading, timeout=1)
+
+    assert [spoken.at_seconds for spoken in auditor.heard] == [47]
