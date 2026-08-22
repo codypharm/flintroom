@@ -492,7 +492,7 @@ describe('what the room is like', () => {
     await setup({ onAudienceChange });
 
     fireEvent.changeText(
-      screen.getByLabelText('What they should know about this room'),
+      screen.getByLabelText('What this audience is like'),
       'my VP hates anything that adds headcount',
     );
 
@@ -515,7 +515,7 @@ describe('what the room is like', () => {
 
     expect(screen.queryByLabelText('Who you are presenting to')).toBeNull();
     expect(
-      screen.getByLabelText('What they should know about this room'),
+      screen.getByLabelText('What this audience is like'),
     ).toBeOnTheScreen();
   });
 
@@ -584,7 +584,7 @@ describe('what the room is like', () => {
     // so the refusal is not a room that will not open for an invisible reason
     // — the same rule the rehearsal name already follows.
     expect(
-      screen.getByLabelText('What they should know about this room').props.maxLength,
+      screen.getByLabelText('What this audience is like').props.maxLength,
     ).toBe(400);
   });
 });

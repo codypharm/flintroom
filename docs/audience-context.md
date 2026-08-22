@@ -114,7 +114,11 @@ knows to attack cost, margin and runway and *cannot* know that in this company
 headcount is the third rail. The panel is the *kind* of person; this is the
 *particular* room.
 
-So it asks **"What should they know about this room?"**, and it carries
+So it asks **"What's this audience like?"** — for a description of character
+rather than an identity, which is what keeps it clear of the picker above. (An
+earlier line, "What should they know about this room?", carried two pronouns
+with no antecedent and could be read as a note about the rehearsal itself; the
+architect caught it.) It carries
 `Product.md` §3.1's own example verbatim underneath — nobody knows what belongs
 in an empty box, and one concrete line does more than a paragraph of
 instruction.

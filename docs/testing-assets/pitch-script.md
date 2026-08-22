@@ -23,7 +23,7 @@ path, photograph slide 5 (“Unit economics”) off your laptop screen.
 | Field | Enter |
 | --- | --- |
 | What are you rehearsing? | `Kettleworks seed pitch` |
-| What should they know about this room? | `Seed-stage VCs who have seen a hundred service-business decks and care most about unit economics` |
+| What's this audience like? | `Seed-stage VCs who have seen a hundred service-business decks and care most about unit economics` |
 | Panel | **The CFO**, **The Technical Skeptic**, **The Champion** (the default mixed room) |
 | Difficulty | Leave it where it starts — the middle rung is the shipped room |
 | Material | `kettleworks-deck.pdf` |

@@ -399,6 +399,14 @@ export function PanelSetup({
         headcount is the third rail. The panel is the kind of person; this is
         the particular room. So it asks for what we could not have guessed.
 
+        And it asks what the audience is *like*, not what "they" should
+        "know" — the previous line ("What should they know about this room?")
+        carried two pronouns with no antecedent on the screen, and the
+        architect read it, plausibly, as a note about the rehearsal rather
+        than about the room being rehearsed for. Every good entry is a
+        description of character — priorities, allergies, mood — and the
+        question now asks for exactly that.
+
         One line under it, carrying the reason to bother and the example
         together. Nobody knows what belongs in an empty box, and one concrete
         line does more work than a paragraph of instruction — `Product.md`
@@ -421,9 +429,9 @@ export function PanelSetup({
           style={styles.audience}
           value={audience}
           onChangeText={onAudienceChange}
-          placeholder="What should they know about this room?"
+          placeholder="What's this audience like?"
           placeholderTextColor={color.onSurfaceVariant}
-          accessibilityLabel="What they should know about this room"
+          accessibilityLabel="What this audience is like"
           // Bounded here as well as at the server, so a long paste stops under
           // the thumb rather than becoming a room that will not open for a
           // reason nobody can see.
