@@ -285,18 +285,21 @@ describe('the room ending', () => {
     expect(endings).toEqual(['upstream_failure']);
   });
 
-  it('treats a dropped connection as an ending, not a failure to recover from', async () => {
-    // 1006 is what a phone leaving a tunnel produces, and it is deliberately
-    // not special-cased into a reconnect. Minutes are charged in arrears, so
-    // the ledger is already correct; the room is over and the user goes to the
-    // debrief with whatever was said. Reconnecting would resume an
-    // interrogation the user has mentally left.
+  it('tells a dropped connection apart from a room that was ended', async () => {
+    // 1006 is what a phone leaving a tunnel produces. This used to map to
+    // 'ended', reasoning that the ledger was already correct and the user had
+    // mentally left — and then a room dropped under the architect mid-sentence
+    // and the app opened the debrief as if they had finished. The room *is*
+    // over (the server settles a dead line), but the screen owes the person a
+    // sentence about why before it moves on, and that sentence needs the two
+    // cases told apart. Reconnecting is a separate, designed feature (#100);
+    // this only stops the app from pretending the ending was chosen.
     const endings: string[] = [];
     const { socket } = await connected({ onEnding: (ending) => endings.push(ending) });
 
     socket.onclose?.({ code: 1006, reason: '' });
 
-    expect(endings).toEqual(['ended']);
+    expect(endings).toEqual(['dropped']);
   });
 
   it('fails the open when the ticket is refused, rather than waiting forever', async () => {

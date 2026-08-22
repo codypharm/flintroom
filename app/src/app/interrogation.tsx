@@ -182,6 +182,18 @@ export default function InterrogationScreen() {
       leaving.current = true;
 
       setPhase('ending');
+      if (why === 'dropped') {
+        // The line died under them; the server has already settled the room.
+        // Said before the debrief opens, because arriving there silently reads
+        // as the app deciding the presentation was finished. No claim about
+        // minutes: a dropped room is charged for what ran (whether it should
+        // be is #100's question), and this sentence must not promise what the
+        // ledger did not do.
+        setRefusal({
+          said: 'The connection dropped and the room ended.',
+          buying: false,
+        });
+      }
       if (why === 'upstream_failure') {
         // Said, because it is not their fault and the debrief they are about to
         // open will be short. The minutes were returned before the socket

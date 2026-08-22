@@ -15,8 +15,10 @@
  * only somewhere to go next.
  */
 export type Ending =
-  /** Normal close, or the connection simply dropped. Go to the debrief. */
+  /** The server closed the room on purpose. Go to the debrief. */
   | 'ended'
+  /** The line died under the presenter. The room is settled; say so first. */
+  | 'dropped'
   /** Ticket invalid, expired, spent, or for another room. Mint a new session. */
   | 'ticket_rejected'
   /** The room ended on an upstream failure, already refunded. Go to debrief. */
@@ -184,13 +186,18 @@ export interface Connection {
 /**
  * A close code, as an ending.
  *
- * Anything unrecognised — 1006 from a phone leaving a tunnel, or a code added
- * to the protocol after this build shipped — is `ended`. That is the safe
- * default in both directions: it sends the user to the debrief with whatever
- * was said, and the ledger needs nothing, because minutes are charged in
- * arrears and an upstream failure is refunded before the socket closes.
+ * Only 1000 is `ended`, because it is the one code the server sends when it
+ * closes a room on purpose. Anything unrecognised — 1006 from a phone leaving
+ * a tunnel, or a code added to the protocol after this build shipped — is
+ * `dropped`: the room is still over and the user still lands on the debrief,
+ * but the screen says the line died first, instead of behaving as if the
+ * ending was chosen. The ledger needs nothing either way; minutes are charged
+ * in arrears and an upstream failure is refunded before the socket closes.
  */
 function endingFor(code: number): Ending {
+  if (code === 1000) {
+    return 'ended';
+  }
   if (code === 4401) {
     return 'ticket_rejected';
   }
@@ -198,7 +205,7 @@ function endingFor(code: number): Ending {
     return 'upstream_failure';
   }
 
-  return 'ended';
+  return 'dropped';
 }
 
 export function openConnection(options: ConnectionOptions): Promise<Connection> {
