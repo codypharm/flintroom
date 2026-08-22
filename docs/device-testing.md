@@ -73,6 +73,9 @@ does it hold up in a hand, on a desk, over real air.
 - **Attach material** via the OS file picker: a PDF, a PPTX, and a photo of a
   slide. Extraction is async — the UI should say so, not hang. An oversized or
   wrong-type file must be refused before any upload, with a plain sentence.
+  Use the deck in `docs/testing-assets/` — its numbers are known, and
+  `pitch-script.md` beside it maps each planted line to the slide it betrays
+  and the archetype that should catch it, plus what to type into this form.
 
 ## 3. The live room
 
