@@ -229,6 +229,25 @@ export function InterrogationRoom({
         </Text>
       )}
 
+      {/*
+        The band, in words, under the clock. The wash alone was the gauge and
+        its resting state is invisible — the architect ran a full room and
+        concluded the feature did not exist. Words make the neutral state a
+        statement rather than an absence, and they are the scale's own words:
+        never a verdict, never "Investable" (CLAUDE.md).
+
+        A live region, politely: the band is hysteretic and changes a handful
+        of times a room, which is exactly the cadence worth hearing without
+        being heckled.
+      */}
+      <Text
+        style={styles.standing}
+        accessibilityLabel={`The room is ${WORDED[temperature].toLowerCase()}`}
+        accessibilityLiveRegion="polite"
+      >
+        {WORDED[temperature]}
+      </Text>
+
       <View
         style={styles.far}
         // The row's width, so a seat can be told how far it is from the middle.
@@ -791,6 +810,13 @@ function Cast({
   );
 }
 
+/** The scale, said as itself. Neutral, transferable, and never a verdict. */
+const WORDED: Record<RoomTemperature, string> = {
+  convinced: 'Convinced',
+  skeptical: 'Skeptical',
+  losing_the_room: 'Losing the room',
+};
+
 const styles = StyleSheet.create({
   room: { flex: 1, backgroundColor: color.roomGround },
 
@@ -812,6 +838,16 @@ const styles = StyleSheet.create({
     // Half strength by *placement*, not by colour. It is the smallest thing on
     // the screen and the furthest from the eye, which is enough.
     opacity: 0.55,
+  },
+  // A notch above the clock's strength: the clock is ambient, this is a
+  // reading. Same ink, same quiet top band of the screen — legible from a
+  // desk, and it never competes with the captions.
+  standing: {
+    ...type.labelLg,
+    color: color.onRoom,
+    textAlign: 'center',
+    paddingTop: space.hair,
+    opacity: 0.7,
   },
 
   // 55/45, the surface brief's split, and it is about distance rather than

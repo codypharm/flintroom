@@ -479,3 +479,41 @@ it('tells a screen reader it is working once, however long the wait ticks on', a
   const said = await screen.findByText('Working on it.');
   expect(said.props.accessibilityLabel).toBe('Working on it');
 });
+
+describe('the room temperature, in words', () => {
+  /**
+   * #74 computed it and the screen carried it only as an ambient wash — warm
+   * when convinced, cool when losing the room, and *nothing at all* at
+   * skeptical, which is both the default and where most of a room is spent.
+   * The architect ran a full interrogation and concluded the gauge did not
+   * exist. A signal whose resting state is invisible cannot be told from a
+   * feature that was never built, so the band is now also said in words, in
+   * the neutral scale language and no other (CLAUDE.md: never "Investable").
+   */
+  it('says where the room stands, even at rest', async () => {
+    await show({});
+
+    expect(screen.getByText('Skeptical')).toBeTruthy();
+  });
+
+  it('follows the band', async () => {
+    await show({ temperature: 'convinced' });
+    expect(screen.getByText('Convinced')).toBeTruthy();
+  });
+
+  it('names the cold end as losing the room, not as a verdict', async () => {
+    await show({ temperature: 'losing_the_room' });
+
+    expect(screen.getByText('Losing the room')).toBeTruthy();
+  });
+
+  it('reads as a sentence to a screen reader, and announces changes politely', async () => {
+    // Glanceable for the eye, a sentence for the ear — and a live region so a
+    // band change is worth hearing without heckling on every render.
+    await show({});
+
+    const read = screen.getByText('Skeptical');
+    expect(read.props.accessibilityLabel).toBe('The room is skeptical');
+    expect(read.props.accessibilityLiveRegion).toBe('polite');
+  });
+});
