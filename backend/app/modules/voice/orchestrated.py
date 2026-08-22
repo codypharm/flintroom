@@ -47,6 +47,7 @@ from app.modules.voice.events import (
     UserSpoke,
     VoiceEvent,
 )
+from app.modules.voice.echo import hears_itself
 from app.modules.voice.hearing import RoomHearing
 from app.modules.voice.speech import Speaker
 from app.modules.voice.clock import RoomClock
@@ -804,6 +805,37 @@ class OrchestratedChannel:
                     if not result.text.strip():
                         log.info("empty_final_ignored")
                         continue
+
+                    # #78. The panel's own voice, returned by the loudspeaker
+                    # into the gap after playback, where it is the only sound
+                    # and therefore transcribed as the presenter. Measured
+                    # narrow (`docs/echo-cancellation.md`): mixed under a
+                    # talking presenter it is already rejected unaided, so the
+                    # only line that can be echo is the *newest* panel line,
+                    # and only while nothing genuine has been said since —
+                    # which is exactly "the transcript still ends with it".
+                    #
+                    # Refused the same way as the empty final above, and for
+                    # the same reason: a room must never answer something
+                    # nobody said. No idle-clock reset either — on a handset
+                    # with weak AEC, an abandoned room would otherwise keep
+                    # itself alive past every idle check, asking and hearing
+                    # its own questions on the presenter's minutes.
+                    #
+                    # The figures and never the text: transcript content is
+                    # barred from logs, so these numbers are the only trace of
+                    # why a line was refused an operator will ever see.
+                    last = self._transcript[-1] if self._transcript else None
+                    if last is not None and last.speaker != USER:
+                        returning = hears_itself(last.text, result.text)
+                        if returning.is_echo:
+                            log.info(
+                                "echo_final_refused",
+                                matched=returning.matched,
+                                novel=returning.novel,
+                                coverage=round(returning.coverage, 3),
+                            )
+                            continue
 
                     # Before the turn is even started. This is what the relay
                     # turns into `record_speech`, and it is the only thing that

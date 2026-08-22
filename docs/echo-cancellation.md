@@ -251,6 +251,47 @@ needs to notice that a lone utterance arriving after a panelist spoke is that
 panelist. The verbatim-repeat check #78 already proposes is the right shape,
 and this bounds when it has to fire.
 
+## The second defence, shipped 2026-08-22 — the room refuses its own line
+
+#78's decision, made by the architect: platform AEC on one measured handset is
+too thin a wall for something that corrupts the record the whole debrief is
+grounded in, so the server now refuses a final that is the room's own newest
+panel line returning. `app/modules/voice/echo.py` is the matcher;
+`OrchestratedChannel._listen` applies it beside the empty-final guard, and a
+refusal does what that guard does: nothing at all. No transcript line, no
+Auditor reading, no turn — and no idle-clock reset, because on a handset with
+weak AEC an abandoned room would otherwise keep itself alive past every idle
+check, asking and hearing its own questions on the presenter's minutes.
+
+The measurement above is what makes it this small. Echo mixed under a talking
+presenter never reaches the transcript, so the only candidate is the **newest**
+panel line, and only while nothing genuine has been said since — which is
+exactly "the transcript still ends with a panel line". No clocks, no levels.
+
+Two thresholds, both from rulings rather than tuning:
+
+- **Coverage ≥ 0.8** of the panel line. A completed playback echoes whole; a
+  fragment can only be echo when playback was cut, and playback is only cut
+  when the presenter is already talking — the mix Scribe is measured to
+  reject. So "Ten times?" thrown back is a person, and is kept.
+- **At most one novel token.** A presenter who repeats the question *and keeps
+  going* is thinking aloud, and the added words prove it — they always pass.
+  The accepted cost, ruled on explicitly: a presenter who repeats the panel's
+  line word for word, adds nothing, and stops is swallowed, and the room
+  waits for their actual answer.
+
+Tokens are normalised (case, punctuation, number words to digits) because the
+measured echo differed from its source by exactly "ten" -> "10".
+
+Refusals log `echo_final_refused` with the match figures and never the text.
+
+**What this does not cover:** echo *partials* arriving while a panelist is
+still speaking can cut them off — the room interrupting itself. Only devices
+with no AEC at all exhibit it (the emulator; headphones remove it), no
+transcript is corrupted, and widening the guard to partials would let the
+matcher veto genuine barge-in, which is the feature the stack was chosen for.
+Revisit only if a real handset shows it.
+
 ## Open
 
 - **Whether the gate swallows a quiet interruption.** The acoustic question has

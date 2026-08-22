@@ -1810,3 +1810,130 @@ async def test_a_findings_moment_reads_the_rooms_clock_when_one_is_keeping_time(
         await asyncio.wait_for(channel._reading, timeout=1)
 
     assert [spoken.at_seconds for spoken in auditor.heard] == [47]
+
+
+class RollingPanelModel(ScriptedPanelModel):
+    """A panel whose line changes each turn, so a test can tell them apart."""
+
+    def __init__(self, lines: Sequence[str]) -> None:
+        super().__init__()
+        self._lines = list(lines)
+
+    async def compose(self, *, archetype, context, finding=None, dispute=None) -> ModelReply:
+        reply = await super().compose(
+            archetype=archetype, context=context, finding=finding, dispute=dispute
+        )
+        del reply
+        return ModelReply(text=self._lines.pop(0))
+
+
+async def test_the_room_refuses_its_own_line_returning_into_the_gap():
+    """#78. The panel's voice comes back up the microphone, alone, and is not
+    the presenter.
+
+    Room 066f32db: six of nine "user" lines were word-for-word repeats of the
+    panelist immediately before them — the loudspeaker reaching the microphone
+    in the gap after playback, where it is the only voice and therefore the
+    primary speaker. Each one reset the idle clock, entered the transcript,
+    and composed a turn: the room interrogating itself on the presenter's
+    minutes, and the debrief later ranking weak answers against words nobody
+    said.
+
+    So a final that near-verbatim repeats the room's newest panel line does
+    *nothing at all* — the same four refusals as the empty final above it,
+    and for the same reason: a room must never answer something nobody said.
+    """
+    transcription = DrivenTranscription()
+    transcript = FakeTranscript()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=transcription,
+        model=ScriptedPanelModel(line="What specifically breaks at ten times the load?"),
+        grounding=Grounding(),
+        transcript=transcript,
+        floor=mid_room(),
+    )
+
+    events: list = []
+    spoken = asyncio.Queue()
+
+    async def collect():
+        async for event in channel.events():
+            events.append(event)
+            if isinstance(event, AgentTranscript):
+                spoken.put_nowait(event)
+
+    reader = asyncio.create_task(collect())
+    transcription.feed(Transcription(text="Our margin is seventy percent.", final=True))
+    await asyncio.wait_for(spoken.get(), timeout=1)
+    # The line returns as the transcriber respells it — "ten" -> "10" is the
+    # exact difference the measured room recorded.
+    transcription.feed(
+        Transcription(text="What specifically breaks at 10 times the load?", final=True)
+    )
+    transcription.hang_up()
+    await asyncio.wait_for(reader, timeout=1)
+
+    # Not in the record the debrief is grounded in.
+    assert [line.text for line in transcript.lines if line.speaker == USER] == [
+        "Our margin is seventy percent."
+    ]
+    # No turn was composed against it — one panel line in the whole room.
+    assert len([e for e in events if isinstance(e, AgentTranscript)]) == 1
+    # And the idle clock never heard it: UserSpoke is what the relay turns
+    # into record_speech, and echo keeping an abandoned room alive past every
+    # idle check is the runaway this guard exists to stop.
+    assert len([e for e in events if type(e).__name__ == "UserSpoke"]) == 1
+
+
+async def test_only_the_newest_panel_line_can_be_an_echo():
+    """A match against anything older is a coincidence, not a loudspeaker.
+
+    Echo returns in the gap right after playback — by the time another
+    exchange has happened, the sound is long dead. A presenter who happens to
+    say words matching a question from two turns ago is quoting it, which is
+    speech, and the room owes them an answer.
+    """
+    transcription = DrivenTranscription()
+    transcript = FakeTranscript()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=transcription,
+        model=RollingPanelModel(
+            [
+                "What breaks at ten times the load?",
+                "Where is that margin from?",
+                "And who maintains it?",
+            ]
+        ),
+        grounding=Grounding(),
+        transcript=transcript,
+        floor=mid_room(),
+    )
+
+    spoken = asyncio.Queue()
+
+    async def collect():
+        async for event in channel.events():
+            if isinstance(event, AgentTranscript):
+                spoken.put_nowait(event)
+
+    reader = asyncio.create_task(collect())
+    for utterance in [
+        "Our ingest pipeline is the risk.",
+        "The margin is from the Q3 audit.",
+        # The first panel line, word for word — but two exchanges old, so the
+        # newest panel line is "Where is that margin from?" and this matches
+        # nothing that could still be in the air.
+        "What breaks at ten times the load?",
+    ]:
+        transcription.feed(Transcription(text=utterance, final=True))
+        await asyncio.wait_for(spoken.get(), timeout=1)
+    transcription.hang_up()
+    await asyncio.wait_for(reader, timeout=1)
+
+    assert [line.text for line in transcript.lines if line.speaker == USER] == [
+        "Our ingest pipeline is the risk.",
+        "The margin is from the Q3 audit.",
+        "What breaks at ten times the load?",
+    ]
