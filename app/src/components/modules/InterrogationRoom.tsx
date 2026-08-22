@@ -4,6 +4,7 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-nativ
 import type { Attending, PanelLine, RoomTemperature } from '../../lib/voice/connection';
 import { portraitOf } from '../../lib/archetypes/portraits';
 import { useReduceMotion } from '../../lib/a11y/reduceMotion';
+import { ROOM_LENGTH_SECONDS } from '../../lib/room/length';
 import { color, radius, space, type } from '../../theme/tokens';
 import { Tray } from './Tray';
 
@@ -224,7 +225,10 @@ export function InterrogationRoom({
         fails, and this has to stay readable at a glance from a desk.
       */}
       {elapsed !== null && (
-        <Text style={styles.clock} accessibilityLabel={spoken(elapsed)}>
+        <Text
+          style={[styles.clock, closing(elapsed) && styles.clockClosing]}
+          accessibilityLabel={spoken(elapsed)}
+        >
           {onTheClock(elapsed)}
         </Text>
       )}
@@ -311,9 +315,21 @@ export function InterrogationRoom({
  * far into it you are.
  */
 function onTheClock(seconds: number): string {
+  // Against the room's length, because the architect's room ended at twelve
+  // minutes mid-sentence and nothing had ever said twelve was the number.
+  // Still counting up — the fixed side is the room's, not a balance draining.
+  return `${asClock(seconds)} / ${asClock(ROOM_LENGTH_SECONDS)}`;
+}
+
+function asClock(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
 
   return `${minutes}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+}
+
+/** The final minute, when the clock steps up to full strength. */
+function closing(seconds: number): boolean {
+  return seconds >= ROOM_LENGTH_SECONDS - 60;
 }
 
 /**
@@ -327,7 +343,7 @@ function spoken(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const rest = Math.floor(seconds % 60);
 
-  return `${minutes} minute${minutes === 1 ? '' : 's'} ${rest} second${rest === 1 ? '' : 's'} in the room`;
+  return `${minutes} minute${minutes === 1 ? '' : 's'} ${rest} second${rest === 1 ? '' : 's'} into a ${Math.floor(ROOM_LENGTH_SECONDS / 60)} minute room`;
 }
 
 /**
@@ -839,6 +855,8 @@ const styles = StyleSheet.create({
     // the screen and the furthest from the eye, which is enough.
     opacity: 0.55,
   },
+  // The final minute. Full strength is the whole shift — same ink, same seat.
+  clockClosing: { opacity: 1 },
   // A notch above the clock's strength: the clock is ambient, this is a
   // reading. Same ink, same quiet top band of the screen — legible from a
   // desk, and it never competes with the captions.

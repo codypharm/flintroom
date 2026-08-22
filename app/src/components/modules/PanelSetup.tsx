@@ -669,6 +669,15 @@ export function PanelSetup({
         landing on a dimmed button was told it could not be pressed and had to
         swipe past it to find out why.
       */}
+      {/*
+        The one place the room's length is said ahead of time. The cap is the
+        server's (SESSION_LIMIT, twelve minutes); the architect's room ended at
+        it mid-sentence and nothing on any screen had named the number, so the
+        clock "quietly approaching twelve" warned nobody. Quiet and constant
+        rather than a warning: it is a fact about the product, like the
+        formats under Attach a deck.
+      */}
+      <Text style={styles.length}>A room runs up to 12 minutes.</Text>
       <Text style={styles.assembled}>{held ?? assembled(room, seated, material)}</Text>
 
       <Pressable
@@ -1100,6 +1109,11 @@ const styles = StyleSheet.create({
    * belongs to the button rather than to the group above it, and it is the one
    * line here that is a summary rather than a caption.
    */
+  length: {
+    ...type.bodySm,
+    color: color.onSurfaceVariant,
+    textAlign: 'center',
+  },
   assembled: {
     ...type.bodyMd,
     color: color.onSurfaceVariant,

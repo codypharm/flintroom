@@ -644,3 +644,13 @@ it('does not offer to reset the rung, which belongs to the account', async () =>
 
   expect(props.onDifficultyChange).not.toHaveBeenCalled();
 });
+
+it('says how long a room runs, before anybody starts one', async () => {
+  // The architect's room ended at twelve minutes mid-sentence, and nothing on
+  // any screen had said twelve was the number. The cap is the server's
+  // (SESSION_LIMIT); this is the one place it is said ahead of time, so the
+  // room's clock approaching 12:00 means something.
+  await setup();
+
+  expect(screen.getByText('A room runs up to 12 minutes.')).toBeTruthy();
+});

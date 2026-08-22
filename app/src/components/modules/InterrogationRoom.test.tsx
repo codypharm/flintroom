@@ -159,15 +159,21 @@ it('keeps every seat drawn while one of them holds the floor', async () => {
   expect(quiet.onEnd).not.toHaveBeenCalled();
 });
 
-it('counts up rather than down', async () => {
+it('counts up rather than down, against the length of the room', async () => {
   // §4.6 bans a DEPLETING counter, because a number falling toward zero makes
   // people ration and rationing users churn. Elapsed time is the opposite
   // framing of the same fact, and it is what a rehearsal needs: the slot you
   // are practising for has a length, and the useful question is how far into
   // it you are.
+  //
+  // The length rides on the clock now, because the architect's room ended at
+  // twelve minutes mid-sentence and nothing had ever said twelve was the
+  // number. "A clock quietly approaching twelve" only warns somebody who
+  // already knows twelve matters. Still counting up — the fixed side is the
+  // room's, not a balance draining.
   await show({ elapsed: 272 });
 
-  expect(screen.getByText('4:32')).toBeTruthy();
+  expect(screen.getByText('4:32 / 12:00')).toBeTruthy();
 });
 
 it('reads the clock to a screen reader as words, not as a colon', async () => {
@@ -176,7 +182,21 @@ it('reads the clock to a screen reader as words, not as a colon', async () => {
   // room is the last person who should have to work out which.
   await show({ elapsed: 272 });
 
-  expect(screen.getByLabelText('4 minutes 32 seconds in the room')).toBeTruthy();
+  expect(
+    screen.getByLabelText('4 minutes 32 seconds into a 12 minute room')
+  ).toBeTruthy();
+});
+
+it('comes to full strength for the final minute', async () => {
+  // The visible shift the architect asked for: the clock spends the room at
+  // half strength and steps up when the end is near — a change in the corner
+  // of the eye, not a claxon. Asserted on the resolved style because opacity
+  // IS the behaviour here; there is no other witness.
+  await show({ elapsed: 11 * 60 + 30 });
+
+  const clock = screen.getByText('11:30 / 12:00');
+  const flat = Object.assign({}, ...[clock.props.style].flat(Infinity));
+  expect(flat.opacity).toBe(1);
 });
 
 it('shows no clock before the room is open', async () => {
