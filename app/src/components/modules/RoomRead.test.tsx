@@ -307,3 +307,12 @@ describe('hearing the moment a line happened', () => {
     expect(screen.getByText('0:15')).toBeTruthy();
   });
 });
+
+it('announces the date as the header it is', async () => {
+  // The stack bar's title is deliberately empty — the date IS this screen's
+  // title — so the rotor has to be able to land on it, as it can on every
+  // other screen's heading.
+  await setup();
+
+  expect(screen.getByRole('header', { name: 'Today' })).toBeTruthy();
+});

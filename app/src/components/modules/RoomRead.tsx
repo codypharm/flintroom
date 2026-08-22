@@ -129,8 +129,15 @@ export function RoomRead({
         contentContainerStyle={styles.content}
         accessibilityLabel="What was said in this room"
       >
-        <Text style={styles.title}>{when}</Text>
-        <Text style={styles.who}>{who}</Text>
+        {/* The stack bar's title is deliberately empty — this is the screen's
+            title, so it carries the header role the rotor lands on. */}
+        <Text style={styles.title} accessibilityRole="header">
+          {when}
+        </Text>
+        {/* Nothing rather than an empty line: the route hands '' while the
+            room row is still unknown, and an empty Text still spends its
+            margin. */}
+        {who !== '' && <Text style={styles.who}>{who}</Text>}
 
         {/*
           **Above the transcript, and it used to be under all of it.** Reported
@@ -357,7 +364,9 @@ const styles = StyleSheet.create({
   audio: {
     marginTop: space.major,
     paddingTop: space.loose,
-    borderTopWidth: 1,
+    // `hairlineWidth`, as every other separator draws it — this was the one
+    // 1px rule on the screen.
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: color.hairline,
     gap: space.snug,
   },
