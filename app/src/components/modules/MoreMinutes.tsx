@@ -285,7 +285,7 @@ function note(
   }
   if (state === 'waiting') {
     return {
-      text: 'Thank you — adding them now. This can take a moment.',
+      text: 'Thank you. Adding them now, this can take a moment.',
       wrong: false,
       live: true,
     };

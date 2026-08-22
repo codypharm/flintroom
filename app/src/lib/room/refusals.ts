@@ -97,7 +97,7 @@ const REFUSED: Record<string, Refusal> = {
   // "I have done something wrong" has been told the wrong thing, and one who is
   // offered a purchase here has been charged for nothing.
   daily_ceiling_reached: {
-    said: 'That is a lot of rooms in one day. This lifts within a day — your minutes and everything you have recorded are untouched.',
+    said: 'That is a lot of rooms in one day. This lifts within a day. Your minutes and everything you have recorded are untouched.',
     buying: false,
   },
 };

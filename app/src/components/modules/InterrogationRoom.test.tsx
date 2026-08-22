@@ -239,7 +239,7 @@ describe('what the room says it is doing', () => {
     // about — worse on a phone lying flat where nobody is watching it.
     await show({ attending: { state: 'unheard', since: Date.now() } });
 
-    expect(await screen.findByText(/check your microphone/)).toBeTruthy();
+    expect(await screen.findByText(/Check your microphone/)).toBeTruthy();
   });
 
   it('does not tell somebody their microphone is broken once it has heard them', async () => {
@@ -250,7 +250,7 @@ describe('what the room says it is doing', () => {
     // never heard anything — which is why the state is not derived on device.
     await show({ attending: { state: 'listening', since: Date.now() } });
 
-    expect(screen.queryByText(/check your microphone/)).toBeNull();
+    expect(screen.queryByText(/Check your microphone/)).toBeNull();
   });
 
   it('yields to the warning that something is actually wrong', async () => {

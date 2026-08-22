@@ -59,7 +59,7 @@ export interface DebriefEntryProps {
 function silence(answer: WeakAnswer): string {
   if (answer.weakness === 'dismissed') return 'A panelist cut across you.';
   if (answer.weakness === 'not_reached') return 'The session ran out before this one.';
-  return 'Nothing — it went by.';
+  return 'Nothing. It went by.';
 }
 
 export function DebriefEntry({

@@ -46,7 +46,7 @@ export function RecordingDisclosure({
       </Text>
 
       <Text style={styles.body}>
-        Each room is saved — your voice and the panel&rsquo;s — so you can play it
+        Each room is saved, your voice and the panel&rsquo;s, so you can play it
         back. Recordings are deleted after {retentionDays} days.
       </Text>
 

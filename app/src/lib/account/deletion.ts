@@ -34,7 +34,7 @@ export const CONFIRM_TITLE = 'Delete your account?';
  */
 export const CONFIRM_BODY =
   'Your rooms, what was said in them, and any material you attached will be ' +
-  'deleted. You have seven days to change your mind — signing in during that ' +
+  'deleted. You have seven days to change your mind. Signing in during that ' +
   'time cancels it.';
 
 /**
@@ -46,12 +46,12 @@ export const CONFIRM_BODY =
  * work.
  */
 export const NOT_SIGNED_IN =
-  'Your account was not deleted — you are signed out. Sign in and try again.';
+  'Your account was not deleted. You are signed out. Sign in and try again.';
 
 /** What the app says when the request could not be made. */
 export const COULD_NOT_SCHEDULE =
-  'Your account was not deleted — we could not reach the server. Nothing has ' +
-  'changed. Try again in a moment.';
+  'Your account was not deleted. We could not reach the server, and nothing ' +
+  'has changed. Try again in a moment.';
 
 /**
  * "25 August", not "in seven days" and not an ISO string.

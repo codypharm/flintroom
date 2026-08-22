@@ -55,7 +55,7 @@ const ROOM: Record<string, RoomRefusal> = {
     // the session is gone. It is the only refusal here where the right move is
     // the same action again.
     title: 'That did not come back',
-    body: 'Something on our side was slow to answer. Nothing is lost — the room is still there.',
+    body: 'Something on our side was slow to answer. Nothing is lost. The room is still there.',
     offer: 'try again',
   },
   room_broke: {
@@ -63,7 +63,7 @@ const ROOM: Record<string, RoomRefusal> = {
     // one where the user is owed something and the offer would otherwise read
     // as being asked to pay twice for our fault.
     title: 'That room broke',
-    body: 'Something on our side cut it short. Your minutes are already back — start a fresh room.',
+    body: 'Something on our side cut it short. Your minutes are already back. Start a fresh room.',
     offer: 'fresh room',
   },
 };
@@ -105,7 +105,7 @@ export function refusedTurn(error: unknown): string {
     case 'nothing_was_said':
       // Deliberately not phrased as a fault or a failure. The microphone worked
       // and the transcriber worked; there was nothing to hear.
-      return 'I did not catch anything there — say it again.';
+      return 'I did not catch anything there. Say it again.';
     case 'clip_too_long':
       return 'That was longer than I can take in one go. Say it in a shorter run.';
     case 'no_such_weak_answer':

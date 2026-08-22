@@ -465,7 +465,7 @@ export function PanelSetup({
       */}
       <View style={styles.audienceRow}>
         <Text style={styles.audienceNote}>
-          Shapes what they press on — e.g. my VP hates anything that adds headcount
+          Shapes what they press on. For example: my VP hates anything that adds headcount
         </Text>
         <Text
           style={[styles.audienceLeft, nearlyFull && styles.audienceLow]}

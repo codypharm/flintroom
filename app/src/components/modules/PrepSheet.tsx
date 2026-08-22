@@ -258,7 +258,7 @@ function Question({ answer, onSpar }: { answer: WeakAnswer; onSpar: () => void }
         <View style={styles.opened}>
           <Text style={styles.saidLabel}>You said</Text>
           <Text style={styles.said}>
-            {answer.answer ?? 'Nothing — the room moved on.'}
+            {answer.answer ?? 'Nothing. The room moved on.'}
           </Text>
 
           <Text style={styles.why}>{answer.why}</Text>

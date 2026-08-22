@@ -420,7 +420,7 @@ export function SettingsScreen({
                 ? 'I could not read this just now.'
                 : materials === 0
                   ? 'Nothing attached yet.'
-                  : `${materials} attached. Only the claims and a thumbnail — the file itself is deleted after it is read.`}
+                  : `${materials} attached. Only the claims and a thumbnail. The file itself is deleted after it is read.`}
             </Text>
           </View>
           {onOpenMaterial === undefined ? null : (

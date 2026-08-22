@@ -397,7 +397,7 @@ function Floor({
     <View style={styles.floorRow} pointerEvents="none">
       {yours && hearing === 'faint' && (
         <Text style={styles.faint} accessibilityLiveRegion="polite">
-          We can barely hear you — try moving closer.
+          We can barely hear you. Try moving closer.
         </Text>
       )}
 
@@ -455,7 +455,7 @@ function Doing({ attending }: Pick<InterrogationRoomProps, 'attending'>) {
   if (attending.state === 'unheard') {
     return (
       <Text style={styles.faint} accessibilityLiveRegion="polite">
-        Nothing has reached us yet — check your microphone.
+        Nothing has reached us yet. Check your microphone.
       </Text>
     );
   }
@@ -475,7 +475,7 @@ function Doing({ attending }: Pick<InterrogationRoomProps, 'attending'>) {
         ? 'Got that.'
         : held < PATIENCE
           ? 'Working on it.'
-          : `Working on it — ${held}s`}
+          : `Still working on it, ${held} seconds in.`}
     </Text>
   );
 }

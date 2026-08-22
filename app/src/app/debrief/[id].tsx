@@ -341,7 +341,7 @@ export default function DebriefRoute() {
           // killed. Sending what there is keeps the turn rather than discarding
           // it, and the sentence says which happened.
           if (gathering.full() && clip.current) {
-            setTurnRefusal('That is as long as I can listen in one go — sending what I have.');
+            setTurnRefusal('That is as long as I can listen in one go. Sending what I have.');
             void finish();
           }
         });

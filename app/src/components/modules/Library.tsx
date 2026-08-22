@@ -255,7 +255,7 @@ function Empty({ onStart }: { onStart: () => void }) {
     <View style={styles.empty}>
       <Text style={styles.emptyTitle}>No rooms yet</Text>
       <Text style={styles.emptyBody}>
-        Every room you run is kept here — what was asked, what you said, and the
+        Every room you run is kept here: what was asked, what you said, and the
         recording while its window lasts.
       </Text>
       <Pressable

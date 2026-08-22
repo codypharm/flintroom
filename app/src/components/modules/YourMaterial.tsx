@@ -57,7 +57,7 @@ export function YourMaterial({ mine, busy, refusal, onDelete }: YourMaterialProp
         Attached material
       </Text>
       <Text style={styles.standfirst}>
-        Only the claims and a thumbnail are kept — the file itself is deleted
+        Only the claims and a thumbnail are kept. The file itself is deleted
         once it has been read.
       </Text>
 
