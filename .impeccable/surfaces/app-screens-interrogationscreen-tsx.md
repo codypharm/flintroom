@@ -83,9 +83,8 @@ inline `POST /v1/sessions`) is deleted.
 one caption as the near field's content, the dark ground.
 
 **Deferred, each with its own task and its reason:** room temperature as the
-safelight (#74 — now built, see below); the developing challenger (#75 — the
-Auditor's finding outranks the early selection, so a tray that emerged and then
-did not speak would have lied mid-argument).
+safelight (#74 — now built, see below); the developing challenger (#75 — now
+built too, see below).
 **Nothing else was allowed to colonise the ambient ground,** so #74 has
 somewhere to land: the floor indicator is at the nearest edge and the speaker
 indicator is in the trays.
@@ -183,3 +182,50 @@ a finding's summary beside the line that states it.
   `/interrogation` presents via the tested `enterRoom` sequence.
 - **"Committed on paper and unproven in pixels" still stands.** It has now been
   built and typechecked and tested; it has not been seen on a device.
+
+
+## The developing challenger, built 2026-08-22 (#75)
+
+The brief's memorable moment — *"In a darkroom a print shows itself before it is
+ready... the dread of a real room with no alarm, badge, or sound"* — is shipped.
+Four things it turned out to require.
+
+**The staging in the brief does not exist, and what replaced it is stronger.**
+The brief pictures a second tray emerging *while one panelist speaks*. The turn
+cycle is presenter → panelist → presenter → panelist, so nobody is speaking when
+the next challenger is chosen. The tray emerges into the silence right after the
+presenter stops: they have just finished, the room is quiet, and they can see
+who is coming. The only cases matching the brief's literal picture are barge-in
+and #54's disagreement turns.
+
+**The window is ~1.2 seconds, and it is measured rather than hoped for.**
+`docs/panel-orchestration.md` puts composition at 0.82s and synthesis at 0.38s,
+and #42 already moved selection off that path. `DEVELOP_MS` is 1400, so the
+print is still coming up as the voice starts — which is what "shows itself
+before it is ready" actually looks like.
+
+**It cannot lie, and that is structural rather than careful.** The ticket
+deferred this out of #41 because the Auditor's finding outranks the early
+selection, so a tray raised from routing alone could develop for somebody who
+never spoke. The fix was not a rule about when to announce: it was extracting
+`who_takes_the_floor` so the announcement and the turn read the *same* decision.
+There is one spelling; a test compares what was announced against who spoke.
+
+**A print coming up, not a print lifted out.** Speaking slides a seat to the
+middle of the table and grows it. This does neither — the face rises part-way
+out of the safelight, in place, in the far field. Two seats equally lit is the
+one thing the trays must never say, so the two opacities are multiplied rather
+than raced, and an archetype who is both (two turns in a row) reads as already
+developed rather than flickering.
+
+**Still open, and named in the brief:** whether this becomes something users
+watch instead of arguing. It stays far-field, detail-free, and silent to a
+screen reader; it has not been seen on a device by anybody.
+
+**And one thing is now knowable that was not.** The ticket wanted the
+supersession rate *"measurable from `chosen_by` on the transcript"*, and it was
+not: `interrogate` discarded `routed` unread whenever a finding existed, so "the
+Auditor decided" and "the Auditor overruled somebody" were the same record. The
+`panel_turn` log line now carries `superseded`, so the rate at which a tray
+swaps under a presenter's eye can be counted from a real room rather than
+guessed at.

@@ -71,6 +71,15 @@ export interface RoomOptions {
    */
   onTemperature?: (state: RoomTemperature) => void;
   /**
+   * Who is about to take the floor — #75.
+   *
+   * Straight through, like the band above, and for a stronger version of the
+   * same reason: the floor is decided by the Auditor's finding or the routing
+   * model, and neither crosses this socket. The screen turns it into a tray
+   * starting to develop.
+   */
+  onChallenging?: (archetype: string) => void;
+  /**
    * How loud each captured buffer was, in dBFS.
    *
    * From the uplink, which already holds it. The screen turns a window of
@@ -167,6 +176,7 @@ export async function joinRoom(options: RoomOptions): Promise<Room> {
     onTranscript: options.onTranscript,
     onAttending: options.onAttending,
     onTemperature: options.onTemperature,
+    onChallenging: options.onChallenging,
     onTurnFinished: () => {
       sent = true;
       handOver();

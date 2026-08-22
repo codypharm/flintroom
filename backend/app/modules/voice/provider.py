@@ -60,6 +60,15 @@ class ClientChannel(Protocol):
         """The panel is done; the floor is the presenter's again."""
         ...
 
+    async def challenging(self, archetype: str) -> None:
+        """Who is about to take the floor — #75.
+
+        Sent once per turn and never repeated. Unlike `attending`, this is a
+        moment rather than a state: a dropped frame costs one tray's
+        development and the room proceeds exactly as it did before it existed.
+        """
+        ...
+
     async def attending(self, state: str) -> None:
         """What the room is doing while the floor is the presenter's.
 

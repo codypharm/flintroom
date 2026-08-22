@@ -31,6 +31,18 @@ import { color, type } from '../../theme/tokens';
 export interface TrayProps {
   /** True while this archetype holds the floor. */
   speaking: boolean;
+  /**
+   * True in the second before this archetype takes the floor — #75.
+   *
+   * **A print coming up, not a print lifted out.** Developing all the way is
+   * what `speaking` means, and it slides this seat to the middle of the table
+   * and grows it. This does neither: the face simply rises part-way out of the
+   * safelight, in place, in the far field. The brief asks for exactly that —
+   * *"a second tray begins to emerge... peripheral and detail-free by design"*
+   * — and a seat that moved before its voice arrived would be a second thing
+   * claiming the floor.
+   */
+  emerging: boolean;
   /** Spoken by a screen reader; nothing here is a visible label. */
   label: string;
   /** Their portrait, or null when this build has no artwork for them. */
@@ -47,9 +59,10 @@ export interface TrayProps {
   develop: number;
 }
 
-export function Tray({ speaking, label, portrait, toCentre, develop }: TrayProps) {
+export function Tray({ speaking, emerging, label, portrait, toCentre, develop }: TrayProps) {
   const held = useRef(new Animated.Value(speaking ? 1 : 0)).current;
   const breath = useRef(new Animated.Value(0)).current;
+  const coming = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(held, {
@@ -62,6 +75,24 @@ export function Tray({ speaking, label, portrait, toCentre, develop }: TrayProps
       useNativeDriver: true,
     }).start();
   }, [develop, held, speaking]);
+
+  /**
+   * Coming up, at the speed a print does — #75.
+   *
+   * The same `develop` beat as taking the floor rather than something quicker,
+   * because this *is* the same gesture caught earlier: hurrying it would make
+   * an arrival out of an approach. Receding is quick, like the recede above and
+   * for the same reason — an announcement that outstayed its answer would leave
+   * two seats lit.
+   */
+  useEffect(() => {
+    Animated.timing(coming, {
+      toValue: emerging ? 1 : 0,
+      duration: emerging ? develop : Math.round(develop / 3),
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [coming, develop, emerging]);
 
   /**
    * The ring, while they are actually talking.
@@ -127,6 +158,21 @@ export function Tray({ speaking, label, portrait, toCentre, develop }: TrayProps
         ]}
       />
 
+      {/*
+        A marker, not a thing anybody sees — the shape `InterrogationRoom`'s
+        temperature casts already use. The development itself is an animated
+        opacity, which a test renderer sees as an object rather than a number,
+        so the assertable fact is *that this seat is coming up* and the
+        animation's own correctness is a device question.
+      */}
+      {emerging && (
+        <View
+          testID="emerging"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        />
+      )}
+
       <View style={styles.frame}>
         {portrait === null ? (
           <View style={styles.blank}>
@@ -143,7 +189,16 @@ export function Tray({ speaking, label, portrait, toCentre, develop }: TrayProps
               style={[
                 styles.safelight,
                 {
-                  opacity: held.interpolate({ inputRange: [0, 1], outputRange: [SUNK, 0] }),
+                  // Two sources, multiplied rather than raced. `held` lifts the
+                  // safelight all the way off for whoever is speaking; `coming`
+                  // lifts it part-way for whoever is about to. A seat that is
+                  // both — the same archetype twice in a row — reads as already
+                  // developed rather than flickering between two claims on the
+                  // same opacity.
+                  opacity: Animated.multiply(
+                    held.interpolate({ inputRange: [0, 1], outputRange: [SUNK, 0] }),
+                    coming.interpolate({ inputRange: [0, 1], outputRange: [1, EMERGING] })
+                  ),
                 },
               ]}
             />
@@ -171,6 +226,16 @@ function shortFor(label: string): string {
  * weaker feeling entirely.
  */
 const SUNK = 0.62;
+
+/**
+ * How far the safelight lifts for somebody about to speak — #75.
+ *
+ * A multiplier on `SUNK`, so a quiet seat sits at 0.62 and an emerging one at
+ * about 0.36: visibly coming up, and unmistakably not the 0 of whoever holds
+ * the floor. Half again would have read as a second speaker on a screen where
+ * two seats equally lit is the one thing the trays must never say.
+ */
+const EMERGING = 0.58;
 
 const FACE = 92;
 

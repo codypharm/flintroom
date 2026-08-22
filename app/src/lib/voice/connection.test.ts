@@ -430,3 +430,52 @@ describe('how the panel is receiving it', () => {
     expect(read).toEqual([]);
   });
 });
+
+
+describe('who is about to challenge', () => {
+  /**
+   * #75, and `Product.md` §3.4's second half — the first was speaker identity.
+   *
+   * The floor is assigned from a partial while the presenter is still talking,
+   * and composition plus synthesis then take a measured ~1.2s before a word is
+   * audible. The name existed that whole time with nothing carrying it.
+   *
+   * **Nothing on this device can derive it**, like the temperature band above:
+   * the decision is the Auditor's finding or the routing model's, and neither
+   * crosses this socket.
+   */
+  it('carries who is about to take the floor', async () => {
+    const read: string[] = [];
+    const { socket } = await connected({ onChallenging: (name) => read.push(name) });
+
+    socket.receive(JSON.stringify({ type: 'challenging', archetype: 'cfo' }));
+
+    expect(read).toEqual(['cfo']);
+  });
+
+  it('ignores an announcement naming nobody', async () => {
+    // Dropped rather than rendered, like a transcript missing a half. A tray
+    // cannot develop for `undefined`, and the room carries on: the next thing
+    // to arrive is the caption, which says who spoke either way.
+    const read: string[] = [];
+    const { socket } = await connected({ onChallenging: (name) => read.push(name) });
+
+    socket.receive(JSON.stringify({ type: 'challenging' }));
+
+    expect(read).toEqual([]);
+  });
+
+  it('passes a name this build has never heard of straight through', async () => {
+    // Deliberately unlike the temperature band, which is checked against a
+    // fixed vocabulary. Archetype names are not fixed — Pro users author their
+    // own, and the catalogue grows without an app release — so a name the
+    // screen cannot resolve to a seat is the screen's problem to ignore, not
+    // the socket's to withhold.
+    const read: string[] = [];
+    const { socket } = await connected({ onChallenging: (name) => read.push(name) });
+
+    socket.receive(JSON.stringify({ type: 'challenging', archetype: 'my_own_cfo' }));
+
+    expect(read).toEqual(['my_own_cfo']);
+  });
+});

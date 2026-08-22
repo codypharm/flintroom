@@ -253,6 +253,41 @@ class RoomTemperature:
 
 
 @dataclass(frozen=True, slots=True)
+class Challenging:
+    """Who is about to take the floor — #75, and `Product.md` §3.4's second half.
+
+    §3.4 asks for "who is talking, **who is about to challenge**". `AgentTranscript`
+    carries the first; this is the second, and the only reason it can exist is
+    that #42 moved selection earlier: the floor is assigned from a partial while
+    the presenter is still speaking, and composition (0.82s) plus synthesis
+    (0.38s) then stand between that decision and a word being audible. The
+    information was already there ~1.2s before the audio, with nothing carrying it.
+
+    **Not a guess at the speaker — the same decision, sent early.** Both this and
+    the turn read `who_takes_the_floor`, so the tray that develops and the voice
+    that arrives cannot disagree. A tray that emerged and then did not speak
+    would have lied to somebody mid-argument, and on the live screen that is
+    worse than showing nothing at all.
+
+    Sent once per turn and never repeated on the heartbeat, unlike `Attending`
+    and `RoomTemperature`. Those are states a late-joining or dropped frame must
+    recover; this is a moment. A dropped one costs a single tray's development
+    and the room proceeds exactly as it did before this existed.
+
+    Absent rather than guessed when nothing decided the floor early — an
+    utterance that produced no partial for `_route` to start on. The turn then
+    routes inline as it always has, and the screen shows nothing.
+
+    `archetype` is the name as `session_panelists` and every log line spell it,
+    never a rendered title: the client already resolves names against the
+    catalogue it read to draw the picker, and a second spelling of "The CFO" on
+    the wire is how two surfaces come to disagree about what somebody is called.
+    """
+
+    archetype: str
+
+
+@dataclass(frozen=True, slots=True)
 class Spent:
     """What one turn cost, in the units the providers bill in.
 
@@ -306,5 +341,6 @@ VoiceEvent = (
     | Interrupted
     | Attending
     | RoomTemperature
+    | Challenging
     | Spent
 )

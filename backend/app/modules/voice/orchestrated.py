@@ -27,7 +27,7 @@ from app.agents.context import Finding, Grounding, Routed, Said, TurnContext, US
 from app.agents.difficulty import STANDARD_PRESSURE, Pressure
 from app.agents.model import PanelModel
 from app.agents.opening import Chooser, NoOneToOpen, OpeningFloor, opener_from
-from app.agents.panel import interrogate, select_speaker
+from app.agents.panel import interrogate, select_speaker, who_takes_the_floor
 from app.agents.routing import choose
 from app.agents.silence import Silence, nudge_from
 from app.agents.temperature import Temperature, temperature_of
@@ -39,6 +39,7 @@ from app.modules.voice.events import (
     AgentFinished,
     AgentTranscript,
     ChannelReady,
+    Challenging,
     Heartbeat,
     Interrupted,
     RoomTemperature,
@@ -1123,6 +1124,24 @@ class OrchestratedChannel:
         """
         if speaking is not None and not speaking.done():
             await self._stop(speaking)
+
+        # #75. Before the turn, which is the entire feature: composition and
+        # synthesis take a measured 0.82s and 0.38s, and this is what fills that
+        # gap on a screen whose premise is that nobody is looking directly at it.
+        #
+        # After the abandonment above rather than before it, so a barge-in
+        # cannot announce a challenger for a turn that is being thrown away.
+        #
+        # Read from `who_takes_the_floor`, the same call `interrogate` makes, so
+        # the tray that develops and the voice that arrives cannot disagree.
+        # Silent when nothing decided the floor early — no finding and no
+        # partial to have routed on — because the alternative is a guess, and a
+        # tray that emerges for somebody who never speaks has lied to a
+        # presenter mid-argument.
+        taking = who_takes_the_floor(self._panel, finding=finding, routed=routed)
+        if taking is not None:
+            await out.put(Challenging(archetype=taking.archetype.name))
+
         return asyncio.create_task(
             self._turn(said, out, routed, finding, thin_opening=thin_opening)
         )

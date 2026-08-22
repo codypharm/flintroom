@@ -404,3 +404,67 @@ describe('the safelight', () => {
     expect(cast('warmth')?.props.pointerEvents).toBe('none');
   });
 });
+
+
+describe('who is about to challenge', () => {
+  /**
+   * #75, and the surface brief's memorable moment: *"In a darkroom a print
+   * shows itself before it is ready. While one panelist speaks, a second tray
+   * begins to emerge in the far field. That is 'who is about to challenge': the
+   * dread of a real room with no alarm, badge, or sound."*
+   *
+   * **The staging differs from the brief, and the real one is stronger.** The
+   * turn cycle is presenter -> panelist -> presenter -> panelist, so nobody is
+   * speaking when the next challenger is chosen. The tray emerges into the
+   * silence right after the presenter stops — you have just finished, the room
+   * is quiet, and you can see who is coming.
+   */
+  const emerging = () =>
+    screen.queryAllByTestId('emerging', { includeHiddenElements: true });
+
+  it('starts developing the seat that is about to speak', async () => {
+    await show({ panel: PANEL, speaking: null, challenging: 'cfo' });
+
+    expect(emerging()).toHaveLength(1);
+  });
+
+  it('develops nobody when the room has announced nobody', async () => {
+    // The ordinary state for most of a room, and for every utterance that
+    // produced no partial for the server to route on. Absence is the honest
+    // reading: a tray that emerged on a guess and then did not speak would have
+    // lied to somebody mid-argument.
+    await show({ panel: PANEL, speaking: null, challenging: null });
+
+    expect(emerging()).toHaveLength(0);
+  });
+
+  it('does not re-develop somebody who already holds the floor', async () => {
+    // A real case rather than a corner: the same archetype can take two turns
+    // in a row, and the announcement for the second arrives while they are
+    // still the speaker from the first. Emerging on top of a developed print
+    // would be the screen announcing an arrival that already happened.
+    await show({ panel: PANEL, speaking: 'cfo', challenging: 'cfo' });
+
+    expect(emerging()).toHaveLength(0);
+  });
+
+  it('ignores a name that is not at this table', async () => {
+    // Archetype names are not a closed vocabulary — Pro users author their own
+    // and the catalogue grows without an app release — so `connection.ts`
+    // passes any name straight through and the check belongs here, where the
+    // roster is. An unknown one develops nobody rather than nothing rendering.
+    await show({ panel: PANEL, speaking: null, challenging: 'somebody_else' });
+
+    expect(emerging()).toHaveLength(0);
+  });
+
+  it('says nothing about it in words, to anybody', async () => {
+    // Peripheral and detail-free by design. The brief's second named risk is
+    // that this becomes something users watch instead of arguing, and a caption
+    // naming the next challenger would be exactly that — plus a screen reader
+    // announcing an ambush over the line somebody is still reading.
+    await show({ panel: PANEL, speaking: null, challenging: 'cfo' });
+
+    expect(screen.queryByText(/about to|next|coming/i)).toBeNull();
+  });
+});

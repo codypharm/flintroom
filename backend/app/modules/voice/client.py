@@ -36,6 +36,9 @@ ATTENDING = "attending"
 #: How the panel is receiving the argument. See `agents/temperature.py`.
 TEMPERATURE = "temperature"
 
+#: Who is about to take the floor — #75. See `events.Challenging`.
+CHALLENGING = "challenging"
+
 
 class WebSocketClientChannel:
     """One connected client."""
@@ -87,6 +90,18 @@ class WebSocketClientChannel:
         worked out for itself.
         """
         await self._websocket.send_json({"type": TEMPERATURE, "state": state})
+
+    async def challenging(self, archetype: str) -> None:
+        """Who is about to speak, roughly a second before they are audible.
+
+        The floor is assigned from a partial while the presenter is still
+        talking; composition and synthesis then stand between that and a word.
+        This is what fills the gap on a screen nobody is looking directly at.
+
+        The archetype's name, never a rendered title — the client already
+        resolves names against the catalogue it read to draw the picker.
+        """
+        await self._websocket.send_json({"type": CHALLENGING, "archetype": archetype})
 
     async def turn_finished(self) -> None:
         """The panel is done, and the floor is the presenter's again.

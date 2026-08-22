@@ -123,6 +123,27 @@ export interface InterrogationRoomProps {
    * "unknown" value: a panel opens unconvinced.
    */
   temperature?: RoomTemperature;
+  /**
+   * Who is about to take the floor, or null — #75, and §3.4's second half.
+   *
+   * The surface brief's memorable moment: *"In a darkroom a print shows itself
+   * before it is ready... That is 'who is about to challenge': the dread of a
+   * real room with no alarm, badge, or sound. Peripheral and detail-free by
+   * design."*
+   *
+   * **The staging differs from the brief and the real one is stronger.** The
+   * brief pictures a tray emerging under another panelist's voice, but the turn
+   * cycle is presenter → panelist → presenter → panelist: nobody is speaking
+   * when the next challenger is chosen. So it emerges into the silence right
+   * after the presenter stops — they have just finished, the room is quiet, and
+   * they can see who is coming.
+   *
+   * An archetype `name`, matched against this room's own roster: `connection.ts`
+   * passes any name through because archetype names are not a closed vocabulary
+   * — Pro users author their own — so the check that it is somebody *at this
+   * table* belongs here, where the table is.
+   */
+  challenging?: string | null;
   onEnd: () => void;
 }
 
@@ -143,6 +164,7 @@ export function InterrogationRoom({
   elapsed,
   attending,
   temperature = 'skeptical',
+  challenging = null,
   onEnd,
 }: InterrogationRoomProps) {
   const calm = useReduceMotion();
@@ -220,6 +242,11 @@ export function InterrogationRoom({
             label={seat.title}
             portrait={portraitOf(seat.name)}
             speaking={seat.name === speaking}
+            // Never both. The same archetype can take two turns in a row, so
+            // the announcement for the second arrives while they are still the
+            // speaker from the first — and emerging on top of an already
+            // developed print would announce an arrival that has happened.
+            emerging={seat.name === challenging && seat.name !== speaking}
             toCentre={centreShift(table, index, panel.length)}
             develop={calm ? 0 : DEVELOP_MS}
           />

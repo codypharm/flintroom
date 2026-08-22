@@ -1629,3 +1629,99 @@ async def test_a_room_with_no_clock_files_its_lines_without_one():
 
     assert transcript.stamped
     assert all(at is None for _, at in transcript.stamped)
+
+
+async def test_the_room_says_who_is_about_to_challenge_before_they_speak():
+    """#75, and `Product.md` §3.4's second half — the first was speaker identity.
+
+    The information exists earlier than the audio and nothing carried it. #42
+    already runs selection against a partial while the presenter is still
+    talking, so by the time they stop the floor is assigned; composition and
+    synthesis then take a measured 0.82s and 0.38s before a word is audible.
+    That gap is the whole feature.
+
+    Ordered, not merely present. An announcement that arrived after its own
+    caption would be a tray developing for somebody already speaking, which is
+    the screen reporting the past.
+
+    A partial before the final, because that is what makes the whole thing
+    possible and what a real utterance always produces — `_route` starts from
+    the first one, and without it there is nothing decided early to announce.
+    """
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=FakeTranscription(
+            [
+                Transcription(text="Our gross", final=False),
+                Transcription(text="Our gross margin is seventy percent.", final=True),
+            ]
+        ),
+        model=ScriptedPanelModel(),
+        grounding=Grounding(),
+        floor=mid_room(),
+    )
+
+    events = await events_of(channel)
+    kinds = [type(event).__name__ for event in events]
+
+    assert "Challenging" in kinds
+    assert kinds.index("Challenging") < kinds.index("AgentTranscript")
+
+
+async def test_who_was_announced_is_who_actually_speaks():
+    """The one property that makes this worth shipping rather than dangerous.
+
+    A tray that emerges and then does not speak has lied to somebody mid-argument
+    — the reason #75 was split out of #41 rather than built with it. So the
+    announcement is not a second guess at the speaker: it is read from the same
+    rule `interrogate` applies, and a test compares the two rather than trusting
+    that two spellings agree.
+    """
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=FakeTranscription(
+            [
+                Transcription(text="Our gross", final=False),
+                Transcription(text="Our gross margin is seventy percent.", final=True),
+            ]
+        ),
+        model=ScriptedPanelModel(),
+        grounding=Grounding(),
+        floor=mid_room(),
+    )
+
+    events = await events_of(channel)
+
+    announced = [e.archetype for e in events if type(e).__name__ == "Challenging"]
+    spoke = [e.speaker for e in events if isinstance(e, AgentTranscript)]
+    assert announced == spoke
+
+
+async def test_an_utterance_that_produced_no_partial_announces_nobody():
+    """Silence rather than a guess, and it is a real case rather than a corner.
+
+    `_route` starts from the first partial only. A final that arrives with none
+    before it — a very short utterance, or a transcriber that endpointed
+    straight to a commit — leaves nothing decided early, so `interrogate` routes
+    inline as it always has and there is nothing true to announce yet.
+
+    Announcing anyway would mean guessing, and a tray that develops for somebody
+    who then does not speak is the failure this whole feature was split out of
+    #41 to avoid. The room simply proceeds as it did before #75 existed.
+    """
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=FakeTranscription(
+            [Transcription(text="Our gross margin is seventy percent.", final=True)]
+        ),
+        model=ScriptedPanelModel(),
+        grounding=Grounding(),
+        floor=mid_room(),
+    )
+
+    events = await events_of(channel)
+
+    assert not [e for e in events if type(e).__name__ == "Challenging"]
+    # And the room still answers. The absence is of an announcement, never of a
+    # turn — a silent tray must not cost the presenter a question.
+    assert [e.speaker for e in events if isinstance(e, AgentTranscript)] == ["cfo"]

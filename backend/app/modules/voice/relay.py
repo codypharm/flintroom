@@ -35,6 +35,7 @@ from app.modules.voice.events import (
     AgentFinished,
     AgentTranscript,
     ChannelReady,
+    Challenging,
     Heartbeat,
     Interrupted,
     Spent,
@@ -336,6 +337,11 @@ class VoiceRelay:
             # the channel derives it per send and it carries no session state,
             # so the relay's whole job is that the phone hears it.
             await self._client.temperature(event.state.value)
+        elif isinstance(event, Challenging):
+            # Straight through, like the two above. The channel decided this
+            # from the same rule the turn will apply, so the relay's whole job
+            # is that the phone hears it before the voice does.
+            await self._client.challenging(event.archetype)
         elif isinstance(event, AgentFinished):
             # The floor, handed back explicitly. Nothing else on this socket
             # marks where an utterance ends — the caption goes out ahead of its

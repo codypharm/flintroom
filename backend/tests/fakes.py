@@ -90,11 +90,17 @@ class FakeClientChannel:
 
         #: How the panel was said to be receiving the argument, in order (#74).
         self.temperatures: list[str] = []
+
+        #: Who the room said was about to take the floor, in order (#75).
+        self.challenged: list[str] = []
     async def send_audio(self, pcm: bytes) -> None:
         self.sent.append(pcm)
 
     async def send_transcript(self, text: str, speaker: str) -> None:
         self.captions.append((speaker, text))
+
+    async def challenging(self, archetype: str) -> None:
+        self.challenged.append(archetype)
 
     async def attending(self, state: str) -> None:
         self.attended.append(state)

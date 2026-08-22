@@ -14,6 +14,7 @@ perfectly well in a transcript and feels flat in a room.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 
 from app.agents.archetypes import Archetype, by_name
 from app.agents.authored import is_authored
@@ -187,20 +188,20 @@ async def interrogate(
         thin_opening=thin_opening,
     )
 
-    archetype = _owner(panel, finding.domain) if finding else None
-    chosen_by: SelectedBy = "finding"
+    taking = who_takes_the_floor(panel, finding=finding, routed=routed)
     # A pre-routed choice still carries what it cost even when a finding
     # overrules it. The provider charged for that call the moment it was made,
     # and dropping the tokens here would understate exactly the rooms where the
     # Auditor is doing its job.
     routing = routed.usage if routed else TurnUsage()
 
-    if archetype is None and routed is not None:
-        archetype, chosen_by = routed.archetype, routed.chosen_by
-
-    if archetype is None:
+    if taking is None:
         chosen = await select_speaker(panel, context=context, model=model)
         archetype, chosen_by, routing = chosen.archetype, chosen.chosen_by, chosen.usage
+        superseded = False
+    else:
+        archetype, chosen_by = taking.archetype, taking.chosen_by
+        superseded = taking.superseded
 
     # The finding travels to the composer, not just to the routing. An archetype
     # handed the floor because of a contradiction and then not told what the
@@ -226,6 +227,17 @@ async def interrogate(
         "panel_turn",
         archetype=archetype.name,
         chosen_by=chosen_by,
+        # #75. Whether the Auditor's catch handed the floor to somebody *other*
+        # than the early routing had picked — which is the rate at which the
+        # screen's emerging tray has to swap under a presenter's eye.
+        #
+        # A log field rather than a column, because it is a fact about how the
+        # room behaves rather than about what was said: an operator counts it,
+        # the debrief has no use for it, and a migration to answer a design
+        # question is a migration to carry forever. `chosen_by` cannot answer
+        # it — a finding that agrees with the routing and one that overrules it
+        # are the same value.
+        superseded=superseded,
         claims=len(context.grounding.claims),
         turns_so_far=len(context.grounding.transcript),
     )
@@ -242,6 +254,69 @@ async def interrogate(
             output_tokens=routing.output_tokens + written.usage.output_tokens,
         ),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class TakingTheFloor:
+    """Who speaks next, how that was decided, and whether it changed."""
+
+    archetype: Archetype
+    chosen_by: SelectedBy
+    #: Whether a finding overruled a *different* archetype that early routing
+    #: had already picked — #75. False when there was nothing to overrule, and
+    #: false when the Auditor happened to agree.
+    superseded: bool
+
+
+def who_takes_the_floor(
+    panel: Sequence[Archetype],
+    *,
+    finding: Finding | None,
+    routed: Routed | None,
+) -> TakingTheFloor | None:
+    """The floor, decided from what is already in hand. No model call.
+
+    Extracted from `interrogate` for #75, and the extraction is the point rather
+    than tidiness. The live screen announces who is about to challenge roughly
+    1.2s before they are audible — composition is 0.82s and synthesis 0.38s —
+    and an announcement derived from a second reading of this rule would be free
+    to disagree with the speaker who then arrives. A tray that develops for
+    somebody who never speaks has lied to a presenter mid-argument, which is
+    exactly why #75 was split out of #41 rather than built with it.
+
+    So there is one spelling, `interrogate` uses it, and the room announces from
+    the same call.
+
+    `None` when neither input decides it — no finding, and no early routing —
+    which is an utterance that produced no partial for `_route` to start on.
+    The caller then routes inline, as it always did, and the screen announces
+    nothing rather than guessing.
+
+    **A finding outranks routing**, which is §3.3's rule: the Auditor catching a
+    contradiction assigns the interrupter by domain, so asking a model to
+    re-derive it spends a hop on a lookup and adds a way to be wrong. But a
+    finding whose domain nobody at this table owns decides nothing, and falls
+    through to whoever routing picked.
+    """
+    caught = _owner(panel, finding.domain) if finding else None
+
+    if caught is not None:
+        return TakingTheFloor(
+            archetype=caught,
+            chosen_by="finding",
+            # Compared rather than assumed. Until #75 `routed` was discarded
+            # unread whenever a finding existed, so "the Auditor decided" and
+            # "the Auditor overruled somebody" were the same record — and the
+            # rate of the second is the thing the screen's swap depends on.
+            superseded=routed is not None and routed.archetype.name != caught.name,
+        )
+
+    if routed is not None:
+        return TakingTheFloor(
+            archetype=routed.archetype, chosen_by=routed.chosen_by, superseded=False
+        )
+
+    return None
 
 
 async def select_speaker(

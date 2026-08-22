@@ -122,6 +122,9 @@ export default function InterrogationScreen() {
    * because nothing on this screen cares how long a band has been held.
    */
   const [temperature, setTemperature] = useState<RoomTemperature>('skeptical');
+  // #75. Who the room said is coming, until they arrive. Null most of the time
+  // — including for every utterance the server had nothing decided early for.
+  const [challenging, setChallenging] = useState<string | null>(null);
   const [heard, setHeard] = useState<Hearing>('silent');
   const [volume, setVolume] = useState(0);
   const [phase, setPhase] = useState<'opening' | 'live' | 'ending'>('opening');
@@ -335,6 +338,12 @@ export default function InterrogationScreen() {
             setLine(said);
             setSpeaking(said.speaker);
             setFloor('panel');
+            // #75. They have arrived, so the announcement is spent. Cleared on
+            // the caption rather than on `challenging` changing, because this
+            // is the moment the thing it promised actually happened — and a
+            // tray still coming up under a voice that is already speaking
+            // would be the screen a beat behind the room.
+            setChallenging(null);
           },
           // Both halves have happened: the room sent its last frame and the
           // phone has played it. `joinRoom` is what waits for the second —
@@ -352,6 +361,13 @@ export default function InterrogationScreen() {
           // rather than the rest of the room, and there is nothing here to
           // de-duplicate that the sender has not already.
           onTemperature: setTemperature,
+          // #75. A moment rather than a state, so it is never repeated on the
+          // heartbeat and is cleared by the caption that follows it. A dropped
+          // frame costs one tray's development and nothing else — which is why
+          // there is no timeout here forcing it back to null: the caption is
+          // the only thing that can honestly end it, and a turn that never
+          // produced one was a turn nobody heard either.
+          onChallenging: setChallenging,
           onTurnFinished: () => {
             setSpeaking(null);
             setFloor('yours');
@@ -525,6 +541,7 @@ export default function InterrogationScreen() {
         hearing={heard}
         attending={attending}
         temperature={temperature}
+        challenging={challenging}
         loudness={volume}
         phase={phase}
         elapsed={elapsed}

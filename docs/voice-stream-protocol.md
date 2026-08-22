@@ -55,6 +55,7 @@ inspect a payload to know whether it is holding audio or an instruction.
 | `turn_finished` | — | The panel is done. The floor is the presenter's. |
 | `attending` | `state` | What the room is doing while the floor is the presenter's: `listening`, `heard`, `working`, `unheard`. |
 | `temperature` | `state` | How the panel is receiving the argument: `convinced`, `skeptical`, `losing_the_room`. |
+| `challenging` | `archetype` | Who is about to take the floor, roughly a second before they are audible. |
 
 `discard_playback` is barge-in. Audio runs ahead of playback, so when the user
 talks over a panelist the device is still holding frames of a sentence that will
@@ -72,6 +73,34 @@ for audio the client is already playing. Any word-by-word emergence is the
 client's animation; the wire carries finished lines. A provider that revises an
 utterance after the fact is ignored — by the time a correction lands the line has
 been spoken aloud, and retracting it would be the room contradicting itself.
+
+`challenging` is #75 and §3.4's second half — *"who is talking, who is about to
+challenge"*. `transcript` carries the first; this carries the second, and the
+only reason it can exist is that #42 moved selection earlier: the floor is
+assigned from a partial while the presenter is still speaking, and composition
+(0.82s) plus synthesis (0.38s) then stand between that decision and a word being
+audible. The name was already known ~1.2s before the voice, with nothing
+carrying it.
+
+**It is not a second guess at the speaker.** Both this frame and the turn itself
+read `who_takes_the_floor`, so the tray that develops and the voice that arrives
+cannot disagree. A tray that emerged for somebody who never spoke would have
+lied to a presenter mid-argument, which is why #75 was split out of #41 rather
+than built alongside it.
+
+**A moment, not a state**, which is the one way it differs from `attending` and
+`temperature` above. It is sent once per turn and never repeated on the
+heartbeat: those are states a dropped frame must recover, this is an
+announcement, and a dropped one costs a single tray's development. It is absent
+entirely on a turn where nothing decided the floor early — an utterance that
+produced no partial for `_route` to start on — because the alternative is a
+guess.
+
+**The `archetype` is a name and is not checked against a vocabulary**, unlike
+`state` on the two frames above. Archetype names are open: Pro users author
+their own and the catalogue grows without an app release. So a client resolves
+the name against the roster *its own room* was opened with, and develops nobody
+when it does not recognise it.
 
 `temperature` is `Product.md` §3.4's directional read, and on the live screen it
 is the **safelight itself** rather than a gauge — the interrogation brief has

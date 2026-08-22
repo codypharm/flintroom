@@ -146,6 +146,28 @@ export interface ConnectionOptions {
    * value; never accumulate it.
    */
   onTemperature?: (state: RoomTemperature) => void;
+  /**
+   * Who is about to take the floor — #75, and `Product.md` §3.4's second half.
+   *
+   * The floor is assigned from a partial while the presenter is still talking;
+   * composition and synthesis then take a measured ~1.2s before a word is
+   * audible. This arrives inside that gap, which is the entire feature — a
+   * screen whose premise is that nobody looks at it directly can say who is
+   * coming before they arrive.
+   *
+   * **Reported rather than inferred**, for the strongest version of the reason
+   * the band above gives: the decision is the Auditor's finding or the routing
+   * model's, and neither crosses this socket. There is no local signal.
+   *
+   * A moment, not a state. Sent once per turn and never repeated on the
+   * heartbeat, so a dropped one costs a single tray's development rather than
+   * leaving the screen stuck on somebody who has finished speaking. Absent
+   * entirely on a turn where nothing decided the floor early.
+   *
+   * The archetype's `name`, as `POST /v1/sessions` returned it — the same
+   * identity a caption's `speaker` carries, so both resolve against one roster.
+   */
+  onChallenging?: (archetype: string) => void;
   /** Barge-in: drop everything buffered and unplayed, immediately. */
   onDiscardPlayback?: () => void;
   /** The room is over, and why. Called once. */
@@ -204,6 +226,7 @@ export function openConnection(options: ConnectionOptions): Promise<Connection> 
       text?: string;
       speaker?: string;
       state?: string;
+      archetype?: string;
     };
     try {
       control = JSON.parse(event.data as string);
@@ -244,6 +267,20 @@ export function openConnection(options: ConnectionOptions): Promise<Connection> 
       // mid-room, on the one surface nobody is looking directly at.
       if (TEMPERATURES.includes(control.state as RoomTemperature)) {
         options.onTemperature?.(control.state as RoomTemperature);
+      }
+    } else if (control.type === 'challenging') {
+      // Passed straight through, and deliberately unlike the band above.
+      // Temperatures are a closed vocabulary this build can check; archetype
+      // names are not — Pro users author their own and the catalogue grows
+      // without an app release, so a name is only ever checked against the
+      // roster *this room* was opened with. That check belongs on the screen
+      // that holds the roster, not here.
+      //
+      // A missing name is dropped for the reason a half-transcript is: a tray
+      // cannot develop for `undefined`, and the caption that follows says who
+      // spoke either way.
+      if (control.archetype !== undefined) {
+        options.onChallenging?.(control.archetype);
       }
     } else if (control.type === 'turn_finished') {
       options.onTurnFinished?.();
