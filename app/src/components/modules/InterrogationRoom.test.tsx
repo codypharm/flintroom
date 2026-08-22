@@ -468,3 +468,14 @@ describe('who is about to challenge', () => {
     expect(screen.queryByText(/about to|next|coming/i)).toBeNull();
   });
 });
+
+it('tells a screen reader it is working once, however long the wait ticks on', async () => {
+  // Past PATIENCE the visible text gains a seconds counter and changes every
+  // tick — and a live region re-announces on every change, so VoiceOver was
+  // due to be heckled once a second by a clock. The label stays one constant
+  // sentence; only the eye gets the count.
+  await show({ attending: { state: 'working', since: Date.now() } });
+
+  const said = await screen.findByText('Working on it.');
+  expect(said.props.accessibilityLabel).toBe('Working on it');
+});

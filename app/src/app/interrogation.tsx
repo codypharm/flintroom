@@ -586,17 +586,22 @@ const styles = StyleSheet.create({
   refused: { flex: 1, justifyContent: 'center', padding: space.screen },
   refusalText: { ...type.bodyLg, color: color.onRoom, textAlign: 'center' },
 
-  // On the room's own dark ground, so it reads as a control on this screen
-  // rather than a light-mode button pasted onto it.
+  // On the room's own dark ground, in the dark room's own idiom. This was
+  // `color.primary` — the light-mode fill, measuring ~2.8:1 against the near
+  // -black ground, under the 3:1 non-text floor — which is exactly the
+  // pasted-on light-mode button the old comment claimed to avoid. `roomAmber`
+  // is what `tokens.ts` names for "anything active on the dark ground", at
+  // 11:1, and it is the same reading of the brand the caption's speaker name
+  // already wears.
   getMore: {
     marginTop: space.loose,
     paddingVertical: space.snug,
     paddingHorizontal: space.loose,
     borderRadius: radius.pill,
-    backgroundColor: color.primary,
+    backgroundColor: color.roomAmber,
     minHeight: 44,
     justifyContent: 'center',
   },
-  getMoreText: { ...type.labelLg, color: color.onPrimary, textAlign: 'center' },
+  getMoreText: { ...type.labelLg, color: color.roomGround, textAlign: 'center' },
   fading: { opacity: 0.7 },
 });

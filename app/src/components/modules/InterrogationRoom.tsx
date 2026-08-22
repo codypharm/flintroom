@@ -461,7 +461,16 @@ function Doing({ attending }: Pick<InterrogationRoomProps, 'attending'>) {
   }
 
   return (
-    <Text style={styles.doing} accessibilityLiveRegion="polite">
+    <Text
+      style={styles.doing}
+      accessibilityLiveRegion="polite"
+      // Constant while the visible text ticks. Past PATIENCE the seconds
+      // counter changes every second, and a live region re-announces on every
+      // change — a screen reader heckled once a second by a clock, on the
+      // screen whose captions exist for exactly that reader. The eye gets the
+      // count; the announcement stays one sentence.
+      accessibilityLabel={attending.state === 'heard' ? 'Got that' : 'Working on it'}
+    >
       {attending.state === 'heard'
         ? 'Got that.'
         : held < PATIENCE
