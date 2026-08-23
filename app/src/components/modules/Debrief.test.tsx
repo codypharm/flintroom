@@ -2,6 +2,12 @@ import { render, screen, userEvent } from '@testing-library/react-native';
 
 import { Debrief, type DebriefProps } from './Debrief';
 
+// The stage guards its own removal from the stack; no navigator exists in a
+// component test, so the guard is quieted rather than provided for.
+jest.mock('expo-router/react-navigation', () => ({
+  usePreventRemove: jest.fn(),
+}));
+
 /**
  * The unmetered half of the product, and the first surface it has ever had.
  *
@@ -171,32 +177,19 @@ it('deposits the latest re-answer in the sheet, and keeps the exchange on the st
   expect(screen.getByText('Where it came loose')).toBeTruthy();
 });
 
-it('stages the question when it is answered again, with the capture already running', async () => {
-  // One tap does both, as it always did: "Answer it again" starts the clip
-  // and brings the question onto the stage, so the words land where the eyes
-  // already are.
+it('stages the question when it is answered again, with nothing recording yet', async () => {
+  // The tap navigates; it does not open the microphone. This used to start
+  // the capture in the same press and the architect questioned it: the eyes
+  // need a beat on the question and the suggestion before the words start,
+  // and a mic that opens itself on a navigation is the wrong reflex for an
+  // app built on microphone trust. Speaking is the dock's one explicit tap.
   const props = await setup();
 
   await userEvent.press(screen.getAllByText('Answer it again')[1]);
 
-  expect(props.onTalk).toHaveBeenCalledWith(1);
+  expect(props.onTalk).not.toHaveBeenCalled();
   expect(screen.getByText('All findings')).toBeTruthy();
   expect(screen.queryByText('Where it came loose')).toBeNull();
-});
-
-it('keeps the microphone aimed at the staged question', async () => {
-  // On the stage the docked control answers the question on the table, not
-  // the coach in general — and its label says so.
-  const props = await setup();
-
-  await userEvent.press(screen.getAllByText('Answer it again')[0]);
-  expect(props.onTalk).toHaveBeenCalledWith(0);
-
-  // The entries are off screen now; the only "Answer it again" is the dock.
-  await userEvent.press(screen.getByText('Answer it again'));
-
-  expect(props.onTalk).toHaveBeenLastCalledWith(0);
-  expect(props.onTalk).toHaveBeenCalledTimes(2);
 });
 
 it('never says whether a re-answer was good enough', async () => {
@@ -215,10 +208,14 @@ it('never says whether a re-answer was good enough', async () => {
 it('answers one question again, addressed by its rank', async () => {
   // Anchored by rank because `docs/debrief-and-sparring.md` decision 4 requires
   // it: a re-answer is fresh speech, and only a stored rank makes "spar me on
-  // this instead" unexpressible.
+  // this instead" unexpressible. The tap that records is on the stage's dock;
+  // the entry's tap only brings the question to the table.
   const props = await setup();
 
   await userEvent.press(screen.getAllByText('Answer it again')[1]);
+  expect(props.onTalk).not.toHaveBeenCalled();
+
+  await userEvent.press(screen.getByText('Answer it again'));
 
   expect(props.onTalk).toHaveBeenCalledWith(1);
 });

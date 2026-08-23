@@ -1,5 +1,11 @@
-import { BackHandler } from 'react-native';
 import { render, screen, userEvent } from '@testing-library/react-native';
+import { usePreventRemove } from 'expo-router/react-navigation';
+
+// The stage guards its own removal from the stack; there is no navigator in a
+// component test, so the seam is asserted through the mock instead.
+jest.mock('expo-router/react-navigation', () => ({
+  usePreventRemove: jest.fn(),
+}));
 
 import { SparringStage, type SparringStageProps } from './SparringStage';
 
@@ -110,19 +116,21 @@ it('goes back to the findings on its own control', async () => {
   expect(props.onBack).toHaveBeenCalled();
 });
 
-it('closes on the hardware back before the screen does', async () => {
-  // Android-first. Hardware back while a question is staged should return to
-  // the findings, not pop the whole debrief off the stack.
-  const listen = jest.spyOn(BackHandler, 'addEventListener');
+it('turns every kind of back into the way to the findings', async () => {
+  // Android-first, and learned on a phone: a BackHandler subscription here
+  // closed the stage while the native stack popped the route in the same
+  // press — back went two screens — and the header's chevron was never
+  // intercepted at all. Preventing the removal itself is the one seam the
+  // hardware back and the chevron both pass through.
   const props = await setup();
 
-  const call = listen.mock.calls.find(([event]) => event === 'hardwareBackPress');
-  expect(call).toBeTruthy();
-  const handled = (call![1] as () => boolean)();
+  const guard = jest.mocked(usePreventRemove);
+  expect(guard).toHaveBeenCalledWith(true, expect.any(Function));
 
-  expect(handled).toBe(true);
+  const [, onPrevented] = guard.mock.calls[guard.mock.calls.length - 1];
+  onPrevented({ data: { action: { type: 'GO_BACK' } } });
+
   expect(props.onBack).toHaveBeenCalled();
-  listen.mockRestore();
 });
 
 it('runs no clock and counts nothing down', async () => {

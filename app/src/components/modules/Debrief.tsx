@@ -220,12 +220,12 @@ export function Debrief({
             // disappears mid-recording moves everything under the reading
             // position of somebody who is in the middle of talking.
             busy={busy}
-            // One tap does both: the capture starts and the question comes
-            // onto the stage, so the words land where the eyes already are.
-            onAnswerAgain={() => {
-              setStaged(rank);
-              onTalk(rank);
-            }}
+            // Staging never records. This started the capture in the same tap,
+            // and the architect questioned it: the tap navigates, the eyes need
+            // a beat on the question and the suggestion, and a microphone that
+            // opens itself on a navigation is the wrong reflex for this app.
+            // The docked control on the stage is the one explicit way to speak.
+            onAnswerAgain={() => setStaged(rank)}
             onOpen={() => setStaged(rank)}
           />
         ))}

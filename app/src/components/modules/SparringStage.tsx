@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { BackHandler, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { usePreventRemove } from 'expo-router/react-navigation';
 
 import type { WeakAnswer } from '../../lib/api/debriefApi';
 import { portraitOf } from '../../lib/archetypes/portraits';
@@ -46,16 +46,14 @@ export function SparringStage({ answer, attempts, onBack, onReplay }: SparringSt
   const asker = panelistName(answer.askedBy);
   const portrait = portraitOf(answer.askedBy);
 
-  // Android-first: hardware back returns to the findings, not to Home. The
-  // subscription lives exactly as long as the stage does, so the sheet's own
-  // back behaviour is untouched the moment this unmounts.
-  useEffect(() => {
-    const closing = BackHandler.addEventListener('hardwareBackPress', () => {
-      onBack();
-      return true;
-    });
-    return () => closing.remove();
-  }, [onBack]);
+  // Back means the findings, not Home — every kind of back. This began as a
+  // BackHandler subscription and went back two screens on a real phone: with
+  // a native stack the hardware back pops the screen natively, so the handler
+  // closed the stage while the navigator left the route in the same press,
+  // and the header's own chevron was never intercepted at all. Preventing the
+  // *removal* is the one seam all of those pass through. Mounted only while
+  // the stage is, so the sheet's back behaviour returns the moment this goes.
+  usePreventRemove(true, () => onBack());
 
   return (
     <ScrollView
