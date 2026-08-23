@@ -35,6 +35,7 @@ from app.core.database import Base, configured_url
 # every module — so the metadata it compares is complete even when this file's
 # is not. Nothing except running the CLI reveals the gap. Add the module here
 # when you add a module with a table in it.
+from app.modules.analytics import models as analytics_models  # noqa: F401
 from app.modules.audit_log import models as audit_log_models  # noqa: F401
 from app.modules.auth import models as auth_models  # noqa: F401
 from app.modules.billing import models as billing_models  # noqa: F401

@@ -1,9 +1,12 @@
 import { useFonts } from 'expo-font';
+import { useEffect, useRef } from 'react';
 import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { FONTS } from '../theme/fonts';
+import { createAnalytics } from '../lib/analytics';
+import { API_BASE_URL, auth } from '../lib/auth';
 import { Gateway, useGateway } from '../lib/auth/gateway';
 import { color, radius, space, type } from '../theme/tokens';
 
@@ -25,6 +28,11 @@ import { color, radius, space, type } from '../theme/tokens';
  * nothing to notice: an unpinned header simply inherited whatever the phone was
  * set to. Now there is no wrong thing to inherit.
  */
+const analytics = createAnalytics({
+  baseUrl: API_BASE_URL,
+  accessToken: () => auth.accessToken(),
+});
+
 const FLINTROOM = {
   ...DefaultTheme,
   colors: {
@@ -75,6 +83,21 @@ export default function RootLayout() {
 function Shell() {
   const { who, recheck } = useGateway();
   const [fontsLoaded] = useFonts(FONTS);
+
+  // #105's one instrumented event. Once per cold start, the moment the door
+  // answers with a signed-in state — `ready` or `undescribed`, because both
+  // are a person coming back. Fire-and-forget by the lib's contract: nothing
+  // on this screen waits on it, and a launch in a tunnel simply goes
+  // uncounted. The ref is what keeps a `checking → unreachable → ready`
+  // journey from counting one open twice.
+  const counted = useRef(false);
+  useEffect(() => {
+    if (counted.current || (who !== 'ready' && who !== 'undescribed')) {
+      return;
+    }
+    counted.current = true;
+    analytics.track('app_open');
+  }, [who]);
 
   // Nothing renders until the brand face is registered. React Native does not
   // re-lay-out text when a font arrives late — the first frame measures against

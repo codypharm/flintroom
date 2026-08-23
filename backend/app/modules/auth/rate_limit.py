@@ -66,6 +66,14 @@ MATERIAL_REGISTER_LIMIT = 60
 #: single-use, thirty-second credential makes valuable.
 STREAM_TICKET_LIMIT = 20
 
+#: Event batches reported per minute per account — first-party analytics.
+#:
+#: An honest client reports moments, not streams: one flush per app open and
+#: the odd screen. Sixty a minute is far above that and still makes a loop
+#: writing junk rows cheap to run and cheap to ignore — the table holds no
+#: prose, and the sweep forgets it all inside a year regardless.
+EVENT_REPORT_LIMIT = 60
+
 #: Account deletions requested per minute per account.
 #:
 #: Tight, and not because the endpoint is expensive — it writes one column. It

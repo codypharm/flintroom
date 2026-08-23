@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.core.storage import ObjectStorage
+from app.modules.analytics.service import AnalyticsService
 from app.modules.auth.rate_limit import PostgresRateLimiter
 from app.modules.auth.refresh import RefreshTokenService
 from app.modules.billing.deletion import AccountDeletion
@@ -149,6 +150,10 @@ class SweepRunner:
             await self._guarded("reaper", ReaperService(db).reap)
             await self._guarded("refresh_tokens", RefreshTokenService(db).sweep)
             await self._guarded("rate_limits", PostgresRateLimiter(db).sweep)
+            # Housekeeping on the same terms as the two above: nobody waits on
+            # it, and the twelve-month promise in `docs/privacy-policy.md` is
+            # kept by a loop that already has to be alive for money to move.
+            await self._guarded("app_events", AnalyticsService(db).sweep)
             if self._storage is not None:
                 await self._guarded(
                     "recordings", RecordingRetention(db, self._storage).sweep

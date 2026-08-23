@@ -34,6 +34,13 @@ the transcript is kept either way, so an offset on a line we are already keeping
 claims nothing further about you. Rooms that ran before this existed have none,
 and nothing was invented for them.
 
+**That you opened the app.** One event named `app_open` is recorded per
+launch while you are signed in — a name, your account, and a time, and
+nothing else. It exists to answer whether people come back, it never contains
+what anyone said, and it stays in Flintroom's own database rather than going
+to an analytics company. Any future event is subject to the same shape: a
+short fixed name, no free text.
+
 **Material you attach.** PDFs, PowerPoint files, pasted text, and photographs of
 slides or whiteboards. These are read once, and the claims and figures found in
 them are kept. **The file itself is deleted as soon as it has been read** — what
@@ -74,6 +81,7 @@ language, and does not build a profile of you from anywhere outside the app.
 | **What you wrote about the audience** | As long as you have an account, on the one room it was given to |
 | **Attached material** | The source file: minutes. The extracted claims and thumbnail: until you delete them |
 | **Account and usage records** | As long as you have an account |
+| **App-open events** | 12 months, then deleted by a scheduled sweep; deleted immediately with the account |
 | **Billing and money records** | [CONFIRM] — kept after account deletion, no longer linked to you, where tax or accounting law requires it. The period depends on jurisdiction and needs an answer before publication |
 | **A deleted account** | Seven days before the purge runs; signing in during them cancels it |
 

@@ -962,6 +962,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Events
+         * @description Accept a batch of reported moments.
+         *
+         *     The user comes from the credential, never the body — an events table a
+         *     caller could attribute to somebody else would be a diary written by
+         *     strangers. 202 with an empty body, because the caller is a phone that
+         *     fires and forgets: telemetry must never be something a screen waits on,
+         *     and there is nothing to say back about it.
+         */
+        post: operations["analytics_report_events"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1202,6 +1228,22 @@ export interface components {
          * @enum {string}
          */
         EndReason: "user_ended" | "session_cap" | "grace_cap" | "idle_timeout" | "provider_failure" | "client_disconnect" | "provisioning_failed";
+        /**
+         * EventIn
+         * @description One reported moment. The server supplies the clock and the user.
+         */
+        EventIn: {
+            /** Name */
+            name: string;
+        };
+        /**
+         * EventReport
+         * @description A batch, because a phone coming back online may owe a few at once.
+         */
+        EventReport: {
+            /** Events */
+            events: components["schemas"]["EventIn"][];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -2933,6 +2975,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analytics_report_events: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
             };
             /** @description Validation Error */
             422: {

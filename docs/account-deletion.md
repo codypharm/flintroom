@@ -116,6 +116,14 @@ in it. It costs three things, each named here so none is discovered later:
   every other background pass still see these rows. Nothing about the window may
   suspend them; a session that would have expired still expires.
 
+### 3¾. Analytics events die with the account
+
+`app_events` (#105) is behavioral data keyed to a person — which screens of
+their life this app was opened into — and it answers no question about a
+person who has asked to be forgotten that the aggregate counts cannot. It is
+in `PURGED`, destroyed by `user_id` like sessions and materials, and the
+twelve-month sweep bounds it for everyone who never deletes anything.
+
 ### 4½. The request is also emailed, when it can be
 
 Since #101, asking for deletion sends one plain-text email — the purge date,

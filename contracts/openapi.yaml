@@ -1547,6 +1547,44 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/events:
+    post:
+      tags:
+      - analytics
+      summary: Report Events
+      description: 'Accept a batch of reported moments.
+
+
+        The user comes from the credential, never the body — an events table a
+
+        caller could attribute to somebody else would be a diary written by
+
+        strangers. 202 with an empty body, because the caller is a phone that
+
+        fires and forgets: telemetry must never be something a screen waits on,
+
+        and there is nothing to say back about it.'
+      operationId: analytics_report_events
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventReport'
+        required: true
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
 components:
   schemas:
     Answers:
@@ -1961,6 +1999,31 @@ components:
         provider failure is a refund and an incident. Both look identical in the
 
         ledger without this.'
+    EventIn:
+      properties:
+        name:
+          type: string
+          pattern: ^[a-z][a-z0-9_.]{0,63}$
+          title: Name
+      type: object
+      required:
+      - name
+      title: EventIn
+      description: One reported moment. The server supplies the clock and the user.
+    EventReport:
+      properties:
+        events:
+          items:
+            $ref: '#/components/schemas/EventIn'
+          type: array
+          maxItems: 25
+          minItems: 1
+          title: Events
+      type: object
+      required:
+      - events
+      title: EventReport
+      description: A batch, because a phone coming back online may owe a few at once.
     HTTPValidationError:
       properties:
         detail:

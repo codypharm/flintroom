@@ -31,6 +31,7 @@ from app.core.database import rows_touched
 from app.core.email import EmailSender
 from app.core.logging import get_logger
 from app.core.storage import ObjectStorage
+from app.modules.analytics.models import AppEvent
 from app.modules.audit_log.schemas import AuditEventType
 from app.modules.audit_log.service import AuditService
 from app.modules.auth.models import AuthIdentity, RefreshToken
@@ -91,6 +92,11 @@ PURGED = (
     Material,
     UserPreference,
     Situation,
+    # Behavioral personal data with no life beyond its person — #105 decided
+    # destroy over anonymise the day the table was made, because an events
+    # trail keyed to an account that asked to be forgotten answers no
+    # question the aggregate counts cannot.
+    AppEvent,
     RefreshToken,
     AuthIdentity,
     CustomArchetype,

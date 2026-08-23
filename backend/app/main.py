@@ -17,6 +17,7 @@ from app.core.logging import configure_logging, get_logger
 from app.core.request_context import RequestIdMiddleware
 from app.core.storage_s3 import build_object_storage
 from app.modules.auth.providers import build_verifiers
+from app.modules.analytics.router import router as analytics_router
 from app.modules.auth.router import router as auth_router
 from app.modules.billing.router import router as billing_router
 from app.agents.coach_models import build_coach_model
@@ -273,6 +274,7 @@ def create_app() -> FastAPI:
     app.include_router(materials_router, prefix=API_PREFIX)
     app.include_router(panels_router, prefix=API_PREFIX)
     app.include_router(voice_router, prefix=API_PREFIX)
+    app.include_router(analytics_router, prefix=API_PREFIX)
 
     # Liveness for the platform's healthcheck, and nothing more. No database
     # and no providers: a check that touches a dependency turns that
