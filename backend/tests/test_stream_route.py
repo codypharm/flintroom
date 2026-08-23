@@ -244,19 +244,21 @@ async def test_a_deployment_that_cannot_hear_closes_before_metering(db, funded_a
     assert session.state is not SessionState.ACTIVE
 
 
-async def test_a_phone_that_hangs_up_mid_write_still_settles_the_room(db, funded_account, session_factory, recordings):
-    """The room ends properly even when the user leaves at the worst moment.
+async def test_a_phone_that_hangs_up_mid_write_still_reaches_the_window(db, funded_account, session_factory, recordings):
+    """The room is left waiting properly even when the user leaves at the
+    worst moment.
 
     A phone disconnecting finishes one side of the relay's pump, which cancels
     the other — and that other side now writes to the database on every turn.
     Cancelling inside a database call leaves the session unusable, and the very
-    next thing to touch it is settlement.
+    next thing to touch it is the disconnect stamp.
 
-    So the symptom is not a lost telemetry row: it is a room that never settles,
-    whose minutes are decided by the reaper instead of by the ending the user
-    gave it. The moment somebody is most likely to hang up is right after a
-    panelist stops speaking, which is precisely when that write is in flight —
-    so this is the ordinary case, not a rare one.
+    So the symptom is not a lost telemetry row: it is a room that never enters
+    its reconnect window, whose ending is decided by the orphan backstop a
+    whole minute later instead of by the stamp the drop deserved. The moment
+    somebody is most likely to hang up is right after a panelist stops
+    speaking, which is precisely when that write is in flight — so this is the
+    ordinary case, not a rare one.
 
     `FakeWebSocket` hangs up the instant the caption lands, with no sleep, which
     is what a real phone does and what reproduced this in the first place.
@@ -279,7 +281,10 @@ async def test_a_phone_that_hangs_up_mid_write_still_settles_the_room(db, funded
     )
 
     await db.refresh(session)
-    assert session.state is SessionState.SETTLED
+    # The drop opens the reconnect window rather than settling — the reaper
+    # settles later if nobody comes back. docs/reconnect.md.
+    assert session.state is SessionState.ACTIVE
+    assert session.disconnected_at is not None
     cost = await db.scalar(
         select(SessionCost).where(SessionCost.session_id == session.id)
     )
@@ -334,8 +339,8 @@ async def test_a_phone_already_gone_is_not_an_error_to_close_on(db, funded_accou
     already dropped — which is what *caused* the room to end in the ordinary
     case — that close raises `WebSocketDisconnect`, and with nothing catching it
     the room finishes in an unhandled ASGI traceback. Everything that matters is
-    already correct by then: the session settled as `client_disconnect`, the
-    minutes are right, the cost row is written. Only the log is wrong.
+    already correct by then: the room is stamped into its reconnect window,
+    the minutes are right, the cost row is written. Only the log is wrong.
 
     Worth fixing rather than tolerating. A traceback printed on every normal
     ending is a traceback nobody reads, and the next real one arrives in the
@@ -365,7 +370,8 @@ async def test_a_phone_already_gone_is_not_an_error_to_close_on(db, funded_accou
     )
 
     await db.refresh(session)
-    assert session.state is SessionState.SETTLED
+    assert session.state is SessionState.ACTIVE
+    assert session.disconnected_at is not None
 
 
 async def test_a_room_leaves_its_words_behind(db, funded_account, session_factory, recordings):

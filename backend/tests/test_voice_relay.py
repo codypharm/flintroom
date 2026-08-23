@@ -369,16 +369,13 @@ async def test_a_user_cutting_in_stops_the_panel_mid_sentence(
     assert client.discarded == 1
 
 
-async def test_a_user_who_closes_the_app_ends_the_room(
+async def test_a_user_who_loses_the_line_gets_a_room_that_waits(
     db, sessions, meter, ledger, funded_account
 ):
-    """The socket dropping is an ending, and it is not a refunded one.
-
-    Ticks are charged in arrears — the meter bills intervals already completed
-    — so the ledger is correct the moment the connection goes, with nothing
-    owed back. That is exactly why `client_disconnect` is absent from
-    `REFUND_REASONS`, and this asserts the balance to prove the ending picked
-    here is the one that behaves that way.
+    """The socket dropping is no longer an ending — it opens the reconnect
+    window (docs/reconnect.md). The room stays `active` under a stamp with
+    its billable span closed, so nothing settles, nothing more is billed,
+    and the reaper is the one who gives up on the presenter's behalf.
 
     The provider is held open so this test can only be won by one side. With
     both free to finish, which of them ended the conversation would be a race,
@@ -389,7 +386,6 @@ async def test_a_user_who_closes_the_app_ends_the_room(
         db, provider=FakeVoiceProvider([ChannelReady()]), client=FakeClientChannel()
     ).run(session_id=session.id)
 
-    # Heard, so the balance below proves arrears and not the unheard refund.
     await mark_heard(db, session.id)
     await _running_for(db, session, seconds=60)
     await meter.sweep()
@@ -398,15 +394,59 @@ async def test_a_user_who_closes_the_app_ends_the_room(
     hung_up = FakeClientChannel()
     hung_up.hang_up()
     await VoiceRelay(
-        db, provider=FakeVoiceProvider([], keep_open=True), client=hung_up
+        db,
+        provider=FakeVoiceProvider([ChannelReady()], keep_open=True),
+        client=hung_up,
     ).run(session_id=session.id)
 
-    closed = await sessions.get(session_id=session.id)
-    assert closed.state is SessionState.SETTLED
-    assert closed.end_reason is EndReason.CLIENT_DISCONNECT
+    waiting = await sessions.get(session_id=session.id)
+    assert waiting.state is SessionState.ACTIVE
+    assert waiting.end_reason is None
+    assert waiting.disconnected_at is not None
 
-    settled = await ledger.balance(user_id=funded_account.user_id)
-    assert settled.total_seconds == charged.total_seconds
+    # Unbilled from the stamp onward, and nothing refunded either — ticks are
+    # charged in arrears, so the ledger was already right when the line went.
+    await meter.sweep()
+    assert (
+        await ledger.balance(user_id=funded_account.user_id)
+    ).total_seconds == charged.total_seconds
+
+
+async def test_a_stale_relay_cannot_stamp_a_room_a_newer_socket_took_over(
+    db, sessions, funded_account
+):
+    """The half-open case, at the relay's own seam. The phone reconnected —
+    a newer connection claimed the room — and only then did the old socket's
+    relay notice it was dead. Its stamp must be refused, or the live room
+    stops billing and starts a reaper clock under its presenter."""
+    import uuid as uuid_module
+
+    stale = uuid_module.uuid4()
+    session = await sessions.start(user_id=funded_account.user_id)
+    await VoiceRelay(
+        db,
+        provider=FakeVoiceProvider([ChannelReady()]),
+        client=FakeClientChannel(),
+        connection_id=stale,
+    ).run(session_id=session.id)
+
+    # The reconnect wins the race: a newer socket now speaks for the room.
+    await sessions.connection_opened(
+        session_id=session.id, connection_id=uuid_module.uuid4()
+    )
+
+    hung_up = FakeClientChannel()
+    hung_up.hang_up()
+    await VoiceRelay(
+        db,
+        provider=FakeVoiceProvider([], keep_open=True),
+        client=hung_up,
+        connection_id=stale,
+    ).run(session_id=session.id)
+
+    live = await sessions.get(session_id=session.id)
+    assert live.state is SessionState.ACTIVE
+    assert live.disconnected_at is None
 
 
 async def _capped_by_the_meter(db, sessions, meter, funded_account):

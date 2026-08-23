@@ -61,9 +61,16 @@ class VoiceRelay:
         recordings: RoomRecordings | None = None,
         records: bool = True,
         mixer: RoomMixer | None = None,
+        connection_id: uuid.UUID | None = None,
     ) -> None:
         self._provider = provider
         self._client = client
+        # This relay's name for itself, written onto the session when the
+        # channel opens and required back when the socket drops. The nonce is
+        # what lets a room refuse the dying gasp of a socket it has already
+        # replaced — see `SessionService.connection_lost`. Injectable for
+        # tests; every production relay is one socket and mints its own.
+        self._connection_id = connection_id or uuid.uuid4()
         # Optional, and it degrades the way the speaker does: a room without
         # somewhere to file its audio still interrogates, still captions and
         # still settles correctly. What it loses is playback.
@@ -277,6 +284,13 @@ class VoiceRelay:
         ordinary contention rather than a fault, and it is the mirror of the
         `FlintroomError` the meter's sweep already tolerates per room.
 
+        A client disconnect is the one ending that is not an ending any more:
+        it opens the reconnect window (docs/reconnect.md) instead of settling.
+        The stamp is nonce-guarded inside `connection_lost`, so a relay whose
+        socket was superseded stamps nothing — and if nobody comes back, the
+        reaper writes the same `client_disconnect` this used to write here,
+        thirty seconds later.
+
         Nothing is retried here. A session left `finalizing` by a settlement
         that died partway is the reaper's to finish, and a relay racing it would
         be a second writer on the money path for no gain.
@@ -299,11 +313,19 @@ class VoiceRelay:
             )
             return
 
+        if live is EndReason.CLIENT_DISCONNECT:
+            await self._sessions.connection_lost(
+                session_id=session_id, connection_id=self._connection_id
+            )
+            return
+
         await self._settlement.close(session_id=session_id, end_reason=live)
 
     async def _handle(self, event: VoiceEvent, *, session_id: uuid.UUID) -> None:
         if isinstance(event, ChannelReady):
-            await self._sessions.activate(session_id=session_id)
+            await self._sessions.connection_opened(
+                session_id=session_id, connection_id=self._connection_id
+            )
         elif isinstance(event, UserSpoke):
             await self._sessions.record_speech(session_id=session_id)
         elif isinstance(event, Spent):

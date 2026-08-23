@@ -838,6 +838,103 @@ class SessionService:
         session.last_progress_at = func.now()
         await self._db.commit()
 
+    async def connection_opened(
+        self, *, session_id: uuid.UUID, connection_id: uuid.UUID
+    ) -> Session:
+        """A socket now speaks for this room — first connect, resume, or
+        supersede. One method for all three, so the matrix lives in one place.
+
+        First connect is `activate` plus the nonce, in one commit. Resume
+        clears the disconnect stamp and opens a fresh interrogation span —
+        the new span is what re-arms billing and re-bases the idle clock, so
+        the tunnel never enters either arithmetic. Supersede (a reconnect
+        arriving before the old socket has died) records only the nonce: the
+        span is still open because nothing ever closed it, and the stale
+        socket's eventual `connection_lost` will be refused by the nonce it
+        no longer holds. See docs/reconnect.md.
+        """
+        session = await self._load(session_id)
+        if session.state is SessionState.PROVISIONING:
+            # The `activate` path, with the nonce landing in the same commit —
+            # a room whose state, span and speaker-of-record could disagree
+            # would be three separate facts to keep honest.
+            self._move(session, SessionState.ACTIVE)
+            self._db.add(
+                SessionPhaseSpan(
+                    session_id=session.id, phase=SessionPhase.INTERROGATION
+                )
+            )
+            log.info(
+                "session_activated",
+                user_id=str(session.user_id),
+                session_id=str(session.id),
+            )
+        elif session.state is SessionState.ACTIVE:
+            if session.disconnected_at is not None:
+                session.disconnected_at = None
+                self._db.add(
+                    SessionPhaseSpan(
+                        session_id=session.id, phase=SessionPhase.INTERROGATION
+                    )
+                )
+                log.info(
+                    "session_resumed",
+                    user_id=str(session.user_id),
+                    session_id=str(session.id),
+                )
+            else:
+                log.info(
+                    "connection_superseded",
+                    user_id=str(session.user_id),
+                    session_id=str(session.id),
+                )
+            session.last_progress_at = func.now()
+        else:
+            # Settled, finalizing, failed: there is no room here to speak for.
+            self.require_transition(session, SessionState.ACTIVE)
+        session.connection_id = connection_id
+        await self._db.commit()
+        return session
+
+    async def connection_lost(
+        self, *, session_id: uuid.UUID, connection_id: uuid.UUID
+    ) -> None:
+        """The socket that spoke for this room dropped without an ending.
+
+        The room neither settles nor keeps billing: the disconnect stamp
+        starts the reaper's reconnect window, and closing the interrogation
+        span suspends the meter, the caps and the idle clock in the same
+        write — the meter only sees rooms with an open span, and settlement
+        sums spans, so the tunnel is unbilled by construction.
+
+        Guarded by the nonce, deliberately: a half-open socket dies late, and
+        by then its room may have been resumed by a newer connection. A stamp
+        from the dead socket would stop that live room's billing and start a
+        reaper clock under its presenter mid-answer, so anything but the
+        current speaker is ignored. Quietly — the stale relay is doing
+        nothing wrong; it is just no longer the one being listened to.
+        """
+        session = await self._load(session_id)
+        if (
+            session.state is not SessionState.ACTIVE
+            or session.connection_id != connection_id
+        ):
+            log.info(
+                "connection_lost_ignored",
+                user_id=str(session.user_id),
+                session_id=str(session.id),
+                state=session.state.value,
+            )
+            return
+        session.disconnected_at = func.now()
+        await self._close_open_span(session_id)
+        await self._db.commit()
+        log.info(
+            "room_waiting_for_reconnect",
+            user_id=str(session.user_id),
+            session_id=str(session.id),
+        )
+
     async def enter_grace(self, *, session_id: uuid.UUID) -> bool:
         """A tick overdrafted. Start the grace clock, and say whether it has run out.
 
@@ -963,9 +1060,10 @@ class SessionService:
         self._reject_metered_phase(session, phase)
         self._require_billing_closed(session, phase)
 
-        # Only ever closes another coaching span: billing is already closed by
-        # the time this runs, so `begin_finalizing` remains the only thing in
-        # the codebase that can close an interrogation span.
+        # Only ever closes another coaching span: billing is already closed
+        # by the time this runs. An interrogation span is closed in exactly
+        # two places — `begin_finalizing`, and `connection_lost` opening the
+        # reconnect window — and this is deliberately neither of them.
         await self._close_open_span(session_id)
         # Read before the rollback below can expire it. A rollback expires every
         # object in the session even with `expire_on_commit` off, and touching

@@ -170,6 +170,29 @@ class Session(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    #: When the room's socket dropped with its presenter perhaps still coming
+    #: back — the reconnect window, docs/reconnect.md. The same shape as
+    #: `grace_started_at` above and for the same reason: a timestamp on
+    #: `active` rather than a sixth state, so every query that means "this
+    #: user has a live room" — above all the one-live-session lock — stays
+    #: correct untouched. Set by the relay on an abnormal close (which also
+    #: closes the interrogation span, suspending billing, caps and idle in one
+    #: stroke), cleared on resume, and judged by exactly one reader: the
+    #: reaper, which settles the room once the stamp outlives the window.
+    disconnected_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    #: Which socket currently speaks for the room. Every accepted connection
+    #: writes its own nonce, and the disconnect stamp above is written only by
+    #: the connection that still holds it — otherwise a half-open socket's
+    #: delayed death would stamp a room its owner had already resumed,
+    #: stopping its billing and starting its reaper clock mid-answer. A
+    #: column rather than process memory so the guard holds across replicas.
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True
+    )
+
     #: The last time the *user* said something, or null if they never have.
     #: Written by the voice layer, which is the only thing that can hear them.
     #: Panel speech deliberately does not touch this: an agent monologuing to an

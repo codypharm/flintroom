@@ -50,6 +50,15 @@ RECENT_LIMIT = 50
 #: which is the behaviour the product is asking for.
 IDLE_LIMIT = timedelta(seconds=90)
 
+#: How long a dropped room waits for its presenter to come back before the
+#: reaper settles it as `client_disconnect`. Two sweep passes — long enough
+#: for an app relaunch and a sign-in restore, short enough that a genuinely
+#: gone user is not holding their own one-live-session lock hostage. Unbilled
+#: by construction: the interrogation span is closed for the duration, so the
+#: tunnel never enters the meter's arithmetic. Never called "grace" — that
+#: word belongs to the overdraft machinery. See docs/reconnect.md.
+RECONNECT_WINDOW = timedelta(seconds=30)
+
 
 class SessionState(str, Enum):
     """The five states a session can be in.

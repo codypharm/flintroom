@@ -27,7 +27,12 @@ from app.core.logging import get_logger
 from app.modules.audit_log.schemas import AuditEventType
 from app.modules.audit_log.service import AuditService
 from app.modules.sessions.models import Session
-from app.modules.sessions.schemas import TICK_INTERVAL, EndReason, SessionState
+from app.modules.sessions.schemas import (
+    RECONNECT_WINDOW,
+    TICK_INTERVAL,
+    EndReason,
+    SessionState,
+)
 from app.modules.sessions.service import SessionService
 from app.modules.sessions.settlement import SettlementService
 
@@ -38,9 +43,13 @@ from app.modules.sessions.settlement import SettlementService
 PROVISIONING_TIMEOUT = timedelta(seconds=60)
 
 #: Three missed ticks. The billing tick doubles as the heartbeat, so silence
-#: this long means the client is gone rather than quiet — and there is no
-#: reconnect window, because holding a voice agent open costs money to talk to
-#: an empty room (docs/minutes-ledger-and-sessions.md Part 2, Detection).
+#: this long means the client is gone rather than quiet. Since the reconnect
+#: window landed (docs/reconnect.md) this is the *backstop*, not the ending:
+#: it catches the drop the server never saw — a half-open socket whose relay
+#: never ran, so no `disconnected_at` was ever stamped. The original cost
+#: rationale ("holding a voice agent open bills for an empty room") died with
+#: the move to the orchestrated room, which synthesises nothing while nobody
+#: speaks — what an unreaped room costs now is its user's own lock.
 ORPHAN_TIMEOUT = 3 * TICK_INTERVAL
 
 #: How long a settlement may be in flight before we assume it died. Settlement
@@ -79,15 +88,33 @@ class ReaperService:
         self._audit = AuditService(db, self._actor, tag="sessions")
 
     async def reap(self) -> None:
-        """One sweep, in lifecycle order. Safe to run alongside real users."""
+        """One sweep, in lifecycle order. Safe to run alongside real users.
+
+        The window-expired cohort comes between spin-up and the orphan
+        backstop: those rooms told us they dropped (the relay stamped them),
+        so they get exactly the reconnect window and no more, while the
+        orphan timeout covers the drop nobody stamped. A room in both lists
+        is closed once — the second attempt loses the race and is skipped as
+        ordinary contention like any other.
+        """
         reaped = 0
         skipped = 0
-        for state, timeout, close in (
-            (SessionState.PROVISIONING, PROVISIONING_TIMEOUT, self._abandon),
-            (SessionState.ACTIVE, ORPHAN_TIMEOUT, self._disconnect),
-            (SessionState.FINALIZING, FINALIZING_TIMEOUT, self._finish_settling),
+        for batch, close in (
+            (
+                await self._stalled(SessionState.PROVISIONING, PROVISIONING_TIMEOUT),
+                self._abandon,
+            ),
+            (await self._window_expired(), self._disconnect),
+            (
+                await self._stalled(SessionState.ACTIVE, ORPHAN_TIMEOUT),
+                self._disconnect,
+            ),
+            (
+                await self._stalled(SessionState.FINALIZING, FINALIZING_TIMEOUT),
+                self._finish_settling,
+            ),
         ):
-            for session in await self._stalled(state, timeout):
+            for session in batch:
                 try:
                     await close(session)
                     reaped += 1
@@ -109,7 +136,7 @@ class ReaperService:
                         "reap_skipped",
                         session_id=str(session.id),
                         user_id=str(session.user_id),
-                        from_state=state.value,
+                        from_state=session.state.value,
                         code=exc.code,
                     )
 
@@ -161,6 +188,25 @@ class ReaperService:
             from_state=session.state.value,
             end_reason=end_reason.value if end_reason else None,
         )
+
+    async def _window_expired(self) -> list[_Stalled]:
+        """Rooms whose reconnect window ran out — docs/reconnect.md.
+
+        Judged on `disconnected_at` alone, not on progress: the stamp is set
+        by the relay the moment the socket drops, and it is the one clock the
+        window promised the client. The billable span is already closed, so
+        nothing has billed since the stamp — all that is left to do is the
+        same close the relay used to run immediately.
+        """
+        result = await self._db.execute(
+            select(
+                Session.id, Session.user_id, Session.state, Session.end_reason
+            ).where(
+                Session.state == SessionState.ACTIVE,
+                Session.disconnected_at < func.now() - RECONNECT_WINDOW,
+            )
+        )
+        return [_Stalled(*row) for row in result.all()]
 
     async def _stalled(
         self, state: SessionState, timeout: timedelta

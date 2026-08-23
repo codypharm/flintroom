@@ -22,7 +22,7 @@ from __future__ import annotations
 import uuid
 from typing import NamedTuple
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.actors import ActorContext
@@ -192,21 +192,45 @@ class MeterService:
         )
 
     async def _live_rooms(self) -> list[_Room]:
-        """Every active session, with the number of intervals it has completed.
+        """Every connected room, with the number of intervals it has completed.
 
         The arithmetic is Postgres', not ours: the span's `started_at` was
         written with the database's clock, and a worker whose own clock has
         drifted would bill a room for time it has not run.
+
+        Two decisions live in this query, both from docs/reconnect.md. Only
+        rooms with an **open** interrogation span are billed — a room in its
+        reconnect window closed its span when the socket dropped, so nothing
+        here sees it and nothing here needs a condition for it. And elapsed
+        time is the **sum** of the session's interrogation spans, not the age
+        of the open one: a resumed room's tick index has to carry on from
+        where the ledger left off, and summing what was actually open is what
+        keeps the tunnel out of the arithmetic without a correction column.
         """
-        elapsed = func.extract("epoch", func.now() - SessionPhaseSpan.started_at)
-        # Silence is measured from the span when the user has never spoken: a
-        # room nobody has said anything in has been quiet since it opened, and
-        # that is the abandoned room this is looking for.
+        elapsed = func.sum(
+            func.extract(
+                "epoch",
+                func.coalesce(SessionPhaseSpan.ended_at, func.now())
+                - SessionPhaseSpan.started_at,
+            )
+        )
+        # The open span's start, as an aggregate over the grouped rows. Only
+        # one span per session is ever open (`uq_spans_one_open_per_session`),
+        # so `max` is selection, not arithmetic.
+        open_started = func.max(
+            case((SessionPhaseSpan.ended_at.is_(None), SessionPhaseSpan.started_at))
+        )
+        # Silence is measured from the newer of the last user speech and the
+        # current span's start. The coalesce covers a room nobody has spoken
+        # in; the greatest re-bases idle on resume — a presenter back from a
+        # tunnel whose last words predate it must get the full idle allowance,
+        # not be reaped on the next sweep for having been disconnected.
         quiet_since = func.extract(
             "epoch",
             func.now()
-            - func.coalesce(
-                Session.last_user_speech_at, SessionPhaseSpan.started_at
+            - func.greatest(
+                func.coalesce(Session.last_user_speech_at, open_started),
+                open_started,
             ),
         )
         result = await self._db.execute(
@@ -220,8 +244,9 @@ class MeterService:
             .where(
                 Session.state == SessionState.ACTIVE,
                 SessionPhaseSpan.phase == SessionPhase.INTERROGATION,
-                SessionPhaseSpan.ended_at.is_(None),
             )
+            .group_by(Session.id, Session.user_id, Session.last_user_speech_at)
+            .having(func.bool_or(SessionPhaseSpan.ended_at.is_(None)))
         )
         return [
             _Room(id, user_id, int(due), float(quiet))
