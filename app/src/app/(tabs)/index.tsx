@@ -373,6 +373,18 @@ export default function HomeScreen() {
         await (await fetch(uri)).blob()
       );
 
+      // Replace means the old deck GOES. This handler doubles as the Replace
+      // action, and for weeks it only repointed the screen — every replaced
+      // deck stayed alive server-side, and the architect found the pile of
+      // them on the Settings page. After the new attach rather than before
+      // it, so a failed replacement never leaves the room with nothing; the
+      // failure mode of this order is only ever the old orphan again, and
+      // Settings can still reach it.
+      const replaced = material;
+      if (replaced !== null && replaced.id !== attached.id) {
+        materials.remove(replaced.id).catch(() => undefined);
+      }
+
       setMaterial(attached);
       // No name is suggested from the deck's filename. It was, once — the
       // case being that unnamed rehearsals stay headed by a date — and the
@@ -393,7 +405,7 @@ export default function HomeScreen() {
             : 'We could not reach the server. Try again in a moment.'
       );
     }
-  }, [watch, limits]);
+  }, [watch, limits, material]);
 
   const detach = useCallback(async () => {
     if (material === null) return;
