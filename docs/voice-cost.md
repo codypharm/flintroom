@@ -273,7 +273,11 @@ not change on this alone — extraction and debrief amortisation belong in the
 full per-user picture — but the direction is now measured, twice, in the
 margin's favour.
 
-**Two TTS paths remain uncounted**, found during this reconciliation: the
-hand-written lines (openers, nudges, the closing call) go to the synthesiser
-without a `Spent` event, and the debrief coach's speech is not recorded
-anywhere. Both are small; neither should stay invisible.
+**One TTS path was uncounted and is now closed** (same day): the
+hand-written lines — openers, nudges, the closing call — reached the
+synthesiser without a `Spent`, so every room under-reported by its own
+greeting. The coach, first suspected alongside them, turned out to be fully
+counted already: every debrief synthesis runs through `_spent` or the
+replay path's explicit record. Which also means the totals reconciled above
+already include the coach — one reason the ElevenLabs figures matched as
+closely as they did.

@@ -21,6 +21,7 @@ from app.agents.context import USER, Grounding
 from app.agents.opening import OpeningFloor
 from app.agents.silence import Silence
 from app.modules.voice.events import (
+    Spent,
     AgentAudio,
     AgentFinished,
     AgentTranscript,
@@ -606,3 +607,28 @@ async def test_it_asks_once_however_long_the_quiet_runs():
     ]
 
     assert len(asked) == 1
+
+
+async def test_the_opener_is_counted_into_what_the_room_spent():
+    """The hand-written lines were the last unpaid speech in the room.
+
+    Found closing out the first §4.3 reconciliation (2026-08-23): the opener,
+    the silence nudge and the closing call all reach the synthesiser without a
+    `Spent`, so every room under-reported by its own greeting. Small per room
+    and structural in aggregate — the free tier's shortest rooms are mostly
+    opener by proportion.
+    """
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=FakeTranscription([]),
+        model=ScriptedPanelModel(),
+        speaker=FakeSpeaker(),
+        grounding=Grounding(),
+        floor=held(),
+    )
+
+    events = await events_of(channel)
+
+    (caption,) = [event for event in events if isinstance(event, AgentTranscript)]
+    spent = [event for event in events if isinstance(event, Spent)]
+    assert sum(report.tts_characters for report in spent) == len(caption.text)

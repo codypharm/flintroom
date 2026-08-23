@@ -525,6 +525,11 @@ class OrchestratedChannel:
         if self._opener_speaker is not None:
             async for pcm in self._opener_speaker.speak(text=line, voice=who.voice):
                 await out.put(AgentAudio(pcm))
+            # The synthesiser was paid for this line like any other. The
+            # hand-written paths were the last unpaid speech in the room —
+            # found closing out the first §4.3 reconciliation, where every
+            # room under-reported by its own greeting.
+            await out.put(Spent(tts_characters=len(line)))
         await out.put(AgentFinished())
 
     async def _hold_the_floor(
@@ -668,6 +673,11 @@ class OrchestratedChannel:
         if self._opener_speaker is not None:
             async for pcm in self._opener_speaker.speak(text=line, voice=who.voice):
                 await out.put(AgentAudio(pcm))
+            # The synthesiser was paid for this line like any other. The
+            # hand-written paths were the last unpaid speech in the room —
+            # found closing out the first §4.3 reconciliation, where every
+            # room under-reported by its own greeting.
+            await out.put(Spent(tts_characters=len(line)))
         await out.put(AgentFinished())
 
     async def _call_time_if_due(
@@ -725,6 +735,11 @@ class OrchestratedChannel:
         if self._opener_speaker is not None:
             async for pcm in self._opener_speaker.speak(text=line, voice=who.voice):
                 await out.put(AgentAudio(pcm))
+            # The synthesiser was paid for this line like any other. The
+            # hand-written paths were the last unpaid speech in the room —
+            # found closing out the first §4.3 reconciliation, where every
+            # room under-reported by its own greeting.
+            await out.put(Spent(tts_characters=len(line)))
         await out.put(AgentFinished())
 
     def _attention(self) -> Attention:
