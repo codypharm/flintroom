@@ -1,13 +1,14 @@
 import { render, screen, userEvent } from '@testing-library/react-native';
 import { usePreventRemove } from 'expo-router/react-navigation';
 
+import { SparringStage, type SparringStageProps } from './SparringStage';
+
 // The stage guards its own removal from the stack; there is no navigator in a
-// component test, so the seam is asserted through the mock instead.
+// component test, so the seam is asserted through the mock instead. Jest
+// hoists this above every import, so its position here is only for reading.
 jest.mock('expo-router/react-navigation', () => ({
   usePreventRemove: jest.fn(),
 }));
-
-import { SparringStage, type SparringStageProps } from './SparringStage';
 
 /**
  * The stage: one question on the table, and a discussion with the coach.
