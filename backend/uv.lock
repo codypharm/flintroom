@@ -404,6 +404,7 @@ dependencies = [
     { name = "python-multipart" },
     { name = "python-pptx" },
     { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "uvicorn", extra = ["standard"] },
     { name = "websockets" },
 ]
 
@@ -415,7 +416,6 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pyyaml" },
-    { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.metadata]
@@ -436,6 +436,7 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.9" },
     { name = "python-pptx", specifier = ">=1.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
     { name = "websockets", specifier = ">=13.0" },
 ]
 
@@ -447,7 +448,6 @@ dev = [
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
 ]
 
 [[package]]

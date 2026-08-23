@@ -257,6 +257,15 @@ def create_app() -> FastAPI:
     app.include_router(materials_router, prefix=API_PREFIX)
     app.include_router(panels_router, prefix=API_PREFIX)
     app.include_router(voice_router, prefix=API_PREFIX)
+
+    # Liveness for the platform's healthcheck, and nothing more. No database
+    # and no providers: a check that touches a dependency turns that
+    # dependency's blip into a restart storm on top of it. Unprefixed and
+    # unauthenticated because the thing that calls it cannot sign in.
+    @app.get("/health", include_in_schema=False)
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
     return app
 
 

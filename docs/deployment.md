@@ -524,7 +524,76 @@ screen yet to fail. Closed the same day, with a real Android sign-in reaching
 - **`ELEVENLABS_API_KEY` is a personal, account-scoped key** — task #12. It can
   read every conversation transcript and spend the balance. Blocked until the
   plan is paid, and a launch blocker rather than a nice-to-have.
-- **No health endpoint.** Nothing here needs one yet; a load balancer will.
+
+
+---
+
+## On Railway
+
+Decided 2026-08-23, on cost: Supabase's free tier hosts Postgres (the locked
+CLAUDE.md decision, unchanged), Railway Hobby runs the one container, R2 holds
+the objects — about $5 a month all-in, with the exit staying a `pg_dump` and a
+connection string because nothing below uses a feature only Railway has.
+
+**The pieces in the repo.** `backend/Dockerfile` builds the image (uv pinned to
+the version developers run; LibreOffice installed for PPTX; PyAV brings its own
+ffmpeg). `backend/start.sh` is the serving process. `backend/railway.json`
+tells Railway to build the Dockerfile, to health-check `GET /health`, and to
+run migrations as `preDeployCommand`.
+
+**Migrations run once per deploy, not once per container.** `start.sh`
+deliberately does not migrate: with more than one replica it runs N times per
+deploy, and N containers racing `alembic upgrade head` is a lock pile-up at
+best. Railway's `preDeployCommand` runs exactly once, before any new container
+serves — which is also what the backwards-compatibility rule above assumes.
+Note it inherits the service's environment, so `DATABASE_URL` is set and the
+test-database default in `migrations/env.py` cannot bite.
+
+**`FORWARDED_ALLOW_IPS` is required, has no default, and must not be `*`.**
+`start.sh` refuses to boot without it — the reasoning is the first section of
+this document. On Railway the peer is their edge proxy on the private network;
+after the first deploy, confirm the address range from one request's peer in
+the logs and pin the variable to that range, then check the rate limiter keys
+on real client addresses by signing in twice from two networks.
+
+**The database URL is Supabase's session pooler, not the direct connection.**
+The free tier's direct connection is IPv6-only, and the pooler speaks IPv4 on a
+different host and port — copy the *Session pooler* URI from the dashboard and
+swap the scheme to `postgresql+asyncpg://`. Session mode, never transaction
+mode: asyncpg's prepared statements do not survive a transaction-mode pooler.
+Create the project in `us-east-1` and put the Railway service in US East — the
+turn path makes many trips to the database and the AI providers, and one trip
+to the phone.
+
+**Environment variables, by name** (values live only in the dashboard, and
+task #12 rotates every one of them before this service goes public):
+`DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `APPLE_CLIENT_ID`,
+`ELEVENLABS_API_KEY`, `GEMINI_API_KEY`, `REVENUECAT_WEBHOOK_SECRET`,
+`S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`,
+`FORWARDED_ALLOW_IPS`. `PORT` is Railway's own.
+
+**Deploys are gated on CI.** Connect the repo with the service's root directory
+set to `backend/`, and enable *wait for CI* on the service so a push to `main`
+deploys only after the checks below are green. CI stays integration-only —
+nothing in it holds a deployment credential; Railway pulls, it is not pushed
+to.
+
+**Scaling is the replicas dial, and the app was shaped for it.** One asyncio
+worker per container; more capacity is more replicas, not more workers. The
+write path locks per user and holds nothing global (`docs/deferred-scale-work.md`),
+every replica runs its own sweep loop by design, and a live room's WebSocket
+pins to whichever container accepted it for the life of the socket. The two
+things that do not multiply with replicas: migrations (see above) and the
+database's connection budget — the free-tier pooler is the ceiling to watch
+when the dial goes past a handful.
+
+**The healthcheck is liveness and nothing more.** `/health` touches no
+database and no provider, deliberately: a check that hits a dependency turns
+that dependency's blip into a restart storm on top of it. The smoke test for
+this shape is in the container's own behaviour — booted against an unreachable
+database it stays up, answers `/health`, and logs `sweep_failed` until the
+database returns, which is the alerting section's job to notice, not the
+restart policy's.
 
 ---
 

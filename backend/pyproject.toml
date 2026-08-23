@@ -131,6 +131,13 @@ dependencies = [
     # — touches one module, and the mixer that decides what goes *in* a
     # recording never imports it.
     "av>=18.1.0",
+    # The server. This was a dev dependency while "what serves the app in
+    # production is a deployment decision" was still open; the decision landed
+    # on 2026-08-23 — this app, in a container, served by uvicorn behind the
+    # platform's proxy (docs/deployment.md → "On Railway"). The Dockerfile
+    # installs only the runtime set, so the server must be in it.
+    "uvicorn[standard]>=0.32",
+
 ]
 
 [dependency-groups]
@@ -147,15 +154,6 @@ dev = [
     # would leave the contract unreadable in a diff — and reading it in a diff
     # is the entire reason it is committed rather than served.
     "pyyaml>=6.0",
-    # A server to run the API with. Absent until now because every test drives
-    # the app through `httpx.AsyncClient` in-process, so nothing had ever
-    # actually served it — which meant `uv run uvicorn` failed with "no such
-    # file" rather than with anything about configuration.
-    #
-    # A dev dependency, not a runtime one: what serves the app in production is
-    # a deployment decision (see `docs/deployment.md`), and pinning a server
-    # into the application's own dependencies pre-empts it.
-    "uvicorn[standard]>=0.32",
 ]
 
 [tool.pytest.ini_options]
