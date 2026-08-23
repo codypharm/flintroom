@@ -42,7 +42,13 @@ RECORDING_LIMIT_SECONDS = 20 * 60
 class RoomMixer:
     """One room, accumulating as it happens."""
 
-    def __init__(self, *, keeping: bool = True, max_samples: int | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        keeping: bool = True,
+        max_samples: int | None = None,
+        resumed: bytes = b"",
+    ) -> None:
         self._room = array.array(_SAMPLE)
         #: Whether this room's audio is being kept at all — #52's preference,
         #: read once in `router.py` before a single frame arrives.
@@ -77,6 +83,19 @@ class RoomMixer:
         #: whenever a panelist is mid-utterance, and that gap is precisely the
         #: audio that has been sent but not yet played.
         self._playing = 0
+
+        # docs/reconnect.md: the segment a dropped connection already stored,
+        # decoded, so this mixer continues the room instead of starting a
+        # second one. Seeding advances the clock along with the samples —
+        # which is the point, because the clock is what transcript offsets
+        # are read from, and the final save must hold the whole room or the
+        # pre-drop offsets anchor into a file missing their moments. Ignored
+        # when nothing is kept: with no file to play, nothing consumes the
+        # offsets a seed would preserve.
+        if resumed and keeping:
+            self._room.frombytes(resumed[: self._max_samples * 2])
+            self._heard = len(self._room)
+            self._playing = len(self._room)
 
     def heard(self, pcm: bytes) -> None:
         """What the microphone picked up. Advances the room's clock.

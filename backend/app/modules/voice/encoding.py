@@ -84,3 +84,34 @@ def to_opus(pcm: bytes) -> bytes:
             container.mux(packet)
 
     return buffer.getvalue()
+
+def from_opus(encoded: bytes) -> bytes:
+    """A stored Ogg/Opus room, back as the PCM16 it was mixed from.
+
+    The other half of `to_opus`, and it exists for one caller: seeding a
+    resumed room's mixer with the segment the dropped connection stored
+    (docs/reconnect.md), so the clock — and with it every transcript offset —
+    continues instead of restarting. Blocking for the same reason `to_opus`
+    is, and run through `asyncio.to_thread` by that caller.
+
+    Lossy about the waveform and not about time: Opus decodes to the length it
+    encoded, give or take the codec's own priming — milliseconds, which is
+    noise against offsets read by humans scrubbing a player.
+    """
+    pcm = io.BytesIO()
+
+    # `mode="r"` is what the stubs need to know this is an input container —
+    # the same call the tests make without it, and the read is the default.
+    with av.open(io.BytesIO(encoded), mode="r") as container:
+        # Back to the wire's own format whatever the file says: libopus
+        # decodes at 48 kHz regardless of the rate it was fed, so without
+        # this the seed would run three times slower than the room it is
+        # supposed to continue.
+        resampler = av.AudioResampler(format="s16", layout="mono", rate=SAMPLE_RATE)
+        for frame in container.decode(audio=0):
+            for resampled in resampler.resample(frame):
+                pcm.write(bytes(resampled.planes[0])[: resampled.samples * 2])
+        for resampled in resampler.resample(None):
+            pcm.write(bytes(resampled.planes[0])[: resampled.samples * 2])
+
+    return pcm.getvalue()

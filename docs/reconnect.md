@@ -165,6 +165,18 @@ still settle immediately through the paths they have; tickets stay
 single-use with a 30-second TTL; the one-live-session lock is untouched; the
 End tap's server-first ordering (#82) is untouched.
 
+**The recording survives the gap.** The relay that lost its socket saves the
+segment it heard, exactly as it always saved a finished room; the relay that
+resumes seeds its mixer with that segment, decoded (`from_opus`, the read
+half `encoding.py` never needed until now). The mixer's clock is what
+transcript offsets are read from, so the seed is what keeps every pre-drop
+line anchored to a moment the final file actually contains — and the final
+save then overwrites the same key with the whole room, its row upserted
+rather than inserted, because two saves per room is now the ordinary shape.
+A room with recording off seeds nothing and loses nothing: offsets exist to
+anchor playback, and there is no file to play. The audio the tunnel itself
+ate is simply absent from the recording, which is the truth of the room.
+
 ## The client's half
 
 The app already tells a dropped line apart from a chosen End (shipped

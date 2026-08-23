@@ -97,7 +97,19 @@ async def stream_session(
     #
     # `keeping` is the preference, not a second gate. The clock runs either way;
     # what the preference decides is whether any samples are stored.
-    mixer = RoomMixer(keeping=records)
+    #
+    # `resumed` is the segment a dropped connection already stored, when there
+    # is one — docs/reconnect.md. Seeding the mixer with it is what makes the
+    # final save hold the whole room and keeps every pre-drop transcript
+    # offset anchored to a moment the file actually contains. A fresh room
+    # pays one storage miss for this, which is the cheapest honest way to ask
+    # "was there a segment" without a second query inventing the answer.
+    resumed = (
+        await recordings.saved_pcm(session_id=session_id)
+        if records and recordings is not None
+        else b""
+    )
+    mixer = RoomMixer(keeping=records, resumed=resumed)
 
     try:
         # After the ticket, because the room needs to know whose it is: seats

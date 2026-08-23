@@ -23,7 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import get_logger
 from app.core.storage import ObjectStorage
 from app.modules.sessions.models import SessionRecording
-from app.modules.voice.encoding import OPUS_CONTENT_TYPE, to_opus
+from sqlalchemy.dialects.postgresql import insert
+
+from app.modules.voice.encoding import OPUS_CONTENT_TYPE, from_opus, to_opus
 
 log = get_logger(__name__, tag="voice")
 
@@ -101,11 +103,49 @@ class RoomRecordings:
         # storage until somebody notices — worse for us, invisible to the user,
         # and that is the trade being made.
         if self._db is not None:
-            self._db.add(
-                SessionRecording(session_id=session_id, byte_size=len(encoded))
+            # An upsert, because two saves per room is the reconnect window's
+            # ordinary shape (docs/reconnect.md): the dropped relay stores its
+            # segment, and the resumed relay's final save replaces it with the
+            # whole room. The row follows the object — same key, newer size —
+            # rather than crashing on its own primary key.
+            await self._db.execute(
+                insert(SessionRecording)
+                .values(session_id=session_id, byte_size=len(encoded))
+                .on_conflict_do_update(
+                    index_elements=["session_id"],
+                    set_={"byte_size": len(encoded)},
+                )
             )
             await self._db.commit()
 
         log.info(
             "room_recorded", session_id=str(session_id), stored_bytes=len(encoded)
         )
+
+    async def saved_pcm(self, *, session_id: uuid.UUID) -> bytes:
+        """What this room already sounds like, decoded — a resumed mixer's seed.
+
+        docs/reconnect.md: the relay that lost its socket saved the segment it
+        heard, and the relay that resumes must continue that recording rather
+        than start a second one — the mixer's clock is what transcript offsets
+        are read from, and a clock restarted at zero would anchor every
+        pre-drop line into a file missing its moment.
+
+        Empty rather than raising, on every path: a room never saved, a store
+        that cannot answer, an object that will not decode. A resume must not
+        fail over its own recording — the seed is best-effort for exactly the
+        reason the save is.
+        """
+        try:
+            stored = await self._storage.get(recording_key(session_id))
+        except ClientError:
+            log.exception("room_recording_unreadable", session_id=str(session_id))
+            return b""
+        if stored is None:
+            return b""
+
+        try:
+            return await asyncio.to_thread(from_opus, stored)
+        except FFmpegError:
+            log.exception("room_recording_undecodable", session_id=str(session_id))
+            return b""
