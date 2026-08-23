@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { WeakAnswer } from '../../lib/api/debriefApi';
 import { panelistName } from '../../lib/panel/vocabulary';
 import { color, radius, space, type } from '../../theme/tokens';
-import { Replay } from './Replay';
 
 /**
  * One question, and everything said about it since.
@@ -41,9 +40,10 @@ export interface DebriefEntryProps {
   attempts: Exchange[];
   /** True while any capture is running anywhere on the screen. */
   busy: boolean;
+  /** Stage the question with the capture already running. */
   onAnswerAgain: () => void;
-  /** Say one of the coach's replies again. */
-  onReplay: (speech: string) => void;
+  /** Open the stage quietly — the whole exchange, nothing recording. */
+  onOpen: () => void;
 }
 
 /**
@@ -56,7 +56,7 @@ export interface DebriefEntryProps {
  * Telling somebody they ducked a question a panelist took away from them reads
  * as the product not having listened.
  */
-function silence(answer: WeakAnswer): string {
+export function silence(answer: WeakAnswer): string {
   if (answer.weakness === 'dismissed') return 'A panelist cut across you.';
   if (answer.weakness === 'not_reached') return 'The session ran out before this one.';
   return 'Nothing. It went by.';
@@ -67,7 +67,7 @@ export function DebriefEntry({
   attempts,
   busy,
   onAnswerAgain,
-  onReplay,
+  onOpen,
 }: DebriefEntryProps) {
   const asker = panelistName(answer.askedBy);
 
@@ -121,16 +121,23 @@ export function DebriefEntry({
         {attempts.length === 0 ? (
           <Text style={styles.nothing}>You have not answered this one again yet.</Text>
         ) : (
-          attempts.map((attempt, index) => (
-            <View key={index} style={index > 0 && styles.later}>
-              <Text style={styles.said}>{attempt.heard}</Text>
-              <Text style={styles.back}>{attempt.said}</Text>
-              <Replay
-                available={attempt.speech.length > 0}
-                onReplay={() => onReplay(attempt.speech)}
-              />
-            </View>
-          ))
+          /*
+            The latest version of the words, and only that. The sheet's thesis
+            is the answer itself, twice — in the room against now — and the
+            back-and-forth that produced the newest one is the stage's content,
+            one press away. Piling every try and reply in here made the record
+            read as a transcript, and the comparison drowned in it.
+          */
+          <>
+            <Text style={styles.said}>{attempts[attempts.length - 1].heard}</Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={onOpen}
+              style={({ pressed }) => [styles.exchange, pressed && styles.againPressed]}
+            >
+              <Text style={styles.exchangeLabel}>The whole exchange</Text>
+            </Pressable>
+          </>
         )}
 
         <Pressable
@@ -200,8 +207,12 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: color.hairline,
   },
-  back: { ...type.bodyMd, color: color.onSurfaceVariant, marginTop: space.snug },
-  later: { marginTop: space.base },
+  exchange: {
+    minHeight: 44,
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+  },
+  exchangeLabel: { ...type.labelLg, color: color.primary },
 
   again: {
     minHeight: 44,

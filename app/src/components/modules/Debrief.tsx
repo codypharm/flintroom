@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { Pressed, WeakAnswer } from '../../lib/api/debriefApi';
@@ -5,6 +6,7 @@ import { panelistName } from '../../lib/panel/vocabulary';
 import { color, radius, space, type } from '../../theme/tokens';
 import { DebriefEntry, type Exchange } from './DebriefEntry';
 import { Replay } from './Replay';
+import { SparringStage } from './SparringStage';
 import { TalkControl, type Listening } from './TalkControl';
 
 /**
@@ -143,8 +145,28 @@ export function Debrief({
   const busy = listening.state !== 'idle';
   const moved = movement(pressed);
 
+  /**
+   * The question on the table, by rank, or null while the sheet is up.
+   *
+   * Component state rather than the route's, because staging changes what is
+   * *shown*, never what is known — every word on the stage is already in the
+   * props, and a background-and-restore that loses it costs one tap, not a
+   * conversation. What must survive restores — the thread, the attempts —
+   * already lives above this component.
+   */
+  const [staged, setStaged] = useState<number | null>(null);
+  const tabled = staged !== null ? answers[staged] : undefined;
+
   return (
     <View style={styles.screen}>
+      {tabled !== undefined && staged !== null ? (
+        <SparringStage
+          answer={tabled}
+          attempts={attempts[staged] ?? []}
+          onBack={() => setStaged(null)}
+          onReplay={onReplay}
+        />
+      ) : (
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -198,8 +220,13 @@ export function Debrief({
             // disappears mid-recording moves everything under the reading
             // position of somebody who is in the middle of talking.
             busy={busy}
-            onAnswerAgain={() => onTalk(rank)}
-            onReplay={onReplay}
+            // One tap does both: the capture starts and the question comes
+            // onto the stage, so the words land where the eyes already are.
+            onAnswerAgain={() => {
+              setStaged(rank);
+              onTalk(rank);
+            }}
+            onOpen={() => setStaged(rank)}
           />
         ))}
 
@@ -227,6 +254,7 @@ export function Debrief({
           <Text style={styles.outLabel}>Your prep sheet</Text>
         </Pressable>
       </ScrollView>
+      )}
 
       <TalkControl
         listening={listening}
@@ -239,7 +267,10 @@ export function Debrief({
             ? panelistName(answers[listening.at]?.askedBy ?? '')
             : null
         }
-        onTalk={() => onTalk(null)}
+        prompt={tabled !== undefined ? 'Answer it again' : undefined}
+        // Aimed at whatever is on the table; null reaches the coach, and
+        // `staged` is null exactly when the sheet is up.
+        onTalk={() => onTalk(staged)}
         onStop={onStop}
       />
     </View>

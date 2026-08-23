@@ -39,6 +39,13 @@ export interface TalkControlProps {
   refusal: string | null;
   /** Who asked the question being answered, when one is. */
   at: string | null;
+  /**
+   * What the idle button offers. Defaults to the coach, because that is what
+   * an untargeted tap reaches; the sparring stage sets it to the question on
+   * the table, so the label never promises one listener while the clip goes
+   * to another.
+   */
+  prompt?: string;
   onTalk: () => void;
   onStop: () => void;
 }
@@ -48,7 +55,7 @@ function elapsed(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-export function TalkControl({ listening, refusal, at, onTalk, onStop }: TalkControlProps) {
+export function TalkControl({ listening, refusal, at, prompt, onTalk, onStop }: TalkControlProps) {
   return (
     <View style={styles.dock}>
       {/*
@@ -95,7 +102,7 @@ export function TalkControl({ listening, refusal, at, onTalk, onStop }: TalkCont
               "Talk to the coach" says who acts and who receives, and matches
               "Answer again" on each finding: both are things the user does.
             */}
-            {listening.state === 'listening' ? 'Done' : 'Talk to the coach'}
+            {listening.state === 'listening' ? 'Done' : (prompt ?? 'Talk to the coach')}
           </Text>
         </Pressable>
       )}

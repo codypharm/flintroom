@@ -133,14 +133,19 @@ it('shows an unworked question as unworked, without marking it failed', async ()
   expect(screen.getAllByText('You have not answered this one again yet.')).toHaveLength(2);
 });
 
-it('fills a question in with what was heard and what the coach said back', async () => {
-  // The accumulation. Both halves are shown: `heard` because a transcription
-  // error is otherwise indistinguishable from the coach missing the point, and
-  // the reply because #59's coach says what *changed* rather than whether it
-  // was good enough.
+it('deposits the latest re-answer in the sheet, and keeps the exchange on the stage', async () => {
+  // The sheet's thesis is the answer itself, twice — in the room against now —
+  // so the "Now" slot carries the newest version of the words and nothing
+  // else. The back-and-forth that produced it is the stage's content, reached
+  // through the entry, so the sheet stays a record rather than a transcript.
   await setup({
     attempts: {
       0: [
+        {
+          speech: SPOKEN,
+          heard: 'Acquisition is twelve hundred, and payback is around five months.',
+          said: 'Closer. Do the division before he does.',
+        },
         {
           speech: SPOKEN,
           heard: 'Acquisition is twelve hundred, and we recover it in about seven months.',
@@ -150,11 +155,48 @@ it('fills a question in with what was heard and what the coach said back', async
     },
   });
 
-  expect(
-    screen.getByText(/we recover it in about seven months/)
-  ).toBeTruthy();
-  expect(screen.getByText(/Say the seven before they ask/)).toBeTruthy();
+  expect(screen.getByText(/we recover it in about seven months/)).toBeTruthy();
+  // The earlier try and the coach's replies live on the stage, not the sheet.
+  expect(screen.queryByText(/payback is around five months/)).toBeNull();
+  expect(screen.queryByText(/Say the seven before they ask/)).toBeNull();
   expect(screen.getAllByText('You have not answered this one again yet.')).toHaveLength(1);
+
+  await userEvent.press(screen.getByText('The whole exchange'));
+
+  expect(screen.getByText(/payback is around five months/)).toBeTruthy();
+  expect(screen.getByText(/Say the seven before they ask/)).toBeTruthy();
+
+  await userEvent.press(screen.getByText('All findings'));
+
+  expect(screen.getByText('Where it came loose')).toBeTruthy();
+});
+
+it('stages the question when it is answered again, with the capture already running', async () => {
+  // One tap does both, as it always did: "Answer it again" starts the clip
+  // and brings the question onto the stage, so the words land where the eyes
+  // already are.
+  const props = await setup();
+
+  await userEvent.press(screen.getAllByText('Answer it again')[1]);
+
+  expect(props.onTalk).toHaveBeenCalledWith(1);
+  expect(screen.getByText('All findings')).toBeTruthy();
+  expect(screen.queryByText('Where it came loose')).toBeNull();
+});
+
+it('keeps the microphone aimed at the staged question', async () => {
+  // On the stage the docked control answers the question on the table, not
+  // the coach in general — and its label says so.
+  const props = await setup();
+
+  await userEvent.press(screen.getAllByText('Answer it again')[0]);
+  expect(props.onTalk).toHaveBeenCalledWith(0);
+
+  // The entries are off screen now; the only "Answer it again" is the dock.
+  await userEvent.press(screen.getByText('Answer it again'));
+
+  expect(props.onTalk).toHaveBeenLastCalledWith(0);
+  expect(props.onTalk).toHaveBeenCalledTimes(2);
 });
 
 it('never says whether a re-answer was good enough', async () => {
