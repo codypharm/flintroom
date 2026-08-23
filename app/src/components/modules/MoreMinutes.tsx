@@ -201,7 +201,7 @@ export function MoreMinutes({
       </Text>
 
       {holding !== null && (
-        <Text style={styles.holding}>{`You have ${holding} minutes.`}</Text>
+        <Text style={styles.holding}>{`You have ${holding} minute${holding === 1 ? '' : 's'}.`}</Text>
       )}
 
       {/*

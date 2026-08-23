@@ -62,7 +62,10 @@ export function TimeInTheRoom({ minutes, any, onPress }: TimeInTheRoomProps) {
   // Word for word what is drawn. These used to disagree — the label said
   // "until your next top-up" while the screen said "right now" — which is
   // the same defect as a button whose visible and spoken names differ.
-  const label = any ? `You have ${minutes} minutes` : 'No minutes right now';
+  // Singular for exactly one — "You have 1 minutes" was seen on a phone, on
+  // the account most likely to be reading this chip closely.
+  const unit = minutes === 1 ? 'minute' : 'minutes';
+  const label = any ? `You have ${minutes} ${unit}` : 'No minutes right now';
 
   const said = (
     <>
@@ -74,7 +77,7 @@ export function TimeInTheRoom({ minutes, any, onPress }: TimeInTheRoomProps) {
                 quiet, so the number is what the eye finds at a glance. */}
             <Text style={styles.unit}>You have </Text>
             <Text style={styles.figure}>{minutes}</Text>
-            <Text style={styles.unit}> minutes</Text>
+            <Text style={styles.unit}> {unit}</Text>
           </>
         ) : (
           <Text style={styles.unit}>No minutes right now</Text>

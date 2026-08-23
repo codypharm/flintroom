@@ -78,6 +78,15 @@ async function setup(overrides: Partial<MoreMinutesProps> = {}) {
   return props;
 }
 
+it('holds one minute without calling it minutes', async () => {
+  // The same last-minute account as the chip's test, on the screen it taps
+  // through to. "You have 1 minutes" over the buy options reads as nobody
+  // proofreading the moment somebody is deciding whether to pay.
+  await setup({ holding: 1 });
+
+  expect(screen.getByText('You have 1 minute.')).toBeTruthy();
+});
+
 it('leads with the pack the first time, and says the minutes are kept', async () => {
   // §4.5 point 1. Somebody out of minutes the night before a board readout
   // needs twenty minutes, not a subscription — a screen that leads with a
