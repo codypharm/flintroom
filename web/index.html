@@ -125,42 +125,30 @@
   .said.ok { color: var(--primary); font-weight: 600; }
   .hero .platforms { margin-top: 20px; font-size: 13px; color: var(--ink-variant); }
 
-  /* The sparring card — the product's own artifact, drawn as the mockup draws it. */
-  .spar {
-    background: var(--card); border-radius: var(--r-lg); box-shadow: var(--shadow-2);
-    padding: 22px; position: relative;
+  /* The product itself, photographed live — two real screens, framed as phones.
+     The dark room sits in front because the interrogation is the wedge; the
+     warm setup screen behind it is the before to its during. */
+  .phones {
+    position: relative; height: 600px;
     animation: arrive 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   @keyframes arrive { from { opacity: 0; transform: translateY(24px); } }
-  @media (prefers-reduced-motion: reduce) { .spar { animation: none; } .btn:hover { transform: none; } }
-  .spar .bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
-  .spar .bar b { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: var(--ink-variant); }
-  .spar .bar .dot { width: 8px; height: 8px; border-radius: 50%; background: #e04a2f; }
-  .turn { display: flex; gap: 12px; align-items: flex-start; }
-  .turn + .turn { margin-top: 14px; }
-  .turn .face { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
-  .bubble {
-    background: #f4f0ed; border-radius: 4px var(--r-md) var(--r-md) var(--r-md);
-    padding: 13px 15px; font-size: 14px; line-height: 1.5; color: var(--ink);
+  @media (prefers-reduced-motion: reduce) { .phones { animation: none; } .btn:hover { transform: none; } }
+  .phone {
+    display: block; position: absolute; height: auto;
+    border-radius: 30px; border: 7px solid #211d1b;
+    background: #211d1b;
   }
-  .turn.you { flex-direction: row-reverse; }
-  .turn.you .bubble {
-    background: var(--primary-fixed); color: var(--on-primary-fixed);
-    border-radius: var(--r-md) 4px var(--r-md) var(--r-md);
+  .phone.back { width: 240px; left: 0; top: 48px; rotate: -4deg; box-shadow: var(--shadow-2); }
+  .phone.front { width: 262px; right: 8px; top: 0; rotate: 3deg; box-shadow: 0 24px 60px rgba(26, 26, 26, 0.22); }
+  @media (max-width: 1024px) {
+    .phones { max-width: 420px; margin: 0 auto; height: 620px; }
   }
-  .turn.you .mic {
-    width: 36px; height: 36px; border-radius: 50%; background: var(--primary);
-    color: var(--on-primary); display: grid; place-items: center; flex: none;
+  @media (max-width: 480px) {
+    .phones { max-width: 330px; height: 540px; }
+    .phone.back { width: 200px; }
+    .phone.front { width: 220px; right: 0; }
   }
-  .rec {
-    margin: 18px auto 0; width: fit-content;
-    display: flex; align-items: center; gap: 8px;
-    font-size: 12px; font-weight: 600; color: var(--ink-variant);
-    background: #f4f0ed; border-radius: 999px; padding: 6px 14px;
-  }
-  .rec i { width: 7px; height: 7px; border-radius: 50%; background: #e04a2f; animation: pulse 1.4s ease-in-out infinite; }
-  @keyframes pulse { 50% { opacity: 0.25; } }
-  @media (prefers-reduced-motion: reduce) { .rec i { animation: none; } }
 
   /* ── Situations band (was the logo strip) ─────────────── */
   .band { background: var(--band); padding: 36px 0; }
@@ -312,17 +300,11 @@
         <p class="platforms">Android first, iOS after. Waitlist members get in first.</p>
       </div>
 
-      <aside class="spar" aria-label="A sparring exchange inside Flintroom">
-        <div class="bar"><span class="dot" aria-hidden="true"></span><b>SPARRING SESSION</b><span style="width:8px"></span></div>
-        <div class="turn">
-          <img class="face" src="portraits/cfo.webp" alt="The CFO">
-          <p class="bubble">Your deck says thirty-eight percent gross margin, and two minutes ago you said sixty. Which number am I taking upstairs?</p>
-        </div>
-        <div class="turn you">
-          <span class="mic" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></span>
-          <p class="bubble">Thirty-eight today. Sixty is where the model lands at route density, and I can walk you through the three steps between them.</p>
-        </div>
-        <p class="rec"><i aria-hidden="true"></i>Recording</p>
+      <aside class="phones" aria-label="Flintroom on a phone — setting the room, then the live interrogation">
+        <img class="phone back" src="shots/set.jpg" width="688" height="1400"
+             alt="The Set the room screen: a deck attached and read, a sentence about the audience, and two panelists seated">
+        <img class="phone front" src="shots/room.jpg" width="688" height="1400"
+             alt="A live interrogation: the Technical Skeptic asking a question, the clock at 0:04 of 12:00, the room reading Skeptical">
       </aside>
     </div>
   </section>
