@@ -277,6 +277,15 @@ class Settings(BaseSettings):
     #: it while looking perfectly healthy, which is not a trade.
     revenuecat_webhook_secret: str | None = None
 
+    #: The pair behind the email seam (`core/email.py`, task #101). Both or
+    #: neither: `build_email_sender` refuses a half-configured deployment at
+    #: boot rather than letting an unverified sender surface as a rejected
+    #: send at the one moment somebody is deleting their account. The
+    #: from-address must belong to a domain verified in Resend's dashboard —
+    #: "Flintroom <hello@flintroom.app>" once the DNS records are in.
+    resend_api_key: str | None = None
+    email_from: str | None = None
+
     #: Where material lives. Optional on the same grounds as the voice keys —
     #: a deployment without a bucket still signs in users, tracks balances and
     #: runs the voice loop, and `docs/auditor-grounding.md` makes the deckless

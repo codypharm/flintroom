@@ -116,6 +116,22 @@ in it. It costs three things, each named here so none is discovered later:
   every other background pass still see these rows. Nothing about the window may
   suspend them; a session that would have expired still expires.
 
+### 4½. The request is also emailed, when it can be
+
+Since #101, asking for deletion sends one plain-text email — the purge date,
+and that signing back in before it cancels everything. A person who deletes
+and closes the app has no other record of the date, and the in-app sentence
+dies with the screen it was shown on.
+
+Three rules bound it. Only a **provider-verified** address is written to — an
+unverified email is an attacker's claim, and mailing it would tell a stranger
+that an account they named is real and being deleted. Only the **first**
+request sends — the second tap is a person checking, and two identical
+deletion emails read as two deletions. And a lost email **never fails the
+request** — the mail confirms a control Apple requires; it does not gate it.
+No verified address, or no configured sender, means no mail and an unchanged
+deletion.
+
 ### 5. Signing in cancels it, and the app says so
 
 Signing in during the window calls the deletion off, and the user is told

@@ -145,6 +145,7 @@ necessarily pass through them.
 | **Supabase** | Hosts the database. Flintroom is the only thing that reads it; the app holds no database credentials |
 | **Cloudflare R2** | Stores recordings and thumbnails |
 | **RevenueCat** | Subscriptions and purchases [CONFIRM — not yet integrated] |
+| **Resend** | Your email address and one message, only when you ask for your account to be deleted — the confirmation carrying the date the seven-day window closes. Nothing else is ever emailed from the app backend |
 
 **[CONFIRM] Whether any of these providers may train models on what passes
 through them is a contractual question, not a technical one.** It has to be

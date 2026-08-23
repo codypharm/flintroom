@@ -22,11 +22,13 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta
 
+import httpx
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import DeletionSweepUnconfigured
 from app.core.database import rows_touched
+from app.core.email import EmailSender
 from app.core.logging import get_logger
 from app.core.storage import ObjectStorage
 from app.modules.audit_log.schemas import AuditEventType
@@ -150,6 +152,7 @@ class AccountDeletion:
         db: AsyncSession,
         storage: ObjectStorage | None = None,
         audit: AuditService | None = None,
+        emailer: EmailSender | None = None,
     ) -> None:
         self._db = db
         # Optional because `request` and `cancel` never touch a bucket, and one
@@ -160,6 +163,11 @@ class AccountDeletion:
         # nothing can find them afterwards.
         self._storage = storage
         self._audit = audit or AuditService(db)
+        # The email seam's one consumer (#101, `core/email.py`). Optional on
+        # the same terms as the store: `cancel` and the sweep never write
+        # mail, and a deployment without a sender still deletes accounts —
+        # what it loses is the person's own record of the date.
+        self._emailer = emailer
 
     async def request(self, *, user_id: uuid.UUID) -> datetime:
         """Mark the account and start the window. Returns when it closes.
@@ -209,7 +217,8 @@ class AccountDeletion:
             .values(revoked_at=func.now())
         )
 
-        if rows_touched(marked):
+        newly = rows_touched(marked)
+        if newly:
             self._audit.stage(
                 AuditEventType.ACCOUNT_DELETION_REQUESTED, user_id=user_id
             )
@@ -231,7 +240,70 @@ class AccountDeletion:
         # a `TypeError` surfacing as a 500 on the endpoint Apple requires, with
         # a traceback rather than a sentence.
         assert requested is not None
-        return requested + WINDOW
+        closes = requested + WINDOW
+
+        # After the commit, never before: the mail confirms a fact, and a
+        # send inside the transaction could confirm a request a rollback then
+        # unmade. Only on the first ask — the second tap is a person checking,
+        # and two identical deletion emails read as two deletions.
+        if newly:
+            await self._confirm_by_email(user_id=user_id, closes=closes)
+        return closes
+
+    async def _confirm_by_email(
+        self, *, user_id: uuid.UUID, closes: datetime
+    ) -> None:
+        """The person's own record of the date, best-effort by design.
+
+        Sent only to an address the *provider* vouched for — the rule
+        identity linking already applies, and it bites harder here:
+        mailing a claimed address would tell a stranger that an account
+        they named is real and being deleted. No verified address simply
+        means no mail; the in-app sentence remains, and the deletion
+        proceeds either way.
+
+        Failures are absorbed narrowly and logged without the address —
+        an email is PII a log line has no need of, and a lost
+        confirmation must not fail the legally required control it
+        confirms.
+        """
+        if self._emailer is None:
+            return
+
+        address = await self._db.scalar(
+            select(AuthIdentity.email)
+            .where(
+                AuthIdentity.user_id == user_id,
+                AuthIdentity.email_verified.is_(True),
+                AuthIdentity.email.is_not(None),
+            )
+            .order_by(AuthIdentity.created_at.desc())
+            .limit(1)
+        )
+        if address is None:
+            log.info("deletion_email_unaddressable", user_id=str(user_id))
+            return
+
+        date = f"{closes.day} {closes.strftime('%B %Y')}"
+        try:
+            await self._emailer.send(
+                to=address,
+                subject="Your Flintroom account is scheduled for deletion",
+                text=(
+                    "You asked for your Flintroom account to be deleted.\n"
+                    "\n"
+                    "Nothing has been destroyed yet. Everything on the account"
+                    " — your rooms, transcripts, recordings and materials —"
+                    f" will be permanently deleted on {date}.\n"
+                    "\n"
+                    f"Changed your mind? Sign back in before {date} and the"
+                    " deletion is cancelled, with your account exactly as you"
+                    " left it. If you did not ask for this, signing in before"
+                    " that date also cancels it.\n"
+                ),
+            )
+        except httpx.HTTPError:
+            log.exception("deletion_email_failed", user_id=str(user_id))
 
     async def cancel(self, *, user_id: uuid.UUID) -> bool:
         """Call it off. Returns whether there was anything to call off.

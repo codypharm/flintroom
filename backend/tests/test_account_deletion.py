@@ -20,6 +20,7 @@ from datetime import timedelta
 import importlib
 import pkgutil
 
+import httpx
 import pytest
 from botocore.exceptions import ClientError
 from sqlalchemy import func, select, update
@@ -547,3 +548,92 @@ async def _uploaded_deck(db, storage, ingestion, account) -> tuple[str, str]:
     await db.commit()
 
     return material.storage_key, thumbnail
+
+
+# ---------------------------------------------------------------------------
+# The confirmation email — task #101, the seam's one consumer.
+#
+# A person who deletes and closes the app has no record of the date their
+# window closes. The email is that record: the purge date, and that signing
+# back in before it cancels everything.
+# ---------------------------------------------------------------------------
+
+
+class RememberingSender:
+    def __init__(self, breaking: bool = False) -> None:
+        self.sent: list[dict] = []
+        self._breaking = breaking
+
+    async def send(self, *, to: str, subject: str, text: str) -> None:
+        if self._breaking:
+            raise httpx.HTTPStatusError(
+                "refused", request=httpx.Request("POST", "https://x"), response=httpx.Response(500)
+            )
+        self.sent.append({"to": to, "subject": subject, "text": text})
+
+
+async def test_requesting_deletion_mails_the_date_the_window_closes(
+    db, funded_account
+):
+    await _signed_in_with(db, funded_account.user_id)
+    sender = RememberingSender()
+
+    closes = await AccountDeletion(db, emailer=sender).request(
+        user_id=funded_account.user_id
+    )
+
+    [mail] = sender.sent
+    assert mail["to"] == "someone@example.com"
+    assert f"{closes.day} {closes.strftime('%B %Y')}" in mail["text"]
+    assert "sign" in mail["text"].lower()
+
+
+async def test_asking_twice_mails_once(db, funded_account):
+    """The second tap is the person checking, not a second request — and two
+    identical deletion emails read as two deletions."""
+    await _signed_in_with(db, funded_account.user_id)
+    sender = RememberingSender()
+    deletion = AccountDeletion(db, emailer=sender)
+
+    await deletion.request(user_id=funded_account.user_id)
+    await deletion.request(user_id=funded_account.user_id)
+
+    assert len(sender.sent) == 1
+
+
+async def test_an_unverified_address_is_not_written_to(db, funded_account):
+    """An unverified email is an attacker's claim, not a fact — the same rule
+    identity linking already applies. Mailing it would tell a stranger that
+    an account they named is real and being deleted."""
+    db.add(
+        AuthIdentity(
+            provider="google",
+            subject="335588",
+            user_id=funded_account.user_id,
+            email="claimed@example.com",
+            email_verified=False,
+        )
+    )
+    await db.commit()
+    sender = RememberingSender()
+
+    await AccountDeletion(db, emailer=sender).request(
+        user_id=funded_account.user_id
+    )
+
+    assert sender.sent == []
+    assert await _requested_at(db, funded_account.user_id) is not None
+
+
+async def test_a_lost_email_does_not_lose_the_deletion(db, funded_account):
+    """The mail confirms an action already committed. Failing the request
+    over it would refuse a legally required control because a mail vendor
+    hiccuped."""
+    await _signed_in_with(db, funded_account.user_id)
+
+    closes = await AccountDeletion(
+        db, emailer=RememberingSender(breaking=True)
+    ).request(user_id=funded_account.user_id)
+
+    assert closes is not None
+    assert await _requested_at(db, funded_account.user_id) is not None

@@ -101,6 +101,7 @@ RefreshTokensDep = Annotated[RefreshTokenService, Depends(get_refresh_tokens)]
 
 
 async def get_account_deletion(
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> AccountDeletion:
     """Deletion as a request reaches it.
@@ -110,8 +111,15 @@ async def get_account_deletion(
     Handing an endpoint the store would advertise a capability this path does
     not have and cannot be given: a synchronous purge is not what the architect
     chose.
+
+    The email sender rides along when the deployment has one — #101's single
+    consumer is the confirmation this path sends. `getattr` because tests
+    build apps without the lifespan, and a missing sender is the ordinary
+    unconfigured case, not an error.
     """
-    return AccountDeletion(db)
+    return AccountDeletion(
+        db, emailer=getattr(request.app.state, "email_sender", None)
+    )
 
 
 AccountDeletionDep = Annotated[AccountDeletion, Depends(get_account_deletion)]

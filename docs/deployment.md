@@ -593,7 +593,9 @@ task #12 rotates every one of them before this service goes public):
 `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `APPLE_CLIENT_ID`,
 `ELEVENLABS_API_KEY`, `GEMINI_API_KEY`, `REVENUECAT_WEBHOOK_SECRET`,
 `S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`,
-`FORWARDED_ALLOW_IPS`. `PORT` is Railway's own.
+`FORWARDED_ALLOW_IPS`, and — once the domain is verified in Resend —
+`RESEND_API_KEY` with `EMAIL_FROM` (both or neither; a half-configured pair
+refuses at boot). `PORT` is Railway's own.
 
 **Deploys are gated on CI.** Connect the repo with the service's root directory
 set to `backend/`, and enable *wait for CI* on the service so a push to `main`

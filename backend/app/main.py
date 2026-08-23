@@ -11,6 +11,7 @@ from fastapi.routing import APIRoute
 
 from app.core.config import Settings, get_settings
 from app.core.database import create_engine, create_session_factory
+from app.core.email_resend import build_email_sender
 from app.core.errors import FlintroomError
 from app.core.logging import configure_logging, get_logger
 from app.core.request_context import RequestIdMiddleware
@@ -141,6 +142,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.coach_model = build_coach_model(settings, http=http)
     if app.state.coach_model is None:
         log.warning("coach_model_unconfigured")
+
+    # The email seam (#101), on the shared client like every other vendor.
+    # Absent rather than fatal on the same grounds: a deployment without it
+    # still deletes accounts — what it loses is the person's own emailed
+    # record of the date their window closes, which is worth one line at boot.
+    app.state.email_sender = build_email_sender(settings, http)
+    if app.state.email_sender is None:
+        log.warning("email_unconfigured")
 
     engine = create_engine(settings.database_url)
     session_factory = create_session_factory(engine)
