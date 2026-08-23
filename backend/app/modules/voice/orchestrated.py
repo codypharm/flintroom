@@ -25,7 +25,7 @@ from app.agents.archetypes import Archetype
 from app.agents.auditor import Auditor, ClaimReader
 from app.agents.context import Finding, Grounding, Routed, Said, TurnContext, USER
 from app.agents.difficulty import STANDARD_PRESSURE, Pressure
-from app.agents.model import PanelModel
+from app.agents.model import PanelModel, TurnUsage
 from app.agents.opening import Chooser, NoOneToOpen, OpeningFloor, opener_from
 from app.agents.panel import interrogate, select_speaker, who_takes_the_floor
 from app.agents.routing import choose
@@ -343,6 +343,13 @@ class OrchestratedChannel:
         # the two are seconds apart at most, and CALL_BEFORE_SECS absorbs it.
         self._time = TimeCall()
         self._opened_at = time.monotonic()
+        # What the Auditor's reader has already been reported as spending.
+        # `Auditor` accumulates totals on itself and, until 2026-08-23,
+        # nothing ever read them — the column stayed zero in every session
+        # and the first real cost datapoint (#14) understated exactly the
+        # grounded rooms. Each `Spent` carries the delta since the last one.
+        self._auditor_reported = TurnUsage()
+        self._auditor_readings_reported = 0
         # When the room last heard them, on the same monotonic clock the floor
         # uses. Set at the open so a presenter who never speaks is still asked.
         self._heard_at = time.monotonic()
@@ -1422,12 +1429,25 @@ class OrchestratedChannel:
         # full — both providers have already charged — so a turn that reports
         # only what the user heard would undercount precisely the interrupted
         # rooms, which is the barge-in the product is built around.
+        # The Auditor's spend rides the same report, as a delta since the
+        # last turn. A reading that completes after the room's final turn goes
+        # unreported — bounded at one call, and preferable to a second event
+        # type for a tail nobody else would carry.
+        audited_in = audited_out = readings = 0
+        if self._auditor is not None:
+            audited_in = self._auditor.spent.input_tokens - self._auditor_reported.input_tokens
+            audited_out = self._auditor.spent.output_tokens - self._auditor_reported.output_tokens
+            readings = self._auditor.readings - self._auditor_readings_reported
+            self._auditor_reported = self._auditor.spent
+            self._auditor_readings_reported = self._auditor.readings
+
         await out.put(
             Spent(
                 stt_seconds=self._seconds_heard(),
-                llm_input_tokens=turn.usage.input_tokens,
-                llm_output_tokens=turn.usage.output_tokens,
+                llm_input_tokens=turn.usage.input_tokens + audited_in,
+                llm_output_tokens=turn.usage.output_tokens + audited_out,
                 tts_characters=len(turn.line) if self._speaker else 0,
+                auditor_invocations=readings,
             )
         )
 

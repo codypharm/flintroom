@@ -321,6 +321,11 @@ class Spent:
     #: than a terse one for the same minute. It is the one vendor whose bill the
     #: 25-word limit directly controls.
     tts_characters: int = 0
+    #: How many times the Auditor's claim reader ran this turn. Its tokens
+    #: fold into the llm counts above — same vendor, same bill — but §4.3
+    #: sized `session_costs` expecting one reading per utterance, and the
+    #: count is how a silently-dead reader stops looking like a quiet room.
+    auditor_invocations: int = 0
 
 
 #: Everything a channel may say. Named after the classes rather than before

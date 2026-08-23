@@ -318,6 +318,7 @@ class VoiceRelay:
                 llm_input_tokens=event.llm_input_tokens,
                 llm_output_tokens=event.llm_output_tokens,
                 tts_characters=event.tts_characters,
+                auditor_invocations=event.auditor_invocations,
             )
         elif isinstance(event, Heartbeat):
             await self._sessions.record_progress(session_id=session_id)

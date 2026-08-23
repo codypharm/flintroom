@@ -50,6 +50,7 @@ class SpendRecorder:
         llm_input_tokens: int = 0,
         llm_output_tokens: int = 0,
         tts_characters: int = 0,
+        auditor_invocations: int = 0,
     ) -> None:
         """Accumulate, never replace.
 
@@ -83,6 +84,11 @@ class SpendRecorder:
             "llm_input_tokens": llm_input_tokens,
             "llm_output_tokens": llm_output_tokens,
             "tts_characters_synthesized": tts_characters,
+            # A count, not a price: the reader's tokens arrive already folded
+            # into the llm figures above by the channel, so pricing them here
+            # would double-charge. What the count buys is §4.3's per-utterance
+            # expectation being checkable, and a dead reader being visible.
+            "auditor_invocations": auditor_invocations,
             # Priced here rather than at settlement, and **added rather than
             # recomputed**. Cost is linear in usage, so the sum of each turn's
             # price is the price of the sum — which keeps the addition inside

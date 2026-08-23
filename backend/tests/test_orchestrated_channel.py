@@ -22,7 +22,7 @@ import pytest
 from app.agents.archetypes import DEFAULT_PANEL, LIBRARY, Archetype
 from app.agents.auditor import Auditor, ClaimReading
 from app.agents.context import USER, Grounding, Said
-from app.agents.model import ModelReply
+from app.agents.model import ModelReply, TurnUsage
 from app.core.errors import ProviderUnavailable
 from app.modules.voice.events import (
     AgentAudio,
@@ -1937,3 +1937,50 @@ async def test_only_the_newest_panel_line_can_be_an_echo():
         "The margin is from the Q3 audit.",
         "What breaks at ten times the load?",
     ]
+
+
+async def test_the_auditors_reading_is_counted_into_what_the_room_spent():
+    """#14's first real datapoint exposed this: a grounded twelve-minute room
+    recorded `auditor_invocations` 0, and the claim-reader's own docstring
+    already suspected why — the Auditor accumulates its spend on itself
+    (`Auditor.spent`, `Auditor.readings`) and nothing ever read either. Left
+    uncounted, the observed dollars-per-minute understate exactly the rooms
+    the Auditor works hardest in, which are the grounded rooms the wedge
+    depends on.
+
+    The reader's tokens fold into the llm columns — same vendor, same bill,
+    priced by the same rate card — and the count gets its own field because
+    §4.3 sized the table expecting one reading per utterance.
+    """
+
+    class PricedReader:
+        async def read(self, *, said: str, known_metrics=()) -> ClaimReading:
+            return ClaimReading(
+                claims=(), usage=TurnUsage(input_tokens=200, output_tokens=8)
+            )
+
+    transcription = DrivenTranscription()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=transcription,
+        model=ScriptedPanelModel(),
+        grounding=Grounding(),
+        auditor=Auditor(reader=PricedReader()),
+        floor=mid_room(),
+    )
+
+    async def feed():
+        transcription.feed(Transcription(text="Margin is seventy percent.", final=True))
+        await asyncio.sleep(0.05)
+        transcription.feed(Transcription(text="And it holds at scale.", final=True))
+        await asyncio.sleep(0.05)
+        transcription.hang_up()
+
+    events, _ = await asyncio.gather(events_of(channel), feed())
+
+    spent = [event for event in events if isinstance(event, Spent)]
+    assert sum(report.auditor_invocations for report in spent) == 2
+    # The scripted model reports zero usage, so every llm token here is the
+    # reader's — two readings of 200 in, 8 out.
+    assert sum(report.llm_input_tokens for report in spent) == 400
+    assert sum(report.llm_output_tokens for report in spent) == 16
