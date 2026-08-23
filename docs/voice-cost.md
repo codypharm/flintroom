@@ -232,3 +232,48 @@ still wants them reconciled against an invoice.
   `debrief_seconds` / `sparring_seconds` are still zero because neither phase
   exists yet. §4.3 names the unmetered phases as the model's largest
   uncontrolled exposure.
+
+## Reconciled against the vendors, 2026-08-23 (#14)
+
+First reconciliation of `session_costs` against real vendor data, covering the
+account's whole life (2026-08-16 → 08-23, 64 rooms, 75.8 interrogation
+minutes). The architect supplied the ElevenLabs per-day credit export and the
+Gemini balance movement; the units below are ours from `session_costs`.
+
+**ElevenLabs reconciles inside the 10% target, on units and on dollars.**
+
+| | Ours (rooms) | Vendor | Δ |
+| --- | --- | --- | --- |
+| Speech-to-text seconds | 3,336 | 3,401 credits @ 1 credit/s | **+2.0%** |
+| TTS character-equivalents | 25,674 | ≈25,111 (Flash @ 0.5 cr/char, v3 @ 1 cr/char) | **−2.2%** |
+| Dollars (Starter rate, $5/30k credits) | $3.13 | ≈$2.94 | **−6%** |
+
+The vendor's small STT excess is the debrief's sparring transcription and the
+echo spikes, which rooms rightly do not count. The credit export also
+confirmed Scribe v2 realtime bills at one credit per second, and that room
+speech lands mostly on Flash v2.5 with a v3 minority — worth knowing because
+our single TTS rate ($0.04/371 chars) sits between the two models' real
+prices and should eventually split.
+
+**Gemini: $2.09 spent all-time, of which rooms are ~$0.03 (1.4%).** The other
+98.6% is everything `session_costs` deliberately does not attribute to rooms:
+deck extraction (vision over pages, dozens of dev-test decks), the debrief
+coach and weakness ranking, and the measurement harnesses (rotation, followup,
+the 2026-08-22 OpenAI comparison ≈$0.06 by its own usage math). Nothing here
+contradicts the room-side numbers, but a formal Gemini check needs the
+console's per-model token split — re-run this section when that is in hand or
+when extraction cost lands in its own table.
+
+**What this does to Open Risk #4.** The $0.12/min assumption every §4.4
+margin rests on is now bounded by observation: all-time room cost from units
+is $3.16 at our rate card, ≈ **$0.042/min average**, with the chattiest real
+room (fb4d48b5, 50 panel turns in 12 minutes) at **$0.067/min**. The
+assumption is roughly 2–3× conservative on the room path. Prices still must
+not change on this alone — extraction and debrief amortisation belong in the
+full per-user picture — but the direction is now measured, twice, in the
+margin's favour.
+
+**Two TTS paths remain uncounted**, found during this reconciliation: the
+hand-written lines (openers, nudges, the closing call) go to the synthesiser
+without a `Spent` event, and the debrief coach's speech is not recorded
+anywhere. Both are small; neither should stay invisible.
