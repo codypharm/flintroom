@@ -216,6 +216,35 @@
   }
   .board .more { margin-top: 28px; font-size: 15px; color: var(--ink-variant); }
 
+  /* ── Pricing ──────────────────────────────────────────── */
+  .pricing { padding: 96px 0 32px; }
+  .pricing > .shell > h2 { text-align: center; font-size: clamp(26px, 3.4vw, 32px); font-weight: 700; letter-spacing: -0.01em; }
+  .pricing .sub { text-align: center; font-size: 17px; color: var(--ink-variant); max-width: 44rem; margin: 12px auto 48px; }
+  .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; align-items: stretch; }
+  @media (max-width: 900px) { .plans { grid-template-columns: 1fr; max-width: 420px; margin: 0 auto; } }
+  .plan {
+    background: var(--card); border-radius: var(--r-lg); box-shadow: var(--shadow-1);
+    padding: 32px; display: flex; flex-direction: column; gap: 0;
+  }
+  .plan.star { outline: 2px solid var(--primary); box-shadow: var(--shadow-2), 0 8px 32px rgba(164, 55, 0, 0.10); position: relative; }
+  .plan .flag {
+    position: absolute; top: -13px; left: 50%; translate: -50%;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+    background: var(--primary); color: var(--on-primary); border-radius: 999px; padding: 5px 14px;
+  }
+  .plan h3 { font-size: 18px; font-weight: 700; }
+  .plan .price { margin-top: 14px; display: flex; align-items: baseline; gap: 6px; }
+  .plan .price b { font-size: 40px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .plan .price span { font-size: 14px; color: var(--muted); }
+  .plan .time { margin-top: 4px; font-size: 15px; font-weight: 600; color: var(--primary); }
+  .plan ul { list-style: none; margin: 20px 0 28px; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+  .plan li { display: flex; gap: 10px; font-size: 14.5px; color: var(--ink-variant); }
+  .plan li .icon { width: 17px; height: 17px; margin-top: 2px; color: var(--primary); }
+  .plan .btn { width: 100%; }
+  .plan .btn.ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--ink); }
+  .plan .btn.ghost:hover { background: #f4f0ed; box-shadow: none; }
+  .pricing .fine { text-align: center; font-size: 14px; color: var(--ink-variant); margin-top: 32px; }
+
   /* ── CTA ──────────────────────────────────────────────── */
   .cta { padding: 112px 0; }
   .cta .inner { max-width: 620px; margin: 0 auto; text-align: center; }
@@ -245,6 +274,7 @@
     <nav class="links" aria-label="Sections">
       <a href="#how">How it works</a>
       <a href="#board">The panel</a>
+      <a href="#pricing">Pricing</a>
     </nav>
     <a class="btn" href="#waitlist">Join the waitlist</a>
   </div>
@@ -362,6 +392,52 @@
         <figure class="seat"><img src="portraits/customer_advocate.webp" alt="Portrait of The Customer Advocate archetype" loading="lazy"><figcaption class="id"><b>The Customer Advocate</b><span>Users / Experience</span></figcaption></figure>
       </div>
       <p class="more">Or write your own. Custom archetypes sit beside ours, shaped by a sentence about the room you are actually facing.</p>
+    </div>
+  </section>
+
+  <section class="pricing" id="pricing">
+    <div class="shell">
+      <h2>Time under fire, priced plainly.</h2>
+      <p class="sub">You pay for live interrogation minutes. The debrief and sparring that follow every room are unlimited on every plan, because the teaching should never be on a clock.</p>
+      <div class="plans">
+        <article class="plan">
+          <h3>Free</h3>
+          <p class="price"><b>$0</b></p>
+          <p class="time">15 minutes of interrogation</p>
+          <ul>
+            <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>One complete session, start to prep sheet</li>
+            <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>Unlimited debrief and sparring</li>
+            <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>Attach a deck, face the full panel</li>
+          </ul>
+          <a class="btn ghost" href="#waitlist">Join the waitlist</a>
+        </article>
+        <article class="plan star">
+          <p class="flag">Most rooms</p>
+          <h3>Starter</h3>
+          <p class="price"><b>$29</b><span>/ month</span></p>
+          <p class="time">90 minutes of interrogation, monthly</p>
+          <ul>
+            <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>A real month of work: rough run, fix rounds, final pass</li>
+            <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>Unlimited debrief and sparring</li>
+            <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>Every room kept: transcript, recording, findings</li>
+            <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>Custom archetypes beside ours</li>
+          </ul>
+          <a class="btn" href="#waitlist">Join the waitlist</a>
+        </article>
+        <article class="plan">
+          <h3>Pro</h3>
+          <p class="price"><b>$59</b><span>/ month</span></p>
+          <p class="time">3 hours of interrogation, monthly</p>
+          <ul>
+            <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>Room for several arguments in flight at once</li>
+            <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>Everything in Starter</li>
+            <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>Longest recording retention</li>
+            <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>Priority voice at peak hours</li>
+          </ul>
+          <a class="btn ghost" href="#waitlist">Join the waitlist</a>
+        </article>
+      </div>
+      <p class="fine">Run out mid-month? Top-ups from $9, and minutes you buy never expire. Teams from $25 per seat.</p>
     </div>
   </section>
 
