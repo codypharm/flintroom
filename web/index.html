@@ -513,7 +513,7 @@
         });
         if (!answered.ok) throw new Error(String(answered.status));
         said.className = "said ok";
-        said.textContent = "You are on the list. Check your inbox.";
+        said.textContent = "Welcome in. We will email you when the room opens.";
         form.reset();
       } catch {
         said.className = "said";
