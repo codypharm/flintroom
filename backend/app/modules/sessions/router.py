@@ -13,7 +13,11 @@ from app.core.storage_s3 import DEFAULT_EXPIRY_SECONDS
 from app.modules.auth.dependencies import CurrentUser, rate_limit_user
 from app.modules.ingestion.dependencies import ObjectStorageDep
 from app.modules.voice.recording import recording_key
-from app.modules.auth.rate_limit import OPENING_REPLAY_LIMIT, SESSION_START_LIMIT
+from app.modules.auth.rate_limit import (
+    OPENING_REPLAY_LIMIT,
+    SESSION_START_LIMIT,
+    STREAM_TICKET_LIMIT,
+)
 from app.modules.sessions.dependencies import (
     CoachServiceDep,
     DebriefServiceDep,
@@ -38,6 +42,7 @@ from app.modules.sessions.schemas import (
     ProgressRead,
     RoomHeldRead,
     SessionStarted,
+    StreamTicket,
     TallyRead,
     TranscriptLineRead,
     TranscriptRead,
@@ -156,6 +161,39 @@ async def list_sessions(
     responses — only whether each room can still be heard, and until when.
     """
     return await sessions.recent(user_id=user_id)
+
+
+@router.post(
+    "/sessions/{session_id}/stream-ticket",
+    response_model=StreamTicket,
+    dependencies=[Depends(rate_limit_user("stream_ticket", STREAM_TICKET_LIMIT))],
+)
+async def remint_stream_ticket(
+    session: OwnedSession,
+    sessions: SessionServiceDep,
+    tickets: VoiceTicketServiceDep,
+) -> StreamTicket:
+    """A fresh key to a live room's stream — the resume path.
+
+    docs/reconnect.md decision 3. Gated on ownership (`OwnedSession`, a 404
+    for anyone else's room) and liveness, and deliberately *not* on the
+    disconnect stamp: the fastest reconnections arrive before the server has
+    noticed the old socket died, and refusing those would punish exactly the
+    recoveries worth having. Connecting with the ticket supersedes whatever
+    socket the room believed it had — only the owner can mint one, so the
+    newest connection is always the presenter.
+
+    Tickets stay single-use and short-lived; nothing about the socket's own
+    gatekeeping changes. This is the one place a ticket is born after the
+    room is, and it asks the session service the one question that matters —
+    is there a live room here to rejoin.
+    """
+    sessions.require_live(session)
+    return StreamTicket(
+        stream_ticket=await tickets.mint(
+            session_id=session.id, user_id=session.user_id
+        )
+    )
 
 
 @router.get("/sessions/{session_id}", response_model=SessionRead)

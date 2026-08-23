@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from typing import TypeVar
 
 from app.agents.archetypes import Archetype
+from app.agents.context import Said
 
 #: How much has to be said before the room treats it as a case worth attacking.
 #:
@@ -180,6 +181,61 @@ def opener_from(
 
     who = choose(speaking)
     return who, choose(who.openers)
+
+
+def reentry_from(
+    panel: Sequence[Archetype],
+    transcript: Sequence[Said],
+    *,
+    choose: Chooser = random.choice,
+) -> tuple[Archetype, str]:
+    """Who speaks when the presenter walks back in, and what they say.
+
+    docs/reconnect.md decision 4. Two gaps, told apart by whose turn the
+    transcript says it was when the line dropped:
+
+    - The last line is a **panelist's**: their question was recorded before it
+      was spoken, so the tunnel may have eaten it. The same panelist says the
+      same words again — verbatim, because a paraphrase would be a model call
+      about nothing and a second version of a question that already exists.
+    - The last line is the **presenter's** (or there are no lines yet — the
+      opener is spoken, never persisted): whoever most recently held the floor
+      hands it back with one of their hand-written `reentries`. Scanning past
+      seated panelists without lines covers the authored-archetype seat; the
+      final fallback draws like `opener_from`, for the room that dropped
+      before anyone had asked anything.
+
+    Same seams as `opener_from`, for the same reasons: drawn from the seated
+    panel only, `choose` injected so a room can be repeated, and an empty-lined
+    archetype skipped rather than fatal.
+    """
+    seated = {one.name: one for one in panel}
+
+    if transcript:
+        last = transcript[-1]
+        asked = seated.get(last.speaker)
+        if asked is not None:
+            return asked, last.text
+
+    for line in reversed(transcript):
+        held = seated.get(line.speaker)
+        if held is not None and held.reentries:
+            return held, choose(held.reentries)
+
+    speaking = [one for one in panel if one.reentries]
+    if not speaking:
+        raise NoOneToReenter("no seated archetype has a re-entry line")
+    who = choose(speaking)
+    return who, choose(who.reentries)
+
+
+class NoOneToReenter(Exception):
+    """Nobody at the table can take the floor back.
+
+    Cannot happen with a shipped panel — `test_resumed_room.py` proves every
+    shipped archetype carries re-entry lines — and the room it describes
+    resumes in silence rather than refusing, mirroring `NoOneToOpen`.
+    """
 
 
 class NoOneToOpen(Exception):

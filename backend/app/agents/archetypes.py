@@ -139,6 +139,20 @@ class Archetype(BaseModel):
     #: is one more reason every room seats a shipped one.
     closers: tuple[str, ...] = Field(default=())
 
+    #: How this panelist takes the floor back when the presenter reconnects —
+    #: docs/reconnect.md decision 4. A presenter back from a tunnel met with
+    #: silence cannot tell whether the reconnect worked, so the room speaks
+    #: first, and this is what it says when the drop came mid-answer. (A drop
+    #: mid-question re-delivers the question itself instead — those words are
+    #: in the transcript and may never have reached their ears.)
+    #:
+    #: Hand-written like the four families above and under the same law:
+    #: short, in character, no model call — and exactly one line about the
+    #: disconnect, which is never scored, because a dropped connection is not
+    #: a weak answer. Empty on authored archetypes; `reentry_from` falls back
+    #: across the seated panel, and every room seats a shipped one.
+    reentries: tuple[str, ...] = Field(default=())
+
     #: How this panelist says the room is getting nothing at all.
     #:
     #: #77, and the reason it is a second set rather than a shade of `nudges`:
@@ -231,6 +245,11 @@ LIBRARY: tuple[Archetype, ...] = (
             "Begin when you're ready. I'll hold my questions.",
             'You have the floor.',
         ),
+        reentries=(
+            'You dropped out. Pick it up where you left it.',
+            'The line went. Go on.',
+            'We lost you for a moment. Continue.',
+        ),
     ),
     Archetype(
         name="technical_skeptic",
@@ -275,6 +294,10 @@ LIBRARY: tuple[Archetype, ...] = (
             'Take us through it.',
             "I'd like the whole thing before I ask anything.",
         ),
+        reentries=(
+            'Your connection failed, not your argument. Carry on from where you stopped.',
+            'We lost the line, not the thread. Go on.',
+        ),
     ),
     Archetype(
         name="champion",
@@ -318,6 +341,10 @@ LIBRARY: tuple[Archetype, ...] = (
             "We're listening. Make your case.",
             "Off you go — I've been looking forward to this.",
         ),
+        reentries=(
+            "There you are — you were mid-thought. Pick it back up.",
+            'We lost you for a second. Go on, you had it.',
+        ),
     ),
     Archetype(
         name="growth_maximalist",
@@ -359,6 +386,10 @@ LIBRARY: tuple[Archetype, ...] = (
             "Right, let's go. What have you got?",
             'Straight in, then. Tell us.',
             "Ready when you are. Don't hold back.",
+        ),
+        reentries=(
+            "You cut out. Don't lose the momentum — keep going.",
+            'Back? Good. You were getting somewhere.',
         ),
     ),
     Archetype(
@@ -405,6 +436,10 @@ LIBRARY: tuple[Archetype, ...] = (
             "Go ahead. I've got a few minutes.",
             "Right, let's do this. Keep it moving.",
             'Start whenever.',
+        ),
+        reentries=(
+            'You dropped. Skip to the point you were making.',
+            'Lost you for a bit. Land the point.',
         ),
     ),
     Archetype(
@@ -453,6 +488,10 @@ LIBRARY: tuple[Archetype, ...] = (
             "Whenever suits you. I'll follow along.",
             "Do begin. I'll save my concerns for the end.",
         ),
+        reentries=(
+            'It seems the line failed — no fault of yours. Please continue.',
+            'We lost the connection there. Do carry on.',
+        ),
     ),
     Archetype(
         name="customer_advocate",
@@ -496,6 +535,10 @@ LIBRARY: tuple[Archetype, ...] = (
             "Take it away. I'm all ears.",
             'Please start. I want to hear how you frame it.',
         ),
+        reentries=(
+            'Your line cut out mid-sentence. Take it from there.',
+            'We lost you. Say that last part again.',
+        ),
     ),
     Archetype(
         name="risk_officer",
@@ -538,6 +581,10 @@ LIBRARY: tuple[Archetype, ...] = (
             'Proceed.',
             "When you're ready. I'll be taking notes.",
             "Go on. I'll flag anything that concerns me.",
+        ),
+        reentries=(
+            'The connection dropped. Resume where you stopped.',
+            'We lost audio for a period. Continue.',
         ),
     ),
 )

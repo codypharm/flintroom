@@ -229,3 +229,77 @@ async def test_starting_a_room_returns_a_ticket_that_opens_its_stream(
         ticket=body["stream_ticket"], session_id=uuid.UUID(body["id"])
     )
     assert holder == funded_account.user_id
+
+
+# ---------------------------------------------------------------------------
+# Re-minting a stream ticket — the resume path's front door.
+# docs/reconnect.md decision 3: a fresh single-use ticket for any live room
+# of the caller's, gated on ownership and liveness and nothing else — not on
+# the disconnect stamp, because the fastest reconnections arrive before the
+# server has noticed the old socket died.
+# ---------------------------------------------------------------------------
+
+
+async def test_a_live_room_re_mints_a_key_to_its_own_stream(
+    client, funded_account, bearer, db, sessions
+):
+    headers = bearer(funded_account.user_id)
+    started = (await client.post("/v1/sessions", headers=headers)).json()
+    await sessions.connection_opened(
+        session_id=uuid.UUID(started["id"]), connection_id=uuid.uuid4()
+    )
+
+    response = await client.post(
+        f"/v1/sessions/{started['id']}/stream-ticket", headers=headers
+    )
+
+    assert response.status_code == 200
+    ticket = response.json()["stream_ticket"]
+    # The proof that matters: the socket's own gatekeeper accepts it.
+    redeemed = await VoiceTicketService(db).redeem(
+        ticket=ticket, session_id=uuid.UUID(started["id"])
+    )
+    assert redeemed == funded_account.user_id
+
+
+async def test_a_room_that_is_not_live_re_mints_nothing(
+    client, funded_account, bearer
+):
+    """Provisioning has the start's own ticket; settled has no stream at all.
+    Either way there is no live room to rejoin, and saying so is a business
+    refusal rather than a mystery."""
+    headers = bearer(funded_account.user_id)
+    started = (await client.post("/v1/sessions", headers=headers)).json()
+
+    response = await client.post(
+        f"/v1/sessions/{started['id']}/stream-ticket", headers=headers
+    )
+
+    assert response.status_code == 422
+
+
+async def test_one_user_cannot_re_mint_into_anothers_room(
+    client, funded_account, bearer, db, ledger, sessions
+):
+    headers = bearer(funded_account.user_id)
+    started = (await client.post("/v1/sessions", headers=headers)).json()
+    await sessions.connection_opened(
+        session_id=uuid.UUID(started["id"]), connection_id=uuid.uuid4()
+    )
+    other = await create_funded_account(db, ledger)
+
+    response = await client.post(
+        f"/v1/sessions/{started['id']}/stream-ticket",
+        headers=bearer(other.user_id),
+    )
+
+    assert response.status_code == 404
+
+
+async def test_re_minting_without_a_credential_is_refused(client, funded_account, bearer):
+    headers = bearer(funded_account.user_id)
+    started = (await client.post("/v1/sessions", headers=headers)).json()
+
+    response = await client.post(f"/v1/sessions/{started['id']}/stream-ticket")
+
+    assert response.status_code == 401

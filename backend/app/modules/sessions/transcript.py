@@ -53,6 +53,7 @@ class SessionTranscript:
         session_factory: async_sessionmaker[AsyncSession],
         *,
         session_id: uuid.UUID,
+        starting_at: int = 0,
     ) -> None:
         self._session_factory = session_factory
         self._session_id = session_id
@@ -64,7 +65,11 @@ class SessionTranscript:
         #: against every other. Not a database sequence either — a sequence is
         #: global to the table, so ordinals would be unique but not consecutive,
         #: and "the fourth thing said" would stop meaning anything.
-        self._next = 0
+        #: Non-zero for a resumed room (docs/reconnect.md), whose store must
+        #: continue after the lines a previous connection already wrote —
+        #: `(session_id, ordinal)` is the primary key, and a counter restarted
+        #: at zero would collide with the room's own first line.
+        self._next = starting_at
 
     async def record(self, line: Said, *, at: float | None = None) -> None:
         """Keep one line, and where the room had reached. One transaction each.

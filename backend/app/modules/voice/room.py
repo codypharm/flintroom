@@ -17,6 +17,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.agents.context import Said
 from app.agents.model import PanelModel
 from app.core.errors import ProviderUnavailable
 from app.core.logging import get_logger
@@ -78,6 +79,24 @@ async def build_room(
     panel = await sessions.panel(session_id=session_id)
     materials = await sessions.materials(session_id=session_id)
 
+    # docs/reconnect.md decision 3: nothing about the room lives only in one
+    # process's memory. The persisted lines come back as the room's own —
+    # every turn is grounded in them exactly as if this socket had heard them
+    # — and their existence is what marks the room a resume. Judged on the
+    # transcript rather than the disconnect stamp, deliberately: a reconnect
+    # that lands before the server noticed the drop (the supersede case) has
+    # no stamp, and it is a resume all the same.
+    spoken = tuple(
+        Said(
+            speaker=line.speaker,
+            text=line.text,
+            disputed=line.disputed,
+            chosen_by=line.chosen_by,
+        )
+        for line in await sessions.transcript(session_id=session_id)
+    )
+    resuming = bool(spoken)
+
     # #66. Read here for the same reason the rung is: this is the moment a
     # session becomes a room. Never logged below — it is the presenter's own
     # prose about identifiable colleagues, which `CLAUDE.md` puts in the class
@@ -85,7 +104,7 @@ async def build_room(
     audience = await sessions.audience(session_id=session_id)
 
     grounding = await session_grounding(
-        db, user_id=user_id, material_ids=materials
+        db, user_id=user_id, material_ids=materials, transcript=spoken
     )
 
     # Read here rather than at session start, because this is the moment that
@@ -116,6 +135,8 @@ async def build_room(
         claims=len(grounding.claims),
         speaking=speaker is not None,
         auditing=reader is not None,
+        # A count, never the words — the replayed lines are transcript text.
+        resumed_lines=len(spoken),
         # Both halves of the rung, so a room whose pressure looks wrong can be
         # explained from one line rather than by re-deriving the ladder.
         presses=pressure.presses,
@@ -149,7 +170,14 @@ async def build_room(
         # a room without one still interrogates and still captions. What it
         # loses is the debrief, so nothing that serves a real user may omit it.
         transcript=(
-            SessionTranscript(session_factory, session_id=session_id)
+            # `starting_at` is what keeps a resumed room's lines landing after
+            # the ones already written: the store's ordinal counter is held in
+            # the object, and `(session_id, ordinal)` is the primary key, so a
+            # counter restarted at zero would collide with the room's own
+            # first line.
+            SessionTranscript(
+                session_factory, session_id=session_id, starting_at=len(spoken)
+            )
             if session_factory is not None
             else None
         ),
@@ -165,4 +193,5 @@ async def build_room(
         # offset, which is what "no anchor" already means for every room that
         # ran before this existed.
         clock=clock,
+        resuming=resuming,
     )

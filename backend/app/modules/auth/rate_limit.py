@@ -57,6 +57,15 @@ SESSION_START_LIMIT = 10
 #: mobile-native case — is ordinary use rather than a refusal.
 MATERIAL_REGISTER_LIMIT = 60
 
+#: Stream tickets re-minted per minute per account — the resume path.
+#:
+#: Looser than session start, because an honest reconnect is a retry loop by
+#: nature: a phone coming out of a tunnel may ask several times inside its
+#: thirty-second window while the network flaps. What it must still bound is
+#: a script farming single-use tickets, and twenty a minute mints nothing a
+#: single-use, thirty-second credential makes valuable.
+STREAM_TICKET_LIMIT = 20
+
 #: Account deletions requested per minute per account.
 #:
 #: Tight, and not because the endpoint is expensive — it writes one column. It

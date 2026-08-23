@@ -212,6 +212,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sessions/{session_id}/stream-ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remint Stream Ticket
+         * @description A fresh key to a live room's stream — the resume path.
+         *
+         *     docs/reconnect.md decision 3. Gated on ownership (`OwnedSession`, a 404
+         *     for anyone else's room) and liveness, and deliberately *not* on the
+         *     disconnect stamp: the fastest reconnections arrive before the server has
+         *     noticed the old socket died, and refusing those would punish exactly the
+         *     recoveries worth having. Connecting with the ticket supersedes whatever
+         *     socket the room believed it had — only the owner can mint one, so the
+         *     newest connection is always the presenter.
+         *
+         *     Tickets stay single-use and short-lived; nothing about the socket's own
+         *     gatekeeping changes. This is the one place a ticket is born after the
+         *     room is, and it asks the session service the one question that matters —
+         *     is there a live room here to rejoin.
+         */
+        post: operations["sessions_remint_stream_ticket"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sessions/{session_id}": {
         parameters: {
             query?: never;
@@ -1747,6 +1780,19 @@ export interface components {
             attempt: number;
         };
         /**
+         * StreamTicket
+         * @description A fresh key to a live room's stream — the resume path.
+         *
+         *     The same single-use, thirty-second credential `SessionStarted` carries,
+         *     re-minted for a room the caller already owns. Only the ticket: the client
+         *     asking for this already holds the session, and echoing the row back would
+         *     be a second copy of state it did not ask about.
+         */
+        StreamTicket: {
+            /** Stream Ticket */
+            stream_ticket: string;
+        };
+        /**
          * TallyRead
          * @description A thing, and how many *rooms* it happened in.
          *
@@ -2082,6 +2128,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionStarted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sessions_remint_stream_ticket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamTicket"];
                 };
             };
             /** @description Validation Error */

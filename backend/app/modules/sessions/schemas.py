@@ -475,6 +475,17 @@ class SessionStarted(SessionRead):
     #: credential that authenticates everything else.
     stream_ticket: str
 
+class StreamTicket(BaseModel):
+    """A fresh key to a live room's stream — the resume path.
+
+    The same single-use, thirty-second credential `SessionStarted` carries,
+    re-minted for a room the caller already owns. Only the ticket: the client
+    asking for this already holds the session, and echoing the row back would
+    be a second copy of state it did not ask about.
+    """
+
+    stream_ticket: str
+
 
 class PhaseSpanRead(BaseModel):
     """One stretch of one phase.

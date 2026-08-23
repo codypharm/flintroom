@@ -323,6 +323,60 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
       security:
       - HTTPBearer: []
+  /v1/sessions/{session_id}/stream-ticket:
+    post:
+      tags:
+      - sessions
+      summary: Remint Stream Ticket
+      description: 'A fresh key to a live room''s stream — the resume path.
+
+
+        docs/reconnect.md decision 3. Gated on ownership (`OwnedSession`, a 404
+
+        for anyone else''s room) and liveness, and deliberately *not* on the
+
+        disconnect stamp: the fastest reconnections arrive before the server has
+
+        noticed the old socket died, and refusing those would punish exactly the
+
+        recoveries worth having. Connecting with the ticket supersedes whatever
+
+        socket the room believed it had — only the owner can mint one, so the
+
+        newest connection is always the presenter.
+
+
+        Tickets stay single-use and short-lived; nothing about the socket''s own
+
+        gatekeeping changes. This is the one place a ticket is born after the
+
+        room is, and it asks the session service the one question that matters —
+
+        is there a live room here to rejoin.'
+      operationId: sessions_remint_stream_ticket
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Session Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StreamTicket'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/sessions/{session_id}:
     get:
       tags:
@@ -2807,6 +2861,25 @@ components:
 
 
         `speech` is always empty here — see `DebriefRead.attempts`.'
+    StreamTicket:
+      properties:
+        stream_ticket:
+          type: string
+          title: Stream Ticket
+      type: object
+      required:
+      - stream_ticket
+      title: StreamTicket
+      description: 'A fresh key to a live room''s stream — the resume path.
+
+
+        The same single-use, thirty-second credential `SessionStarted` carries,
+
+        re-minted for a room the caller already owns. Only the ticket: the client
+
+        asking for this already holds the session, and echoing the row back would
+
+        be a second copy of state it did not ask about.'
     TallyRead:
       properties:
         name:

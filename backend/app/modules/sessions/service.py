@@ -944,7 +944,7 @@ class SessionService:
         stamping would never reach the cap at all.
         """
         session = await self._load(session_id)
-        self._require_live(session)
+        self.require_live(session)
         if session.grace_started_at is None:
             session.grace_started_at = func.now()
             await self._db.commit()
@@ -974,20 +974,21 @@ class SessionService:
         rather than the remainder of an old one.
         """
         session = await self._load(session_id)
-        self._require_live(session)
+        self.require_live(session)
         if session.grace_started_at is None:
             return
         session.grace_started_at = None
         await self._db.commit()
 
     @staticmethod
-    def _require_live(session: Session) -> None:
-        """Refuse to meter a room that has stopped running.
+    def require_live(session: Session) -> None:
+        """Refuse to act on a room that has stopped running.
 
         The meter selects live rooms and then acts on them, so a user pressing
         End or the reaper closing an orphan in between is ordinary traffic
         rather than a bug — which is why this is a business rule violation and
-        not a crash.
+        not a crash. Public since the resume path: re-minting a stream ticket
+        asks exactly this question about a room the caller owns.
         """
         if session.state is not SessionState.ACTIVE:
             raise SessionNotLive(
@@ -1024,7 +1025,7 @@ class SessionService:
         actually needs proving.
         """
         session = await self._load(session_id)
-        self._require_live(session)
+        self.require_live(session)
         session.last_user_speech_at = func.now()
         await self._db.commit()
 

@@ -26,7 +26,14 @@ from app.agents.auditor import Auditor, ClaimReader
 from app.agents.context import Finding, Grounding, Routed, Said, TurnContext, USER
 from app.agents.difficulty import STANDARD_PRESSURE, Pressure
 from app.agents.model import PanelModel, TurnUsage
-from app.agents.opening import Chooser, NoOneToOpen, OpeningFloor, opener_from
+from app.agents.opening import (
+    Chooser,
+    NoOneToOpen,
+    NoOneToReenter,
+    OpeningFloor,
+    opener_from,
+    reentry_from,
+)
 from app.agents.panel import interrogate, select_speaker, who_takes_the_floor
 from app.agents.routing import choose
 from app.agents.closing import TimeCall, closer_from
@@ -114,6 +121,7 @@ class OrchestratedProvider:
         clock: RoomClock | None = None,
         pressure: Pressure = STANDARD_PRESSURE,
         audience: str = "",
+        resuming: bool = False,
     ) -> None:
         #: Who is seated, in seat order. Public because a room's roster is a
         #: fact about the room rather than an implementation detail of it — the
@@ -153,6 +161,20 @@ class OrchestratedProvider:
         # store is: a channel exercised without a relay has no mixer, records a
         # full transcript, and files every line with no offset.
         self._clock = clock
+        # docs/reconnect.md. Decided by `build_room` from whether persisted
+        # lines exist, which also covers the supersede case — a reconnect that
+        # lands before the disconnect stamp does.
+        self._resuming = resuming
+
+    @property
+    def resuming(self) -> bool:
+        """Whether this room continues a conversation rather than opening one."""
+        return self._resuming
+
+    @property
+    def memory(self) -> tuple[Said, ...]:
+        """The lines this room already holds — its replayed transcript."""
+        return tuple(self._grounding.transcript) if self._grounding else ()
 
     @asynccontextmanager
     async def open(self) -> AsyncIterator[OrchestratedChannel]:
@@ -172,6 +194,7 @@ class OrchestratedProvider:
                 grounding=self._grounding,
                 pressure=self.pressure,
                 audience=self.audience,
+                resuming=self._resuming,
                 # A fresh one per stream, never shared. An `Auditor` accumulates
                 # every figure spoken in a session, so a reused one would open
                 # the next room already holding the last user's numbers — and
@@ -217,8 +240,14 @@ class OrchestratedChannel:
         floor: OpeningFloor | None = None,
         choose: Chooser | None = None,
         opener_speaker: Speaker | None = None,
+        resuming: bool = False,
     ) -> None:
         self._panel = panel
+        # docs/reconnect.md decision 4. A resumed room re-enters instead of
+        # opening, and its floor starts closed below: the opening statement
+        # happened minutes ago, so the first thing said after the reconnect
+        # is an answer to be judged, not an opening to be waited out.
+        self._resuming = resuming
         # Stamped on every `TurnContext` this channel builds. Defaulted to the
         # room that ships today so the many tests that construct a channel
         # directly keep describing the room `scripts/rotation.py` measured.
@@ -305,7 +334,11 @@ class OrchestratedChannel:
         # rather than optional, because a room without one is the room that
         # attacked an empty transcript and invented its subject — that is not a
         # configuration a deployment should be able to choose by omission.
-        self._floor = floor if floor is not None else OpeningFloor()
+        self._floor = (
+            floor
+            if floor is not None
+            else OpeningFloor(open=not resuming)
+        )
         # Injected so `scripts/rotation.py` and the suite can pin who opens and
         # with which line. A room that cannot be repeated cannot be measured.
         self._choose = choose
@@ -451,7 +484,10 @@ class OrchestratedChannel:
         # surface whose premise is that nobody looks directly at it.
         await self._read_the_room(out, always=True)
 
-        await self._open_the_room(out)
+        if self._resuming:
+            await self._reenter_the_room(out)
+        else:
+            await self._open_the_room(out)
 
         listener = asyncio.create_task(self._listen(out))
         beating = asyncio.create_task(self._beat(out))
@@ -529,6 +565,40 @@ class OrchestratedChannel:
             # hand-written paths were the last unpaid speech in the room —
             # found closing out the first §4.3 reconciliation, where every
             # room under-reported by its own greeting.
+            await out.put(Spent(tts_characters=len(line)))
+        await out.put(AgentFinished())
+
+    async def _reenter_the_room(
+        self, out: asyncio.Queue[VoiceEvent | BaseException | None]
+    ) -> None:
+        """Take the floor back for a presenter who just walked back in.
+
+        The mirror of `_open_the_room`, under the same law: **no model call.**
+        Which line is `reentry_from`'s decision — the outstanding question
+        said again when the drop may have eaten it, a hand-written re-entry
+        when the presenter was mid-answer — and like the opener it is spoken
+        through the ordinary events and never written to the transcript: it
+        is procedure, not conversation, and a re-recorded question would read
+        downstream as a question asked twice.
+
+        The quick voice rather than the opener's expressive one, deliberately:
+        the opener is a line nobody is waiting on, and this is the opposite —
+        somebody just fought their way back into the room to hear it.
+        """
+        try:
+            who, line = (
+                reentry_from(self._panel, self._transcript, choose=self._choose)
+                if self._choose is not None
+                else reentry_from(self._panel, self._transcript)
+            )
+        except NoOneToReenter:
+            log.warning("room_resumed_in_silence")
+            return
+
+        await out.put(AgentTranscript(line, speaker=who.name))
+        if self._speaker is not None:
+            async for pcm in self._speaker.speak(text=line, voice=who.voice):
+                await out.put(AgentAudio(pcm))
             await out.put(Spent(tts_characters=len(line)))
         await out.put(AgentFinished())
 
