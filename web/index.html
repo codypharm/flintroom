@@ -147,12 +147,12 @@
   .phone.back { width: 240px; left: 0; top: 48px; rotate: -4deg; box-shadow: var(--shadow-2); }
   .phone.front { width: 262px; right: 8px; top: 0; rotate: 3deg; box-shadow: 0 24px 60px rgba(26, 26, 26, 0.22); }
   @media (max-width: 1024px) {
-    .phones { max-width: 420px; margin: 0 auto; height: 620px; }
+    .phones { width: 100%; max-width: 420px; margin: 0 auto; height: 620px; }
   }
   @media (max-width: 480px) {
-    .phones { max-width: 330px; height: 540px; }
-    .phone.back { width: 200px; }
-    .phone.front { width: 220px; right: 0; }
+    .phones { max-width: 330px; height: 500px; }
+    .phone.back { width: 190px; }
+    .phone.front { width: 210px; right: 0; }
   }
 
   /* ── Situations band (was the logo strip) ─────────────── */
@@ -195,14 +195,21 @@
   .board .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 40px; }
   .board h2 { font-size: clamp(26px, 3.4vw, 32px); font-weight: 700; letter-spacing: -0.01em; }
   .board .head p { font-size: 16px; color: var(--ink-variant); max-width: 40rem; margin-top: 10px; }
-  .grid8 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
-  @media (max-width: 1024px) { .grid8 { grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 520px)  { .grid8 { grid-template-columns: 1fr; } }
+  .rail {
+    display: flex; gap: 20px; overflow-x: auto; padding-bottom: 8px;
+    scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .rail::-webkit-scrollbar { display: none; }
   .seat {
     position: relative; border-radius: var(--r-md); overflow: hidden;
     aspect-ratio: 4 / 5; background: var(--ink);
     box-shadow: var(--shadow-1);
+    flex: 0 0 200px; scroll-snap-align: start;
   }
+  /* Two faces at a time on a phone, and the cut edge of a third saying
+     there are more. */
+  @media (max-width: 640px) { .seat { flex-basis: calc(50% - 24px); } }
   .seat img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
   .seat:hover img { transform: scale(1.04); }
   @media (prefers-reduced-motion: reduce) { .seat img, .seat:hover img { transition: none; transform: none; } }
@@ -376,7 +383,7 @@
           <p>Eight archetypes, each with their own priorities, blind spots, and way of pressing. Every room mixes support with hostility, because a uniformly hostile room teaches less than a real one.</p>
         </div>
       </div>
-      <div class="grid8">
+      <div class="rail" aria-label="The eight archetypes">
         <figure class="seat"><img src="portraits/cfo.webp" alt="Portrait of The CFO archetype" loading="lazy"><figcaption class="id"><b>The CFO</b><span>Margins / Arithmetic</span></figcaption></figure>
         <figure class="seat"><img src="portraits/technical_skeptic.webp" alt="Portrait of The Technical Skeptic archetype" loading="lazy"><figcaption class="id"><b>The Technical Skeptic</b><span>Tech / Architecture</span></figcaption></figure>
         <figure class="seat"><img src="portraits/growth_maximalist.webp" alt="Portrait of The Growth Maximalist archetype" loading="lazy"><figcaption class="id"><b>The Growth Maximalist</b><span>Growth / Scale</span></figcaption></figure>
@@ -476,6 +483,24 @@
 </footer>
 
 <script>
+  // The board turns slowly on its own — one seat every few seconds, wrapping
+  // at the end. A touch or a scroll of your own parks it for a while, and
+  // reduced-motion turns it off entirely: the rail still scrolls by hand.
+  {
+    const rail = document.querySelector(".rail");
+    const still = matchMedia("(prefers-reduced-motion: reduce)");
+    let parked = 0;
+    for (const sign of ["pointerdown", "wheel", "touchstart"]) {
+      rail.addEventListener(sign, () => { parked = Date.now() + 8000; }, { passive: true });
+    }
+    setInterval(() => {
+      if (still.matches || Date.now() < parked || rail.scrollWidth <= rail.clientWidth) return;
+      const step = rail.querySelector(".seat").getBoundingClientRect().width + 20;
+      const atEnd = rail.scrollLeft + rail.clientWidth >= rail.scrollWidth - 8;
+      rail.scrollTo({ left: atEnd ? 0 : rail.scrollLeft + step, behavior: "smooth" });
+    }, 3000);
+  }
+
   // Both signup forms share one handler and one promise.
   for (const form of document.querySelectorAll("[data-waitlist]")) {
     const said = form.parentElement.querySelector(".said");
