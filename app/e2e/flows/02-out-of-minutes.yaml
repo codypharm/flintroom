@@ -1,0 +1,42 @@
+# Gate 2 (CLAUDE.md): live interrogation → runs out of minutes mid-session →
+# graceful handoff to debrief. Never a hard cut, never a paywall.
+#
+# Precondition (run.sh): the device account's balance is ~20 seconds. The room
+# starts legitimately, ticks past zero, enters the bounded grace, and the
+# GRACE CAP closes it server-side — the flow never taps End, which is the
+# whole point: landing on the debrief without our help IS the graceful
+# handoff. Wall-clock is real: ~3 minutes of metered room.
+appId: com.flintroom.app
+---
+- launchApp
+# A cold start of the dev client sometimes lands on its own launcher screen
+# rather than the app; picking the dev server resumes the bundle. Harmless
+# when the app opened directly.
+- runFlow:
+    when:
+      visible: "Development servers"
+    commands:
+      - tapOn: ".*:8081"
+- extendedWaitUntil:
+    visible: "Set the room"
+    timeout: 30000
+- runFlow:
+    when:
+      visible: "Clear the room"
+    commands:
+      - tapOn: "Clear the room"
+      - tapOn: "Tap again to clear the room"
+- tapOn: "The CFO"
+- scrollUntilVisible:
+    element:
+      text: "Start"
+    direction: DOWN
+- tapOn: "Start"
+- extendedWaitUntil:
+    visible: "End"
+    timeout: 30000
+# No taps from here. The server runs out the balance, grants grace, caps it,
+# and the app must arrive at the debrief on its own.
+- extendedWaitUntil:
+    visible: ".*panel asked anything.*|.*coach.*|.*Reading the room.*"
+    timeout: 300000

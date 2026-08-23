@@ -1,0 +1,68 @@
+# Gate 1 (CLAUDE.md): panel setup → attach material → live interrogation →
+# session ends within allowance.
+#
+# The deck is attached from the emulator's Downloads (push it first — run.sh
+# does). The room opens against the real backend and the real voice vendor,
+# the panel speaks its opener to a silent presenter, and End settles the room
+# before any cap. The debrief refusal this lands on is itself the assertion
+# that settle ran: "ended before the panel asked anything" is the server
+# reading the transcript of a room where nobody spoke.
+appId: com.flintroom.app
+---
+- launchApp
+# A cold start of the dev client sometimes lands on its own launcher screen
+# rather than the app; picking the dev server resumes the bundle. Harmless
+# when the app opened directly.
+- runFlow:
+    when:
+      visible: "Development servers"
+    commands:
+      - tapOn: ".*:8081"
+- extendedWaitUntil:
+    visible: "Set the room"
+    timeout: 30000
+# The room must start empty, and a previous run (or a human) may have left a
+# deck and a name behind. Clear is a two-tap control that only exists when
+# there is something to clear.
+- runFlow:
+    when:
+      visible: "Clear the room"
+    commands:
+      - tapOn: "Clear the room"
+      - tapOn: "Tap again to clear the room"
+# No name typed, deliberately. The name is optional product-wide, and the
+# Android IME is the flakiest thing a flow can touch — the earlier draft's
+# back-press to close it exited the app instead. What this gate is for is the
+# deck, the seat, the room and the settle.
+- tapOn: "Attach a deck"
+- extendedWaitUntil:
+    visible: "kettleworks-deck.pdf"
+    timeout: 10000
+- tapOn: "kettleworks-deck.pdf"
+- extendedWaitUntil:
+    visible: "Read, and ready to be used against you."
+    timeout: 90000
+- tapOn: "The CFO"
+- scrollUntilVisible:
+    element:
+      text: "Start"
+    direction: DOWN
+- tapOn: "Start"
+- extendedWaitUntil:
+    visible: "End"
+    timeout: 30000
+# The opener proves the panel actually speaks in this room.
+- extendedWaitUntil:
+    visible: ".*floor.*|.*hear.*|.*Let's.*|.*ready.*"
+    timeout: 30000
+# One step, two taps. End arms on the first tap and forgets after a few
+# seconds; maestro's between-step overhead outlives that window, so two
+# separate tapOn steps re-arm forever and never end. `repeat` taps twice on
+# the same point inside the window — the same double-tap a human makes.
+- tapOn:
+    text: "End the room"
+    repeat: 2
+    delay: 700
+- extendedWaitUntil:
+    visible: ".*panel.*|.*room.*|.*coach.*"
+    timeout: 30000

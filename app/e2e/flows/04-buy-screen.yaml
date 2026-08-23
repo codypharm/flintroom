@@ -1,0 +1,35 @@
+# Gate 4 (CLAUDE.md): top-up purchase → credit-toward-upgrade on the second.
+#
+# HALF A GATE, HONESTLY LABELLED. The purchase halves are blocked on #96 —
+# the store in this build refuses to sell ("Buying is not available on this
+# build yet"), because the real store needs the Play console and Google has
+# not approved the account. What CAN be pinned today: the screen is reachable
+# from the chip on every tab, it shows the plans and the no-expiry promise,
+# and §4 holds by shape — remaining minutes framed generously, no depleting
+# counter. When #96 lands, this flow grows the two purchases and the
+# credit-toward-upgrade assertion; run.sh's ledger checks are already there
+# waiting for it.
+appId: com.flintroom.app
+---
+- launchApp
+# A cold start of the dev client sometimes lands on its own launcher screen
+# rather than the app; picking the dev server resumes the bundle. Harmless
+# when the app opened directly.
+- runFlow:
+    when:
+      visible: "Development servers"
+    commands:
+      - tapOn: ".*:8081"
+- extendedWaitUntil:
+    visible: "Set the room"
+    timeout: 30000
+- tapOn:
+    text: ".*You have.*"
+- extendedWaitUntil:
+    visible: "More time in the room"
+    timeout: 15000
+- assertVisible: "Minutes you buy stay yours and never expire."
+- scrollUntilVisible:
+    element:
+      text: "Restore a previous purchase"
+    direction: DOWN

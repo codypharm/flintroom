@@ -1,0 +1,59 @@
+# Gate 3 (CLAUDE.md): debrief → sparring re-try → prep sheet.
+#
+# Precondition (run.sh): a settled session named "E2E seeded pitch" with a
+# Q&A transcript containing a dodge, seeded straight into the dev database —
+# a spoken room cannot be produced by an emulator with a silent microphone,
+# and what this gate tests is everything AFTER the room. The debrief computes
+# weak answers live against the real model when it opens.
+appId: com.flintroom.app
+---
+- launchApp
+# A cold start of the dev client sometimes lands on its own launcher screen
+# rather than the app; picking the dev server resumes the bundle. Harmless
+# when the app opened directly.
+- runFlow:
+    when:
+      visible: "Development servers"
+    commands:
+      - tapOn: ".*:8081"
+- extendedWaitUntil:
+    visible: "Set the room"
+    timeout: 30000
+- tapOn: "Library"
+- extendedWaitUntil:
+    visible: "E2E seeded pitch"
+    timeout: 15000
+- tapOn: "E2E seeded pitch"
+- extendedWaitUntil:
+    visible: "Go through it with the coach"
+    timeout: 15000
+- tapOn: "Go through it with the coach"
+# Weak answers are ranked on open — a live model call, so the wait is generous.
+# Ranked on open — a live model call, so the wait is generous — and the
+# entries land below the coach's summary, so the control is found by scroll.
+- extendedWaitUntil:
+    visible: "Where it came loose"
+    timeout: 120000
+- scrollUntilVisible:
+    element:
+      text: "Answer it again"
+    direction: DOWN
+# Not tapped: "Answer it again" opens the microphone, because a re-answer is
+# fresh SPEECH (docs/debrief-and-sparring.md decision 4) — and an emulator
+# has nothing to say. Present-and-armed is the automatable half of the
+# sparring gate; the spoken re-try is a human's, scripted in
+# docs/testing-assets/pitch-script.md.
+- assertVisible: "Answer it again"
+- assertVisible: "Talk to the coach"
+- scrollUntilVisible:
+    element:
+      text: "Your prep sheet"
+    direction: DOWN
+- tapOn: "Your prep sheet"
+- extendedWaitUntil:
+    visible: "Before you go in"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "Share this sheet"
+    direction: DOWN
