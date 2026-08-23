@@ -26,7 +26,11 @@ from app.modules.ingestion.router import router as materials_router
 from app.modules.panels.router import router as panels_router
 from app.modules.ingestion.runner import ExtractionRunner
 from app.modules.sessions.router import router as sessions_router
-from app.modules.sessions.runner import SessionFactory, SweepRunner
+from app.modules.sessions.runner import (
+    METER_SILENCE_LIMIT,
+    SessionFactory,
+    SweepRunner,
+)
 from app.agents.claim_readers import build_claim_reader
 from app.agents.panel_models import build_panel_model
 from app.modules.voice.speakers import build_expressive_speaker, build_speaker
@@ -148,6 +152,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # and a silent hazard for one that does, which is why
     # `object_storage_unconfigured` is logged above and alerted on.
     runner = SweepRunner(session_factory, storage=app.state.object_storage)
+    # On state so `/health/sweeps` can read the meter heartbeat — the alert
+    # endpoint judges this runner, and a process without one is failing.
+    app.state.sweep_runner = runner
     sweeps = asyncio.create_task(runner.run())
 
     # A second loop, deliberately. Reading a pro-tier deck is minutes of model
@@ -265,6 +272,28 @@ def create_app() -> FastAPI:
     @app.get("/health", include_in_schema=False)
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    # The alert surface for sweep silence, and deliberately NOT part of
+    # `/health`: Railway restarts a container whose healthcheck fails, and
+    # restarting the API does not revive the database the meter could not
+    # reach — a blip would become a restart storm on top of it. This one is
+    # for the external monitor, which turns a 500 here into email and a phone
+    # push instead. See `docs/deployment.md` → "the alert is on silence".
+    @app.get("/health/sweeps", include_in_schema=False)
+    async def sweeps_health() -> JSONResponse:
+        runner = getattr(app.state, "sweep_runner", None)
+        if runner is None:
+            # No loop at all is the loudest kind of silence.
+            return JSONResponse(status_code=500, content={"status": "no_sweeps"})
+        silence = runner.meter_silence()
+        if silence > METER_SILENCE_LIMIT.total_seconds():
+            return JSONResponse(
+                status_code=500,
+                content={"status": "silent", "silent_seconds": int(silence)},
+            )
+        return JSONResponse(
+            content={"status": "ok", "silent_seconds": int(silence)}
+        )
 
     return app
 

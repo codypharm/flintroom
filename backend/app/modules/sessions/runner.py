@@ -20,8 +20,10 @@ which is exactly why silence has to be what the alert watches for. See
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
+from datetime import timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,6 +41,15 @@ log = get_logger(__name__, tag="sessions")
 
 SessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
 
+#: How long the meter may go unheard before `/health/sweeps` starts failing.
+#:
+#: Eight missed passes at the fifteen-second interval. Long enough that the
+#: database blips the loop is built to ride out — a restart on the pooler's
+#: side, a briefly exhausted pool — pass without a page, and short enough that
+#: a genuinely dead meter is caught while the loss is still minutes. The
+#: monitor watching the endpoint adds its own confirmation delay on top.
+METER_SILENCE_LIMIT = timedelta(seconds=120)
+
 
 class SweepRunner:
     """Runs the meter and the reaper on a schedule, forever."""
@@ -48,8 +59,16 @@ class SweepRunner:
         session_factory: SessionFactory,
         interval: float = TICK_INTERVAL.total_seconds(),
         storage: ObjectStorage | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._session_factory = session_factory
+        # Monotonic on purpose: this number feeds a staleness judgement, and
+        # a wall clock stepped by NTP would manufacture or erase silence.
+        self._clock = clock
+        # Construction is the first heartbeat, so a booting process has the
+        # full limit to finish a first pass — and one that never manages to
+        # goes stale on schedule, which is the correct alarm.
+        self._last_metered = clock()
         # Optional, so a deployment without object storage still bills and
         # reaps. Nothing was recorded in that case either, so there is nothing
         # to expire — but see `docs/deployment.md`, because the same silence
@@ -122,7 +141,11 @@ class SweepRunner:
         work that is measured in deleted rows.
         """
         async with self._session_factory() as db:
-            await self._guarded("meter", MeterService(db).sweep)
+            if await self._guarded("meter", MeterService(db).sweep):
+                # Stamped on the meter alone, and only when it succeeded. The
+                # loop surviving a broken meter (the guard's whole point) is
+                # not billing, and `/health/sweeps` must not say it is.
+                self._last_metered = self._clock()
             await self._guarded("reaper", ReaperService(db).reap)
             await self._guarded("refresh_tokens", RefreshTokenService(db).sweep)
             await self._guarded("rate_limits", PostgresRateLimiter(db).sweep)
@@ -140,8 +163,12 @@ class SweepRunner:
                     "account_deletion", AccountDeletion(db, self._storage).sweep
                 )
 
+    def meter_silence(self) -> float:
+        """Seconds since the meter was last heard from, for `/health/sweeps`."""
+        return self._clock() - self._last_metered
+
     @staticmethod
-    async def _guarded(name: str, sweep: Callable[[], Awaitable[object]]) -> None:
+    async def _guarded(name: str, sweep: Callable[[], Awaitable[object]]) -> bool:
         """Run one sweep, surviving anything it throws.
 
         A deliberately broad catch, and the one place it is the right call. In a
@@ -159,3 +186,5 @@ class SweepRunner:
             await sweep()
         except Exception:
             log.exception("sweep_failed", sweep=name)
+            return False
+        return True

@@ -266,3 +266,41 @@ async def test_one_pass_purges_an_account_whose_window_has_closed(
         )
     ).scalar_one()
     assert deleted_at is not None
+
+
+async def test_a_successful_pass_stamps_the_meter_heartbeat(engine):
+    """`/health/sweeps` judges this number, so it must move only when metering
+    actually works — a pass counts when the meter sweep completes."""
+    now = [100.0]
+    runner = SweepRunner(
+        async_sessionmaker(engine, expire_on_commit=False), clock=lambda: now[0]
+    )
+
+    now[0] = 500.0
+    assert runner.meter_silence() == 400.0
+
+    await runner.once()
+
+    assert runner.meter_silence() == 0.0
+
+
+async def test_a_pass_whose_meter_fails_leaves_the_silence_growing(
+    engine, monkeypatch
+):
+    """The guarded catch keeps the loop alive through a broken meter — but a
+    surviving loop is not a billing one, and the heartbeat must not pretend
+    otherwise. This is the exact silence the alert exists to catch."""
+
+    async def broken(self) -> None:
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(MeterService, "sweep", broken)
+    now = [100.0]
+    runner = SweepRunner(
+        async_sessionmaker(engine, expire_on_commit=False), clock=lambda: now[0]
+    )
+
+    now[0] = 500.0
+    await runner.once()
+
+    assert runner.meter_silence() == 400.0

@@ -32,7 +32,7 @@ without it looks completely healthy until it is attacked.
 
 ## Something must alert on silence
 
-**Alert on the absence of `meter_swept`, at greater than one interval.**
+**Point an external monitor at `GET /health/sweeps`. Built 2026-08-24.**
 
 Billing is a sweep loop inside every API process (`sessions/runner.py`). If
 every process running it is down, nothing bills — while the voice provider
@@ -40,12 +40,31 @@ carries on charging us for rooms that are still open. Ticks are charged in
 arrears, so no user is ever overcharged by this; the entire loss is ours.
 
 Nothing raises when this happens. A stopped loop emits no error, produces no
-failed request, and leaves no trace beyond the line it is no longer writing. So
-`meter_swept` is logged unconditionally on every pass, empty ones included, and
-the absence of it is the only available signal.
+failed request, and leaves no trace beyond the line it is no longer writing.
+`/health/sweeps` exists to turn that absence into something pollable: the
+runner stamps a heartbeat each time the **meter sweep succeeds** — not each
+time the loop survives a pass, because a loop alive with a broken meter is
+exactly the silence being watched for — and the endpoint returns 500 once the
+silence exceeds `METER_SILENCE_LIMIT` (120s, eight missed passes), or when the
+process has no runner at all. It is deliberately separate from `/health`:
+Railway restarts a container whose healthcheck fails, and restarting the API
+does not revive the database the meter could not reach, so folding this into
+liveness would turn a database blip into a restart storm on top of it.
 
-`sweep_pass_failed` firing repeatedly is the milder version — the loop is alive
-but cannot reach the database.
+The watcher is a free external uptime monitor (BetterStack or UptimeRobot)
+polling `https://flintroom-production.up.railway.app/health/sweeps` every few
+minutes, alerting to email and the monitor's phone app when it sees a non-200.
+The monitor's own confirmation delay (two failed polls before alerting is
+typical) sits on top of the 120s, which is the tolerance for pooler restarts
+working as intended. With more than one replica the monitor sees whichever
+container the edge routes it to — fine at this scale, since each replica runs
+the same loop against the same database, and a database-side failure stalls
+all of them at once.
+
+`meter_swept` is still logged unconditionally on every pass, empty ones
+included, and remains the greppable record of what the endpoint judges.
+`sweep_pass_failed` firing repeatedly is the milder version — the loop is
+alive but cannot reach the database.
 
 **Alert on the absence of `extraction_swept` too, at greater than one interval.**
 
@@ -596,8 +615,8 @@ database and no provider, deliberately: a check that hits a dependency turns
 that dependency's blip into a restart storm on top of it. The smoke test for
 this shape is in the container's own behaviour — booted against an unreachable
 database it stays up, answers `/health`, and logs `sweep_failed` until the
-database returns, which is the alerting section's job to notice, not the
-restart policy's.
+database returns — which `/health/sweeps` and the monitor watching it exist
+to notice, not the restart policy.
 
 ---
 
