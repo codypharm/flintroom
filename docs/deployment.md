@@ -551,10 +551,14 @@ test-database default in `migrations/env.py` cannot bite.
 
 **`FORWARDED_ALLOW_IPS` is required, has no default, and must not be `*`.**
 `start.sh` refuses to boot without it — the reasoning is the first section of
-this document. On Railway the peer is their edge proxy on the private network;
-after the first deploy, confirm the address range from one request's peer in
-the logs and pin the variable to that range, then check the rate limiter keys
-on real client addresses by signing in twice from two networks.
+this document. On Railway the peer is their edge proxy on the private network:
+observed on the first deploy (2026-08-23) as `100.64.0.2`, so the variable is
+pinned to `100.64.0.0/10` — the carrier-grade-NAT range Railway's proxy lives
+in, unroutable from outside, and wide enough to survive the proxy moving
+within it. If a future deploy logs a peer outside that range, re-derive it
+from the logs the same way rather than widening toward `*`. Then check the
+rate limiter keys on real client addresses by signing in twice from two
+networks.
 
 **The database URL is Supabase's session pooler, not the direct connection.**
 The free tier's direct connection is IPv6-only, and the pooler speaks IPv4 on a
