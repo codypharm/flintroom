@@ -401,18 +401,16 @@ describe('the safelight', () => {
     expect(cast('chill')).toBeTruthy();
   });
 
-  it('says nothing about it in words, to anybody', async () => {
-    // **Not a caption, and deliberately not announced.** The brief's anti-goals
-    // forbid a score on this screen, and a live region reading "losing the room"
-    // over a panelist mid-question would be the product heckling somebody who
-    // cannot hear it coming — worse for the reader captions exist for than
-    // saying nothing.
-    //
-    // What carries it for a screen-reader user is the debrief, in words, with
-    // the actual questions attached. A band with no evidence is a verdict.
+  it('adds no words of its own — the band says it once, elsewhere', async () => {
+    // Written as "says nothing in words, to anybody" when the wash was the
+    // temperature's only carrier, and half-reversed by the architect: the
+    // wash's resting state was invisible, so the band now says the word under
+    // the clock. What this still pins is the half that survived — the wash did
+    // not become a caption, and the word appears exactly once, from the band
+    // rather than riding the safelight as a second copy.
     await show({ temperature: 'losing_the_room' });
 
-    expect(screen.queryByText(/losing|convinced|skeptical/i)).toBeNull();
+    expect(screen.getAllByText(/losing|convinced|skeptical/i)).toHaveLength(1);
   });
 
   it('does not colonise the ground with anything else', async () => {
