@@ -92,7 +92,7 @@ export interface InterrogationRoomProps {
    * `opening` while the socket is coming up, `ending` during the beat that
    * holds the last line before the debrief.
    */
-  phase: 'opening' | 'live' | 'ending';
+  phase: 'opening' | 'live' | 'reconnecting' | 'ending';
   /**
    * Seconds this room has been open, or null before it is.
    *
@@ -383,6 +383,17 @@ function Said({
   panel,
   phase,
 }: Pick<InterrogationRoomProps, 'line' | 'panel' | 'phase'>) {
+  if (phase === 'reconnecting') {
+    // docs/reconnect.md. Over the caption too, stale or not: whatever was on
+    // the table, the line is the thing that matters now — and silence here
+    // reads as the app deciding the presentation was finished.
+    return (
+      <Text style={styles.waiting} accessibilityLiveRegion="polite">
+        The line dropped. Getting you back in…
+      </Text>
+    );
+  }
+
   if (line === null) {
     return (
       <Text style={styles.waiting} accessibilityLiveRegion="polite">

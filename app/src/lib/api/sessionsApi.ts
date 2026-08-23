@@ -179,6 +179,22 @@ export interface StartRoom {
   repeats: string | null;
 }
 
+/**
+ * The server said there is no live room to rejoin.
+ *
+ * A class rather than a status check at the call site because the reconnect
+ * loop turns exactly this into "stop trying and go to the debrief" — once the
+ * reaper settles a dropped room, the re-mint refuses with this, and that
+ * refusal is the one race-free signal that the room is over. 404 is the same
+ * verdict asked by somebody who cannot see the room at all.
+ */
+export class RoomOver extends Error {
+  constructor() {
+    super('There is no live room to rejoin.');
+    this.name = 'RoomOver';
+  }
+}
+
 export interface SessionsApi {
   start(room: StartRoom): Promise<StartedRoom>;
   /**
@@ -211,6 +227,18 @@ export interface SessionsApi {
    * instrument screen did: a dropped connection settles as `client_disconnect`,
    * and the server's own enum says these are not equivalent to the business.
    */
+  /**
+   * A fresh single-use key to a live room's stream — the reconnect path.
+   *
+   * docs/reconnect.md: the ticket minted at start is spent the moment the
+   * first socket opens, so getting back in after a drop needs a new one. The
+   * server gates it on ownership and liveness only; connecting with it
+   * supersedes whatever socket the room believed it had.
+   *
+   * Throws `RoomOver` when the server says there is no live room — the
+   * reconnect loop's signal to stop trying and open the debrief.
+   */
+  remintStreamTicket(sessionId: string): Promise<string>;
   end(sessionId: string): Promise<void>;
   /**
    * Destroy one room's audio, because the presenter asked.
@@ -346,6 +374,25 @@ export function createSessionsApi({
         saidAt: line.said_at,
         beganAtSeconds: line.began_at_seconds,
       }));
+    },
+
+    remintStreamTicket: async (sessionId) => {
+      const response = await send(`/v1/sessions/${sessionId}/stream-ticket`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        if (response.status === 422 || response.status === 404) {
+          throw new RoomOver();
+        }
+        throw (
+          (await refusalIn(response)) ??
+          new Error(`stream-ticket failed with ${response.status}`)
+        );
+      }
+
+      const body = (await response.json()) as { stream_ticket: string };
+      return body.stream_ticket;
     },
 
     end: async (sessionId) => {

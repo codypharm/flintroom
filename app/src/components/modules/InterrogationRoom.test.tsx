@@ -535,3 +535,17 @@ describe('the room temperature, in words', () => {
     expect(read.props.accessibilityLiveRegion).toBe('polite');
   });
 });
+
+it('says it is getting them back in while the line is being restored', async () => {
+  // docs/reconnect.md. The one thing a presenter back from a tunnel needs to
+  // know is that the room has not given up on them — silence here reads as
+  // the app deciding the presentation was finished. Shown even over a stale
+  // caption: whatever was on the table, the line is the thing that matters.
+  await show({
+    phase: 'reconnecting',
+    line: { speaker: 'cfo', text: 'Walk me through the acquisition cost.' },
+  });
+
+  expect(screen.getByText(/getting you back in/i)).toBeTruthy();
+  expect(screen.queryByText('Walk me through the acquisition cost.')).toBeNull();
+});

@@ -1,5 +1,5 @@
 import { SignedOut } from '../auth/session';
-import { createSessionsApi } from './sessionsApi';
+import { createSessionsApi, RoomOver } from './sessionsApi';
 
 /**
  * The two calls that open and close a metered room.
@@ -477,4 +477,46 @@ describe('destroying one room’s audio', () => {
 
     await expect(sessions.deleteRecording('s1')).rejects.toThrow(/502/);
   });
+});
+
+// ---------------------------------------------------------------------------
+// Re-minting a stream ticket — the reconnect loop's one request.
+// docs/reconnect.md: a fresh single-use key to a live room the caller owns.
+// ---------------------------------------------------------------------------
+
+it('re-mints a key to the room it is trying to get back into', async () => {
+  const { fetcher, sessions } = api({
+    status: 200,
+    json: async () => ({ stream_ticket: 'fresh-one-use' }),
+  });
+
+  const ticket = await sessions.remintStreamTicket('session-1');
+
+  expect(ticket).toBe('fresh-one-use');
+  const [url, init] = fetcher.mock.calls[0];
+  expect(url).toBe('https://flintroom.test/v1/sessions/session-1/stream-ticket');
+  expect(init.method).toBe('POST');
+});
+
+it('says the room is over rather than dressing a refusal as a network error', async () => {
+  // 422 is the server saying there is no live room to rejoin — which, once
+  // the reaper has settled it, is exactly the signal that the debrief is
+  // ready. The reconnect loop tells that apart from a dead network by type.
+  const { sessions } = api({
+    ok: false,
+    status: 422,
+    json: async () => ({ error: { code: 'session_not_live', message: 'no' } }),
+  });
+
+  await expect(sessions.remintStreamTicket('session-1')).rejects.toBeInstanceOf(
+    RoomOver
+  );
+});
+
+it('lets a transient failure stay an ordinary error', async () => {
+  const { sessions } = api({ ok: false, status: 503, json: async () => ({}) });
+
+  await expect(sessions.remintStreamTicket('session-1')).rejects.not.toBeInstanceOf(
+    RoomOver
+  );
 });

@@ -28,8 +28,9 @@ import { createDisclosureRecord } from '../lib/consent/disclosure';
 import { enterRoom } from '../lib/consent/entry';
 import { createPanelsApi } from '../lib/api/panelsApi';
 import { closeRoom } from '../lib/room/closing';
+import { reconnectRoom } from '../lib/room/reconnect';
 import { takeIntent } from '../lib/room/intent';
-import { createSessionsApi, type StartedRoom } from '../lib/api/sessionsApi';
+import { createSessionsApi, RoomOver, type StartedRoom } from '../lib/api/sessionsApi';
 import { API_BASE_URL, auth } from '../lib/auth';
 import { joinRoom, type Room } from '../lib/voice/room';
 import type { Attending, Ending, RoomTemperature , PanelLine } from '../lib/voice/connection';
@@ -129,7 +130,9 @@ export default function InterrogationScreen() {
   const [challenging, setChallenging] = useState<string | null>(null);
   const [heard, setHeard] = useState<Hearing>('silent');
   const [volume, setVolume] = useState(0);
-  const [phase, setPhase] = useState<'opening' | 'live' | 'ending'>('opening');
+  const [phase, setPhase] = useState<'opening' | 'live' | 'reconnecting' | 'ending'>(
+    'opening'
+  );
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [elapsed, setElapsed] = useState<number | null>(null);
   /** The sheet, and the resolver that lets `enterRoom` carry on once it is read. */
@@ -156,6 +159,18 @@ export default function InterrogationScreen() {
   const opened = useRef(0);
   /** Guards the hand-off: a close and an End both arrive, and only one may navigate. */
   const leaving = useRef(false);
+  /**
+   * The way back in, set once the first join has proven the way in works.
+   *
+   * A ref to the same `joinRoom` call the room opened with — same recorder,
+   * same playback context, same handlers — so a resume is the original
+   * connection minus everything that already happened (the sheet, the
+   * permission, the mint). Only the ticket differs, and the server re-mints
+   * that on request for a live room the caller owns.
+   */
+  const rejoin = useRef<((ticket: string) => Promise<Room>) | null>(null);
+  /** One reconnect window at a time; a second drop mid-window changes nothing. */
+  const regaining = useRef(false);
 
   const release = useCallback(async () => {
     await deactivateKeepAwake(KEEP_AWAKE).catch(() => undefined);
@@ -174,7 +189,7 @@ export default function InterrogationScreen() {
    * cannot be returned to, and leaving it on the stack would put a dark screen
    * with a live microphone behind a back gesture.
    */
-  const finish = useCallback(
+  const settle = useCallback(
     (why: Ending) => {
       if (leaving.current) {
         return;
@@ -183,14 +198,14 @@ export default function InterrogationScreen() {
 
       setPhase('ending');
       if (why === 'dropped') {
-        // The line died under them; the server has already settled the room.
-        // Said before the debrief opens, because arriving there silently reads
-        // as the app deciding the presentation was finished. No claim about
-        // minutes: a dropped room is charged for what ran (whether it should
-        // be is #100's question), and this sentence must not promise what the
-        // ledger did not do.
+        // The reconnect window was spent without a way back — the server has
+        // settled the room, or is a sweep away from doing so. Said before the
+        // debrief opens, because arriving there silently reads as the app
+        // deciding the presentation was finished. No claim about minutes:
+        // ticks are charged in arrears and the tunnel itself was never
+        // billed, so there is nothing here to promise.
         setRefusal({
-          said: 'The connection dropped and the room ended.',
+          said: 'The line dropped and the room could not be reached again.',
           buying: false,
         });
       }
@@ -218,6 +233,67 @@ export default function InterrogationScreen() {
       }, BEAT_MS);
     },
     [release]
+  );
+
+  /**
+   * A dropped line opens the reconnect window instead of ending the room —
+   * docs/reconnect.md. The server holds the room `active` under a stamp for
+   * thirty seconds; this side spends that window re-minting a ticket and
+   * rejoining, and gives up only when the server itself says there is no
+   * live room left — which, once the reaper settles it, is also the moment
+   * the debrief is ready. Every other ending settles exactly as before.
+   */
+  const regain = useCallback(async () => {
+    const back = await reconnectRoom({
+      attempt: async () => {
+        const settledRoom = session.current;
+        const join = rejoin.current;
+        if (settledRoom === null || join === null) {
+          return 'gone';
+        }
+        let ticket: string;
+        try {
+          ticket = await sessions.remintStreamTicket(settledRoom);
+        } catch (refused) {
+          return refused instanceof RoomOver ? 'gone' : 'retry';
+        }
+        try {
+          room.current = await join(ticket);
+          return 'joined';
+        } catch {
+          // The socket opened nothing — the network is back enough to mint
+          // but not to hold a stream. The ticket is spent; the next attempt
+          // mints another.
+          return 'retry';
+        }
+      },
+    });
+
+    regaining.current = false;
+    if (back === 'joined') {
+      setPhase('live');
+      return;
+    }
+    settle('dropped');
+  }, [settle]);
+
+  const finish = useCallback(
+    (why: Ending) => {
+      if (
+        why === 'dropped' &&
+        !leaving.current &&
+        !regaining.current &&
+        session.current !== null &&
+        rejoin.current !== null
+      ) {
+        regaining.current = true;
+        setPhase('reconnecting');
+        void regain();
+        return;
+      }
+      settle(why);
+    },
+    [regain, settle]
   );
 
   useEffect(() => {
@@ -343,11 +419,12 @@ export default function InterrogationScreen() {
         session.current = started.id;
         setPanel(started.archetypes.map((name) => ({ name, title: pretty(name) })));
 
-        room.current = await joinRoom({
-          url: `${API_BASE_URL.replace(/^http/, 'ws')}/v1/sessions/${started.id}/stream`,
-          ticket: started.streamTicket,
-          context: playback,
-          recorder: capture,
+        const connect = (ticket: string) =>
+          joinRoom({
+            url: `${API_BASE_URL.replace(/^http/, 'ws')}/v1/sessions/${started.id}/stream`,
+            ticket,
+            context: playback,
+            recorder: capture,
           onTranscript: (said) => {
             setLine(said);
             setSpeaking(said.speaker);
@@ -406,8 +483,14 @@ export default function InterrogationScreen() {
             setHeard(heardSteadily.current.shown);
             setVolume(loudness(levels.current));
           },
-          onEnding: finish,
-        });
+            onEnding: finish,
+          });
+
+        room.current = await connect(started.streamTicket);
+        // Only now, once the way in has worked once: a reconnect is the same
+        // call with a fresh ticket, and setting this earlier would offer a
+        // way back into a room that never opened.
+        rejoin.current = connect;
 
         // After `joinRoom`, never before: it registers `onAudioReady` as it
         // builds the uplink, and a recorder started first delivers into a
