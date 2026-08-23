@@ -95,7 +95,18 @@ class SettlementService:
         # grace cap watches, so the room would keep ticking with its debt wiped.
         self._sessions.require_transition(session, SessionState.SETTLED)
 
-        if (reason := REFUND_REASONS.get(session.end_reason)) is not None:
+        if await self._never_heard(session):
+            # The zero-audio refund (docs/reconnect.md decision 5), and it
+            # replaces rather than joins the reason-mapped refund below: a
+            # room that heard nothing delivered nothing, so the full refund
+            # subsumes any partial one — and writing both would pay the
+            # overlapping ticks back twice.
+            await self._ledger.refund_session(
+                user_id=session.user_id,
+                session_id=session.id,
+                reason=EntryReason.REFUND_UNHEARD,
+            )
+        elif (reason := REFUND_REASONS.get(session.end_reason)) is not None:
             await self._ledger.refund_session(
                 user_id=session.user_id,
                 session_id=session.id,
@@ -109,6 +120,23 @@ class SettlementService:
         await self._record_cost(session)
 
         return await self._sessions.settle(session_id=session_id)
+
+    async def _never_heard(self, session: Session) -> bool:
+        """Did this room bill time without ever processing a second of STT?
+
+        The cost row is the witness: `SpendRecorder` accumulates STT seconds
+        turn by turn, and the opening statement gives the presenter the floor
+        first — so a genuinely working room cannot reach settlement at zero.
+        An absent row is the same testimony as a zero, from a room in which no
+        turn ever ran. Exactly zero, deliberately: "very little" is a
+        judgement about a partially working room; zero is a fact.
+        """
+        stt = await self._db.scalar(
+            select(SessionCost.stt_seconds_processed).where(
+                SessionCost.session_id == session.id
+            )
+        )
+        return not stt
 
     async def _record_cost(self, session: Session) -> None:
         """Leave one `session_costs` row behind (Product.md §4.3).

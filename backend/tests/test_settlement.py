@@ -12,9 +12,11 @@ from app.modules.billing.schemas import Bucket, EntryReason
 from app.modules.sessions.schemas import EndReason, SessionState
 from app.modules.sessions.service import SessionService
 
+from .conftest import mark_heard as _heard
+
 
 async def test_settling_forgives_a_grace_overdraft_and_closes_the_session(
-    settlement, sessions, ledger, account
+    settlement, sessions, ledger, account, db
 ):
     """The tracer: state and money move together, or not at all.
 
@@ -33,6 +35,8 @@ async def test_settling_forgives_a_grace_overdraft_and_closes_the_session(
     )
     session = await sessions.start(user_id=account.user_id)
     await sessions.activate(session_id=session.id)
+    # Heard, so the zero-audio refund stays out of a test about forgiveness.
+    await _heard(db, session.id)
     await ledger.charge_tick(
         user_id=account.user_id, session_id=session.id, tick_index=0, seconds=30
     )
@@ -47,7 +51,7 @@ async def test_settling_forgives_a_grace_overdraft_and_closes_the_session(
 
 
 async def test_a_provider_failure_refunds_to_the_buckets_the_time_came_from(
-    settlement, sessions, ledger, account
+    settlement, sessions, ledger, account, db
 ):
     """Refunding the right *amount* is not enough — the bucket matters.
 
@@ -69,6 +73,9 @@ async def test_a_provider_failure_refunds_to_the_buckets_the_time_came_from(
         )
     session = await sessions.start(user_id=account.user_id)
     await sessions.activate(session_id=session.id)
+    # Heard, so this refund arrives under the provider-failure reason rather
+    # than the stronger unheard one — the bucket arithmetic is the concern.
+    await _heard(db, session.id)
     # 30s of interrogation: 20 from allowance, then 10 from top-up.
     await ledger.charge_tick(
         user_id=account.user_id, session_id=session.id, tick_index=0, seconds=30
@@ -178,3 +185,122 @@ async def test_settling_a_running_session_writes_no_money(
         for entry in await ledger.entries(user_id=account.user_id)
         if entry.reason is EntryReason.GRACE_FORGIVEN
     ]
+
+
+# ---------------------------------------------------------------------------
+# The zero-audio refund — docs/reconnect.md decision 5.
+#
+# The exhibit: a real room died mid-sentence and 81 seconds were charged to a
+# session whose own cost row showed zero STT seconds — a room that
+# demonstrably never heard a word. CLAUDE.md's "refunded automatically on
+# technical failure" covered it in principle; these are the tests that make
+# it code. The check lives on the settle path so every route to the grave —
+# relay, meter cap, reaper — passes through it.
+# ---------------------------------------------------------------------------
+
+
+async def test_a_room_that_never_heard_a_word_refunds_everything(
+    settlement, sessions, ledger, account
+):
+    """Whatever the end reason — this one is `user_ended`, the reason that
+    normally refunds nothing, because a working room the user chose to leave
+    was delivered in full. Zero STT means it was not a working room."""
+    await ledger.grant(
+        user_id=account.user_id,
+        bucket=Bucket.ALLOWANCE,
+        seconds=90,
+        reason=EntryReason.GRANT_ALLOWANCE,
+        idempotency_key="grant-unheard",
+    )
+    session = await sessions.start(user_id=account.user_id)
+    await sessions.activate(session_id=session.id)
+    for index in range(3):
+        await ledger.charge_tick(
+            user_id=account.user_id,
+            session_id=session.id,
+            tick_index=index,
+            seconds=15,
+        )
+    await sessions.begin_finalizing(
+        session_id=session.id, end_reason=EndReason.USER_ENDED
+    )
+
+    await settlement.settle(session_id=session.id)
+
+    assert (await ledger.balance(user_id=account.user_id)).allowance_seconds == 90
+    refunds = [
+        entry
+        for entry in await ledger.entries(user_id=account.user_id)
+        if entry.reason is EntryReason.REFUND_UNHEARD
+    ]
+    assert [(e.bucket, e.delta_seconds) for e in refunds] == [
+        (Bucket.ALLOWANCE, 45)
+    ]
+
+
+async def test_a_room_that_was_heard_is_not_the_unheard_case(
+    settlement, sessions, ledger, account, db
+):
+    await ledger.grant(
+        user_id=account.user_id,
+        bucket=Bucket.ALLOWANCE,
+        seconds=90,
+        reason=EntryReason.GRANT_ALLOWANCE,
+        idempotency_key="grant-heard",
+    )
+    session = await sessions.start(user_id=account.user_id)
+    await sessions.activate(session_id=session.id)
+    await _heard(db, session.id)
+    await ledger.charge_tick(
+        user_id=account.user_id, session_id=session.id, tick_index=0, seconds=15
+    )
+    await sessions.begin_finalizing(
+        session_id=session.id, end_reason=EndReason.USER_ENDED
+    )
+
+    await settlement.settle(session_id=session.id)
+
+    assert (await ledger.balance(user_id=account.user_id)).allowance_seconds == 75
+    assert not any(
+        entry.reason is EntryReason.REFUND_UNHEARD
+        for entry in await ledger.entries(user_id=account.user_id)
+    )
+
+
+async def test_an_unheard_idle_room_refunds_once_under_the_stronger_reason(
+    settlement, sessions, ledger, account
+):
+    """Idle would refund the silent window; unheard refunds the room. When
+    both describe the same session, only the full refund is written — a
+    second, overlapping refund under the idle reason would pay the silent
+    ticks back twice."""
+    await ledger.grant(
+        user_id=account.user_id,
+        bucket=Bucket.ALLOWANCE,
+        seconds=90,
+        reason=EntryReason.GRANT_ALLOWANCE,
+        idempotency_key="grant-idle-unheard",
+    )
+    session = await sessions.start(user_id=account.user_id)
+    await sessions.activate(session_id=session.id)
+    for index in range(2):
+        await ledger.charge_tick(
+            user_id=account.user_id,
+            session_id=session.id,
+            tick_index=index,
+            seconds=15,
+        )
+    await sessions.begin_finalizing(
+        session_id=session.id, end_reason=EndReason.IDLE_TIMEOUT
+    )
+
+    await settlement.settle(session_id=session.id)
+
+    assert (await ledger.balance(user_id=account.user_id)).allowance_seconds == 90
+    reasons = [
+        entry.reason
+        for entry in await ledger.entries(user_id=account.user_id)
+        if entry.reason
+        in (EntryReason.REFUND_UNHEARD, EntryReason.REFUND_IDLE)
+    ]
+    assert reasons == [EntryReason.REFUND_UNHEARD]

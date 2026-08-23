@@ -18,6 +18,8 @@ from app.modules.sessions.models import Session as SessionModel
 from app.modules.sessions.models import SessionPhaseSpan
 from app.modules.sessions.schemas import EndReason, SessionState
 
+from .conftest import mark_heard
+
 
 async def _quiet_for(db, session, *, seconds: int) -> None:
     """Age the room without anyone speaking in it.
@@ -60,6 +62,8 @@ async def test_the_silent_window_is_refunded_and_the_rest_is_not(
     )
     session = await sessions.start(user_id=account.user_id)
     await sessions.activate(session_id=session.id)
+    # Heard, so the refund below is idle's partial one and not unheard's full.
+    await mark_heard(db, session.id)
     await _quiet_for(db, session, seconds=180)
     # They spoke 65 seconds in, then stopped. 115 seconds of silence.
     await db.execute(

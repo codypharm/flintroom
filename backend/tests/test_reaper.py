@@ -18,7 +18,7 @@ import pytest_asyncio
 from sqlalchemy import func, update
 
 from app.core.actors import Actor
-from .conftest import create_funded_account
+from .conftest import create_funded_account, mark_heard
 from app.core.errors import InvalidStateTransition
 from app.modules.audit_log.schemas import AuditEventType
 from app.modules.billing.models import Account
@@ -136,6 +136,7 @@ async def test_a_settlement_that_died_partway_is_finished_by_the_reaper(
     )
     session = await sessions.start(user_id=funded_account.user_id)
     await sessions.activate(session_id=session.id)
+    await mark_heard(db, session.id)
     # §4.5 forbids cutting the panel off, so this ran 20s past zero.
     await ledger.charge_tick(
         user_id=funded_account.user_id, session_id=session.id, tick_index=0, seconds=30
@@ -173,6 +174,8 @@ async def test_a_room_whose_client_vanished_is_closed_without_a_refund(
     )
     session = await sessions.start(user_id=account.user_id)
     await sessions.activate(session_id=session.id)
+    # Heard, so no-refund below is arrears working and not the unheard rule.
+    await mark_heard(db, session.id)
     # One tick landed, and then the phone went into a tunnel.
     await ledger.charge_tick(
         user_id=account.user_id, session_id=session.id, tick_index=0, seconds=15

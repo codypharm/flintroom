@@ -505,3 +505,15 @@ def speaker():
     from tests.test_coaching import ScriptedSpeaker
 
     return ScriptedSpeaker()
+
+async def mark_heard(db, session_id, seconds: int = 5) -> None:
+    """Record STT consumption so a test room counts as having heard its presenter.
+
+    Settlement refunds every tick of a room whose cost row shows zero STT
+    seconds (docs/reconnect.md decision 5). Tests whose concern is caps,
+    reaping or bucket arithmetic call this so their balances stay a statement
+    about that concern rather than about the unheard rule.
+    """
+    from app.modules.voice.spend import SpendRecorder
+
+    await SpendRecorder(db).record(session_id=session_id, stt_seconds=seconds)

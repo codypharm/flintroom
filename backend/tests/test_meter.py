@@ -29,6 +29,8 @@ from app.modules.sessions.models import SessionPhaseSpan
 from app.modules.sessions.schemas import EndReason, SessionState
 from app.modules.sessions.service import SessionService
 
+from .conftest import mark_heard
+
 
 async def _running_for(db, session, *, seconds: int) -> None:
     """Make the open interrogation span look `seconds` old."""
@@ -163,6 +165,8 @@ async def test_a_room_left_running_is_closed_at_the_session_cap(
     await _grant(ledger, account, 3600)
     session = await sessions.start(user_id=account.user_id)
     await sessions.activate(session_id=session.id)
+    # Heard, so the full charge below is the cap's ruling and not unheard's.
+    await mark_heard(db, session.id)
     await _running_for(db, session, seconds=12 * 60 + 15)
     # Still arguing back — otherwise this is an abandoned room, which is idle
     # detection's case and a refund, not the cap's case and a full charge.
@@ -194,6 +198,7 @@ async def test_a_room_that_runs_out_closes_at_the_grace_cap_and_not_before(
     await _grant(ledger, account, 10)
     session = await sessions.start(user_id=account.user_id)
     await sessions.activate(session_id=session.id)
+    await mark_heard(db, session.id)
     await _running_for(db, session, seconds=15)
 
     await meter.sweep()

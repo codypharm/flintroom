@@ -43,6 +43,8 @@ from app.modules.voice.events import (
     UserSpoke,
 )
 from app.modules.voice.relay import VoiceRelay
+
+from .conftest import mark_heard
 from tests.fakes import (
     DyingVoiceProvider,
     FakeClientChannel,
@@ -387,6 +389,8 @@ async def test_a_user_who_closes_the_app_ends_the_room(
         db, provider=FakeVoiceProvider([ChannelReady()]), client=FakeClientChannel()
     ).run(session_id=session.id)
 
+    # Heard, so the balance below proves arrears and not the unheard refund.
+    await mark_heard(db, session.id)
     await _running_for(db, session, seconds=60)
     await meter.sweep()
     charged = await ledger.balance(user_id=funded_account.user_id)

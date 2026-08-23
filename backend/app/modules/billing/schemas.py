@@ -30,6 +30,10 @@ class EntryReason(str, Enum):
     TICK = "tick"
     REFUND_IDLE = "refund_idle"
     REFUND_PROVIDER_FAILURE = "refund_provider_failure"
+    #: The room billed interrogation time but processed zero STT seconds — it
+    #: never heard the presenter at all. A technical failure by CLAUDE.md's own
+    #: rule, whatever the recorded end reason. See docs/reconnect.md.
+    REFUND_UNHEARD = "refund_unheard"
     GRACE_FORGIVEN = "grace_forgiven"
 
 
