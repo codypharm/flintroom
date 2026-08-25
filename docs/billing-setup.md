@@ -123,6 +123,13 @@ The seven products `Product.md` §4.4–4.5 specifies:
 | Pro, $59/mo | Subscription | `flintroom_pro_monthly` | `monthly` |
 | Pro Annual, $599/yr | Subscription | `flintroom_pro_annual` | `annual` |
 | Teams, $25/seat/mo | Subscription | `flintroom_teams_monthly` | `monthly` |
+
+**Teams is not created in any store (decided 2026-08-25).** A per-seat plan
+with a ten-seat minimum is a sale to an L&D manager or program lead, not a
+phone paywall purchase — there is no seat management to sell through an app.
+The row stays because the ID is reserved; the backend's `teams` tier in
+`tiers.py` sits unused until an entitlement ever carries it, and adding it
+later is console work with no app release.
 | Quick top-up, $9 / 20 min | **Consumable** | `flintroom_topup_20` | — |
 | Demo-day pack, $35 / 90 min | **Consumable** | `flintroom_topup_90` | — |
 | Cohort block, $99 / 300 min | **Consumable** | `flintroom_topup_300` | — |
