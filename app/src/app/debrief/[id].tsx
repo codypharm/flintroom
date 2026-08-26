@@ -18,6 +18,7 @@ import { useGateway } from '../../lib/auth/gateway';
 import { SignedOut } from '../../lib/auth/session';
 import { refusedRoom, refusedTurn, type RoomRefusal } from '../../lib/debrief/refusals';
 import { byQuestion, exchanged } from '../../lib/debrief/resumed';
+import { streamedExchange } from '../../lib/debrief/streamedExchange';
 import { createCoachVoice, type CoachVoice } from '../../lib/debrief/voice';
 import { color, radius, space, type } from '../../theme/tokens';
 
@@ -63,6 +64,10 @@ export default function DebriefRoute() {
   const [attempts, setAttempts] = useState<Record<number, Exchange[]>>({});
   const [listening, setListening] = useState<Listening>({ state: 'idle' });
   const [turnRefusal, setTurnRefusal] = useState<string | null>(null);
+  // The coach is audibly mid-sentence. What disables every replay control —
+  // pressing one over a reply still playing puts two coach voices on one
+  // speaker — and the voice's drained signal is what clears it.
+  const [coachSpeaking, setCoachSpeaking] = useState(false);
 
   const recorder = useRef<AudioRecorder | null>(null);
   const voice = useRef<CoachVoice | null>(null);
@@ -91,19 +96,33 @@ export default function DebriefRoute() {
    * complaining*, which is indistinguishable from a coach that never spoke —
    * the same trap `interrogation.tsx` records for the room.
    */
-  const speak = useCallback(async (speech: string) => {
+  const ensureVoice = useCallback(async (): Promise<CoachVoice> => {
     if (!voice.current) {
       const context = new AudioContext();
       speaker.current = context;
-      voice.current = createCoachVoice({ context });
+      voice.current = createCoachVoice({
+        context,
+        onQuiet: () => setCoachSpeaking(false),
+      });
     }
 
     if (speaker.current && speaker.current.state !== 'running') {
       await speaker.current.resume();
     }
 
-    voice.current.play(speech);
+    return voice.current;
   }, []);
+
+  const speak = useCallback(
+    async (speech: string) => {
+      const out = await ensureVoice();
+      if (speech.length > 0) {
+        setCoachSpeaking(true);
+      }
+      out.play(speech);
+    },
+    [ensureVoice],
+  );
 
   useEffect(() => {
     let live = true;
@@ -265,31 +284,65 @@ export default function DebriefRoute() {
 
     try {
       const spoken = gathering.finish();
-      const turn =
-        at === null
-          ? await debriefs.say(id, spoken)
-          : await debriefs.spar(id, at, spoken);
 
-      const exchange: Exchange = {
-        heard: turn.heard,
-        said: turn.text,
-        speech: turn.speech,
+      const place = (exchange: Exchange) => {
+        if (at === null) {
+          setThread((so_far) => [...so_far, exchange]);
+        } else {
+          setAttempts((so_far) => ({
+            ...so_far,
+            [at]: [...(so_far[at] ?? []), exchange],
+          }));
+        }
+      };
+      const settle = (exchange: Exchange) => {
+        if (at === null) {
+          setThread((so_far) => [...so_far.slice(0, -1), exchange]);
+        } else {
+          setAttempts((so_far) => ({
+            ...so_far,
+            [at]: [...(so_far[at] ?? []).slice(0, -1), exchange],
+          }));
+        }
       };
 
-      if (at === null) {
-        setThread((so_far) => [...so_far, exchange]);
-      } else {
-        setAttempts((so_far) => ({
-          ...so_far,
-          [at]: [...(so_far[at] ?? []), exchange],
-        }));
-      }
+      // The words the moment the server's fence passes, the voice on its
+      // first frame — #107 item 1. Autoplay is unchanged in spirit: the
+      // caption is drawn before any sound, and stays for anybody who cannot
+      // hear it. The one-shot turn remains underneath as the net for a stream
+      // that fails before anything was shown.
+      const out = await ensureVoice();
+      const final = await streamedExchange({
+        stream: (handlers) =>
+          at === null
+            ? debriefs.sayStreamed(id, spoken, handlers)
+            : debriefs.sparStreamed(id, at, spoken, handlers),
+        fallback: async () => {
+          const turn =
+            at === null
+              ? await debriefs.say(id, spoken)
+              : await debriefs.spar(id, at, spoken);
+          return { heard: turn.heard, said: turn.text, speech: turn.speech };
+        },
+        voice: {
+          begin: () => {
+            setCoachSpeaking(true);
+            out.begin();
+          },
+          playChunk: (frame) => out.playChunk(frame),
+          play: (speech) => {
+            if (speech.length > 0) {
+              setCoachSpeaking(true);
+            }
+            out.play(speech);
+          },
+        },
+        onText: place,
+      });
 
-      // Spoken without being asked, which is what makes this a conversation
-      // rather than a chat log — you do not tap a button to hear somebody
-      // answer you. Drawn first, so the caption is on screen before the voice
-      // starts and stays there for anybody who cannot hear it.
-      void speak(turn.speech);
+      // The joined audio lands after the fact, so "hear that again" replays
+      // exactly what was heard.
+      settle(final);
     } catch (error) {
       if (error instanceof SignedOut) {
         // The gate decides where a signed-out person goes, not this screen.
@@ -304,7 +357,7 @@ export default function DebriefRoute() {
     } finally {
       setListening({ state: 'idle' });
     }
-  }, [id, release, speak, recheck]);
+  }, [id, release, ensureVoice, recheck]);
 
   const start = useCallback(
     async (at: number | null) => {
@@ -448,6 +501,7 @@ export default function DebriefRoute() {
         onTalk={(at) => void start(at)}
         onStop={() => void finish()}
         onReplay={(speech) => void speak(speech)}
+        speaking={coachSpeaking}
         onReplayOpening={() => void hearOpeningAgain()}
         // Null on the path this screen was built for. A room that has just
         // ended hands somebody here and there is nowhere back to — the session

@@ -82,6 +82,48 @@ function voiceAt(hardwareRate: number) {
   return { voice, source: () => context.sources[0] };
 }
 
+it('speaks a streamed reply frame by frame, without silencing itself', () => {
+  // #107 item 1: the SSE turn hands frames over as the vendor makes them, and
+  // playback starts on the first — `begin` supersedes the previous reply once,
+  // then every chunk queues behind the one before it.
+  const { voice, source } = voiceAt(16_000);
+
+  voice.begin();
+  voice.playChunk(spoken([0.5, -0.5]));
+  voice.playChunk(spoken([0.25]));
+
+  expect(source().enqueued).toHaveLength(2);
+  expect(source().enqueued[0].length).toBe(2);
+  expect(source().enqueued[1].length).toBe(1);
+});
+
+it('a new streamed reply silences the one before it', () => {
+  const { voice, source } = voiceAt(16_000);
+
+  voice.playChunk(spoken([0.5, -0.5]));
+  voice.begin();
+  voice.playChunk(spoken([0.25]));
+
+  expect(source().enqueued).toHaveLength(1);
+  expect(source().enqueued[0].length).toBe(1);
+});
+
+it('says when it has gone quiet, so a screen can re-enable what speaking disables', () => {
+  // The hear-again button must not be tappable over a coach mid-sentence —
+  // pressing it would put two coach voices on one speaker. The drained signal
+  // is how the screen knows the sentence ended.
+  const quiet = jest.fn();
+  const context = new FakeContext(16_000);
+  const voice = createCoachVoice({ context: context as never, onQuiet: quiet });
+
+  voice.play(spoken([0.5]));
+  const source = context.sources[0];
+  source.onBufferEnded?.({ bufferId: '1', isLastBufferInQueue: true });
+
+  expect(quiet).toHaveBeenCalledTimes(1);
+});
+
+
 it('says the reply out loud instead of only writing it down', () => {
   const { voice, source } = voiceAt(16_000);
 

@@ -88,6 +88,8 @@ export interface DebriefProps {
    * that was missed — see `Replay`, which carries the reasoning.
    */
   onReplay: (speech: string) => void;
+  /** The coach is mid-sentence; every replay control waits its turn. */
+  speaking?: boolean;
   /**
    * Hear the opening again.
    *
@@ -136,6 +138,7 @@ export function Debrief({
   onTalk,
   onStop,
   onReplay,
+  speaking = false,
   onReplayOpening,
   onPrepSheet,
 }: DebriefProps) {
@@ -165,6 +168,7 @@ export function Debrief({
           attempts={attempts[staged] ?? []}
           onBack={() => setStaged(null)}
           onReplay={onReplay}
+          speaking={speaking}
         />
       ) : (
       <ScrollView
@@ -207,7 +211,7 @@ export function Debrief({
         {opening && (
           <View style={styles.opening}>
             <Text style={styles.openingSaid}>{opening.said}</Text>
-            <Replay onReplay={onReplayOpening} />
+            <Replay disabled={speaking} onReplay={onReplayOpening} />
           </View>
         )}
 
@@ -239,6 +243,7 @@ export function Debrief({
                 <Text style={styles.said}>{exchange.said}</Text>
                 <Replay
                   available={exchange.speech.length > 0}
+                  disabled={speaking}
                   onReplay={() => onReplay(exchange.speech)}
                 />
               </View>

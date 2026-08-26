@@ -32,9 +32,17 @@ export interface ReplayProps {
    * and this only draws.
    */
   available?: boolean;
+  /**
+   * The coach is mid-sentence — #107 item 9.
+   *
+   * Dimmed rather than removed: a control that vanishes while audio plays
+   * moves the layout under a reading eye, and it comes right back. Pressing
+   * it over a reply still playing would put two coach voices on one speaker.
+   */
+  disabled?: boolean;
 }
 
-export function Replay({ onReplay, available = true }: ReplayProps) {
+export function Replay({ onReplay, available = true, disabled = false }: ReplayProps) {
   // A turn whose audio never arrived still has its caption, and offering to
   // play nothing would be a control that does nothing when pressed.
   if (!available) {
@@ -45,11 +53,13 @@ export function Replay({ onReplay, available = true }: ReplayProps) {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Hear that again"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       onPress={onReplay}
       // 44pt of touch target on a 20pt label, per HIG. `hitSlop` rather than
       // padding, so the target grows without the line moving.
       hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-      style={({ pressed }) => [styles.control, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.control, (pressed || disabled) && styles.pressed]}
     >
       <View style={styles.mark} />
       <Text style={styles.label}>Hear that again</Text>

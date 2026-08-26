@@ -20,6 +20,16 @@ export interface CoachVoice {
   /** Speak one reply, base64 PCM16 at the wire rate. */
   play(speech: string): void;
   /**
+   * A streamed reply is starting — silence whatever was playing, once.
+   *
+   * `playChunk` deliberately does not supersede, or a reply arriving as ten
+   * frames would silence itself nine times; this is where the superseding
+   * lives instead, called at the first frame's arrival.
+   */
+  begin(): void;
+  /** One frame of a streamed reply, queued behind the frames before it. */
+  playChunk(speech: string): void;
+  /**
    * Cut the reply off now, and stay able to speak.
    *
    * For the moment the microphone opens. The coach comes out of the same phone
@@ -33,10 +43,18 @@ export interface CoachVoice {
 
 export interface CoachVoiceOptions {
   context: PlaybackContext;
+  /**
+   * The sentence ended — everything queued has been played.
+   *
+   * What lets a screen re-enable the controls speaking disables: a replay
+   * button tappable over a coach mid-sentence would put two coach voices on
+   * one speaker.
+   */
+  onQuiet?: () => void;
 }
 
-export function createCoachVoice({ context }: CoachVoiceOptions): CoachVoice {
-  const playback = createPlayback({ context });
+export function createCoachVoice({ context, onQuiet }: CoachVoiceOptions): CoachVoice {
+  const playback = createPlayback({ context, onDrained: onQuiet });
 
   return {
     play: (speech) => {
@@ -54,6 +72,13 @@ export function createCoachVoice({ context }: CoachVoiceOptions): CoachVoice {
       // still coming out would put two coach voices on one speaker, which is
       // not a room, it is a fault. A reply supersedes the one it answers past.
       playback.discard();
+      playback.enqueue(decode(speech));
+    },
+    begin: () => playback.discard(),
+    playChunk: (speech) => {
+      if (speech.length === 0) {
+        return;
+      }
       playback.enqueue(decode(speech));
     },
     silence: () => playback.discard(),

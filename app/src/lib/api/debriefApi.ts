@@ -1,4 +1,5 @@
 import { SignedOut } from '../auth/session';
+import { streamedTurn } from './coachStream';
 import { Refused } from './refused';
 
 /**
@@ -141,8 +142,29 @@ export interface DebriefApi {
   read(sessionId: string): Promise<Debrief>;
   /** One coaching turn: a clip in, a captioned and spoken reply out. */
   say(sessionId: string, clip: ArrayBuffer): Promise<CoachTurn>;
+
+  /**
+   * `say`, with the words handed over before the voice — #107 item 1.
+
+   * Resolves when the turn ends; a turn whose synthesis failed still resolves,
+   * because the words already arrived and they are the accessibility floor.
+   * Throws exactly where `say` would refuse, so a caller can fall back to it.
+   */
+  sayStreamed(
+    sessionId: string,
+    clip: ArrayBuffer,
+    handlers: TurnStreamHandlers
+  ): Promise<void>;
   /** A re-answer to the weak answer at this rank. Anchored by rank, per #59. */
   spar(sessionId: string, rank: number, clip: ArrayBuffer): Promise<CoachTurn>;
+
+  /** `spar`, streamed the same way and for the same reason. */
+  sparStreamed(
+    sessionId: string,
+    rank: number,
+    clip: ArrayBuffer,
+    handlers: TurnStreamHandlers
+  ): Promise<void>;
   /**
    * Say the opening again.
    *
@@ -153,10 +175,22 @@ export interface DebriefApi {
   hearOpeningAgain(sessionId: string): Promise<CoachTurn>;
 }
 
+export interface TurnStreamHandlers {
+  onHeard(text: string): void;
+  onText(text: string): void;
+  onSpeech(b64: string): void;
+}
+
 export interface DebriefApiOptions {
   baseUrl: string;
   accessToken(): Promise<string>;
   fetch?: typeof fetch;
+  /**
+   * The streaming-capable fetch for the SSE turns — `expo/fetch` on a device,
+   * injected in tests. Separate from `fetch` because RN's built-in cannot
+   * stream a response body, and the JSON calls have no reason to change.
+   */
+  streamFetch?: typeof fetch;
 }
 
 /** The wire's spelling, before the app renames it. */
@@ -183,7 +217,16 @@ export function createDebriefApi({
   baseUrl,
   accessToken,
   fetch: fetcher = fetch,
+  streamFetch,
 }: DebriefApiOptions): DebriefApi {
+  const streamed = (path: string, clip: ArrayBuffer, handlers: TurnStreamHandlers) =>
+    streamedTurn({
+      url: `${baseUrl}${path}`,
+      accessToken,
+      clip,
+      ...handlers,
+      ...(streamFetch ? { fetch: streamFetch } : {}),
+    });
   const send = async (path: string, init: RequestInit = {}): Promise<Response> => {
     const response = await fetcher(`${baseUrl}${path}`, {
       ...init,
@@ -296,6 +339,16 @@ export function createDebriefApi({
     },
 
     say: (sessionId, clip) => turn(`/v1/sessions/${sessionId}/debrief/turns`, clip),
+
+    sayStreamed: (sessionId, clip, handlers) =>
+      streamed(`/v1/sessions/${sessionId}/debrief/turns/stream`, clip, handlers),
+
+    sparStreamed: (sessionId, rank, clip, handlers) =>
+      streamed(
+        `/v1/sessions/${sessionId}/debrief/weak-answers/${rank}/attempts/stream`,
+        clip,
+        handlers
+      ),
 
     spar: (sessionId, rank, clip) =>
       turn(`/v1/sessions/${sessionId}/debrief/weak-answers/${rank}/attempts`, clip),

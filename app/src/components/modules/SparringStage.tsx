@@ -40,9 +40,11 @@ export interface SparringStageProps {
   onBack: () => void;
   /** Say one of the coach's replies again. */
   onReplay: (speech: string) => void;
+  /** The coach is mid-sentence; replay waits its turn. */
+  speaking?: boolean;
 }
 
-export function SparringStage({ answer, attempts, onBack, onReplay }: SparringStageProps) {
+export function SparringStage({ answer, attempts, onBack, onReplay, speaking = false }: SparringStageProps) {
   const asker = panelistName(answer.askedBy);
   const portrait = portraitOf(answer.askedBy);
 
@@ -116,6 +118,7 @@ export function SparringStage({ answer, attempts, onBack, onReplay }: SparringSt
               <Text style={styles.coachWords}>{attempt.said}</Text>
               <Replay
                 available={attempt.speech.length > 0}
+                disabled={speaking}
                 onReplay={() => onReplay(attempt.speech)}
               />
             </View>
