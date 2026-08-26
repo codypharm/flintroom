@@ -69,6 +69,19 @@ def test_the_room_waits_a_settle_pause_after_each_thing_they_say():
     assert SETTLE_PAUSE > 0.7
 
 
+def test_the_settle_pause_clears_a_section_break_breath():
+    """A rhetorical pause is not a handover.
+
+    Observed on the first Play build (Kettleworks run, 2026-08-26): a presenter
+    reading a prepared ninety-second opening was closed on mid-statement at a
+    section break, and the questioning began with the case half made. A pause
+    between sections of a rehearsed opening runs about three seconds, so the
+    settle has to clear it with room to spare -- while staying a wait a person
+    who has genuinely finished will sit through.
+    """
+    assert SETTLE_PAUSE >= 4.0
+
+
 def test_the_wait_never_reaches_past_the_cap():
     """Somebody who talks without stopping still gets interrogated.
 

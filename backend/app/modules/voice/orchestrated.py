@@ -35,6 +35,7 @@ from app.agents.opening import (
     reentry_from,
 )
 from app.agents.panel import interrogate, select_speaker, who_takes_the_floor
+from app.agents.repeat import asked_to_repeat, question_to_repeat
 from app.agents.routing import choose
 from app.agents.closing import TimeCall, closer_from
 from app.agents.silence import Silence, nudge_from
@@ -602,6 +603,44 @@ class OrchestratedChannel:
             await out.put(Spent(tts_characters=len(line)))
         await out.put(AgentFinished())
 
+    async def _repeat_the_question(
+        self, out: asyncio.Queue[VoiceEvent | BaseException | None]
+    ) -> bool:
+        """Say the last question again, verbatim, in the voice that asked it.
+
+        The third of the no-model deliveries, after the opener and the reentry,
+        and under the same two laws: nothing is composed, and nothing is
+        re-persisted — the question is already in the transcript once, and a
+        second copy would read downstream as a question asked twice.
+
+        A selection started on the request's partials is cancelled unread: it
+        was routing an utterance that turned out not to be one. The Auditor's
+        pending finding is left alone — it belongs to the answer the presenter
+        is about to give, not to the request.
+        """
+        line = question_to_repeat(self._transcript)
+        if line is None:
+            return False
+        who = next((one for one in self._panel if one.name == line.speaker), None)
+        if who is None:
+            return False
+
+        if self._speaking is not None:
+            self._speaking = await self._stop(self._speaking)
+        if self._routing is not None:
+            self._routing.cancel()
+            await asyncio.gather(self._routing, return_exceptions=True)
+            self._routing = None
+
+        log.info("question_repeated", speaker=who.name)
+        await out.put(AgentTranscript(line.text, speaker=who.name))
+        if self._speaker is not None:
+            async for pcm in self._speaker.speak(text=line.text, voice=who.voice):
+                await out.put(AgentAudio(pcm))
+            await out.put(Spent(tts_characters=len(line.text)))
+        await out.put(AgentFinished())
+        return True
+
     async def _hold_the_floor(
         self, out: asyncio.Queue[VoiceEvent | BaseException | None]
     ) -> None:
@@ -1042,6 +1081,18 @@ class OrchestratedChannel:
                         # Wakes `_hold_the_floor` so it rearms rather than
                         # closing on a pause the presenter has already ended.
                         self._spoke.set()
+                        await self._attend(out)
+                        continue
+
+                    # 'Come again?' is procedure, not an answer — the same
+                    # question said again by the same voice, with no model in
+                    # the loop. Checked before the turn machinery because the
+                    # turn machinery is exactly what got it wrong: selection
+                    # routed the request like an utterance, and a different
+                    # panelist re-asked their own question (first Play build,
+                    # 2026-08-26). Falls through when nobody has asked anything
+                    # yet, which is the only honest thing to repeat.
+                    if asked_to_repeat(result.text) and await self._repeat_the_question(out):
                         await self._attend(out)
                         continue
 

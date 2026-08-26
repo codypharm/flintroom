@@ -55,10 +55,18 @@ SUBSTANCE_WORDS = 60
 #: without pausing longer than that — so acting on the first final meant the
 #: panel interrupting the first breath. This has to sit comfortably above it.
 #:
-#: It also cannot go far above it. Every second here is a second of silence in a
-#: room somebody is paying for by the minute, at the one moment they are most
-#: likely to think the product has crashed.
-SETTLE_PAUSE = 2.5
+#: It also has to clear a *section break*. 2.5 did not: on the first Play build
+#: (Kettleworks run, 2026-08-26) a presenter reading a prepared opening paused
+#: between sections and the floor closed mid-statement, so the questioning
+#: began with the case half made. A rhetorical pause in a rehearsed opening
+#: runs about three seconds; four clears it with margin.
+#:
+#: It still cannot go far above that. Every second here is a second of silence
+#: in a room somebody is paying for by the minute, at the one moment they are
+#: most likely to think the product has crashed — and in a real room, a beat of
+#: silence after the presenter finishes reads as the panel thinking, so four
+#: seconds spends believably.
+SETTLE_PAUSE = 4.0
 
 #: How long the opening may run before the panel comes in regardless.
 #:
