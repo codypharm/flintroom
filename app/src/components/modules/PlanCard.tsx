@@ -36,17 +36,32 @@ export interface PlanCardProps {
    */
   above: boolean;
   lead: boolean;
+  /**
+   * The same rung on a yearly bill, or null — #107 item 8.
+   *
+   * A quieter second way to buy the card it sits on, never a rung of its own:
+   * `tiers.py` keeps `pro_annual` off the ladder because it is the same
+   * capability on another billing period, and a card for it would offer
+   * somebody a sideways move dressed as a step up.
+   */
+  annual: Sellable | null;
   busy: boolean;
   onBuy: (what: Sellable) => void;
 }
 
-export function PlanCard({ plan, sold, above, lead, busy, onBuy }: PlanCardProps) {
+export function PlanCard({ plan, sold, above, lead, annual, busy, onBuy }: PlanCardProps) {
   const on = plan.current;
   /** The lead's own ground, and only where it is not also the plan they hold. */
   const front = lead && !on;
 
   return (
-    <View style={[styles.card, front && styles.leading]}>
+    <View testID={`plan-${plan.name}`} style={[styles.card, front && styles.leading]}>
+      {/*
+        Why this card is on the brand ground, said out loud — #107 item 7. The
+        highlight alone read as "this is my plan" to the person holding Free,
+        which is the one thing it must never say.
+      */}
+      {front && <Text style={styles.suggested}>Suggested</Text>}
       <View style={styles.head}>
         <Text style={[styles.title, front && styles.onLead]} numberOfLines={1}>
           {plan.title}
@@ -124,6 +139,26 @@ export function PlanCard({ plan, sold, above, lead, busy, onBuy }: PlanCardProps
           </Text>
         </Pressable>
       )}
+
+      {/*
+        The year, under the month and quieter than it. Same gate as the buy
+        button — a rung above, priced by the store — because it is the same
+        purchase on a different cadence, not a different thing to sell.
+      */}
+      {above && annual !== null && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Get a year of ${plan.title}, ${annual.price}`}
+          disabled={busy}
+          onPress={() => onBuy(annual)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={({ pressed }) => [styles.year, pressed && styles.pressed, busy && styles.busy]}
+        >
+          <Text style={[styles.yearLabel, front && styles.onLead]}>
+            {`or ${annual.price} a year`}
+          </Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -189,6 +224,12 @@ const styles = StyleSheet.create({
 
   /** Stated rather than sold: a fact about the plan, in the reading size. */
   yours: { ...type.labelLg, color: color.onSurfaceVariant },
+
+  /** Small and above the name: a reading instruction, not a feature. */
+  suggested: { ...type.labelLg, color: color.onPrimary, marginBottom: space.hair },
+
+  year: { marginTop: space.snug, alignSelf: 'center', minHeight: 32, justifyContent: 'center' },
+  yearLabel: { ...type.labelLg, color: color.onSurfaceVariant, textAlign: 'center' },
 
   /** The point of the rung, one register under its name. */
   gets: { ...type.headlineSm, color: color.onSurface, marginTop: space.snug },

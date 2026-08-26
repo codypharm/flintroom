@@ -49,6 +49,16 @@ const SOLD: Record<string, Pick<Sellable, 'kind' | 'grants'>> = {
   topup_300: { kind: 'topup', grants: 'topup_300' },
 };
 
+/**
+ * The sheet was closed on purpose — #107 item 6.
+ *
+ * The SDK marks a deliberate cancel on the rejection (`userCancelled`), and
+ * the distinction has to survive the seam: "that did not work" over a sheet
+ * somebody chose to close reads as the product failing, when nothing failed.
+ * The screen returns to rest on this; everything else stays a failure.
+ */
+export class PurchaseCancelled extends Error {}
+
 export interface RevenueCatOptions {
   /** The public SDK key — an identifier, not a secret; it ships in the bundle. */
   apiKey: string;
@@ -125,7 +135,14 @@ export function revenueCatStore({
         throw new Error(`"${what.id}" is no longer offered — the console moved under this screen`);
       }
 
-      await sdk.purchasePackage(found);
+      try {
+        await sdk.purchasePackage(found);
+      } catch (thrown) {
+        if ((thrown as { userCancelled?: boolean }).userCancelled === true) {
+          throw new PurchaseCancelled('the purchase sheet was closed');
+        }
+        throw thrown;
+      }
     },
 
     async restore() {

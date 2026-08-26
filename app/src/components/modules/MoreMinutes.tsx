@@ -124,6 +124,7 @@ export function MoreMinutes({
             plan={plan}
             sold={priceFor(plan, sells)}
             above={above(offered, plan)}
+            annual={annualFor(plan, sells)}
             lead={plan.name === lead}
             busy={busy}
             onBuy={onBuy}
@@ -344,6 +345,17 @@ function above(plans: Plan[], plan: Plan): boolean {
  */
 function priceFor(plan: Plan, sells: Sellable[] | null): Sellable | null {
   return (sells ?? []).find((what) => what.grants === plan.name) ?? null;
+}
+
+/**
+ * The same rung on a yearly bill, if the store offers one.
+ *
+ * By convention rather than configuration: the annual package's `grants` is
+ * the rung's name with `_annual` on it — `pro_annual` today — which is what
+ * lets a Starter annual appear someday by console work alone.
+ */
+function annualFor(plan: Plan, sells: Sellable[] | null): Sellable | null {
+  return (sells ?? []).find((what) => what.grants === `${plan.name}_annual`) ?? null;
 }
 
 const styles = StyleSheet.create({

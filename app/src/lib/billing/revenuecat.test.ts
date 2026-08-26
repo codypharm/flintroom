@@ -1,4 +1,4 @@
-import { revenueCatStore, type PackageLike, type PurchasesLike } from './revenuecat';
+import { PurchaseCancelled, revenueCatStore, type PackageLike, type PurchasesLike } from './revenuecat';
 
 /**
  * The store seam's real half — RevenueCat behind the `Store` interface.
@@ -135,6 +135,33 @@ it('refuses a package the console no longer offers', async () => {
   ).rejects.toThrow(/no longer offered/);
   expect(sdk.purchasePackage).not.toHaveBeenCalled();
 });
+
+it('a cancelled sheet is a cancellation, never a failure', async () => {
+  // #107 item 6. The SDK reports a deliberate cancel distinctly
+  // (userCancelled on the rejection), and the screen needs the distinction:
+  // "that did not work" over a sheet somebody chose to close reads as the
+  // product failing, when nothing failed.
+  const sdk = fakeSdk();
+  sdk.purchasePackage.mockRejectedValue(
+    Object.assign(new Error('Purchase was cancelled.'), { userCancelled: true }),
+  );
+  const store = storeWith(sdk);
+
+  const sold = await store.sells();
+  await expect(store.buy(sold[0])).rejects.toBeInstanceOf(PurchaseCancelled);
+});
+
+it('a genuine store failure stays a failure', async () => {
+  const sdk = fakeSdk();
+  sdk.purchasePackage.mockRejectedValue(new Error('card declined'));
+  const store = storeWith(sdk);
+
+  const sold = await store.sells();
+  const refused = store.buy(sold[0]);
+  await expect(refused).rejects.toThrow('card declined');
+  await expect(refused).rejects.not.toBeInstanceOf(PurchaseCancelled);
+});
+
 
 it('restores through the store', async () => {
   const sdk = fakeSdk();

@@ -192,6 +192,40 @@ it('says plainly when there is nothing to sell rather than spinning', async () =
   expect(screen.getByText(/not available/i)).toBeOnTheScreen();
 });
 
+it('says why the led card is highlighted, and never calls it theirs', async () => {
+  // #107 item 7, observed on the first Play build: the brand ground on the
+  // suggested rung read as "this is my plan" to the person holding Free. A
+  // highlight with no label invites exactly that; the label closes it.
+  await setup({ options: { upgradeFirst: false, nextTier: 'starter' } });
+
+  const starter = within(screen.getByTestId('plan-starter'));
+  expect(starter.getByText('Suggested')).toBeTruthy();
+  expect(starter.queryByText('Your plan')).toBeNull();
+  expect(within(screen.getByTestId('plan-free')).getByText('Your plan')).toBeTruthy();
+});
+
+it('offers the year on the card the annual package upgrades', async () => {
+  // #107 item 8, the architect's call: the annual offer must be visible. It
+  // is the same capability on another billing period, so it lives on the Pro
+  // card as the quieter second way to buy it — never a rung of its own.
+  const monthly: Sellable = { ...PLAN, grants: 'pro' };
+  const annual: Sellable = {
+    id: 'pro_annual', title: 'Pro Annual', price: '$599.00', kind: 'plan', grants: 'pro_annual',
+  };
+  const props = await setup({ sells: [PACK, monthly, annual] });
+
+  fireEvent.press(screen.getByText('or $599.00 a year'));
+
+  expect(props.onBuy).toHaveBeenCalledWith(annual);
+});
+
+it('says nothing about a year when the store offers none', async () => {
+  await setup({ sells: [PACK, { ...PLAN, grants: 'pro' }] });
+
+  expect(screen.queryByText(/a year/)).toBeNull();
+});
+
+
 it('hands the store back exactly what was tapped', async () => {
   const props = await setup();
 

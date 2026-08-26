@@ -14,7 +14,7 @@ import {
 import { API_BASE_URL, auth } from '../lib/auth';
 import { useGateway } from '../lib/auth/gateway';
 import { SignedOut } from '../lib/auth/session';
-import { revenueCatStore } from '../lib/billing/revenuecat';
+import { PurchaseCancelled, revenueCatStore } from '../lib/billing/revenuecat';
 import { settles } from '../lib/billing/settling';
 import { unconfiguredStore, type Sellable, type Store } from '../lib/billing/store';
 import { color } from '../theme/tokens';
@@ -139,11 +139,12 @@ export default function MoreMinutesRoute() {
       setState('buying');
       try {
         await store.buy(what);
-      } catch {
-        // Covers a declined card, a cancelled sheet and a dropped connection
-        // alike, and the screen says nothing about money for that reason — we
-        // do not know which, and the store does.
-        setState('failed');
+      } catch (thrown) {
+        // A sheet closed on purpose is not a failure — the screen simply
+        // returns to rest (#107 item 6). Everything else — a declined card, a
+        // dropped connection — stays the failed state, and it says nothing
+        // about money because we do not know which, and the store does.
+        setState(thrown instanceof PurchaseCancelled ? 'idle' : 'failed');
         return;
       }
 
