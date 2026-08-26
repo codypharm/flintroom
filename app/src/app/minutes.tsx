@@ -14,6 +14,7 @@ import {
 import { API_BASE_URL, auth } from '../lib/auth';
 import { useGateway } from '../lib/auth/gateway';
 import { SignedOut } from '../lib/auth/session';
+import { revenueCatStore } from '../lib/billing/revenuecat';
 import { settles } from '../lib/billing/settling';
 import { unconfiguredStore, type Sellable, type Store } from '../lib/billing/store';
 import { color } from '../theme/tokens';
@@ -27,11 +28,12 @@ import { color } from '../theme/tokens';
  * can leave with the back gesture satisfies it structurally. Nothing here can
  * become dismissible-only-by-paying, because there is nothing to dismiss.
  *
- * **The store is `unconfiguredStore()` until the console work in
- * `docs/billing-setup.md` is done.** That is not a placeholder in the usual
- * sense — it sells nothing and refuses to buy, so this screen honestly reports
- * a shop that is shut rather than pretending to be one that is open. Swapping
- * in RevenueCat is the remaining half of #90 and touches this line only.
+ * **The store is RevenueCat when a key is present, and a shut shop when it is
+ * not.** The key decides per build: production and any developer who has set
+ * `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` get the real till; a build without it
+ * keeps `unconfiguredStore()`, which sells nothing and refuses to buy — an
+ * honest closed shop rather than a pretend open one. The key is the public
+ * SDK identifier, not a secret; it ships in the bundle by design.
  */
 
 const balance = createBalanceApi({
@@ -44,7 +46,10 @@ const purchases = createPurchaseApi({
   accessToken: () => auth.accessToken(),
 });
 
-const store: Store = unconfiguredStore();
+const storeKey = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY;
+const store: Store = storeKey
+  ? revenueCatStore({ apiKey: storeKey, userId: () => auth.userId() })
+  : unconfiguredStore();
 
 /**
  * The bar carries the back button and nothing else — an empty `headerTitle`

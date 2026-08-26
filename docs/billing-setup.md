@@ -286,9 +286,25 @@ too coarse to decide what to grant.
 
 ### 4.3 Offerings
 
-Offerings and packages drive what the paywall displays. They matter to the app,
-not to the backend — nothing in this repo reads them. Configure them when the
-paywall is built.
+Configured 2026-08-26, and the identifiers are now load-bearing: the app's
+adapter (`app/src/lib/billing/revenuecat.ts`) looks packages up by them, so the
+console and that file must agree or the shop half-closes.
+
+One offering, identifier **`default`**, six **custom** packages — the built-in
+package types (`$rc_monthly`, `$rc_annual`) are unused because each is only
+usable once per offering and we sell three different monthlies:
+
+| Package identifier | Product | The app joins it to |
+| --- | --- | --- |
+| `starter_monthly` | `flintroom_starter_monthly` | rung `starter` |
+| `pro_monthly` | `flintroom_pro_monthly` | rung `pro` |
+| `pro_annual` | `flintroom_pro_annual` | `pro_annual` — off the ladder, renders nowhere yet |
+| `topup_20` | `flintroom_topup_20` | pack `topup_20` |
+| `topup_90` | `flintroom_topup_90` | pack `topup_90` |
+| `topup_300` | `flintroom_topup_300` | pack `topup_300` |
+
+Teams is absent — see §2's note. Display names and descriptions on packages
+are dashboard-only text; only the identifier column above is contractual.
 
 ### 4.4 The webhook
 
