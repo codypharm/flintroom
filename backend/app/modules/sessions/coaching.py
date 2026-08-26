@@ -18,6 +18,7 @@ the fence has to be readable without either.
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
@@ -83,6 +84,22 @@ class NothingWasSaid(FlintroomError):
     code = "nothing_was_said"
     status_code = 422
     message = "I didn't catch anything there — try again."
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedTurn:
+    """A turn with everything done except the voice — the streaming split.
+
+    #107 item 1. The fence judges the whole reply before anything is shown, so
+    the words cannot stream token by token; what they can do is *ship* the
+    moment the fence passes, instead of standing behind the entire synthesis.
+    Everything fallible and everything persistent happens before this exists,
+    which is what lets the streaming endpoint refuse with an ordinary typed
+    error rather than mid-stream.
+    """
+
+    text: str
+    heard: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,7 +170,20 @@ class CoachService:
     async def say(
         self, *, session_id: uuid.UUID, clip: bytes, media_type: str
     ) -> CoachedTurn:
-        """Hear one turn and answer it."""
+        """Hear one turn and answer it, voice and all — the one-shot shape."""
+        prepared = await self.say_prepared(
+            session_id=session_id, clip=clip, media_type=media_type
+        )
+        return CoachedTurn(
+            text=prepared.text,
+            speech=await self._voice(prepared.text),
+            heard=prepared.heard,
+        )
+
+    async def say_prepared(
+        self, *, session_id: uuid.UUID, clip: bytes, media_type: str
+    ) -> PreparedTurn:
+        """Hear one turn and answer it in words, leaving the voice to stream."""
         heard = await self._dictation.hear(clip, media_type=media_type)
         if not heard.text:
             raise NothingWasSaid(session_id=str(session_id))
@@ -177,9 +207,7 @@ class CoachService:
         await self._keep(session_id, heard.text, said)
         await self._spent(session_id, heard=heard, reply=reply, said=said)
 
-        return CoachedTurn(
-            text=said, speech=await self._voice(said), heard=heard.text
-        )
+        return PreparedTurn(text=said, heard=heard.text)
 
     async def open(self, *, session_id: uuid.UUID) -> CoachedTurn | None:
         """Say the first thing, before anybody has said anything.
@@ -281,7 +309,28 @@ class CoachService:
         clip: bytes,
         media_type: str,
     ) -> CoachedTurn:
-        """Re-answer one question the room found weak, and hear what changed.
+        """Re-answer one question the room found weak, and hear what changed."""
+        prepared = await self.spar_prepared(
+            session_id=session_id,
+            weak_rank=weak_rank,
+            clip=clip,
+            media_type=media_type,
+        )
+        return CoachedTurn(
+            text=prepared.text,
+            speech=await self._voice(prepared.text),
+            heard=prepared.heard,
+        )
+
+    async def spar_prepared(
+        self,
+        *,
+        session_id: uuid.UUID,
+        weak_rank: int,
+        clip: bytes,
+        media_type: str,
+    ) -> PreparedTurn:
+        """The sparring turn in words, leaving the voice to stream.
 
         **The question is chosen by rank, not described.** That is the anchor
         `docs/debrief-and-sparring.md` decision 4 requires rather than merely
@@ -327,9 +376,7 @@ class CoachService:
         await self._db.commit()
         await self._spent(session_id, heard=heard, reply=reply, said=said)
 
-        return CoachedTurn(
-            text=said, speech=await self._voice(said), heard=heard.text
-        )
+        return PreparedTurn(text=said, heard=heard.text)
 
     async def _weak(self, session_id: uuid.UUID, rank: int) -> WeakAnswer:
         """The question at this rank, or a refusal.
@@ -566,6 +613,15 @@ class CoachService:
             )
         )
         await self._db.commit()
+
+    def voice_stream(self, text: str) -> AsyncIterator[bytes]:
+        """The reply's voice, frame by frame as the vendor produces it.
+
+        The streaming sibling of `_voice`, for the endpoints that ship the
+        words first: each frame goes on the wire as it arrives, so playback
+        can begin before the synthesis has finished rather than after.
+        """
+        return self._speaker.speak(text=text, voice=COACH_VOICE)
 
     async def _voice(self, text: str) -> bytes:
         """The reply, spoken in the coach's own voice.

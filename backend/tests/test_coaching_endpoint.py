@@ -38,6 +38,90 @@ CLIP = b"a recording"
 WAV = {"Content-Type": "audio/wav"}
 
 
+def sse_events(body: str) -> list[tuple[str, str]]:
+    """Each (event, data) frame, in arrival order."""
+    frames = []
+    for block in body.strip().split("\n\n"):
+        event, data = None, ""
+        for line in block.splitlines():
+            if line.startswith("event: "):
+                event = line[len("event: "):]
+            elif line.startswith("data: "):
+                data = line[len("data: "):]
+        if event:
+            frames.append((event, data))
+    return frames
+
+
+async def test_a_streamed_turn_ships_the_words_before_the_voice(
+    client, db, engine, sessions, settlement, funded_account, bearer,
+    weakness_reader, coach_model, speaker,
+):
+    """#107 item 1: the words the moment the fence passes, the audio as frames.
+
+    The old shape held the text hostage to the whole synthesis — captions and
+    speech arrived together, after the slowest step. Here the order IS the
+    contract: heard, then text, then each speech frame as the vendor produces
+    it, then done. The frames joined are byte-identical to what the JSON
+    endpoint would have returned, so nothing about what is eventually heard
+    changed — only when the screen can start showing something.
+    """
+    import base64
+    import json
+
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    weakness_reader.judged = (FOUND,)
+    coach_model.reply_with = CoachReply(
+        text="The CFO wanted a base. You gave a mood.",
+        cites=(Cite(kind="line", index=1),),
+        usage=TurnUsage(900, 120),
+    )
+
+    response = await client.post(
+        f"/v1/sessions/{session.id}/debrief/turns/stream",
+        headers={**bearer(funded_account.user_id), **WAV},
+        content=CLIP,
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+
+    frames = sse_events(response.text)
+    names = [event for event, _ in frames]
+    assert names[0] == "heard"
+    assert names[1] == "text"
+    assert names[-1] == "done"
+    assert names[2:-1] and all(name == "speech" for name in names[2:-1])
+
+    assert json.loads(frames[1][1])["text"] == "The CFO wanted a base. You gave a mood."
+    voiced = b"".join(
+        base64.b64decode(json.loads(data)["b64"])
+        for event, data in frames
+        if event == "speech"
+    )
+    assert voiced == b"\x01\x02\x03\x04"
+
+
+async def test_a_streamed_turn_still_refuses_a_stranger(
+    client, db, engine, sessions, settlement, funded_account, bearer, ledger,
+):
+    """The stream is the same door with the same lock."""
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    stranger = await create_funded_account(db, ledger)
+
+    response = await client.post(
+        f"/v1/sessions/{session.id}/debrief/turns/stream",
+        headers={**bearer(stranger.user_id), **WAV},
+        content=CLIP,
+    )
+
+    assert response.status_code == 404
+
+
 async def test_a_spoken_turn_comes_back_as_captions_and_audio(
     client, db, engine, sessions, settlement, funded_account, bearer,
     weakness_reader, coach_model, speaker,

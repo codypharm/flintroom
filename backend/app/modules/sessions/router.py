@@ -4,11 +4,15 @@ Thin, per `CLAUDE.md`: parse the request, call a service, return a response.
 """
 
 import base64
+import json
+from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, status
+from fastapi.responses import StreamingResponse
 
-from app.core.errors import ClipTooLong, RecordingNotAvailable
+from app.core.errors import ClipTooLong, FlintroomError, RecordingNotAvailable
+from app.core.logging import get_logger
 from app.core.storage_s3 import DEFAULT_EXPIRY_SECONDS
 from app.modules.auth.dependencies import CurrentUser, rate_limit_user
 from app.modules.ingestion.dependencies import ObjectStorageDep
@@ -64,6 +68,8 @@ MAX_CLIP_BYTES = 10 * 1024 * 1024
 # FastAPI infers a `requestBody` from a declared parameter, and these read the
 # request directly — so without this the contract would publish two POSTs that
 # take nothing, and the generated client would offer no way to send the clip.
+log = get_logger(__name__, tag="sessions")
+
 SPOKEN_TURN = {
     "requestBody": {
         "required": True,
@@ -563,6 +569,90 @@ async def speak_to_coach(
         text=turn.text,
         speech=base64.b64encode(turn.speech).decode(),
         heard=turn.heard,
+    )
+
+
+def _sse(event: str, payload: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
+
+
+async def _spoken_stream(coaching, prepared) -> AsyncIterator[str]:
+    """The streamed turn: words the moment the fence passed, then the voice.
+
+    Everything fallible already happened — `*_prepared` ran STT, the model, the
+    cite-or-redirect fence and every write before this response began, so a
+    refusal is an ordinary typed error rather than a half-sent stream. The only
+    thing left that can fail is the synthesis vendor, and that failure is an
+    `error` frame rather than a broken pipe: the client already holds the text,
+    which is the accessibility floor, and a coach that is momentarily voiceless
+    beats one that vanishes mid-sentence.
+    """
+    yield _sse("heard", {"text": prepared.heard})
+    yield _sse("text", {"text": prepared.text})
+    try:
+        async for frame in coaching.voice_stream(prepared.text):
+            yield _sse("speech", {"b64": base64.b64encode(frame).decode()})
+    except FlintroomError:
+        log.warning("coach_speech_stream_failed")
+        yield _sse("error", {"code": "speech_unavailable"})
+        return
+    yield _sse("done", {})
+
+
+@router.post(
+    "/sessions/{session_id}/debrief/turns/stream",
+    include_in_schema=False,
+    openapi_extra=SPOKEN_TURN,
+)
+async def speak_to_coach_streaming(
+    session: OwnedSession,
+    coaching: CoachServiceDep,
+    request: Request,
+) -> StreamingResponse:
+    """`speak_to_coach`, with the words shipped before the voice — #107 item 1.
+
+    The one-shot sibling held the text hostage to the whole synthesis. Here the
+    turn is prepared in full first — same fence, same rows, same refusals — and
+    the response streams: `heard`, `text`, then each speech frame as the vendor
+    produces it, then `done`. Nothing about what is eventually heard changed;
+    only when the screen can start showing something.
+
+    `include_in_schema=False` for the reason the relay's socket is absent from
+    the contract: an event stream is not expressible in the generated client,
+    and the app reaches it the way it reaches the room — directly, over the
+    same auth.
+    """
+    recorded, media_type = await _recorded(request, str(session.id))
+
+    prepared = await coaching.say_prepared(
+        session_id=session.id, clip=recorded, media_type=media_type
+    )
+
+    return StreamingResponse(
+        _spoken_stream(coaching, prepared), media_type="text/event-stream"
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/debrief/weak-answers/{rank}/attempts/stream",
+    include_in_schema=False,
+    openapi_extra=SPOKEN_TURN,
+)
+async def spar_streaming(
+    session: OwnedSession,
+    rank: int,
+    coaching: CoachServiceDep,
+    request: Request,
+) -> StreamingResponse:
+    """`spar`, streamed the same way and for the same reason."""
+    recorded, media_type = await _recorded(request, str(session.id))
+
+    prepared = await coaching.spar_prepared(
+        session_id=session.id, weak_rank=rank, clip=recorded, media_type=media_type
+    )
+
+    return StreamingResponse(
+        _spoken_stream(coaching, prepared), media_type="text/event-stream"
     )
 
 

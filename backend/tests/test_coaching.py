@@ -124,6 +124,44 @@ def coaching(db, *, dictation=None, coach=None, speaker=None, reader=None) -> Co
     )
 
 
+async def test_a_prepared_turn_carries_words_and_pays_no_synthesiser(
+    db, engine, sessions, settlement, funded_account
+):
+    """The streaming split: everything but the voice, so the text can ship first.
+
+    #107 item 1. The fence must judge the whole reply before anything is shown,
+    so the words cannot stream token by token — but they can be *delivered* the
+    moment the fence passes, instead of waiting behind the entire synthesis.
+    The prepared half does all the work that can fail or must persist; what it
+    never does is pay the synthesiser.
+    """
+    session = await debriefed(db, engine, sessions, settlement, funded_account, *ROOM)
+    speaker = ScriptedSpeaker()
+
+    turn = await coaching(db, speaker=speaker).say_prepared(
+        session_id=session.id, clip=b"a recording", media_type="audio/wav"
+    )
+
+    assert turn.text == "The CFO wanted a base. You gave a mood."
+    assert turn.heard == "Why did that one land badly?"
+    assert speaker.spoke == []
+
+
+async def test_the_voice_streams_in_the_frames_the_vendor_produced(
+    db, engine, sessions, settlement, funded_account
+):
+    """The frames reach the caller as they arrive, never joined first."""
+    speaker = ScriptedSpeaker()
+
+    frames = [
+        frame
+        async for frame in coaching(db, speaker=speaker).voice_stream("Try again.")
+    ]
+
+    assert frames == [b"\x01\x02", b"\x03\x04"]
+    assert speaker.spoke == ["Try again."]
+
+
 async def test_a_spoken_turn_comes_back_as_words_and_a_voice(
     db, engine, sessions, settlement, funded_account
 ):
