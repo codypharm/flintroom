@@ -140,6 +140,9 @@ export function revenueCatStore({
  * of at import time where nothing does.
  */
 function native(): PurchasesLike {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // A lazy require is the mechanism, not a style choice: a static import would
+  // crash any binary lacking the native module at load time, before the seam's
+  // guards can catch anything.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   return (require('react-native-purchases') as { default: PurchasesLike }).default;
 }
