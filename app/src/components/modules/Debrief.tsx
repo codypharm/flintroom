@@ -1,3 +1,4 @@
+import { MaterialIcons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -251,12 +252,25 @@ export function Debrief({
           </View>
         )}
 
+        {/*
+          The way out, drawn as a destination rather than a line of label
+          text — field-tested 2026-08-27, the bare orange line read as dummy
+          text at the foot of the scroll. A card with the app's disclosure
+          chevron (the Settings rows' own affordance) says a screen is behind
+          it, and the supporting line says which one.
+        */}
         <Pressable
           accessibilityRole="link"
           onPress={onPrepSheet}
           style={({ pressed: down }) => [styles.out, down && styles.outPressed]}
         >
-          <Text style={styles.outLabel}>Your prep sheet</Text>
+          <View style={styles.outWords}>
+            <Text style={styles.outLabel}>Your prep sheet</Text>
+            <Text style={styles.outDetail}>
+              The questions to expect, and the answers that held.
+            </Text>
+          </View>
+          <MaterialIcons name="chevron-right" size={24} color={color.primary} />
         </Pressable>
       </ScrollView>
       )}
@@ -334,11 +348,15 @@ const styles = StyleSheet.create({
   said: { ...type.bodyLg, color: color.onSurface, marginTop: space.snug },
 
   out: {
-    minHeight: 44,
-    justifyContent: 'center',
-    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: color.card,
+    borderRadius: radius.container,
+    padding: space.loose,
     marginTop: space.section,
   },
   outPressed: { opacity: 0.6 },
-  outLabel: { ...type.labelLg, color: color.primary },
+  outWords: { flex: 1 },
+  outLabel: { ...type.headlineSm, color: color.primary },
+  outDetail: { ...type.bodyMd, color: color.onSurfaceVariant, marginTop: 2 },
 });

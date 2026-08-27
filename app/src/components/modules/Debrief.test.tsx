@@ -287,6 +287,19 @@ it('offers the prep sheet as the way out', async () => {
   expect(props.onPrepSheet).toHaveBeenCalled();
 });
 
+it('says what the prep sheet is, not just its name', async () => {
+  // Field-tested 2026-08-27: the control was one orange line of label text at
+  // the foot of the scroll, and the architect read it as "dummy text". The
+  // sheet is the debrief's deliverable — the thing you leave with — so it is
+  // drawn as a destination: a card with the app's disclosure chevron and a
+  // line saying what is behind it.
+  await setup();
+
+  expect(
+    screen.getByText('The questions to expect, and the answers that held.'),
+  ).toBeOnTheScreen();
+});
+
 it('never mentions minutes, cost, or an upgrade', async () => {
   // §4.1's boundary, rendered. The debrief and sparring are unmetered, and
   // `CLAUDE.md` forbids a paywall or a depleting counter here. The retired
