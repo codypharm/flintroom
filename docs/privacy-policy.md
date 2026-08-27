@@ -177,19 +177,19 @@ two account settings rather than open questions:
 
 - **Google (Gemini): decided by billing tier.** On the paid API tier Google
   states that prompts and responses are not used to improve its models; on the
-  free tier they may be, and human reviewers may read them. **[ACTION] Confirm
-  the production key is on a paid billing account before launch** — a room's
-  transcript passing through the free tier would make the strong sentence
-  below false.
+  free tier they may be, and human reviewers may read them. **Done — the
+  production key was confirmed on a paid billing account on 2026-08-27.**
 - **ElevenLabs: on by default, off by a switch.** Their terms allow content to
   be used to improve their services unless the account opts out, in the
   dashboard's *Data use* menu. **Done — the opt-out was flipped on the
   production account on 2026-08-27.**
 
-Once both are done, this section may say: *"our speech and model providers are
-contractually barred, by the service tiers and settings we use, from training
-on what passes through them"* — cited to the tier and the setting rather than
-to hope. Until both are done, say nothing.
+Both were done on 2026-08-27, so the published page may — and now does — say:
+*"our speech and model providers are barred, by the service tiers and settings
+we use, from training on what passes through them"* — cited to the tier and
+the setting rather than to hope. If either the ElevenLabs account or the
+Gemini billing arrangement ever changes, `web/privacy.html` carries this
+sentence and must change with it.
 
 Flintroom does not sell your data, and does not share it with advertisers.
 
