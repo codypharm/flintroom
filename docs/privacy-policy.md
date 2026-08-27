@@ -183,8 +183,8 @@ two account settings rather than open questions:
   below false.
 - **ElevenLabs: on by default, off by a switch.** Their terms allow content to
   be used to improve their services unless the account opts out, in the
-  dashboard's *Data use* menu. **[ACTION] Flip the opt-out on the production
-  account and note the date.**
+  dashboard's *Data use* menu. **Done — the opt-out was flipped on the
+  production account on 2026-08-27.**
 
 Once both are done, this section may say: *"our speech and model providers are
 contractually barred, by the service tiers and settings we use, from training
