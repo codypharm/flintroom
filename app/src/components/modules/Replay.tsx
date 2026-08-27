@@ -35,9 +35,12 @@ export interface ReplayProps {
   /**
    * The coach is mid-sentence — #107 item 9.
    *
-   * Dimmed rather than removed: a control that vanishes while audio plays
-   * moves the layout under a reading eye, and it comes right back. Pressing
-   * it over a reply still playing would put two coach voices on one speaker.
+   * The control stays in place but stops being a control: it says
+   * "Speaking…" instead of offering to play a voice over the one already
+   * talking. In place rather than removed, because a control that vanishes
+   * while audio plays moves the layout under a reading eye, and it comes
+   * right back. Pressing it in this state does nothing — two coach voices
+   * on one speaker is the failure the state exists to prevent.
    */
   disabled?: boolean;
 }
@@ -52,7 +55,7 @@ export function Replay({ onReplay, available = true, disabled = false }: ReplayP
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Hear that again"
+      accessibilityLabel={disabled ? 'The coach is speaking' : 'Hear that again'}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onReplay}
@@ -61,8 +64,10 @@ export function Replay({ onReplay, available = true, disabled = false }: ReplayP
       hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
       style={({ pressed }) => [styles.control, (pressed || disabled) && styles.pressed]}
     >
-      <View style={styles.mark} />
-      <Text style={styles.label}>Hear that again</Text>
+      {/* No play triangle while the coach speaks — a play glyph beside
+          "Speaking…" would be an instruction beside a status. */}
+      {!disabled && <View style={styles.mark} />}
+      <Text style={styles.label}>{disabled ? 'Speaking…' : 'Hear that again'}</Text>
     </Pressable>
   );
 }
