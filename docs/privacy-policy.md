@@ -202,11 +202,13 @@ Recorded here so the omissions are choices rather than oversights.
 - **No claim about training.** See above.
 - **No specific sub-processor list beyond the table.** Hosting and error
   reporting are not decided yet.
-- **No international transfer language.** [CONFIRM — one fact] The vendors are
-  settled (Supabase for the database, Railway for compute, Cloudflare R2 for
-  storage); what the sentence needs is the *regions* each project was created
-  in, readable from the three dashboards in a minute. Write the language from
-  those, not from the vendor names.
+- **International transfer language — resolved 2026-08-27.** Read off the
+  dashboards: Supabase `us-east-1`, Railway US East (Virginia), Cloudflare R2
+  Eastern North America (ENAM). Everything is stored and processed in the
+  United States, and `web/privacy.html` now says so plainly. [LAWYER] The
+  published sentence states the fact; whether the audience's jurisdictions
+  (GDPR etc.) need transfer-mechanism language on top of it is counsel's
+  call, resting on the vendors' own DPAs.
 - **A children's provision is drafted, pending the store rating.** Proposed:
   *"Flintroom is a professional rehearsal tool, is not directed at children,
   and does not knowingly collect personal information from anyone under 13."*
