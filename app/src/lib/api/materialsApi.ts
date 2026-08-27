@@ -111,6 +111,23 @@ function drawable(state: string): AttachedState {
   return 'extracting';
 }
 
+/**
+ * The material no longer exists — deleted, or never this account's.
+ *
+ * Typed because its handling is the opposite of every other failure here: a
+ * screen holding a deck that is *gone* should quietly let go of it, while a
+ * deck behind a timeout or a 502 must be kept — dropping it would tell
+ * somebody their upload vanished because a request failed. Observed live
+ * (2026-08-27): a deck deleted from Settings stayed drawn as attached on the
+ * setup screen, and starting a room with it would have been refused.
+ */
+export class MaterialGone extends Error {
+  constructor(id: string) {
+    super(`material ${id} is gone`);
+    this.name = 'MaterialGone';
+  }
+}
+
 export function createMaterialsApi({
   baseUrl,
   accessToken,
@@ -127,6 +144,11 @@ export function createMaterialsApi({
 
     if (response.status === 401) {
       throw new SignedOut(`refused by ${path}`);
+    }
+    if (response.status === 404 && /^\/v1\/materials\/[^/]+$/.test(path)) {
+      // Only the single-material read: a 404 from anywhere else on this API
+      // is a routing surprise, not a deleted deck.
+      throw new MaterialGone(path.split('/').pop() ?? path);
     }
     if (!response.ok) {
       // The status is carried because these mean different things to a user: a

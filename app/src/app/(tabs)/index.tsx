@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PanelSetup } from '../../components/modules/PanelSetup';
 import {
+  MaterialGone,
   createMaterialsApi,
   type AttachedMaterial,
   type MaterialLimits,
@@ -322,6 +323,26 @@ export default function HomeScreen() {
   useEffect(() => () => {
     if (polling.current !== null) clearInterval(polling.current);
   }, []);
+
+  // A deck deleted elsewhere must not stay drawn here. Observed live
+  // (2026-08-27): delete in Settings, come back, and the setup still offered
+  // the deck — and Start with it would have been refused by the server, a
+  // dead end this screen built for itself. Re-checked on focus because
+  // Settings is the one place a deck dies, and the only way back is through a
+  // focus change. Only `MaterialGone` lets go: a timeout or a 502 is a deck
+  // we cannot see, not a deck that is not there, and dropping it on those
+  // would tell somebody their upload vanished because a request failed.
+  useFocusEffect(
+    useCallback(() => {
+      if (material === null) return;
+
+      materials
+        .state(material.id)
+        .catch((thrown) => {
+          if (thrown instanceof MaterialGone) setMaterial(null);
+        });
+    }, [material]),
+  );
 
   const watch = useCallback((id: string) => {
     if (polling.current !== null) clearInterval(polling.current);

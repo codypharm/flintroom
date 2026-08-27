@@ -1,4 +1,4 @@
-import { createMaterialsApi } from './materialsApi';
+import { MaterialGone,createMaterialsApi } from './materialsApi';
 
 /**
  * Attaching a deck, which is three calls and a wait.
@@ -142,11 +142,25 @@ describe('a material a past room was grounded in', () => {
     // Reachable and ordinary: a deck can be deleted from Settings after the
     // room that used it. Re-running should then offer the panel without the
     // material, not a room grounded in nothing while claiming otherwise.
+    //
+    // Typed, because the caller's two failures need opposite handling: a deck
+    // that is *gone* should be dropped from the screen, and a deck behind a
+    // network blip must not be — observed live (2026-08-27): a deck deleted in
+    // Settings stayed drawn as attached on the setup screen, and Start with it
+    // would have been refused by the server.
     const { api } = apiOver(
       () => ({ ok: false, status: 404, json: async () => ({}) }) as Response
     );
 
-    await expect(api.read('m-7')).rejects.toThrow();
+    await expect(api.read('m-7')).rejects.toThrow(MaterialGone);
+  });
+
+  it('says gone when asked only for the state of a deleted material', async () => {
+    const { api } = apiOver(
+      () => ({ ok: false, status: 404, json: async () => ({}) }) as Response
+    );
+
+    await expect(api.state('m-7')).rejects.toThrow(MaterialGone);
   });
 });
 
