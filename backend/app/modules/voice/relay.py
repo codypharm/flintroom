@@ -48,6 +48,15 @@ from app.modules.voice.spend import SpendRecorder
 log = get_logger(__name__, tag="voice")
 
 
+class RoomOverElsewhere(Exception):
+    """The session left `active` under a live socket — its ending is recorded.
+
+    Raised from the heartbeat check and caught inside `_pump`; it never leaves
+    the relay. Not a `FlintroomError`: nothing failed, and no client receives
+    it — it is the relay finding out the room it is carrying has already ended.
+    """
+
+
 class VoiceRelay:
     """Pumps one session's channel until the provider has nothing left to say."""
 
@@ -199,9 +208,20 @@ class VoiceRelay:
         await asyncio.gather(*pending, return_exceptions=True)
 
         for task in done:
-            # Re-raises whatever ended the conversation — in particular a
-            # provider failure, which `run` translates into the right ending.
-            task.result()
+            try:
+                # Re-raises whatever ended the conversation — in particular a
+                # provider failure, which `run` translates into the right
+                # ending.
+                task.result()
+            except RoomOverElsewhere:
+                # The database already holds this room's ending — the meter or
+                # the reaper wrote it while the socket was up. Returning as a
+                # provider-side finish means `run` skips `_end` (there is no
+                # ending left to give) and the socket closes, which is what
+                # finally tells the phone: its reconnect flow re-mints, is
+                # refused because the room is settled, and lands in the
+                # debrief — docs/reconnect.md's 'gone' doing its second job.
+                return False
 
         # Which side hung up decides how the room ends, and whether anything is
         # refunded. Answered by identity rather than by a flag either coroutine
@@ -343,6 +363,18 @@ class VoiceRelay:
                 auditor_invocations=event.auditor_invocations,
             )
         elif isinstance(event, Heartbeat):
+            # The meter and the reaper end rooms in the database only — the
+            # idle timeout, the twelve-minute cap and the grace cap all settle
+            # a session while its socket stays up, and until 2026-08-27 nothing
+            # ever told the phone: three reaped rooms on the first Play build
+            # kept living on the device, timers counting, until the presenter
+            # ended them by hand. The heartbeat is the relay's chance to
+            # notice. Checked before progress is recorded, because stamping
+            # progress on a settled room would be the relay disagreeing with
+            # the ending it is about to honour.
+            session = await self._sessions.get(session_id=session_id)
+            if session.state is not SessionState.ACTIVE:
+                raise RoomOverElsewhere()
             await self._sessions.record_progress(session_id=session_id)
         elif isinstance(event, AgentTranscript):
             # The caption for the audio above, and the only path it has to the

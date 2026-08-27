@@ -210,6 +210,53 @@ async def test_a_user_who_is_speaking_keeps_the_room_from_being_reaped_as_idle(
     assert still_running.end_reason is None
 
 
+async def test_a_room_the_meter_already_ended_stops_carrying_on_the_next_heartbeat(
+    db, sessions, settlement, funded_account
+):
+    """The phone is finally told when the database ends a room.
+
+    Observed on the first Play build (2026-08-26): the reaper ended three idle
+    rooms dead on schedule, and every one of them kept living on the phone —
+    timer counting, room apparently open — because the meter and the reaper end
+    rooms in the database only, and nothing closed the socket. The architect
+    ended one by hand and attributed the close to their own tap.
+
+    The heartbeat is the relay's chance to notice. On a session that is no
+    longer active, the relay winds down instead of carrying further events —
+    the socket closes, and the shipped app's reconnect flow (docs/reconnect.md)
+    turns a dead socket over a settled room into the debrief hand-off.
+
+    The end reason is the part that must not change: the room was ended as
+    idle, and a relay that wound down by recording `client_disconnect` over it
+    would rewrite why — and with it, what was refunded.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+    await VoiceRelay(
+        db, provider=FakeVoiceProvider([ChannelReady()]), client=FakeClientChannel()
+    ).run(session_id=session.id)
+    await mark_heard(db, session.id)
+    ended = await settlement.close(
+        session_id=session.id, end_reason=EndReason.IDLE_TIMEOUT
+    )
+    assert ended.state is SessionState.SETTLED
+
+    client = FakeClientChannel()
+    await VoiceRelay(
+        db,
+        provider=FakeVoiceProvider(
+            [Heartbeat(), AgentTranscript("said after the end", speaker="cfo")]
+        ),
+        client=client,
+    ).run(session_id=session.id)
+
+    # The line after the heartbeat was never carried: the relay stopped at the
+    # first beat over a dead room rather than speaking into it.
+    assert client.captions == []
+    after = await sessions.get(session_id=session.id)
+    assert after.state is SessionState.SETTLED
+    assert after.end_reason is EndReason.IDLE_TIMEOUT
+
+
 async def test_what_the_panel_says_reaches_the_phone(db, sessions, funded_account):
     """The relay carries agent audio out to the client, unmodified.
 
