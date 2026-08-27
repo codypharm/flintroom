@@ -771,3 +771,33 @@ def test_the_number_rule_did_not_move():
 
     assert "NEVER STATE A NUMBER THEY DID NOT GIVE YOU" in persona
     assert "NEVER ASSERT A FACT ABOUT THEIR BUSINESS THEY DID NOT GIVE YOU" in persona
+
+
+def test_a_derived_figure_is_a_challenge_and_never_a_verdict():
+    """Observed live (2026-08-27 room, lines 17-19): the CFO divided the
+    presenter's acquisition cost by their churn rate — two of *their* figures,
+    so the number rule was satisfied — announced the quotient as a lifetime
+    value, and concluded "You are losing money on every sale." The pairing was
+    meaningless and the conclusion inverted: even read as an LTV, four hundred
+    sixteen against a fifty-dollar CAC is a business that works. The presenter
+    said so to the panel's face, and the Technical Skeptic conceded.
+
+    No code fence can catch this. The quotient IS arithmetic on their own
+    figures — the same license that produced the correct and devastating
+    "you lose forty locations every month" a day earlier — and no regex judges
+    whether a division means anything. What code can hold is the *shape*: a
+    derived figure put as a question is disputable, and a wrong one dies in a
+    turn; the same figure pronounced as a verdict is the room staking its
+    authority on arithmetic it cannot check.
+
+    In the same breath as the license, like every boundary in this prompt —
+    #43 measured what a model does with a prohibition that arrives without
+    one: it applies it to everything.
+    """
+    instruction = _persona_of(by_name("cfo"))
+
+    assert "a challenge, not a verdict" in instruction
+    assert "never pronounce a conclusion from your own arithmetic" in instruction
+    # The license itself did not move — deriving is still allowed, which is
+    # what separates this from revoking arithmetic outright.
+    assert "You may do arithmetic on their own figures" in instruction
