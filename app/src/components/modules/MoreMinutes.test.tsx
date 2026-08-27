@@ -245,6 +245,17 @@ it('does not claim the minutes the moment the store is satisfied', async () => {
   expect(screen.getByText(/adding them now/i)).toBeOnTheScreen();
 });
 
+it('celebrates once the server agrees the minutes are real', async () => {
+  // #107 follow-up: the settle used to end in silence — the "adding them now"
+  // band vanished and the only evidence of a completed purchase was a number
+  // changing. Money leaving an account deserves a sentence, and it arrives
+  // only at settlement, because that is the first moment the claim is true.
+  await setup({ state: 'settled', holding: 32 });
+
+  expect(screen.getByText(/all set/i)).toBeOnTheScreen();
+  expect(screen.getByText(/32 minutes/)).toBeOnTheScreen();
+});
+
 it('says a purchase failed without saying anything about money', async () => {
   // We cannot know whether they were charged — the store owns that, and a
   // failure here covers a declined card, a cancelled sheet and a dropped

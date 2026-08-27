@@ -90,7 +90,7 @@ export interface MoreMinutesProps {
    * device, then RevenueCat calls our webhook, then `grant_topup` moves the
    * balance — three moments, and the middle one can be slow.
    */
-  state: 'idle' | 'buying' | 'waiting' | 'failed';
+  state: 'idle' | 'buying' | 'waiting' | 'settled' | 'failed';
 }
 
 export function MoreMinutes({
@@ -287,6 +287,17 @@ function note(
   if (state === 'waiting') {
     return {
       text: 'Thank you. Adding them now, this can take a moment.',
+      wrong: false,
+      live: true,
+    };
+  }
+  if (state === 'settled') {
+    // The one moment the screen is allowed to celebrate, and the only moment
+    // the claim is true: the server has agreed the minutes exist. Before this
+    // (`waiting`) the money has moved and the minutes have not, and saying
+    // "done" there would be claiming a number the ledger has not written.
+    return {
+      text: 'All set — they are yours.',
       wrong: false,
       live: true,
     };

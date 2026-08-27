@@ -84,7 +84,7 @@ export default function MoreMinutesRoute() {
   // the plans.
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [packs, setPacks] = useState<Pack[] | null>(null);
-  const [state, setState] = useState<'idle' | 'buying' | 'waiting' | 'failed'>('idle');
+  const [state, setState] = useState<'idle' | 'buying' | 'waiting' | 'settled' | 'failed'>('idle');
 
   const gone = useCallback(
     (thrown: unknown) => {
@@ -150,13 +150,28 @@ export default function MoreMinutesRoute() {
 
       setState('waiting');
       const moved = await settles(async () => (await balance.read()).minutes, before);
-      if (moved) setHolding((await balance.read()).minutes);
+      if (moved) {
+        setHolding((await balance.read()).minutes);
+        // The purchase may have changed what they *are*, not only what they
+        // hold: `plans` carries `current` and `options` carries the next rung,
+        // and both were read before the money moved. Without this, somebody
+        // who just bought Starter watches a screen still selling it to them
+        // until they leave and come back (#107 follow-up).
+        purchases
+          .plans()
+          .then((rungs) => setPlans(rungs))
+          .catch(gone);
+        purchases
+          .options()
+          .then((answer) => setOptions(answer))
+          .catch(gone);
+      }
       // Left in `waiting` when it did not move. The purchase is not lost — the
       // webhook may still land — and saying "that failed" about money that has
       // been taken would be worse than saying nothing new.
-      setState(moved ? 'idle' : 'waiting');
+      setState(moved ? 'settled' : 'waiting');
     },
-    [holding],
+    [holding, gone],
   );
 
   const restore = useCallback(async () => {
