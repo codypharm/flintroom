@@ -112,6 +112,19 @@ it('offers the way to the coach', async () => {
   expect(onDebrief).toHaveBeenCalled();
 });
 
+it('says what the coach door leads to, not just its name', async () => {
+  // Field-tested 2026-08-27, same finding as the debrief's prep-sheet line:
+  // a bare orange label read as dummy text. The door to the debrief is the
+  // primary thing to do with a finished room, so it is drawn as the same
+  // destination card the debrief uses — a supporting line and the disclosure
+  // chevron.
+  await setup();
+
+  expect(
+    screen.getByText('Your weakest answers, and the sparring to rebuild them.'),
+  ).toBeOnTheScreen();
+});
+
 it('says plainly when a room has nothing in it', async () => {
   // The commonest room in the dev database: settled before the panel asked
   // anything. An empty script with a title over it reads as a failure to load.

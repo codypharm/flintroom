@@ -4,7 +4,6 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { WeakAnswer, WeaknessKind } from '../../lib/api/debriefApi';
 import { howOften, KINDS, panelistName } from '../../lib/panel/vocabulary';
 import { color, radius, space, type } from '../../theme/tokens';
-import { BackTo } from '../ui/BackTo';
 
 /**
  * The last thing somebody reads before the room that matters.
@@ -83,25 +82,11 @@ export interface PrepSheetProps {
    * the native share sheet.
    */
   printing?: boolean;
-  /**
-   * The way back, drawn at the **foot** rather than the head.
-   *
-   * The one screen in this app where that is not a whim. This sheet is "a
-   * screen you screenshot, not a link you send" — somebody photographs the
-   * findings and carries them into a real board meeting — and a chevron in the
-   * top-left ends up in that photograph. Below the content it is reachable by
-   * thumb and out of frame, which is the only arrangement that serves both.
-   *
-   * Not left to the edge-swipe gesture, which is what every screen relied on
-   * until it was reported missing: a gesture is invisible and unreachable for a
-   * screen-reader or switch-control user.
-   */
-  back: { where: string; onPress: () => void };
 }
 
-export function PrepSheet({ answers, onSpar, onShare, back, printing = false }: PrepSheetProps) {
+export function PrepSheet({ answers, onSpar, onShare, printing = false }: PrepSheetProps) {
   if (answers.length === 0) {
-    return <CleanRoom back={back} />;
+    return <CleanRoom />;
   }
 
   const yours = grouped(answers, 'them');
@@ -164,11 +149,6 @@ export function PrepSheet({ answers, onSpar, onShare, back, printing = false }: 
         <Text style={styles.shareLabel}>Share this sheet</Text>
       </Pressable>
 
-      {/* Under everything, for the reason `back` gives: a screenshot of this
-          sheet should carry the findings and not the furniture. */}
-      <View style={styles.out}>
-        <BackTo where={back.where} onPress={back.onPress} />
-      </View>
     </ScrollView>
   );
 }
@@ -179,7 +159,7 @@ export function PrepSheet({ answers, onSpar, onShare, back, printing = false }: 
  * Deliberately not a list-shaped placeholder and deliberately not a zero: both
  * read as a screen that failed rather than as a session that went well.
  */
-function CleanRoom({ back }: { back: PrepSheetProps['back'] }) {
+function CleanRoom() {
   return (
     <View style={[styles.screen, styles.clean]}>
       <Text style={styles.title}>Nothing came loose</Text>
@@ -187,11 +167,6 @@ function CleanRoom({ back }: { back: PrepSheetProps['back'] }) {
         The panel pressed and your answers held. Go again when you want a harder
         room.
       </Text>
-      {/* Here too. A room with nothing in it is the state somebody is most
-          likely to leave immediately, and it had no way out at all. */}
-      <View style={styles.out}>
-        <BackTo where={back.where} onPress={back.onPress} />
-      </View>
     </View>
   );
 }
@@ -354,7 +329,6 @@ function Question({
 
 const styles = StyleSheet.create({
   /** Below the share control, so a screenshot of the sheet does not carry it. */
-  out: { marginTop: space.section, alignItems: 'center' },
 
   screen: { flex: 1, backgroundColor: color.surface },
   content: { padding: space.screen, paddingBottom: space.major },

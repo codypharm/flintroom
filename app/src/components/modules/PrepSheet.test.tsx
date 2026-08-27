@@ -31,7 +31,6 @@ async function show(answers: WeakAnswer[], props = {}) {
       answers={answers}
       onSpar={jest.fn()}
       onShare={jest.fn()}
-      back={{ where: 'The coach', onPress: jest.fn() }}
       {...props}
     />
   );

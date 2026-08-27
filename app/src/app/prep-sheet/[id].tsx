@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -45,6 +45,26 @@ const debriefs = createDebriefApi({
   baseUrl: API_BASE_URL,
   accessToken: () => auth.accessToken(),
 });
+
+/**
+ * The same bar every other pushed route pins — an empty title so nothing is
+ * drawn twice, the back button in the place thumbs already know.
+ *
+ * The sheet carried its own drawn chevron at the foot instead, so that a
+ * manual screenshot would hold findings and not furniture. Retired
+ * 2026-08-27 by the architect: the way out sat somewhere no other screen
+ * puts it, and "Share this sheet" now exports a clean render with no
+ * controls in it — the screenshot argument moved to the export path, where
+ * it is guaranteed rather than hoped for.
+ */
+const BAR = {
+  headerShown: true,
+  headerTitle: '',
+  headerBackTitle: 'Back',
+  headerTintColor: color.onSurface,
+  headerShadowVisible: false,
+  headerStyle: { backgroundColor: color.surface },
+} as const;
 
 export default function PrepSheetRoute() {
   const { recheck } = useGateway();
@@ -115,7 +135,8 @@ export default function PrepSheetRoute() {
   }
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.screen} edges={['bottom']}>
+      <Stack.Screen options={BAR} />
       {/*
         The sheet as it leaves the phone, drawn off-screen and captured on
         demand. `collapsable={false}` is load-bearing on Android — a view with
@@ -135,7 +156,7 @@ export default function PrepSheetRoute() {
           };
         }}
       >
-        <PrepSheet answers={answers} printing onSpar={() => {}} onShare={() => {}} back={{ where: '', onPress: () => {} }} />
+        <PrepSheet answers={answers} printing onSpar={() => {}} onShare={() => {}} />
       </View>
       <PrepSheet
         answers={answers}
@@ -193,10 +214,6 @@ export default function PrepSheetRoute() {
             Alert.alert('That did not share', 'Try again in a moment.');
           }
         }}
-        // The same destination the Library's room screen now names. `BackTo` wants
-        // a place rather than a verb, and "the coach" is who is on that screen —
-        // which is also what the control that opens it says.
-        back={{ where: 'The coach', onPress: () => router.back() }}
       />
     </SafeAreaView>
   );
@@ -204,7 +221,8 @@ export default function PrepSheetRoute() {
 
 function Centred({ children }: { children: React.ReactNode }) {
   return (
-    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.screen} edges={['bottom']}>
+      <Stack.Screen options={BAR} />
       <View style={styles.centred}>{children}</View>
     </SafeAreaView>
   );

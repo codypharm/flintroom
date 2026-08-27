@@ -153,12 +153,14 @@ function Shell() {
         long transcript the only way back scrolled off the top of the screen and
         left nothing but the invisible edge-swipe.
 
-        So `rooms/[id]` and `debrief/[id]` set `headerShown` themselves with an
-        empty `headerTitle`: the bar carries the back button, the content keeps
-        the title, and nothing is drawn twice. `prep-sheet/[id]` deliberately
-        does not — that sheet is photographed and carried into a real meeting,
-        and a nav bar is in every one of those photographs, so its way back
-        stays at the foot where `PrepSheet` argues for it.
+        So `rooms/[id]`, `debrief/[id]` and `prep-sheet/[id]` set `headerShown`
+        themselves with an empty `headerTitle`: the bar carries the back button,
+        the content keeps the title, and nothing is drawn twice. The sheet held
+        out longest — its way back was drawn at the foot so a manual screenshot
+        held findings and not furniture — until 2026-08-27, when the architect
+        retired the exception: "Share this sheet" exports a clean render with
+        no controls in it, so the screenshot argument lives on the export path
+        now, and the way back sits where every other screen puts it.
 
         Still `false` here rather than per route, because it remains the right
         default: the failure it replaces was silent and opt-out. A screen that

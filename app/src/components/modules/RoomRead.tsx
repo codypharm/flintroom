@@ -1,3 +1,4 @@
+import { MaterialIcons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -157,7 +158,13 @@ export function RoomRead({
           onPress={onDebrief}
           style={({ pressed }) => [styles.through, pressed && styles.pressed]}
         >
-          <Text style={styles.throughLabel}>Go through it with the coach</Text>
+          <View style={styles.throughWords}>
+            <Text style={styles.throughLabel}>Go through it with the coach</Text>
+            <Text style={styles.throughDetail}>
+              Your weakest answers, and the sparring to rebuild them.
+            </Text>
+          </View>
+          <MaterialIcons name="chevron-right" size={24} color={color.primary} />
         </Pressable>
 
         {player !== null && <View style={styles.player}>{player}</View>}
@@ -445,16 +452,19 @@ const styles = StyleSheet.create({
   through: {
     // Was `marginTop: space.section` under the last line. Above the transcript
     // it needs air on both sides — it is the break between what this room WAS
-    // and what to do about it.
+    // and what to do about it. A card with the disclosure chevron rather than
+    // a line of label text, matching the debrief's prep-sheet door —
+    // field-tested 2026-08-27, the bare label read as dummy text.
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: color.card,
+    borderRadius: radius.container,
+    padding: space.loose,
     marginBottom: space.section,
-    alignSelf: 'flex-start',
     marginTop: space.major,
-    paddingVertical: space.snug,
-    paddingHorizontal: space.loose,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: color.primary,
   },
-  throughLabel: { ...type.labelLg, color: color.primary },
+  throughWords: { flex: 1 },
+  throughLabel: { ...type.headlineSm, color: color.primary },
+  throughDetail: { ...type.bodyMd, color: color.onSurfaceVariant, marginTop: 2 },
   pressed: { opacity: 0.6 },
 });
