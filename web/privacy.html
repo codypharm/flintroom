@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy — Flintroom</title>
+<meta name="description" content="What Flintroom collects, how long it is kept, and what you can do about it.">
+<meta name="theme-color" content="#fdf9f6">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://www.flintroom.app/privacy">
+<link rel="icon" href="mark.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* Kinetic Clarity — the landing page's tokens, on a page built to be read. */
+  :root {
+    --background: #fdf9f6;
+    --band: #f2eeeb;
+    --ink: #1c1b1a;
+    --ink-variant: #5a4138;
+    --primary: #a43700;
+    --input-line: #e5e2e1;
+    --r-md: 12px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--background); color: var(--ink);
+    font-family: "Hanken Grotesk", system-ui, sans-serif;
+    font-size: 16px; line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  header {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(253, 249, 246, 0.8);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 1px 8px rgba(26, 26, 26, 0.04);
+  }
+  .nav { max-width: 720px; margin: 0 auto; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; }
+  .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--ink); font-weight: 700; }
+  .brand img { width: 28px; height: 28px; }
+  .nav a.back { font-size: 14px; color: var(--ink-variant); text-decoration: none; }
+  .nav a.back:hover { color: var(--primary); }
+  main { max-width: 720px; margin: 0 auto; padding: 56px 20px 80px; }
+  .kicker { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-variant); margin-bottom: 12px; }
+  h1 { font-size: 34px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; text-wrap: balance; margin-bottom: 8px; }
+  .updated { font-size: 14px; color: var(--ink-variant); margin-bottom: 40px; }
+  h2 { font-size: 21px; font-weight: 700; margin: 44px 0 14px; text-wrap: balance; }
+  p, li { max-width: 65ch; color: var(--ink); }
+  p + p { margin-top: 12px; }
+  strong { font-weight: 700; }
+  ul { margin: 12px 0 12px 20px; }
+  li { margin-bottom: 8px; }
+  .note {
+    background: var(--band); border-radius: var(--r-md);
+    padding: 16px 20px; margin: 16px 0; font-size: 15px; color: var(--ink-variant);
+  }
+  .tablewrap { overflow-x: auto; margin: 16px 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 15px; }
+  th, td { text-align: left; padding: 10px 14px 10px 0; border-bottom: 1px solid var(--input-line); vertical-align: top; }
+  th { font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-variant); }
+  td:first-child { font-weight: 600; white-space: nowrap; padding-right: 24px; }
+  a { color: var(--primary); }
+  :is(a):focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+  footer { background: var(--band); margin-top: 40px; padding: 32px 0; }
+  footer .inner { max-width: 720px; margin: 0 auto; padding: 0 20px; font-size: 13px; color: var(--ink-variant); }
+  footer a { color: var(--ink-variant); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="nav">
+    <a class="brand" href="/"><img src="mark.png" alt=""><span>Flintroom</span></a>
+    <a class="back" href="/">← flintroom.app</a>
+  </div>
+</header>
+
+<main>
+  <p class="kicker">Legal</p>
+  <h1>Privacy at Flintroom</h1>
+  <p class="updated">Last updated 27 August 2026</p>
+
+  <p>Flintroom is a rehearsal room: a panel of AI interrogators challenges your
+  argument out loud, off your own material, and a coach rebuilds the answers
+  that broke. That only works if the app hears you — so this page says exactly
+  what is collected, how long it is kept, and what you can do about it. It is
+  written from what the software actually does.</p>
+
+  <h2>What Flintroom collects</h2>
+
+  <p><strong>Your voice, during a live session.</strong> The microphone is open
+  for the whole interrogation, because the panel interrupts and has to hear you
+  to do it. Audio is streamed to a speech-to-text provider as you speak.</p>
+
+  <p><strong>What was said, as text.</strong> Both sides of the room — your
+  words and the panel's — are stored as a transcript. This is what the coach
+  works from in the debrief; without it there is nothing to go through with
+  you.</p>
+
+  <p><strong>Material you attach.</strong> PDFs, slides, and photographs of
+  slides or whiteboards. Each file is read once to extract the claims and
+  figures in it, and <strong>the file itself is deleted as soon as it has been
+  read</strong> — what survives is the extracted claims and a single
+  thumbnail.</p>
+
+  <p><strong>What you write.</strong> An optional note about the audience you
+  are facing (stored on that one room only, never read aloud by the panel),
+  any custom panelists you author, and your side of the conversation with the
+  coach. Flintroom never looks anybody up — nothing about the people you name
+  is fetched from a social network, a search engine, or anywhere else. The
+  only thing the panel knows about your audience is what you typed.</p>
+
+  <p><strong>Your account.</strong> Sign-in is through Apple or Google.
+  Flintroom stores the identifier they return and, when the provider supplies
+  one, the email address on that sign-in — it is what the account-deletion
+  confirmation is sent to. No password, no profile, no contacts.</p>
+
+  <p><strong>How much you used.</strong> Session start and end times, minutes
+  consumed, and purchases — this is how billing works. Card details never
+  reach Flintroom; Google Play takes the payment.</p>
+
+  <p><strong>That you opened the app.</strong> One event per launch — a name,
+  your account, a time, nothing else. It stays in Flintroom's own database and
+  never goes to an analytics company.</p>
+
+  <p>Flintroom does <strong>not</strong> collect video, does not analyse your
+  face or body language, does not run advertising or tracking SDKs, and does
+  not build a profile of you from anywhere outside the app.</p>
+
+  <h2>How long it is kept</h2>
+
+  <div class="tablewrap">
+  <table>
+    <tr><th>What</th><th>Kept for</th></tr>
+    <tr><td>Recording of a room</td><td>30 days (Free), 90 days (Starter), 12 months (Pro) — then deleted by a scheduled process that records each deletion</td></tr>
+    <tr><td>Transcript of a room</td><td>As long as you have an account</td></tr>
+    <tr><td>Coach conversations</td><td>As long as you have an account, with the room they belong to</td></tr>
+    <tr><td>Attached material</td><td>The source file: minutes. The extracted claims and thumbnail: until you delete them</td></tr>
+    <tr><td>Panelists you write</td><td>Until you archive them; destroyed with the account</td></tr>
+    <tr><td>App-open events</td><td>12 months; deleted immediately with the account</td></tr>
+    <tr><td>Billing records</td><td>For as long as tax and accounting law requires, and after account deletion no longer linked to you</td></tr>
+  </table>
+  </div>
+
+  <p>A session that fails technically is refunded and retains no audio at all.
+  If you change plans, the recording window that applies is the one for the
+  plan you are on now.</p>
+
+  <h2>What you can do about it</h2>
+
+  <ul>
+    <li><strong>Stop rooms being recorded.</strong> A switch in Settings. With
+    it off, no audio is held at any point — not gathered and later discarded,
+    but never accumulated. The transcript is still kept, because the debrief
+    has nothing to work from without it.</li>
+    <li><strong>Delete a room's recording.</strong> Any room, any time, from
+    the room itself. Only the audio goes; what was said stays readable.</li>
+    <li><strong>Delete attached material.</strong> Any time, in Settings. It
+    destroys everything extracted from the file.</li>
+    <li><strong>Delete your account.</strong> In Settings, with a seven-day
+    window in which signing back in cancels it. See
+    <a href="/delete-account">deleting your account</a> for exactly what is
+    destroyed.</li>
+  </ul>
+
+  <p>You are told that rooms are saved, and for how long, before your first
+  interrogation begins — on a screen you pass through ahead of the microphone
+  permission prompt.</p>
+
+  <h2>Who else processes it</h2>
+
+  <p>Flintroom is built on other companies' services, and the live parts of a
+  room necessarily pass through them. Each processes data only to provide its
+  service to Flintroom:</p>
+
+  <ul>
+    <li><strong>ElevenLabs</strong> — your speech, to turn into text; the
+    panel's lines, to turn into speech.</li>
+    <li><strong>Google (Gemini)</strong> — the room's transcript, to decide
+    who speaks and what they ask; attached material, once, to extract its
+    claims; the transcript again afterwards, for the debrief.</li>
+    <li><strong>Supabase</strong> — hosts the database. Flintroom is the only
+    thing that reads it; the app on your phone holds no database
+    credentials.</li>
+    <li><strong>Cloudflare R2</strong> — stores recordings and
+    thumbnails.</li>
+    <li><strong>RevenueCat</strong> — purchases and subscription state, keyed
+    to your account, so what you bought follows your account rather than your
+    device.</li>
+    <li><strong>Resend</strong> — your email address and one message, only
+    when you ask for your account to be deleted.</li>
+  </ul>
+
+  <p>Flintroom does not sell your data, and does not share it with
+  advertisers.</p>
+
+  <h2>Questions</h2>
+
+  <p>Write to <a href="mailto:hello@flintroom.app">hello@flintroom.app</a> and
+  a person answers.</p>
+</main>
+
+<footer>
+  <div class="inner">
+    © 2026 Flintroom ·
+    <a href="/privacy">Privacy</a> ·
+    <a href="/delete-account">Delete your account</a> ·
+    <a href="mailto:hello@flintroom.app">hello@flintroom.app</a>
+  </div>
+</footer>
+
+</body>
+</html>
