@@ -22,7 +22,7 @@ from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 
 from app.agents.archetypes import Archetype
-from app.agents.auditor import Auditor, ClaimReader
+from app.agents.auditor import Auditor, ClaimReader, WrittenClaim
 from app.agents.context import Finding, Grounding, Routed, Said, TurnContext, USER
 from app.agents.difficulty import STANDARD_PRESSURE, Pressure
 from app.agents.model import PanelModel, TurnUsage
@@ -123,6 +123,7 @@ class OrchestratedProvider:
         pressure: Pressure = STANDARD_PRESSURE,
         audience: str = "",
         resuming: bool = False,
+        written: Sequence[WrittenClaim] = (),
     ) -> None:
         #: Who is seated, in seat order. Public because a room's roster is a
         #: fact about the room rather than an implementation detail of it — the
@@ -152,6 +153,10 @@ class OrchestratedProvider:
         # The reader is process-wide and stateless; the `Auditor` built around
         # it is neither, so it is made per stream in `open()` rather than here.
         self._reader = reader
+        # The deck's figures, held for each stream's Auditor to be seeded from.
+        # The evidence for the deck-vs-speech check — kept beside the reader
+        # because they are the two halves of the same instrument.
+        self._written = tuple(written)
         # Per room, like the panel and the grounding, and for the same reason:
         # it is bound to one session. Unlike the `Auditor` it is *not* rebuilt
         # per stream — it holds the room's ordinal counter, and a fresh one would
@@ -202,7 +207,9 @@ class OrchestratedProvider:
                 # would then accuse somebody of contradicting a claim they never
                 # made, quoting it verbatim in a panelist's voice. A correctness
                 # failure and a privacy one in the same object.
-                auditor=Auditor(reader=self._reader) if self._reader else None,
+                auditor=Auditor(reader=self._reader, written=list(self._written))
+                if self._reader
+                else None,
                 transcript=self._transcript,
                 clock=self._clock,
             )

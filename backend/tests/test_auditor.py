@@ -22,7 +22,7 @@ from __future__ import annotations
 import pytest
 
 from app.agents.archetypes import by_name
-from app.agents.auditor import Auditor, ClaimReading, SpokenClaim
+from app.agents.auditor import Auditor, ClaimReading, SpokenClaim, WrittenClaim
 from app.core.errors import ProviderUnavailable
 from app.modules.ingestion.schemas import QuantitativeClaim, Unit
 
@@ -42,6 +42,86 @@ def said(
         ),
         at_seconds=at,
     )
+
+
+def written(
+    metric: str,
+    value: float,
+    *,
+    page: int = 5,
+    unit: Unit = Unit.PERCENT,
+    period: str | None = None,
+    quote: str = "on the slide",
+) -> WrittenClaim:
+    return WrittenClaim(
+        claim=QuantitativeClaim(
+            quote=quote, metric=metric, value=value, unit=unit, period=period
+        ),
+        page=page,
+    )
+
+
+def test_a_spoken_figure_is_checked_against_the_deck():
+    """The flagship check, wired at last.
+
+    `docs/auditor-grounding.md` names deck-vs-speech as the *exact* check —
+    "the slide says 40%, they said 25%" — and the first Play-build room
+    (Kettleworks, 2026-08-26) showed it had never been connected: a room
+    seeded with planted contradictions produced zero findings, because the
+    Auditor's memory started empty and only ever compared speech to speech.
+    """
+    auditor = Auditor(written=[written("gross margin", 38.0, page=5)])
+
+    caught = auditor.hear(said("gross margin", 60.0, at=125, period=None))
+
+    assert caught is not None
+    assert "page 5" in caught.summary
+    assert "38" in caught.summary and "60" in caught.summary
+    assert "2:05" in caught.summary
+
+
+def test_a_spoken_figure_agreeing_with_the_deck_is_not_a_catch():
+    """Repeating your own slide is the healthiest thing a presenter does."""
+    auditor = Auditor(written=[written("gross margin", 38.0)])
+
+    assert auditor.hear(said("gross margin", 38.0, at=90, period=None)) is None
+    assert auditor.hear(said("gross margin", 39.0, at=95, period=None)) is None
+
+
+def test_a_bare_spoken_figure_is_dated_by_the_deck_that_states_a_period():
+    """Nobody re-states the slide's period aloud.
+
+    The deck says "gross margin 38% (FY2025)"; the presenter says "margins are
+    north of sixty". Refusing to compare because only one side carries a period
+    would leave the canonical planted lie uncaught — the same finding `_dated`
+    records for speech against speech, applied to the deck.
+    """
+    auditor = Auditor(written=[written("gross margin", 38.0, period="FY2025")])
+
+    caught = auditor.hear(said("gross margin", 60.0, at=100, period=None))
+
+    assert caught is not None
+
+
+def test_the_deck_catch_is_owned_by_the_domain_of_its_metric():
+    auditor = Auditor(written=[written("gross margin", 38.0)])
+
+    caught = auditor.hear(said("gross margin", 60.0, at=100, period=None))
+
+    assert caught is not None
+    assert caught.domain == "margin"
+
+
+def test_the_reader_is_told_the_decks_metrics_too():
+    """Name reuse is what makes `_same_metric` work at all.
+
+    The reader invents metric names from the sentence it reads. Handed the
+    deck's names up front, it reuses them — and a spoken claim extracted under
+    a different spelling of the same metric is a catch that never fires.
+    """
+    auditor = Auditor(written=[written("gross margin", 38.0)])
+
+    assert "gross margin" in auditor.metrics()
 
 
 def test_a_figure_that_moved_is_caught_with_both_numbers_and_both_moments():

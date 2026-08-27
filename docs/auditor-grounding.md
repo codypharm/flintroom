@@ -61,6 +61,16 @@ Two catches follow, and they are different in kind:
 catching regardless of a deck, and one Auditor with two check types avoids a
 deckless fallback path that quietly receives less attention than the main one.
 
+**Postscript (2026-08-27).** The deck-vs-speech half of this design shipped
+unwired: the Auditor's memory started empty and only speech was ever compared
+to speech, which the first Play-build room proved with a deck of planted
+contradictions and zero findings. `written_claims` in `voice/grounding.py` now
+seeds every room's Auditor with the deck's figures (`WrittenClaim` — the claim
+plus its page), the deck pool is checked before the spoken one, and a deck
+catch cites the page: *"Their deck says 38% for gross margin on page 5; at
+2:05 they said 60%."* `room_assembled` logs `written=` beside `claims=` so a
+room where the two diverge is visible rather than silent.
+
 ---
 
 ## Decisions

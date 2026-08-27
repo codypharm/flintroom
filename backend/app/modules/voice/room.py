@@ -24,7 +24,7 @@ from app.core.logging import get_logger
 from app.agents.difficulty import pressure_at
 from app.modules.sessions.service import SessionService
 from app.modules.sessions.transcript import SessionTranscript
-from app.modules.voice.grounding import session_grounding
+from app.modules.voice.grounding import session_grounding, written_claims
 from app.agents.auditor import ClaimReader
 from app.modules.voice.clock import RoomClock
 from app.modules.voice.orchestrated import OrchestratedProvider
@@ -107,6 +107,12 @@ async def build_room(
         db, user_id=user_id, material_ids=materials, transcript=spoken
     )
 
+    # The same rows in the Auditor's shape — the deck-vs-speech evidence.
+    # Fetched beside the rendering rather than derived from it, because the
+    # citable lines are prose and prose is exactly what the Auditor's
+    # arithmetic must never parse.
+    written = await written_claims(db, user_id=user_id, material_ids=materials)
+
     # Read here rather than at session start, because this is the moment that
     # decides the room somebody actually gets: a rung changed between starting a
     # session and joining it should take effect on the room that happens.
@@ -133,6 +139,10 @@ async def build_room(
         session_id=str(session_id),
         seated=len(panel),
         claims=len(grounding.claims),
+        # The Auditor's half of the same deck. Zero with claims present is the
+        # deck-vs-speech check running on nothing — the silent failure the
+        # first Play build shipped with.
+        written=len(written),
         speaking=speaker is not None,
         auditing=reader is not None,
         # A count, never the words — the replayed lines are transcript text.
@@ -155,6 +165,7 @@ async def build_room(
         opener_speaker=opener_speaker,
         grounding=grounding,
         reader=reader,
+        written=written,
         pressure=pressure,
         audience=audience,
         # Built here because this is the only place that knows *which* session a

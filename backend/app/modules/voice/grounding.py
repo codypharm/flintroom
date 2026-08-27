@@ -20,9 +20,11 @@ from collections.abc import Sequence
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.auditor import WrittenClaim
 from app.agents.context import Grounding, Said
 from app.modules.ingestion.citations import citable_row
 from app.modules.ingestion.models import MaterialClaim
+from app.modules.ingestion.schemas import ClaimKind, QuantitativeClaim
 
 
 async def session_grounding(
@@ -62,4 +64,51 @@ async def session_grounding(
     return Grounding(
         claims=tuple(citable_row(row) for row in rows),
         transcript=tuple(transcript),
+    )
+
+
+async def written_claims(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    material_ids: Sequence[uuid.UUID],
+) -> tuple[WrittenClaim, ...]:
+    """The deck's figures in the Auditor's own shape, page numbers attached.
+
+    The structured half of the rows `session_grounding` renders into citable
+    lines — and until 2026-08-27 the half that was dropped on the floor, which
+    left the Auditor's written pool permanently empty and the deck-vs-speech
+    check `docs/auditor-grounding.md` calls *exact* silently unwired. The first
+    Play-build room proved it the hard way: a deck of planted contradictions,
+    zero findings.
+
+    Quantitative rows only. An assertion has no value to move, and the doc
+    holds qualitative findings for the debrief rather than a live interrupt.
+    Same ownership predicate as the rendering query, for the same worst-case.
+    """
+    if not material_ids:
+        return ()
+
+    rows = await db.scalars(
+        select(MaterialClaim)
+        .where(
+            MaterialClaim.material_id.in_(material_ids),
+            MaterialClaim.user_id == user_id,
+            MaterialClaim.kind == ClaimKind.QUANTITATIVE,
+        )
+        .order_by(MaterialClaim.page, MaterialClaim.created_at)
+    )
+
+    return tuple(
+        WrittenClaim(
+            claim=QuantitativeClaim(
+                quote=row.quote,
+                metric=row.metric or "",
+                value=float(row.value or 0),
+                unit=row.unit,
+                period=row.period,
+            ),
+            page=row.page,
+        )
+        for row in rows
     )

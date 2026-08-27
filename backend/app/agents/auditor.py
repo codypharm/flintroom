@@ -93,6 +93,26 @@ class SpokenClaim:
     at_seconds: int
 
 
+@dataclass(frozen=True)
+class WrittenClaim:
+    """A figure the deck asserts, and where in the deck it says it.
+
+    The other half of the Auditor's evidence, absent until 2026-08-27: the
+    first Play-build room was seeded with planted deck contradictions and
+    produced zero findings, because `heard` started empty and only speech was
+    ever compared to speech. `docs/auditor-grounding.md` names deck-vs-speech
+    as the *exact* check — "the slide says 40%, they said 25%" — and this is
+    what it is checked against.
+
+    The locator is a page rather than a moment, which is the whole difference:
+    a deck catch cites the slide, and "your own slide 5 says" is the sentence
+    the wedge exists to produce.
+    """
+
+    claim: QuantitativeClaim
+    page: int
+
+
 def _clock(seconds: int) -> str:
     """`540` as `9:00`, because a panelist says minutes, not seconds."""
     return f"{seconds // 60}:{seconds % 60:02d}"
@@ -187,6 +207,13 @@ class Auditor:
 
     heard: list[SpokenClaim] = field(default_factory=list)
 
+    #: The deck's figures, seeded at room build and never grown: material is
+    #: attached before the room opens and the source document is already gone
+    #: (`docs/ingestion.md`), so this list is the deck. Checked before the
+    #: spoken pool because a deck catch carries the better evidence — a page
+    #: the user can open against a moment they have to remember.
+    written: list[WrittenClaim] = field(default_factory=list)
+
     #: What every reading in this session has cost, accumulated. Reported to
     #: `session_costs` rather than counted by the caller, because only the
     #: adapter knows what the provider charged and only this object sees every
@@ -208,6 +235,11 @@ class Auditor:
         repeats themselves, not which metrics exist.
         """
         seen: dict[str, None] = {}
+        # Deck first: these names exist before a word is spoken, and a reader
+        # that reuses them is what lets `_same_metric` connect a spoken figure
+        # to the slide asserting a different one.
+        for slide in self.written:
+            seen.setdefault(slide.claim.metric, None)
         for spoken in self.heard:
             seen.setdefault(spoken.claim.metric, None)
         return tuple(seen)
@@ -272,6 +304,16 @@ class Auditor:
 
     def _contradiction(self, spoken: SpokenClaim) -> Finding | None:
         spoken = self._dated(spoken)
+
+        # The deck before the room's own memory. Both are real catches; the
+        # deck's is stated against a page rather than a moment, which is the
+        # stronger evidence and the check `docs/auditor-grounding.md` calls
+        # exact.
+        for slide in self.written:
+            candidate = _dated_by_deck(slide, spoken)
+            if _disagrees_with_deck(slide, candidate):
+                return _deck_finding(slide, candidate)
+
         for earlier in self.heard:
             if _disagrees(earlier, spoken):
                 return _finding(earlier, spoken)
@@ -312,6 +354,49 @@ class Auditor:
                     at_seconds=spoken.at_seconds,
                 )
         return spoken
+
+
+def _dated_by_deck(slide: WrittenClaim, spoken: SpokenClaim) -> SpokenClaim:
+    """Give a bare spoken figure the period its slide states.
+
+    `_dated`'s reasoning, applied across the table: the deck says "gross margin
+    38% (FY2025)" and the presenter says "margins are north of sixty" — nobody
+    re-states the slide's period aloud, and requiring both sides to carry one
+    leaves the canonical planted lie uncaught. One direction only: a slide is
+    never dated *from* speech, because inventing a period for a document is how
+    a figure about last year reads as contradicting a slide about this one.
+    """
+    if (
+        spoken.claim.period is None
+        and slide.claim.period is not None
+        and _same_metric(slide.claim.metric, spoken.claim.metric)
+    ):
+        return SpokenClaim(
+            claim=spoken.claim.model_copy(update={"period": slide.claim.period}),
+            at_seconds=spoken.at_seconds,
+        )
+    return spoken
+
+
+def _disagrees_with_deck(slide: WrittenClaim, spoken: SpokenClaim) -> bool:
+    return (
+        _same_metric(slide.claim.metric, spoken.claim.metric)
+        and slide.claim.comparable_to(spoken.claim)
+        and _moved(slide.claim.value, spoken.claim.value)
+    )
+
+
+def _deck_finding(slide: WrittenClaim, spoken: SpokenClaim) -> Finding:
+    """The catch, stated against the page rather than a moment."""
+    covering = f" for {slide.claim.period}" if slide.claim.period else ""
+    return Finding(
+        domain=_domain_of(spoken.claim.metric),
+        summary=(
+            f"Their deck says {_number(slide.claim)} for {slide.claim.metric}"
+            f"{covering} on page {slide.page}; at {_clock(spoken.at_seconds)} "
+            f"they said {_number(spoken.claim)}."
+        ),
+    )
 
 
 def _disagrees(earlier: SpokenClaim, later: SpokenClaim) -> bool:

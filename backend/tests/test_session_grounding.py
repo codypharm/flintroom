@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 
 from app.agents.context import Said, USER
-from app.modules.voice.grounding import session_grounding
+from app.modules.voice.grounding import session_grounding, written_claims
 
 from tests.materials import extracted
 
@@ -31,6 +31,35 @@ async def test_a_room_is_grounded_in_the_deck_attached_to_it(db, ingestion, stor
     )
 
     assert grounding.claims == ("Gross margin of 61% in Q3 2026 (slide 1)",)
+
+
+async def test_the_decks_figures_are_handed_to_the_auditor_in_their_own_shape(
+    db, ingestion, storage, account
+):
+    """The structured half of the same rows — the Auditor's evidence.
+
+    `session_grounding` renders claims into citable lines for the composer and,
+    until 2026-08-27, dropped the structured figures on the floor — which left
+    the Auditor's written pool permanently empty and the flagship deck-vs-speech
+    check silently unwired (first Play-build room, zero findings against a deck
+    of planted contradictions).
+    """
+    material = await extracted(db, ingestion, storage, account)
+
+    written = await written_claims(
+        db, user_id=account.user_id, material_ids=[material.id]
+    )
+
+    assert len(written) == 1
+    assert written[0].claim.metric == "gross margin"
+    assert written[0].claim.value == 61.0
+    assert written[0].page == 1
+
+
+async def test_somebody_elses_figures_seed_nothing(db, ingestion, storage, account):
+    material = await extracted(db, ingestion, storage, account)
+
+    assert await written_claims(db, user_id=uuid.uuid4(), material_ids=[material.id]) == ()
 
 
 async def test_a_room_with_no_deck_still_opens(db, account):
