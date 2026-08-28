@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { color, space, type } from '../../theme/tokens';
@@ -46,28 +47,56 @@ export interface ReplayProps {
 }
 
 export function Replay({ onReplay, available = true, disabled = false }: ReplayProps) {
+  /**
+   * Pressed, and the audio has not started yet — #107 follow-up, 2026-08-28.
+   *
+   * The tap's work is real (voice engine setup on first use, then decode) but
+   * it used to be silent: the control sat unchanged for seconds and read as
+   * ignored. Held here rather than threaded from the route, because only the
+   * pressed control should say it — a dozen siblings share one `disabled`.
+   * Cleared when the audio starts (`disabled` arriving is the signal), and by
+   * a timeout when it never does, so a failed fetch cannot strand the label.
+   */
+  const [getting, setGetting] = useState(false);
+
+  useEffect(() => {
+    if (disabled) setGetting(false);
+  }, [disabled]);
+
+  useEffect(() => {
+    if (!getting) return;
+    const abandon = setTimeout(() => setGetting(false), 8000);
+    return () => clearTimeout(abandon);
+  }, [getting]);
+
   // A turn whose audio never arrived still has its caption, and offering to
   // play nothing would be a control that does nothing when pressed.
   if (!available) {
     return null;
   }
 
+  const resting = !disabled && !getting;
+  const label = disabled ? 'Speaking…' : getting ? 'Getting it…' : 'Hear that again';
+
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={disabled ? 'The coach is speaking' : 'Hear that again'}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onReplay}
+      accessibilityLabel={resting ? 'Hear that again' : 'The coach is speaking'}
+      accessibilityState={{ disabled: !resting }}
+      disabled={!resting}
+      onPress={() => {
+        setGetting(true);
+        onReplay();
+      }}
       // 44pt of touch target on a 20pt label, per HIG. `hitSlop` rather than
       // padding, so the target grows without the line moving.
       hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-      style={({ pressed }) => [styles.control, (pressed || disabled) && styles.pressed]}
+      style={({ pressed }) => [styles.control, (pressed || !resting) && styles.pressed]}
     >
-      {/* No play triangle while the coach speaks — a play glyph beside
-          "Speaking…" would be an instruction beside a status. */}
-      {!disabled && <View style={styles.mark} />}
-      <Text style={styles.label}>{disabled ? 'Speaking…' : 'Hear that again'}</Text>
+      {/* No play triangle unless it is an offer — a play glyph beside
+          "Speaking…" or "Getting it…" would be an instruction beside a status. */}
+      {resting && <View style={styles.mark} />}
+      <Text style={styles.label}>{label}</Text>
     </Pressable>
   );
 }
