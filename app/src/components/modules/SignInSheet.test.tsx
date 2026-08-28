@@ -1,6 +1,6 @@
 import { StyleSheet, Text, TouchableOpacity } from 'react-native';
 
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 
 import { SignInSheet } from './SignInSheet';
 
@@ -53,6 +53,7 @@ async function show(over: Partial<Parameters<typeof SignInSheet>[0]> = {}) {
       onApple={onApple}
       onGoogle={onGoogle}
       onBack={onBack}
+      onOpenLegal={() => undefined}
       {...over}
     />
   );
@@ -357,4 +358,23 @@ it('gathers the words and the ways in as one group in the middle', async () => {
   );
 
   expect(content.justifyContent).toBe('center');
+});
+
+it('places the agreement where the account is created', async () => {
+  // Sign-in-wrap: the line sits with the buttons that create the account, so
+  // agreeing is part of the act it governs. A checkbox was considered and
+  // rejected 2026-08-28 — friction on the most fragile screen, for no added
+  // enforceability in this class of app.
+  const opened: string[] = [];
+  await show({ onOpenLegal: (url: string) => opened.push(url) });
+
+  expect(screen.getByText(/By continuing, you agree/)).toBeOnTheScreen();
+
+  await userEvent.press(screen.getByText('Terms of Service'));
+  await userEvent.press(screen.getByText('Privacy Policy'));
+
+  expect(opened).toEqual([
+    'https://www.flintroom.app/terms',
+    'https://www.flintroom.app/privacy',
+  ]);
 });

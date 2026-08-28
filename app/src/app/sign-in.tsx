@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SignInSheet } from '../components/modules/SignInSheet';
@@ -91,6 +91,7 @@ export default function SignInRoute() {
         onApple={() => void enter(apple)}
         onGoogle={() => void enter(google)}
         onBack={null}
+        onOpenLegal={(url) => void Linking.openURL(url)}
       />
     </SafeAreaView>
   );

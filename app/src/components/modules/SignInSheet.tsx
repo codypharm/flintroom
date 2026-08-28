@@ -125,6 +125,12 @@ export interface SignInSheetProps {
    * reached the server.
    */
   onBack: (() => void) | null;
+  /**
+   * Opens one of the legal pages — sign-in-wrap, the agreement placed with
+   * the buttons that create the account. A callback rather than `Linking`
+   * imported here, so a test can see which page a press asked for.
+   */
+  onOpenLegal: (url: string) => void;
 }
 
 export function SignInSheet({
@@ -134,6 +140,7 @@ export function SignInSheet({
   onApple,
   onGoogle,
   onBack,
+  onOpenLegal,
 }: SignInSheetProps) {
   return (
     <View style={styles.sheet}>
@@ -274,6 +281,33 @@ export function SignInSheet({
               onPress={onGoogle}
             />
           </View>
+
+          {/*
+            The agreement, with the act it governs. A checkbox was considered
+            and rejected 2026-08-28 — friction on the most fragile screen for
+            no added enforceability in this class of app; the recording
+            disclosure remains the separate, stronger consent where it
+            matters, ahead of the microphone.
+          */}
+          <Text style={styles.agree}>
+            By continuing, you agree to our{' '}
+            <Text
+              style={styles.agreeLink}
+              accessibilityRole="link"
+              onPress={() => onOpenLegal('https://www.flintroom.app/terms')}
+            >
+              Terms of Service
+            </Text>
+            {' '}and{' '}
+            <Text
+              style={styles.agreeLink}
+              accessibilityRole="link"
+              onPress={() => onOpenLegal('https://www.flintroom.app/privacy')}
+            >
+              Privacy Policy
+            </Text>
+            .
+          </Text>
         </View>
       </ScrollView>
     </View>
@@ -458,6 +492,13 @@ const styles = StyleSheet.create({
     marginBottom: space.snug,
   },
   body: { ...type.bodyLg, color: color.onSurfaceVariant, textAlign: 'center' },
+  agree: {
+    ...type.bodySm,
+    color: color.onSurfaceVariant,
+    textAlign: 'center',
+    marginTop: space.loose,
+  },
+  agreeLink: { color: color.primary },
 
   /**
    * The box, and nothing about the button inside it.
