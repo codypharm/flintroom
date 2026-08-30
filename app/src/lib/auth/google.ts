@@ -82,16 +82,30 @@ export function createGoogleProvider(): IdentityProvider {
         // session is the state we were trying to reach.
         await GoogleSignin.signOut().catch(() => undefined);
 
-        const { data } = await GoogleSignin.signIn();
+        const answer = await GoogleSignin.signIn();
 
-        if (!data?.idToken) {
-          // The SDK resolves with no data when the flow completes without a
-          // credential. Passing that on posts an empty token and gets refused a
-          // round trip later, somewhere with no idea why.
+        // **A cancel is a returned value in this SDK, not a thrown error.**
+        // v16 changed the contract: dismissing the sheet resolves with
+        // `{ type: 'cancelled', data: null }` instead of rejecting with
+        // `SIGN_IN_CANCELLED`. The `catch` below still watches for the throw —
+        // harmlessly, since other paths may still use it — but until this
+        // check existed a dismissed sheet fell past it into the missing-token
+        // guard and surfaced as "Something went wrong on our end", which is
+        // the app apologising for a deliberate act. Checked before the token,
+        // because a cancel carries no token by definition and the two are
+        // otherwise indistinguishable.
+        if (answer?.type === 'cancelled') {
+          throw new CancelledByUser();
+        }
+
+        if (!answer?.data?.idToken) {
+          // A flow that completed without a credential. Passing that on posts
+          // an empty token and gets refused a round trip later, somewhere with
+          // no idea why.
           throw new Error('Google returned no token.');
         }
 
-        return data.idToken;
+        return answer.data.idToken;
       } catch (error) {
         if ((error as { code?: string })?.code === statusCodes.SIGN_IN_CANCELLED) {
           throw new CancelledByUser();

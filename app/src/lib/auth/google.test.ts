@@ -64,7 +64,7 @@ function google(env: Record<string, string | undefined> = {}) {
 
 describe('the Google provider', () => {
   it('hands back the id token the SDK vouched for', async () => {
-    mockSignIn.mockResolvedValue({ data: { idToken: 'token-from-google' } });
+    mockSignIn.mockResolvedValue({ type: 'success', data: { idToken: 'token-from-google' } });
 
     await expect(google().signIn()).resolves.toBe('token-from-google');
   });
@@ -98,12 +98,31 @@ describe('the Google provider', () => {
     });
   });
 
+  it('reports a cancelled RESULT as a cancel — the shape this SDK actually returns', async () => {
+    // **The bug this closes, found 2026-08-30 by reading the installed SDK.**
+    // v16 stopped *throwing* on cancellation and started *returning*
+    // `{ type: 'cancelled', data: null }`. The catch below still watched for
+    // the thrown code, so a dismissed sheet fell through to the missing-token
+    // guard and reached the screen as "Something went wrong on our end" — the
+    // app blaming itself for the most ordinary thing a person can do, which is
+    // precisely what `sign-in.tsx` says it refuses to do.
+    //
+    // The old test passed throughout, because its mock rejected with a code
+    // this SDK no longer produces. A mock that encodes a retired contract is
+    // how a suite stays green over a broken screen.
+    mockSignIn.mockResolvedValue({ type: 'cancelled', data: null });
+
+    await expect(google().signIn()).rejects.toMatchObject({
+      name: new CancelledByUser().name,
+    });
+  });
+
   it('refuses a success that carried no token', async () => {
     // The SDK resolves with `data: null` when the flow completes without a
     // credential. Passed on, that is an empty string posted to the server and
     // refused there — a sign-in that fails one round trip later, in a place
     // with no idea why.
-    mockSignIn.mockResolvedValue({ data: null });
+    mockSignIn.mockResolvedValue({ type: 'success', data: null });
 
     await expect(google().signIn()).rejects.toThrow(/no token/i);
   });
