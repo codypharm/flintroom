@@ -292,15 +292,43 @@ transcript is corrupted, and widening the guard to partials would let the
 matcher veto genuine barge-in, which is the feature the stack was chosen for.
 Revisit only if a real handset shows it.
 
+## The first end-to-end run, 2026-08-27 — reported, not instrumented
+
+A live room on the Play build, Galaxy S24+, against the real provider. The
+architect talked over a panelist mid-line. Two things happened, and they are
+not the same thing:
+
+- **The words survived.** The room answered what had been said. Speech spoken
+  *while the panel was speaking* reached the transcriber and became a turn, so
+  the residual-echo suppressor is not destroying a talking presenter on this
+  handset.
+- **The panelist did not stop.** It finished its line, and the interruption was
+  picked up and acted on afterwards rather than cutting in. Barge-in as an
+  *interrupt* was not observed; barge-in as *being heard* was.
+
+The architect's ruling on the second point: acceptable as it feels. Recorded
+here rather than left as a shrug, because **#25 reimplements `discard_playback`
+against a spec that says drop buffered audio immediately** — and whoever builds
+that will otherwise read this device's behaviour as a regression they caused.
+
+**What this run does not answer.** It was at conversational volume, close to
+the handset, which is the case #17 had already covered. No `vad_score` was
+read. It is a field report, and it moves the end-to-end path from untested to
+working; it is not the measurement the Open item below asks for.
+
 ## Open
 
-- **Whether the gate swallows a quiet interruption.** The acoustic question has
-  flipped: it is no longer whether echo reaches the provider's VAD — nothing
-  reaches it — but whether a *hesitant* barge-in survives the residual-echo
-  suppressor. The end-to-end run answers it directly: talk over the panel
-  softly and watch whether `vad_score` crosses 0.5. Note that `vad_score` is
-  bimodal in practice (`docs/voice-latency.md`), so it reads as a decision, not
-  a level.
+- **Whether the gate swallows a quiet interruption.** Still open — narrowed,
+  not closed, by the run above. The acoustic question has flipped: it is no
+  longer whether echo reaches the provider's VAD — nothing reaches it — but
+  whether a *hesitant* barge-in survives the residual-echo suppressor. What is
+  now known is that a **conversational-volume, close-to-the-handset**
+  interruption survives it. What remains untested is the case the whole item
+  exists for: talk over the panel *softly*, and again *from across the room*,
+  and watch whether `vad_score` crosses 0.5. Note that `vad_score` is bimodal
+  in practice (`docs/voice-latency.md`), so it reads as a decision, not a
+  level — a gated interruption will not show as a weak score, it will show as
+  no score at all.
 - **iOS is unmeasured.** There is no iPhone on this project; the simulator
   routes audio through the host Mac and cannot answer an acoustic question. The
   code sets `voiceChat` and `defaultToSpeaker`, which *should* be sufficient,
