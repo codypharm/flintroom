@@ -141,3 +141,33 @@ Flintroom's own palette, so the posts and the product look like one thing:
 Confirm you understand the brand, the audience, the voice, and the quality
 bar. Then summarise the rules you will follow in 8 bullets. Do not produce
 carousels until I say go.
+
+---
+
+# Step two — the follow-up message
+
+Send this only after the assistant has confirmed the brief above and given
+its eight bullets. Deliberately short: everything else it might say is
+already in the brief, and repeating a rule in a second message teaches the
+model that the first one was negotiable.
+
+**The gate is the point.** It approves five titles before thirty slides get
+written, which is the difference between correcting a direction and
+rewriting a batch.
+
+---
+
+Go ahead and build the matrix.
+
+For each carousel, add four things the brief didn't cover:
+
+1. Carousel title
+2. Which part of my audience it's aimed at
+3. The big idea, in one sentence
+4. Why slide 1 stops the scroll
+
+Draw all five ideas from the source material in my brief — don't invent new
+angles.
+
+First give me only the 5 titles with a one-sentence concept each, so I can
+approve the direction before you write 30 slides.
