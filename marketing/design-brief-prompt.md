@@ -1,6 +1,7 @@
 # Design brief prompt — carousel slides
 
-Paste everything below the rule into a design-capable assistant. It is written
+Paste everything below the rule into any assistant. It returns a written
+brief — the design tool comes after. It is written
 for **Post 2, "Ten rehearsals, zero questions"**; to use it for another post in
 the batch, swap the topic line, the visual-reference list, and the slide copy.
 Everything else — palette, type, layout, prohibitions — is fixed brand and
@@ -15,8 +16,11 @@ different companies.
 
 ---
 
-Turn this six-slide carousel into a detailed design brief, then generate the
-slides.
+Turn this six-slide carousel into a detailed design brief.
+
+**Write the brief only. Do not generate, render, or describe finished
+images** — I take the brief into a separate design tool. What I need from you
+is the specification that stops that tool from guessing.
 
 ## The post
 
@@ -143,6 +147,9 @@ generous space, orange only on the URL underline or the final tally — not both
 5. Slide-by-slide visual instructions
 6. Exact text placement per slide
 7. What to avoid
-8. A single consolidated instruction you can execute to generate the set
+8. **One consolidated generation instruction** — a single self-contained
+   paragraph carrying the palette, type, layout and style rules, written so I
+   can paste it into a design tool alongside each slide's own copy and
+   visual direction. It should not assume the tool has read anything above it.
 
-Then generate the six slides at 1080 × 1350, plus the two 1080 × 1920 variants.
+Return the brief as text. Nothing to render.
