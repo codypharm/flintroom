@@ -23,11 +23,17 @@ const PURGE_AT = new Date('2026-08-25T09:00:00Z');
 
 function flow(overrides: Partial<Parameters<typeof confirmDeletion>[0]> = {}) {
   const told: string[] = [];
+  //: Every step, in the order it happened. The failure this file exists to
+  //: catch is an ordering, so the order has to be observable and not inferred
+  //: from three separate counters.
+  const order: string[] = [];
 
   const calls = {
     deleted: 0,
     forgotten: 0,
+    gated: 0,
     told,
+    order,
   };
 
   const run = () =>
@@ -35,13 +41,20 @@ function flow(overrides: Partial<Parameters<typeof confirmDeletion>[0]> = {}) {
       ask: async () => true,
       deleteAccount: async () => {
         calls.deleted += 1;
+        order.push('deleted');
         return PURGE_AT;
       },
       forgetCredentials: async () => {
         calls.forgotten += 1;
+        order.push('forgotten');
+      },
+      signedOut: () => {
+        calls.gated += 1;
+        order.push('gated');
       },
       tell: async (message) => {
         told.push(message);
+        order.push('told');
       },
       ...overrides,
     });
@@ -84,6 +97,44 @@ it('forgets the stored credentials, because the server already has', async () =>
   await run();
 
   expect(calls.forgotten).toBe(1);
+});
+
+it('takes them off the signed-in screen, and does it before the message', async () => {
+  // Found on a real device, 2026-08-31: the account was scheduled, the tokens
+  // were cleared, and the app stayed on Settings. Nothing told the gate the
+  // answer had changed, so `Stack.Protected` never moved anybody — the flow
+  // ended with a signed-out person looking at a signed-in screen.
+  //
+  // The second tap is what made it visible rather than merely untidy. With the
+  // credentials already gone, `deleteAccount` refuses with `SignedOut` and the
+  // app says *"You are signed out. Sign in and try again"* — from the settings
+  // screen, to somebody who did exactly what they were asked once already.
+  //
+  // **Before `tell`, not after**, and that is the whole fix rather than a
+  // detail. `tell` awaits a dismissal, so gating after it leaves precisely the
+  // window the bug lived in: however long the alert sits there, this device
+  // holds dead credentials on a screen that can act on them.
+  const { run, calls } = flow();
+
+  await run();
+
+  expect(calls.gated).toBe(1);
+  expect(calls.order).toEqual(['deleted', 'forgotten', 'gated', 'told']);
+});
+
+it('leaves the gate alone when nothing was scheduled', async () => {
+  // The session is still good, so re-reading it would move nobody — but it
+  // would also be a lie about what happened. The gate is asked to look again
+  // only when this flow has actually changed what it would see.
+  const { run, calls } = flow({
+    deleteAccount: async () => {
+      throw new Error('offline');
+    },
+  });
+
+  await run();
+
+  expect(calls.gated).toBe(0);
 });
 
 it('keeps the session when the request fails', async () => {

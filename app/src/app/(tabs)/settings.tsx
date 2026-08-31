@@ -255,6 +255,11 @@ export default function SettingsRoute() {
             // signed out: presenting a revoked token to the sign-out endpoint
             // would take a 401 for something we caused on purpose.
             forgetCredentials: () => auth.signOut(),
+            // The same call `onSignOut` makes above, and for the same reason:
+            // `Stack.Protected` moves nobody until the gate is asked to look
+            // again. Omitting it here left the flow ending on this screen with
+            // the credentials already gone.
+            signedOut: recheck,
           });
         }}
       />

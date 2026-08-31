@@ -79,6 +79,19 @@ export interface ConfirmDeletionOptions {
    * design and take a 401 for it.
    */
   forgetCredentials(): Promise<void>;
+  /**
+   * Tell the gate its answer has changed, so the app leaves the signed-in
+   * screens.
+   *
+   * Part of this flow rather than the caller's afterthought, because it was the
+   * caller's afterthought and got dropped: the settings route wired every other
+   * step and not this one, and the flow ended with a signed-out person still
+   * sitting in Settings (2026-08-31, on a real device).
+   *
+   * Synchronous on purpose. `Gateway.recheck` sets state and returns; awaiting
+   * it would imply a completion this has no way to observe.
+   */
+  signedOut(): void;
   tell(message: string): Promise<void>;
 }
 
@@ -101,6 +114,7 @@ export async function confirmDeletion({
   ask,
   deleteAccount,
   forgetCredentials,
+  signedOut,
   tell,
 }: ConfirmDeletionOptions): Promise<void> {
   if (!(await ask(CONFIRM_TITLE, CONFIRM_BODY))) {
@@ -122,5 +136,12 @@ export async function confirmDeletion({
   }
 
   await forgetCredentials();
+  // **Before the message, not after.** `tell` waits on a dismissal, so gating
+  // afterwards leaves the device holding dead credentials on a screen that can
+  // still act on them — for as long as the alert sits there. That window is
+  // where the reported bug lived: a second tap on Delete refused with
+  // `SignedOut` and told somebody to sign in, from the settings screen, having
+  // already done what was asked.
+  signedOut();
   await tell(scheduledMessage(purgeAt));
 }
