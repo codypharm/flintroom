@@ -24,10 +24,27 @@
   --s6: 32px; --s7: 48px;  --s8: 64px;  --s9: 80px;  --s10: 112px;
 }
 
-.tool { padding: var(--s10) 0 0; }
-@media (max-width: 800px) {
-  .tool { padding-top: var(--s9); }
+/* The crumbs carry the space under the fixed header now, so the sections
+   below them start from a normal interval rather than from the top of the
+   page. */
+.crumbs { padding: var(--s10) 0 0; }
+@media (max-width: 800px) { .crumbs { padding-top: var(--s9); } }
+.crumbs ol {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  font-size: 13px;
+  color: var(--ink-variant);
 }
+.crumbs li { display: flex; align-items: baseline; }
+.crumbs a { color: var(--ink-variant); text-decoration: none; }
+.crumbs a:hover { color: var(--primary); text-decoration: underline; }
+.crumbs [aria-current] { font-weight: 600; color: var(--ink); }
+.crumbs .sep { margin: 0 var(--s2); color: var(--outline-soft); }
+
+.tool { padding: var(--s5) 0 0; }
+.hub { padding: var(--s5) 0 0; }
 
 .tool-head h1 {
   font-size: clamp(32px, 4.4vw, 48px);
@@ -145,6 +162,44 @@
   border-color: var(--primary);
   box-shadow: 0 0 0 4px rgba(164, 55, 0, 0.12);
 }
+/* One rule for every select on a tool page.
+   `appearance: none` is the load-bearing line. Without it the browser draws
+   its own control — system font, system chrome, and a platform focus ring in
+   a blue nothing else here uses — and quietly ignores half of what is set
+   below. The chevron is ours, inlined, in the same stroke weight as the icon
+   set. */
+.row .entry select,
+.safe select {
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background-color: var(--card);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a4138' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 18px 18px;
+  border: 1px solid var(--input-line);
+  border-radius: var(--r);
+  padding: 11px 40px 11px 14px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.row .entry select:hover,
+.safe select:hover { border-color: var(--outline-soft); }
+.row .entry select:focus,
+.safe select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(164, 55, 0, 0.12);
+}
+/* The open list is the operating system's and cannot be styled. What can be
+   set is that its text is not left at the platform default size. */
+.row .entry select option,
+.safe select option { font-size: 15px; }
+
 .row .unit {
   position: absolute;
   right: 14px;
@@ -224,6 +279,9 @@
   background: var(--primary);
   border-radius: 2px 2px 0 0;
 }
+/* Still in the red. Lighter, so the month the bars change is the month the
+   case turns — which is the one thing this chart is for. */
+.schedule .bars i[data-under] { background: var(--outline-variant); }
 .schedule .axis {
   display: flex;
   justify-content: space-between;
@@ -378,7 +436,6 @@
 .siblings a:hover b { color: var(--primary); }
 
 /* The hub */
-.hub { padding: var(--s10) 0 0; }
 .hub h1 {
   font-size: clamp(32px, 4.4vw, 48px);
   font-weight: 800;
@@ -401,7 +458,19 @@
   gap: 0 var(--s7);
 }
 .hub li { border-top: 1px solid var(--input-line); }
-.hub a { display: block; padding: var(--s5) 0; text-decoration: none; }
+/* A row, not a card. The icon sits beside the name at the size the rest of
+   the set uses — no tinted tile behind it, because an icon in a box above a
+   heading above a line of text is the card pattern arriving by the back
+   door. */
+.hub a {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--s4);
+  padding: var(--s5) 0;
+  text-decoration: none;
+}
+.hub .icon { width: 26px; height: 26px; margin-top: 3px; color: var(--primary); }
+.hub a:hover .icon { color: var(--primary-hover); }
 .hub b { display: block; font-size: 20px; font-weight: 700; color: var(--ink); }
 .hub .who {
   display: block; margin-top: 4px;
@@ -413,3 +482,115 @@
 
 /* The last thing on the page needs air under it. */
 .tool-foot { height: var(--s10); }
+
+/* ── The dilution calculator's own pieces ──────────────
+   Everything above is shared by every tool page. These are the two shapes
+   only this one needs: a list of notes you add to, and a result that leads
+   with where the dilution went rather than with what is left. */
+
+/* Same weight as a field label, because it sits in the same column and names
+   the group the way the labels name their fields. */
+.group-head { font-size: 15px; font-weight: 600; color: var(--ink); }
+
+.safes { display: flex; flex-direction: column; gap: var(--s3); }
+.safes:empty { display: none; }
+.safe {
+  display: grid;
+  grid-template-columns: 1fr 1fr 76px 1fr auto;
+  gap: var(--s2);
+  align-items: end;
+}
+@media (max-width: 1180px) and (min-width: 981px), (max-width: 560px) {
+  /* Four fields and a remove button do not fit a narrow column. Two rows of
+     two keeps every label legible rather than shrinking all of them. */
+  .safe { grid-template-columns: 1fr 1fr auto; }
+}
+.safe label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-variant);
+  margin-bottom: var(--s1);
+}
+.safe input {
+  width: 100%;
+  font: inherit;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--input-line);
+  border-radius: var(--r);
+  padding: 9px 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.safe input:hover { border-color: var(--outline-soft); }
+.safe input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(164, 55, 0, 0.12);
+}
+/* Level with the inputs beside it, which are a size down from the main form. */
+.safe select { font-size: 15px; padding: 9px 36px 9px 12px; background-size: 16px 16px; }
+.safe .drop {
+  display: grid; place-items: center;
+  width: 40px; height: 40px;
+  border: 1px solid var(--input-line);
+  border-radius: var(--r);
+  background: var(--card);
+  color: var(--ink-variant);
+  cursor: pointer;
+}
+.safe .drop:hover { border-color: var(--primary); color: var(--primary); }
+
+.add {
+  align-self: flex-start;
+  display: inline-flex; align-items: center; gap: var(--s2);
+  font: inherit; font-size: 14px; font-weight: 600;
+  color: var(--primary);
+  background: none;
+  border: 1px dashed var(--outline-soft);
+  border-radius: var(--r);
+  padding: 10px var(--s4);
+  cursor: pointer;
+}
+.add:hover { background: var(--primary-fixed); border-style: solid; }
+.none { font-size: 14px; color: var(--ink-variant); }
+
+/* ── Where it went ────────────────────────────────────
+   The headline of this page, because "what do I own after" is what every
+   other calculator gives and is the least useful part. */
+.result .change {
+  display: flex; align-items: baseline; gap: var(--s3);
+  font-size: clamp(26px, 3.2vw, 34px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.result .change .was { color: var(--ink-variant); font-weight: 600; }
+.result .change .arrow { color: var(--muted); font-size: 20px; }
+.result .change .now { color: var(--primary); }
+
+.attrib { margin-top: var(--s5); padding-top: var(--s5); border-top: 1px solid var(--input-line); }
+.attrib h3, .stack h3 {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--ink-variant);
+  margin-bottom: var(--s3);
+}
+.attrib ul, .stack ul { list-style: none; display: flex; flex-direction: column; gap: var(--s2); }
+.attrib li, .stack li {
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  gap: var(--s3);
+  align-items: baseline;
+  font-size: 15px;
+}
+.attrib b, .stack b {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-align: right;
+}
+.attrib span, .stack span { color: var(--ink-variant); }
+.attrib li:first-child b { color: var(--primary); }
+.stack { margin-top: var(--s5); padding-top: var(--s5); border-top: 1px solid var(--input-line); }
+.stack li.mine b, .stack li.mine span { color: var(--ink); font-weight: 700; }

@@ -25,6 +25,20 @@ interface Props {
 }
 
 const { title, description, url, current } = Astro.props;
+
+// Where you are, and the way back. The only route off a tool page was the
+// brand mark or the nav item, neither of which says what you would be going
+// back to — and a visitor who arrived from a search has no history to use.
+//
+// A breadcrumb, not a kicker. The distinction matters: a kicker is decorative
+// label text restating the heading's category, and the craft floor bans it
+// outright. These are links, and the last one is where you actually are.
+const here = current ? TOOLS.find((tool) => tool.href === current) : undefined;
+const crumbs = [
+  { href: '/', name: 'Flintroom' },
+  { href: '/tools', name: 'Free tools' },
+  ...(here ? [{ href: here.href, name: here.name }] : []),
+];
 // Only on a tool page. The hub already lists every tool as its content, and
 // without the `current` guard it listed them a second time under "Other free
 // tools" — the same links, twice, on a page with one link.
@@ -35,6 +49,24 @@ const others = current ? TOOLS.filter((tool) => tool.href !== current) : [];
   <Header />
 
   <main id="top">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <div class="shell">
+        <ol>
+          {crumbs.map((crumb, index) => {
+            const last = index === crumbs.length - 1;
+            return (
+              <li>
+                {last
+                  ? <span aria-current="page">{crumb.name}</span>
+                  : <a href={crumb.href}>{crumb.name}</a>}
+                {!last && <span class="sep" aria-hidden="true">/</span>}
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    </nav>
+
     <slot />
 
     <section class="tool-cta">
@@ -71,6 +103,20 @@ const others = current ? TOOLS.filter((tool) => tool.href !== current) : [];
 
     <div class="tool-foot"></div>
   </main>
+
+  <!-- The same trail, for the search result. `BreadcrumbList` is one of the
+       few structured-data types Google still renders, and it replaces the raw
+       URL under the title with the path a reader can parse. -->
+  <script is:inline type="application/ld+json" set:html={JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: crumbs.map((crumb, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: crumb.name,
+      item: `https://www.flintroom.app${crumb.href === '/' ? '' : crumb.href}`,
+    })),
+  })} />
 
   <Footer />
 </Base>

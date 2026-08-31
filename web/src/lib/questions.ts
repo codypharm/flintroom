@@ -1,3 +1,4 @@
+import type { Question } from './question';
 import type { Runway, RunwayInput } from './runway';
 
 /**
@@ -21,15 +22,7 @@ import type { Runway, RunwayInput } from './runway';
  * like, and it costs the first reader a second to skip.
  */
 
-export interface Question {
-  id: string;
-  /** The question itself, in the voice it would be asked in. */
-  text: string;
-  /** Why it gets asked, for the reader who has not been in the room yet. */
-  why: string;
-  /** True when this came out of their own numbers rather than the standard list. */
-  grounded: boolean;
-}
+export type { Question };
 
 /**
  * Seven is a page you read standing up. Twelve is a page you close.

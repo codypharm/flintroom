@@ -1,0 +1,503 @@
+---
+/**
+ * /tools/dilution-calculator
+ *
+ * Tool two (#114). What makes it worth building rather than being a worse
+ * spreadsheet is that it gets right the four things free calculators get
+ * wrong: post-money SAFEs do not dilute each other, a cap and a discount
+ * together means the holder takes the lower valuation, a pre-money option
+ * pool leaves the incoming investor untouched, and points are not percent.
+ *
+ * The headline is the attribution rather than the ownership figure, because
+ * "what do I own after" is what every other calculator gives. The thing
+ * founders get wrong in a live negotiation is where the dilution came from —
+ * the argument goes to the valuation while the pool quietly takes more.
+ */
+import Tool from '../../layouts/Tool.astro';
+import { STANDARD_DILUTION_QUESTIONS } from '../../lib/dilution-questions';
+
+const TITLE = 'Dilution calculator — SAFEs, the option pool, and where the points actually went';
+const DESCRIPTION =
+  'Free dilution calculator for founders: model any number of pre- or post-money SAFEs, a priced round and the option pool shuffle, and see which of the three actually cost you the most.';
+---
+
+<Tool
+  title={TITLE}
+  description={DESCRIPTION}
+  url="https://www.flintroom.app/tools/dilution-calculator"
+  current="/tools/dilution-calculator"
+>
+  <section class="tool">
+    <div class="shell">
+      <div class="tool-head">
+        <h1>Dilution calculator</h1>
+        <p class="sub">
+          Most of them divide your stake by the post-money and stop. This one converts your
+          SAFEs, pre-money or post, carves the option pool on the side it actually sits on,
+          and then tells you which of the three took the most.
+        </p>
+      </div>
+
+      <div class="instrument">
+        <form class="inputs" data-dilution novalidate>
+          <h2>Your numbers</h2>
+
+          <div class="rows">
+            <div class="group">
+              <div class="row pct">
+                <label for="yours">What you own today</label>
+                <span class="help" id="yours-help">Your share of the cap table as it stands, before any of this.</span>
+                <div class="entry">
+                  <input id="yours" type="text" inputmode="decimal" autocomplete="off" maxlength="6" placeholder="62" aria-describedby="yours-help" />
+                  <span class="unit" aria-hidden="true">%</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="group">
+              <div class="row">
+                <label for="pre-money">Pre-money valuation</label>
+                <span class="help" id="pre-money-help">What the round values the company at before the new money lands.</span>
+                <div class="entry">
+                  <input id="pre-money" type="text" inputmode="decimal" autocomplete="off" maxlength="15" placeholder="8,000,000" aria-describedby="pre-money-help" />
+                </div>
+              </div>
+
+              <div class="row">
+                <label for="raise">Amount being raised</label>
+                <span class="help" id="raise-help">The new money. Any unit you like, as long as it matches the others.</span>
+                <div class="entry">
+                  <input id="raise" type="text" inputmode="decimal" autocomplete="off" maxlength="15" placeholder="2,000,000" aria-describedby="raise-help" />
+                </div>
+              </div>
+            </div>
+
+            <div class="group">
+              <div class="row">
+                <label for="pool">Option pool after the round</label>
+                <span class="help" id="pool-help">Leave it empty if the round does not create or top up a pool.</span>
+                <div class="entry pct">
+                  <input id="pool" type="text" inputmode="decimal" autocomplete="off" maxlength="6" placeholder="10" aria-describedby="pool-help" />
+                  <span class="unit" aria-hidden="true">%</span>
+                </div>
+              </div>
+
+              <div class="row">
+                <label for="pool-side">Where the pool sits</label>
+                <span class="help" id="pool-side-help">
+                  Pre-money is the standard ask: it dilutes the people already here and leaves
+                  the incoming investor at exactly their percentage. Post-money is shared by
+                  everyone.
+                </span>
+                <div class="entry">
+                  <select id="pool-side" aria-describedby="pool-side-help">
+                    <option value="pre" selected>Pre-money</option>
+                    <option value="post">Post-money</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="group">
+              <div class="row">
+                <h3 class="group-head">SAFEs and notes converting at this round</h3>
+                <span class="help">
+                  Post-money is the YC standard since 2018 and its percentage is fixed, so a
+                  second one dilutes you rather than the first. Pre-money notes dilute each other.
+                </span>
+              </div>
+              <div class="safes" data-safes></div>
+              <p class="none" data-none>No notes yet.</p>
+              <button type="button" class="add" data-add>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Add a note
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <div class="panel result">
+          <h2>Your share</h2>
+
+          <div>
+            <p class="change">
+              <span class="was" data-out="before">—</span>
+              <span class="arrow" aria-hidden="true">→</span>
+              <span class="now" data-out="after">—</span>
+            </p>
+            <p class="count" data-out="points">Add what you own and the round</p>
+          </div>
+
+          <p class="sr-only" role="status" data-out="announce"></p>
+
+          <div class="attrib" data-out="attrib" hidden>
+            <h3>Where it went</h3>
+            <ul data-out="attrib-list"></ul>
+          </div>
+
+          <div class="stack" data-out="stack" hidden>
+            <h3>After the round</h3>
+            <ul data-out="stack-list"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="asked">
+    <div class="shell">
+      <h2>What to ask before you sign</h2>
+      <p>
+        Dilution is negotiated rather than interrogated, so this list runs the other way from
+        the one on our runway page: these are the questions worth putting to the other side of
+        the table. Fill the calculator in and the ones drawn from your own term sheet join
+        them, marked.
+      </p>
+      <ol data-out="questions">
+        {STANDARD_DILUTION_QUESTIONS.map((question) => (
+          <li data-grounded="false">
+            <h3>{question.text}</h3>
+            <p>{question.why}</p>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <section class="notes">
+    <div class="shell">
+      <h2>The four things these calculators get wrong</h2>
+
+      <h3>Post-money SAFEs do not dilute each other</h3>
+      <p>
+        Y Combinator replaced the pre-money SAFE with the post-money SAFE in 2018, and the two
+        behave completely differently. A <strong>post-money</strong> note's percentage is fixed
+        at its cap — 500,000 on a 5,000,000 cap is ten percent, full stop — so a second note
+        does not shrink the first one. It shrinks you. Two ten-percent notes are twenty percent
+        between them and the founders absorb all of it.
+      </p>
+      <p>
+        A <strong>pre-money</strong> note prices off the valuation over the existing share base,
+        so the notes dilute each other as well as the founders. The same two notes leave you
+        holding more. Most free calculators model one of these and do not say which, which
+        makes them silently wrong for half the people using them.
+      </p>
+
+      <h3>A cap and a discount are not added together</h3>
+      <p>
+        A note carrying both converts at whichever gives the holder <em>more shares</em> — that
+        is, at the <em>lower</em> effective valuation. A twenty percent discount on an eight
+        million pre-money is an effective six-point-four million; against a five million cap,
+        the cap wins. Averaging the two, or applying whichever is listed first, quietly shorts
+        somebody.
+      </p>
+
+      <h3>The pool shuffle</h3>
+      <p>
+        This is the one that costs founders the most and surprises them the most. An option pool
+        created <strong>pre-money</strong> is carved out of the pre-money valuation, which means
+        it dilutes everyone who was already there and leaves the incoming investor at exactly
+        the percentage they negotiated. A pool created <strong>post-money</strong> is shared by
+        everybody, investor included.
+      </p>
+      <p>
+        Term sheets almost always ask for pre-money, and the request usually arrives without the
+        word "pre-money" being said out loud. On a large pool and a small round, the pool can
+        cost you more points than the money does — which is why this page leads with where the
+        dilution went rather than with what you have left.
+      </p>
+
+      <h3>Points, not percent</h3>
+      <p>
+        Going from sixty percent to forty-eight is a fall of twelve <strong>points</strong>. It
+        is also a twenty percent fall. Both are true and they are different numbers, and mixing
+        them up is how a conversation about dilution goes wrong quickly.
+      </p>
+
+      <h3>What this does not do</h3>
+      <p>
+        It works entirely in percentages and never asks for a share count, because a founder
+        holding SAFEs usually has no formal cap table yet. That makes it a thinking tool and
+        not a document: the output is not something to hand a lawyer. Real pre-money SAFE
+        conversion with several notes is circular, and the convention used here — each note
+        prices off the pre-money valuation over the existing base — is the standard
+        simplification. It is right to a fraction of a point. Liquidation preferences,
+        anti-dilution ratchets and secondary sales are not modelled at all.
+      </p>
+
+      <h2 style="margin-top:64px">Terms on this page</h2>
+      <dl class="glossary">
+        <div>
+          <dt>SAFE</dt>
+          <dd>Simple Agreement for Future Equity. Money now, shares later, at the next priced round.</dd>
+        </div>
+        <div>
+          <dt>Valuation cap</dt>
+          <dd>The highest valuation at which a note converts, however well the round goes. It is the early investor's reward for being early.</dd>
+        </div>
+        <div>
+          <dt>Discount</dt>
+          <dd>A percentage off the round's price. Where a note has both, the holder takes whichever buys more shares.</dd>
+        </div>
+        <div>
+          <dt>Pre-money / post-money SAFE</dt>
+          <dd>Whether the note's percentage is measured before or after the other notes convert. Post-money has been the YC standard since 2018 and is the one whose percentage is fixed.</dd>
+        </div>
+        <div>
+          <dt>The pool shuffle</dt>
+          <dd>Creating the new option pool out of the pre-money valuation, so it dilutes existing holders and not the incoming investor.</dd>
+        </div>
+        <div>
+          <dt>Points</dt>
+          <dd>The arithmetic difference between two percentages. Sixty to forty-eight is twelve points.</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+</Tool>
+
+<template data-safe-template>
+  <div class="safe">
+    <div>
+      <label>Amount</label>
+      <input type="text" inputmode="decimal" autocomplete="off" maxlength="15" placeholder="500,000" data-field="amount" />
+    </div>
+    <div>
+      <label>Valuation cap</label>
+      <input type="text" inputmode="decimal" autocomplete="off" maxlength="15" placeholder="uncapped" data-field="cap" />
+    </div>
+    <div>
+      <label>Discount</label>
+      <input type="text" inputmode="decimal" autocomplete="off" maxlength="5" placeholder="0" data-field="discount" />
+    </div>
+    <div>
+      <label>Type</label>
+      <select data-field="kind">
+        <option value="post" selected>Post-money</option>
+        <option value="pre">Pre-money</option>
+      </select>
+    </div>
+    <button type="button" class="drop" data-drop>
+      <span class="sr-only">Remove this note</span>
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
+    </button>
+  </div>
+</template>
+
+<script>
+  import { dilute, type Safe, type SafeKind } from '../../lib/dilution';
+  import { dilutionQuestionsFor, STANDARD_DILUTION_QUESTIONS } from '../../lib/dilution-questions';
+  import { clampPercent, formatNumber, parseAmount, sanitizeTyping } from '../../lib/amount';
+  import type { Question } from '../../lib/question';
+
+  const form = document.querySelector<HTMLFormElement>('[data-dilution]');
+  const template = document.querySelector<HTMLTemplateElement>('[data-safe-template]');
+
+  if (form && template) {
+    const out = (name: string) => document.querySelector<HTMLElement>(`[data-out="${name}"]`);
+    const list = document.querySelector<HTMLElement>('[data-safes]');
+    const none = document.querySelector<HTMLElement>('[data-none]');
+
+    const before = out('before');
+    const after = out('after');
+    const points = out('points');
+    const attrib = out('attrib');
+    const attribList = out('attrib-list');
+    const stack = out('stack');
+    const stackList = out('stack-list');
+    const questions = out('questions');
+    const announce = out('announce');
+    let pending = 0;
+
+    const LABELS: Record<string, string> = {
+      you: 'you',
+      'other-existing': 'other existing holders',
+      safes: 'SAFE holders converting',
+      pool: 'the option pool',
+      investor: 'the new investor',
+    };
+
+    // The DOM is the state. `querySelectorAll` reads the notes directly, which
+    // is why this page has no framework — there is no array to keep in step
+    // with the markup, so there is no synchronisation problem to solve.
+    function notes(): Safe[] {
+      return [...form!.querySelectorAll<HTMLElement>('.safe')].map((row) => {
+        const value = (field: string) =>
+          row.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-field="${field}"]`)?.value ?? '';
+
+        return {
+          amount: parseAmount(value('amount')) || 0,
+          cap: parseAmount(value('cap')) || 0,
+          discountPercent: clampPercent(parseAmount(value('discount'))),
+          kind: (value('kind') as SafeKind) || 'post',
+        };
+      });
+    }
+
+    function guard(input: HTMLInputElement) {
+      const signed = false;
+      const clean = sanitizeTyping(input.value, { negative: signed });
+      if (clean === input.value) return;
+
+      const caret = input.selectionStart ?? input.value.length;
+      const shrank = input.value.length - clean.length;
+      input.value = clean;
+      const moved = Math.max(0, caret - shrank);
+      input.setSelectionRange(moved, moved);
+    }
+
+    function render(asked: Question[]) {
+      if (!questions) return;
+
+      questions.replaceChildren(
+        ...asked.map((question) => {
+          const item = document.createElement('li');
+          item.dataset.grounded = String(question.grounded);
+
+          const text = document.createElement('h3');
+          text.textContent = question.text;
+          if (question.grounded) {
+            const badge = document.createElement('span');
+            badge.className = 'yours';
+            badge.textContent = 'From your numbers';
+            text.append(' ', badge);
+          }
+
+          const why = document.createElement('p');
+          why.textContent = question.why;
+
+          item.append(text, why);
+          return item;
+        }),
+      );
+    }
+
+    function rows(target: HTMLElement, entries: [string, number][], mine?: string) {
+      target.replaceChildren(
+        ...entries.map(([label, value]) => {
+          const item = document.createElement('li');
+          if (mine && label === mine) item.className = 'mine';
+
+          const figure = document.createElement('b');
+          figure.textContent = `${value.toFixed(1)}%`;
+
+          const name = document.createElement('span');
+          name.textContent = label;
+
+          item.append(figure, name);
+          return item;
+        }),
+      );
+    }
+
+    function draw() {
+      const read = (id: string) => parseAmount((form!.querySelector<HTMLInputElement>(`#${id}`))?.value ?? '');
+      const yours = read('yours');
+      const preMoney = read('pre-money');
+      const raise = read('raise');
+
+      // A blank stake or a blank round is an absence, not a zero. Reporting
+      // "0% → 0%" for a form nobody has filled in is a confident answer to a
+      // question that was never asked.
+      const waiting = Number.isNaN(yours) || (Number.isNaN(preMoney) && Number.isNaN(raise));
+
+      if (none) none.hidden = form!.querySelectorAll('.safe').length > 0;
+
+      if (waiting) {
+        if (before) before.textContent = '—';
+        if (after) after.textContent = '—';
+        if (points) points.textContent = 'Add what you own and the round';
+        if (attrib) attrib.hidden = true;
+        if (stack) stack.hidden = true;
+        if (announce) { window.clearTimeout(pending); announce.textContent = ''; }
+        render(STANDARD_DILUTION_QUESTIONS);
+        return;
+      }
+
+      const input = {
+        yourPercent: yours,
+        safes: notes(),
+        preMoney: preMoney || 0,
+        raise: raise || 0,
+        poolPercent: clampPercent(read('pool')),
+        poolPre: (form!.querySelector<HTMLSelectElement>('#pool-side')?.value ?? 'pre') === 'pre',
+      };
+
+      const result = dilute(input);
+
+      if (before) before.textContent = `${result.yourBefore.toFixed(1)}%`;
+      if (after) after.textContent = `${result.yourAfter.toFixed(1)}%`;
+      if (points) {
+        points.textContent = `you gave up ${result.pointsGiven.toFixed(1)} points`;
+      }
+
+      if (attrib && attribList) {
+        const given: [string, number][] = [
+          ['the new investor', result.attribution.investor],
+          ['SAFE holders converting', result.attribution.safes],
+          ['the option pool', result.attribution.pool],
+        ]
+          .filter(([, value]) => (value as number) > 0.05)
+          .sort((a, b) => (b[1] as number) - (a[1] as number)) as [string, number][];
+
+        attrib.hidden = given.length === 0;
+        rows(attribList, given);
+      }
+
+      if (stack && stackList) {
+        stack.hidden = false;
+        rows(
+          stackList,
+          result.stack
+            .filter((holding) => holding.after > 0.05)
+            .map((holding) => [LABELS[holding.who], holding.after] as [string, number]),
+          'you',
+        );
+      }
+
+      render(dilutionQuestionsFor(result, input));
+
+      if (announce) {
+        window.clearTimeout(pending);
+        pending = window.setTimeout(() => {
+          announce.textContent = `You go from ${result.yourBefore.toFixed(1)} percent to ${result.yourAfter.toFixed(
+            1,
+          )} percent, a fall of ${result.pointsGiven.toFixed(1)} points.`;
+        }, 700);
+      }
+    }
+
+    function watch(scope: ParentNode) {
+      for (const input of scope.querySelectorAll<HTMLInputElement>('input')) {
+        input.addEventListener('input', () => { guard(input); draw(); });
+        input.addEventListener('blur', () => {
+          const value = parseAmount(input.value);
+          if (Number.isFinite(value)) input.value = formatNumber(value);
+          draw();
+        });
+      }
+      for (const select of scope.querySelectorAll<HTMLSelectElement>('select')) {
+        select.addEventListener('change', draw);
+      }
+    }
+
+    // Nothing to submit — the answer is already on screen, and letting Enter
+    // through reloads the page and takes every figure with it.
+    form.addEventListener('submit', (event) => event.preventDefault());
+
+    document.querySelector('[data-add]')?.addEventListener('click', () => {
+      const row = template.content.firstElementChild!.cloneNode(true) as HTMLElement;
+      row.querySelector('[data-drop]')?.addEventListener('click', () => {
+        row.remove();
+        draw();
+      });
+      watch(row);
+      list?.append(row);
+      row.querySelector<HTMLInputElement>('input')?.focus();
+      draw();
+    });
+
+    watch(form);
+    draw();
+  }
+</script>

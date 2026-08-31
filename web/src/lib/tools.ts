@@ -15,13 +15,39 @@ export interface Tool {
   blurb: string;
   /** Who types the query this page answers. Used on the hub, not in the menu. */
   audience: string;
+  /**
+   * The inner markup of a 24x24 icon, drawn to the same stroke and weight as
+   * the rest of the set — `.icon` supplies the geometry, the fill and the
+   * 1.8 stroke. Authored rather than borrowed: an emoji standing in for an
+   * icon is the one substitution a drawn set can never absorb.
+   *
+   * Each one says what the tool does rather than what it is about. A falling
+   * line for money running out; a circle being divided for a stake being
+   * split.
+   */
+  icon: string;
 }
 
 export const TOOLS: Tool[] = [
+  {
+    href: '/tools/roi-calculator',
+    name: 'Business case ROI',
+    blurb: 'Payback, NPV, and the share of the benefit that actually has to land',
+    audience: 'Executives',
+    icon: '<path d="M3 5v13a1 1 0 0 0 1 1h16"/><path d="m7 15 4-5 3 2 5-6"/><path d="M15 6h4v4"/>',
+  },
+  {
+    href: '/tools/dilution-calculator',
+    name: 'Dilution calculator',
+    blurb: 'SAFEs, the option pool shuffle, and where the points actually went',
+    audience: 'Founders',
+    icon: '<circle cx="12" cy="12" r="9"/><path d="M12 3v9h9"/><path d="M12 12 5.6 18.4"/>',
+  },
   {
     href: '/tools/runway-calculator',
     name: 'Runway calculator',
     blurb: 'The date you run out, with spend and revenue both growing',
     audience: 'Founders',
+    icon: '<path d="M3 5v13a1 1 0 0 0 1 1h16"/><path d="m6 8 4 4 3.5-1L19 17"/>',
   },
 ];

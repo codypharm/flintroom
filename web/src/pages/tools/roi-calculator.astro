@@ -1,0 +1,432 @@
+---
+/**
+ * /tools/roi-calculator
+ *
+ * Tool three (#115), and the first aimed at Product.md's largest segment:
+ * corporate and executive presenters. The first two both served founders,
+ * which is the smallest of the five.
+ *
+ * The headline is the break-even benefit rather than the ROI figure. Every
+ * business case is presented as one confident number and destroyed by the same
+ * question — "and what if you only get half of that?" — asked of a forecast
+ * the presenter has never stress-tested. Leading with the floor turns the
+ * argument from defending an optimistic number into defending a minimum, which
+ * is a far easier argument to hold.
+ */
+import Tool from '../../layouts/Tool.astro';
+import { STANDARD_ROI_QUESTIONS } from '../../lib/roi-questions';
+
+const COSTS = [
+  {
+    id: 'one-off',
+    label: 'One-off cost',
+    help: 'Implementation, migration, licences, the first invoice.',
+    placeholder: '24,000',
+  },
+  {
+    id: 'monthly-cost',
+    label: 'Monthly running cost',
+    help: 'What it costs every month once it is live, including the people who run it.',
+    placeholder: '500',
+  },
+];
+
+const BENEFIT = [
+  {
+    id: 'monthly-benefit',
+    label: 'Monthly benefit, at full run rate',
+    help: 'Saved cost or new revenue, once the thing is fully working.',
+    placeholder: '4,000',
+  },
+  {
+    id: 'ramp',
+    label: 'Months to reach full benefit',
+    help: 'Nothing delivers at full rate on day one. Empty assumes it does.',
+    placeholder: '3',
+    unit: 'mo',
+  },
+];
+
+const FRAME = [
+  {
+    id: 'horizon',
+    label: 'Time horizon',
+    help: 'Three years is what most committees expect. A longer one quietly flatters any case.',
+    placeholder: '36',
+    unit: 'mo',
+  },
+  {
+    id: 'discount',
+    label: 'Discount rate, a year',
+    help: 'Your finance team may have a number for this. Ten percent is a common default.',
+    placeholder: '10',
+    unit: '%',
+  },
+];
+
+const TITLE = 'Business case ROI calculator — payback, NPV, and the benefit you actually need';
+const DESCRIPTION =
+  'Free ROI calculator for a business case: payback period, NPV and the break-even benefit — the share of your projected upside that has to land before the case stops paying for itself.';
+---
+
+<Tool
+  title={TITLE}
+  description={DESCRIPTION}
+  url="https://www.flintroom.app/tools/roi-calculator"
+  current="/tools/roi-calculator"
+>
+  <section class="tool">
+    <div class="shell">
+      <div class="tool-head">
+        <h1>Business case ROI calculator</h1>
+        <p class="sub">
+          Every case is presented as one confident number and attacked with the same question:
+          what if you only get half of it? This one answers that first. It gives you payback
+          and NPV, and then the share of your projected benefit that actually has to land.
+        </p>
+      </div>
+
+      <div class="instrument">
+        <form class="inputs" data-roi novalidate>
+          <h2>Your case</h2>
+
+          <div class="rows">
+            <div class="group">
+              {COSTS.map((field) => (
+                <div class="row">
+                  <label for={field.id}>{field.label}</label>
+                  <span class="help" id={`${field.id}-help`}>{field.help}</span>
+                  <div class="entry">
+                    <input id={field.id} type="text" inputmode="decimal" autocomplete="off" maxlength="15" placeholder={field.placeholder} aria-describedby={`${field.id}-help`} />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div class="group">
+              {BENEFIT.map((field) => (
+                <div class={field.unit ? 'row pct' : 'row'}>
+                  <label for={field.id}>{field.label}</label>
+                  <span class="help" id={`${field.id}-help`}>{field.help}</span>
+                  <div class="entry">
+                    <input id={field.id} type="text" inputmode="decimal" autocomplete="off" maxlength="15" placeholder={field.placeholder} aria-describedby={`${field.id}-help`} />
+                    {field.unit && <span class="unit" aria-hidden="true">{field.unit}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div class="group">
+              {FRAME.map((field) => (
+                <div class="row pct">
+                  <label for={field.id}>{field.label}</label>
+                  <span class="help" id={`${field.id}-help`}>{field.help}</span>
+                  <div class="entry">
+                    <input id={field.id} type="text" inputmode="decimal" autocomplete="off" maxlength="6" placeholder={field.placeholder} aria-describedby={`${field.id}-help`} />
+                    <span class="unit" aria-hidden="true">{field.unit}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </form>
+
+        <div class="panel result">
+          <h2>What has to land</h2>
+
+          <div>
+            <p class="date" data-out="breakeven">—</p>
+            <p class="count" data-out="breakeven-line">Add the cost and the benefit</p>
+          </div>
+
+          <p class="sr-only" role="status" data-out="announce"></p>
+
+          <div class="attrib" data-out="figures" hidden>
+            <h3>The case as presented</h3>
+            <ul data-out="figures-list"></ul>
+          </div>
+
+          <div class="schedule" data-out="schedule" hidden>
+            <div class="bars" data-out="bars" role="img" aria-label="Cumulative position month by month"></div>
+            <p class="axis">
+              <span>Today</span>
+              <span data-out="axis-end"></span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="asked">
+    <div class="shell">
+      <h2>What gets asked about this number</h2>
+      <p>
+        A business case is defended, not discussed, and the people opposite you are usually
+        bidding for the same money. These four come up whatever the case. Fill the calculator
+        in and the ones drawn from your own figures join them, marked.
+      </p>
+      <ol data-out="questions">
+        {STANDARD_ROI_QUESTIONS.map((question) => (
+          <li data-grounded="false">
+            <h3>{question.text}</h3>
+            <p>{question.why}</p>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <section class="notes">
+    <div class="shell">
+      <h2>Why the break-even benefit beats the ROI figure</h2>
+
+      <p>
+        A return on investment is a single number resting on a forecast, and a forecast is the
+        softest thing in any business case. Quote 240% and the room does not hear a return, it
+        hears an estimate it is about to test. The next sentence is always some version of
+        <em>what if you only get half of that</em>.
+      </p>
+      <p>
+        The break-even benefit answers it before it is asked. If the case clears at 58% of the
+        projected upside, you are no longer defending an optimistic number — you are defending
+        a floor, and the burden has quietly moved to whoever thinks you will capture less than
+        that. It is the same figure, read from the other end, and it is a much harder thing to
+        argue with.
+      </p>
+
+      <h3>Payback, and why the ramp changes it</h3>
+      <p>
+        Payback is the month the running total crosses zero, undiscounted, which is the
+        convention almost everybody uses. What moves it more than anything is the
+        <strong>ramp</strong>: the months it takes to get from nothing to the full benefit.
+        Assuming full delivery in month one is the most common way a payback figure turns out
+        to be fiction, and it is the second question a case gets asked after the sensitivity
+        one.
+      </p>
+
+      <h3>NPV, and the discount rate</h3>
+      <p>
+        Money later is worth less than money now, and net present value is the arithmetic that
+        says by how much. The rate is your organisation's, not ours — finance usually has one,
+        and using theirs is the difference between a case that survives review and one that
+        gets sent back. Ten percent a year is a common default when nobody will tell you.
+      </p>
+      <p>
+        The one-off cost is <strong>not</strong> discounted here, because it is paid today.
+        Discounting money you are about to spend is the most common sign error in a hand-built
+        NPV, and it makes every case look better than it is.
+      </p>
+
+      <h3>What this does not do</h3>
+      <p>
+        No IRR: it needs iteration, it is widely misunderstood, and no budget meeting has ever
+        been won with it. No tax, no depreciation, no capitalisation — those are your finance
+        team's, and the answer depends on your jurisdiction and your accounting policy. The
+        benefit ramps linearly rather than following an adoption curve, which is a
+        simplification and an honest one.
+      </p>
+
+      <h2 style="margin-top:64px">Terms on this page</h2>
+      <dl class="glossary">
+        <div>
+          <dt>Break-even benefit</dt>
+          <dd>The share of your projected benefit that has to be delivered before the case stops paying for itself. Above 100% means it does not pay back on these figures.</dd>
+        </div>
+        <div>
+          <dt>Payback period</dt>
+          <dd>How long until the running total turns positive. Quoted undiscounted, by convention.</dd>
+        </div>
+        <div>
+          <dt>NPV</dt>
+          <dd>Net present value: every future amount reduced to what it is worth today, then netted off against what you spend now.</dd>
+        </div>
+        <div>
+          <dt>Discount rate</dt>
+          <dd>The annual rate at which future money is written down. Usually set centrally by finance.</dd>
+        </div>
+        <div>
+          <dt>Ramp</dt>
+          <dd>The period between switching something on and getting the full benefit from it.</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+</Tool>
+
+<script>
+  import { businessCase } from '../../lib/roi';
+  import { roiQuestionsFor, STANDARD_ROI_QUESTIONS } from '../../lib/roi-questions';
+  import { clampPercent, formatMonths, formatNumber, parseAmount, sanitizeTyping } from '../../lib/amount';
+  import type { Question } from '../../lib/question';
+
+  const form = document.querySelector<HTMLFormElement>('[data-roi]');
+
+  if (form) {
+    const out = (name: string) => document.querySelector<HTMLElement>(`[data-out="${name}"]`);
+    const read = (id: string) => parseAmount(form.querySelector<HTMLInputElement>(`#${id}`)?.value ?? '');
+
+    const breakeven = out('breakeven');
+    const breakevenLine = out('breakeven-line');
+    const figures = out('figures');
+    const figuresList = out('figures-list');
+    const schedule = out('schedule');
+    const bars = out('bars');
+    const axisEnd = out('axis-end');
+    const questions = out('questions');
+    const announce = out('announce');
+    let pending = 0;
+
+    const BARS = 36;
+
+    function render(asked: Question[]) {
+      if (!questions) return;
+
+      questions.replaceChildren(
+        ...asked.map((question) => {
+          const item = document.createElement('li');
+          item.dataset.grounded = String(question.grounded);
+
+          const text = document.createElement('h3');
+          text.textContent = question.text;
+          if (question.grounded) {
+            const badge = document.createElement('span');
+            badge.className = 'yours';
+            badge.textContent = 'From your numbers';
+            text.append(' ', badge);
+          }
+
+          const why = document.createElement('p');
+          why.textContent = question.why;
+
+          item.append(text, why);
+          return item;
+        }),
+      );
+    }
+
+    function draw() {
+      const oneOffCost = read('one-off');
+      const monthlyBenefit = read('monthly-benefit');
+
+      // A case with no cost or no benefit in it is an absence, not a zero.
+      const waiting = Number.isNaN(oneOffCost) && Number.isNaN(read('monthly-cost'));
+
+      const input = {
+        oneOffCost: oneOffCost || 0,
+        monthlyCost: read('monthly-cost') || 0,
+        monthlyBenefit: monthlyBenefit || 0,
+        rampMonths: read('ramp') || 0,
+        horizonMonths: read('horizon') || 36,
+        discountRatePercent: clampPercent(read('discount')) || 0,
+      };
+
+      if (waiting || Number.isNaN(monthlyBenefit)) {
+        if (breakeven) breakeven.textContent = '—';
+        if (breakevenLine) breakevenLine.textContent = 'Add the cost and the benefit';
+        if (figures) figures.hidden = true;
+        if (schedule) schedule.hidden = true;
+        if (announce) { window.clearTimeout(pending); announce.textContent = ''; }
+        render(STANDARD_ROI_QUESTIONS);
+        return;
+      }
+
+      const result = businessCase(input);
+      const share = result.breakEvenBenefitPercent;
+
+      if (breakeven) breakeven.textContent = share === null ? '—' : `${share.toFixed(0)}%`;
+      if (breakevenLine) {
+        breakevenLine.textContent =
+          share === null
+            ? 'Add a benefit for the case to rest on'
+            : share > 100
+              ? 'more than the whole projected benefit, so it does not pay back'
+              : 'of the projected benefit has to land for this to break even';
+      }
+
+      if (figures && figuresList) {
+        figures.hidden = false;
+        const lines: [string, string][] = [
+          ['Payback', result.paybackMonths === null ? 'not inside the horizon' : formatMonths(result.paybackMonths)],
+          ['NPV', formatNumber(result.npv)],
+          ['Return on spend', `${result.roiPercent.toFixed(0)}%`],
+          ['Total cost', formatNumber(result.totalCost)],
+        ];
+
+        figuresList.replaceChildren(
+          ...lines.map(([label, value]) => {
+            const item = document.createElement('li');
+            const figure = document.createElement('b');
+            figure.textContent = value;
+            const name = document.createElement('span');
+            name.textContent = label;
+            item.append(figure, name);
+            return item;
+          }),
+        );
+      }
+
+      // The cumulative position, which starts below the line and climbs
+      // through it. Bars below zero are the money still outstanding.
+      const shown = result.schedule.slice(0, BARS);
+      const extent = Math.max(1, ...shown.map((month) => Math.abs(month.cumulative)));
+
+      if (schedule && bars) {
+        schedule.hidden = false;
+        bars.replaceChildren(
+          ...shown.map((month) => {
+            const bar = document.createElement('i');
+            bar.style.height = `${Math.max(2, (Math.abs(month.cumulative) / extent) * 100)}%`;
+            if (month.cumulative < 0) bar.dataset.under = 'true';
+            return bar;
+          }),
+        );
+        bars.setAttribute(
+          'aria-label',
+          result.paybackMonths === null
+            ? 'Cumulative position, still below zero at the end of the horizon'
+            : `Cumulative position, crossing zero at ${formatMonths(result.paybackMonths)}`,
+        );
+      }
+      if (axisEnd) axisEnd.textContent = `Month ${shown.length}`;
+
+      render(roiQuestionsFor(result, input));
+
+      if (announce) {
+        window.clearTimeout(pending);
+        pending = window.setTimeout(() => {
+          announce.textContent =
+            share === null
+              ? ''
+              : `${share.toFixed(0)} percent of the projected benefit has to land to break even. ${
+                  result.paybackMonths === null
+                    ? 'It does not pay back inside the horizon.'
+                    : `Payback at ${formatMonths(result.paybackMonths)}.`
+                }`;
+        }, 700);
+      }
+    }
+
+    for (const input of form.querySelectorAll<HTMLInputElement>('input')) {
+      input.addEventListener('input', () => {
+        const clean = sanitizeTyping(input.value, { negative: false });
+        if (clean !== input.value) {
+          const caret = input.selectionStart ?? input.value.length;
+          const shrank = input.value.length - clean.length;
+          input.value = clean;
+          const moved = Math.max(0, caret - shrank);
+          input.setSelectionRange(moved, moved);
+        }
+        draw();
+      });
+      input.addEventListener('blur', () => {
+        const value = parseAmount(input.value);
+        if (Number.isFinite(value)) input.value = formatNumber(Math.max(0, value));
+        draw();
+      });
+    }
+
+    form.addEventListener('submit', (event) => event.preventDefault());
+    draw();
+  }
+</script>

@@ -28,9 +28,12 @@ import { TOOLS } from '../../lib/tools';
         {TOOLS.map((tool) => (
           <li>
             <a href={tool.href}>
-              <b>{tool.name}</b>
-              <span class="who">{tool.audience}</span>
-              <span class="what">{tool.blurb}</span>
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" set:html={tool.icon} />
+              <span class="text">
+                <b>{tool.name}</b>
+                <span class="who">{tool.audience}</span>
+                <span class="what">{tool.blurb}</span>
+              </span>
             </a>
           </li>
         ))}
