@@ -14,9 +14,27 @@
  *                       sender so the flow works before DNS does.
  */
 
+/**
+ * **ESM, and it has to be.** This file was CommonJS until #113 added
+ * `"type": "module"` to `package.json` for Astro — which makes every `.js` in
+ * this package ESM, so `module.exports` became an undefined reference and the
+ * function crashed on every invocation. It shipped, and `/api/waitlist`
+ * answered 500 on the live site until it was caught.
+ *
+ * That is worth keeping written down, because the failure was invisible in
+ * exactly the way #113 was trying to avoid. Nothing local runs this file: no
+ * test imports it, `astro check` excludes `api/`, `astro dev` does not serve
+ * it, and the build never touches it — by design, so that a broken build
+ * cannot take the waitlist down with it. The first execution of any kind was
+ * a real visitor's.
+ *
+ * The decision it belongs to still holds. This is a plain Vercel function,
+ * outside the Astro build, and the module syntax is the only thing that
+ * changed.
+ */
 const RESEND = "https://api.resend.com";
 
-module.exports = async (request, response) => {
+export default async (request, response) => {
   if (request.method !== "POST") {
     response.status(405).json({ error: "method_not_allowed" });
     return;

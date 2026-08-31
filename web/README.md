@@ -47,6 +47,18 @@ somebody came for a fact.
 runs as a Vercel serverless function, but a plain file is not downstream of the
 Astro build, so a build error cannot take the waitlist down with it.
 
+**It is ESM, and that is not cosmetic.** Adding `"type": "module"` for Astro
+made every `.js` in this package ESM; the handler was still CommonJS, and it
+answered 500 on the live site until it was caught. `api/waitlist.test.js` now
+guards it — including one check that is a lint rather than a test, because the
+failure needs Vercel's Node version and cannot be reproduced locally. The
+comment there explains why two runtime checks were tried and discarded.
+
+**Nothing local runs this file, by design.** No import in `src/`, `astro check`
+excludes `api/`, `astro dev` does not serve it, the build never touches it.
+That independence is the point — and it means the test file is the only thing
+between a change here and a visitor finding out.
+
 ## Working on it
 
 ```
