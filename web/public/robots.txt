@@ -1,4 +1,54 @@
+# Everything is open, and the named rules below change nothing today.
+#
+# They exist so that a future edit narrowing `User-agent: *` cannot silently
+# lock out the crawlers that feed model training and retrieval. Removing a
+# named line is a decision somebody has to make on purpose; inheriting a
+# restriction from a wildcard is not.
+
 User-agent: *
+Allow: /
+
+# Model training and retrieval crawlers, allowed deliberately.
+#
+# The tool pages exist to be found and quoted. Being in a training corpus and
+# being retrievable by an agent are both worth more to this site than anything
+# withholding it would protect — there is nothing here that is not already
+# public marketing.
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: cohere-ai
+Allow: /
+
+User-agent: Bytespider
 Allow: /
 
 Sitemap: https://www.flintroom.app/sitemap.xml

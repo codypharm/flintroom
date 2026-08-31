@@ -104,6 +104,36 @@ const others = current ? TOOLS.filter((tool) => tool.href !== current) : [];
     <div class="tool-foot"></div>
   </main>
 
+  {here && (
+    <!-- What this page IS, for a machine that has to decide whether to
+         recommend it. The prose already says free, browser-based and
+         no-signup; this states the same three facts in a form that is parsed
+         rather than inferred, which is the whole difference between a reader
+         and a retriever.
+
+         `WebApplication` rather than `SoftwareApplication`: it is the narrower
+         subtype and it is true — these run in the page and install nothing.
+         Only on a tool page, because the hub is a list of them and the layout
+         is shared. -->
+    <script is:inline type="application/ld+json" set:html={JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'WebApplication',
+      name: here.name,
+      description: here.blurb,
+      url: `https://www.flintroom.app${here.href}`,
+      applicationCategory: 'BusinessApplication',
+      operatingSystem: 'Any',
+      browserRequirements: 'Requires JavaScript',
+      isAccessibleForFree: true,
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+      publisher: {
+        '@type': 'Organization',
+        name: 'Flintroom',
+        url: 'https://www.flintroom.app/',
+      },
+    })} />
+  )}
+
   <!-- The same trail, for the search result. `BreadcrumbList` is one of the
        few structured-data types Google still renders, and it replaces the raw
        URL under the title with the path a reader can parse. -->
