@@ -9,6 +9,7 @@
 # Four checks, and they are the four `CLAUDE.md` already names:
 #   backend  — pytest, and `ty` at the pinned version
 #   app      — tsc, and jest
+#   web      — the marketing site's Astro build
 # Plus one drift check the test suite structurally cannot make: whether the
 # committed frontend types still match the committed contract. `test_contract`
 # proves the contract matches the *application*; nothing proved the generated
@@ -173,3 +174,45 @@ jobs:
           npm run generate:api
           git diff --exit-code -- src/lib/api/schema.d.ts \
             || { echo "::error::schema.d.ts is stale. Run 'npm run generate:api' and commit."; exit 1; }
+
+  # The marketing site, which until #113 had no build to break.
+  #
+  # It is worth a job for one reason: Vercel deploys `web/` on every push to
+  # this repository, and a build that fails there fails *after* the commit is
+  # already the newest thing on the branch. This turns "the landing page is
+  # down" into a red tick on the commit that did it.
+  #
+  # The tests are Vitest, and they exist because of one thing: the calculators
+  # under `/tools` are arithmetic a founder will check against their own
+  # spreadsheet. Flat division is eyeballable; compounding spend against flat
+  # revenue is not, and a wrong number on a page carrying our name is worse for
+  # the brand than no page at all.
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # `astro check` runs the TypeScript and template diagnostics that a plain
+      # build does not: a component given a prop it does not declare still
+      # builds, and still renders the page wrong.
+      - name: Types
+        run: npx astro check
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build

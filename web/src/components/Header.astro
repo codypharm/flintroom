@@ -1,0 +1,94 @@
+---
+/**
+ * The site header.
+ *
+ * It was three anchors into one page until the tools arrived (#113 decision 1),
+ * which is why the section links are now root-relative: `/#how` is correct from
+ * `/tools/runway-calculator`, `#how` is a link to nowhere. A nav where one item
+ * leaves the page and three do not is the kind of thing nobody notices while
+ * building and everybody feels while using.
+ *
+ * **Free tools is a link AND a disclosure, not a hover menu.** The anchor goes
+ * to the hub, which is the page that actually ranks; the button beside it opens
+ * the list. Hover-only menus fail on touch outright and fail WCAG 2.2 1.4.13,
+ * which asks that such content be dismissible, hoverable and persistent — a lot
+ * of machinery to avoid giving somebody a button.
+ *
+ * The section anchors still disappear on a narrow screen, as they always have.
+ * Free tools does not: on a tool page it is the only route back into the rest
+ * of the site, and hiding it would strand every phone.
+ */
+import { TOOLS } from '../lib/tools';
+---
+
+<header>
+  <div class="shell nav">
+    <a class="brand" href="/"><img src="/mark.png" alt=""><span>Flintroom</span></a>
+
+    <nav class="links" aria-label="Main">
+      <a class="section-link" href="/#how">How it works</a>
+      <a class="section-link" href="/#board">The panel</a>
+      <a class="section-link" href="/#pricing">Pricing</a>
+
+      <div class="menu" data-tools-menu>
+        <a href="/tools">Free tools</a>
+        <button type="button" aria-expanded="false" aria-controls="tools-list">
+          <span class="sr-only">Show the list of free tools</span>
+          <svg class="icon chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <ul id="tools-list" hidden>
+          {TOOLS.map((tool) => (
+            <li>
+              <a href={tool.href}>
+                <b>{tool.name}</b>
+                <span>{tool.blurb}</span>
+              </a>
+            </li>
+          ))}
+          <li class="all"><a href="/tools">All free tools</a></li>
+        </ul>
+      </div>
+    </nav>
+
+    <a class="btn" href="/#waitlist">Join the waitlist</a>
+  </div>
+</header>
+
+<script>
+  // Open, close, and the three ways a person expects to close it: the button
+  // again, Escape, or clicking anything else. Focus returns to the button on
+  // Escape, because a menu that closes and leaves focus nowhere is worse for a
+  // keyboard than one that never opened.
+  for (const menu of document.querySelectorAll<HTMLElement>('[data-tools-menu]')) {
+    const button = menu.querySelector('button');
+    const list = menu.querySelector('ul');
+    if (!button || !list) continue;
+
+    const show = (open: boolean) => {
+      button.setAttribute('aria-expanded', String(open));
+      list.hidden = !open;
+    };
+
+    button.addEventListener('click', () => {
+      show(button.getAttribute('aria-expanded') !== 'true');
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || button.getAttribute('aria-expanded') !== 'true') return;
+      show(false);
+      button.focus();
+    });
+
+    document.addEventListener('click', (event) => {
+      if (menu.contains(event.target as Node)) return;
+      show(false);
+    });
+
+    // Tabbing out of the last item is a departure, not a dismissal — but the
+    // menu should not be left hanging open behind you either.
+    menu.addEventListener('focusout', (event) => {
+      if (menu.contains(event.relatedTarget as Node)) return;
+      show(false);
+    });
+  }
+</script>

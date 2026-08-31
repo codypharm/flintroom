@@ -1,0 +1,33 @@
+---
+/**
+ * The site footer, unchanged from `index.html`.
+ *
+ * The three legal links are the only cross-page navigation this site has,
+ * and two of them (`/privacy`, `/delete-account`) are cited in the store
+ * submission material — see #108. They point at files that stay in
+ * `public/` untouched, so these hrefs resolve to exactly what they resolved
+ * to before the migration.
+ */
+---
+
+<footer>
+  <div class="shell">
+    <div class="cols">
+      <div class="about">
+        <a class="brand" href="#top"><img src="/mark.png" alt=""><span>Flintroom</span></a>
+        <p>The room that grills you before the room that matters.</p>
+      </div>
+      <div>
+        <h4>Contact</h4>
+        <a href="mailto:hello@flintroom.app">hello@flintroom.app</a>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/delete-account">Delete your account</a>
+      </div>
+    </div>
+    <p class="legal">© 2026 Flintroom. One email when we open, and nothing else.</p>
+  </div>
+</footer>

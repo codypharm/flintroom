@@ -1,0 +1,6 @@
+{
+  "extends": "astro/tsconfigs/strict",
+  "include": [".astro/types.d.ts", "**/*"],
+  "//": "`api/` is Vercel's, not Astro's. `api/waitlist.js` is a CommonJS Vercel function that deliberately stays outside this build (#113 decision 3), so type-checking it here only produces a hint telling us to convert it to ESM — advice we have already declined.",
+  "exclude": ["dist", "api"]
+}

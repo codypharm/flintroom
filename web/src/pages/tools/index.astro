@@ -1,0 +1,40 @@
+---
+/**
+ * /tools — the hub.
+ *
+ * A real page rather than a redirect, because this is the one that collects the
+ * internal links and ranks for the category rather than for a single query.
+ * Every tool links back here and sideways to its siblings; that graph is most
+ * of why any of them rank at all.
+ */
+import Tool from '../../layouts/Tool.astro';
+import { TOOLS } from '../../lib/tools';
+---
+
+<Tool
+  title="Free tools for people who have to defend a number"
+  description="Free, no signup: calculators that give you the figure and then the questions it invites. Built by Flintroom, the rehearsal room that grills you before the room that matters."
+  url="https://www.flintroom.app/tools"
+>
+  <section class="hub">
+    <div class="shell">
+      <h1>Free tools</h1>
+      <p class="sub">
+        No signup, nothing emailed to you, nothing stored. Each one gives you the number and
+        then the questions it invites — because the figure is rarely the hard part.
+      </p>
+
+      <ul>
+        {TOOLS.map((tool) => (
+          <li>
+            <a href={tool.href}>
+              <b>{tool.name}</b>
+              <span class="who">{tool.audience}</span>
+              <span class="what">{tool.blurb}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+</Tool>

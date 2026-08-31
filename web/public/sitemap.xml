@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Hand-written on purpose, for now.
+
+  Four URLs is not worth an integration and its config. `@astrojs/sitemap`
+  earns its place when the tool pages (#111) arrive and the list stops being
+  something a person can read at a glance — at which point a URL added
+  without a matching line here becomes a real possibility rather than a
+  theoretical one.
+
+  Until then the failure mode runs the other way: an integration is one more
+  thing that can silently drop a page, and two of the four below are cited in
+  store submission material.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://www.flintroom.app/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://www.flintroom.app/tools</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://www.flintroom.app/tools/runway-calculator</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://www.flintroom.app/privacy</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://www.flintroom.app/terms</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://www.flintroom.app/delete-account</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+</urlset>

@@ -1,0 +1,415 @@
+/*
+  The free tools, on top of the landing page's tokens.
+
+  Loaded only by pages under /tools. `site.css` carries the palette, the type
+  face, the header and the footer; nothing here redefines a colour, because the
+  page's job is to look like the same company, not like a microsite.
+
+  The mode is instrument first (#113 decision 4). The calculator is the hero,
+  it holds a result before anything is typed, and the marketing furniture — one
+  block, at the bottom — comes after the reader has already been given
+  something. A calculator built as a marketing section photographs well, is
+  worse than a spreadsheet, and never gets linked.
+*/
+
+/*
+  The spacing scale, extending the six steps in `design-guide/web/DESIGN.md`
+  with the 4-base middles it leaves out. Everything here is a multiple of 4, so
+  nothing conflicts with the published values — it fills in 12, 32, 64 and 112,
+  which are the intervals a page with this much vertical structure needs. A
+  one-off number is what turns a rhythm into a list of coincidences.
+*/
+:root {
+  --s1: 4px;  --s2: 8px;   --s3: 12px;  --s4: 16px;  --s5: 24px;
+  --s6: 32px; --s7: 48px;  --s8: 64px;  --s9: 80px;  --s10: 112px;
+}
+
+.tool { padding: var(--s10) 0 0; }
+@media (max-width: 800px) {
+  .tool { padding-top: var(--s9); }
+}
+
+.tool-head h1 {
+  font-size: clamp(32px, 4.4vw, 48px);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+  max-width: 18ch;
+}
+.tool-head .sub {
+  margin-top: var(--s4);
+  font-size: 18px;
+  line-height: 1.55;
+  color: var(--ink-variant);
+  max-width: 62ch;
+}
+
+/* ── The instrument ─────────────────────────────────────
+   Two columns where there is room, result on the right and pinned, so a
+   number changes in your peripheral vision while you are still typing. */
+/* One elevated object, not two. The form sits on the page ground and the result
+   is the only card, because they are not peers: one is where you work, one is
+   the answer. Two identical cards side by side let the taller of them — the
+   form, at five fields — win the squint test, which is the wrong way round. */
+.instrument {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+  gap: var(--s8);
+  align-items: start;
+  margin-top: var(--s7);
+}
+@media (max-width: 980px) {
+  .instrument { grid-template-columns: 1fr; gap: var(--s7); margin-top: var(--s6); }
+}
+/* No `order` swap on narrow screens any more. It existed because the fields
+   arrived pre-filled, so an answer below them was an answer nobody saw. The
+   fields start empty now, which means you type before there is anything to
+   read — form then answer is both the logical order and the DOM order, and
+   keeping those two in agreement is what keeps tab order sane. */
+
+.panel {
+  background: var(--card);
+  border: 1px solid var(--input-line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-1);
+  padding: var(--s6);
+}
+@media (max-width: 560px) { .panel { padding: var(--s5); } }
+
+.inputs h2,
+.result h2 {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-variant);
+  margin-bottom: var(--s5);
+}
+
+/* Tight inside a group, generous between them. Three amounts and two rates are
+   different questions — one asks what is true today, the other what you expect
+   — and proximity is what says so without adding another heading. */
+.rows { display: flex; flex-direction: column; }
+.group { display: flex; flex-direction: column; gap: var(--s5); }
+.group + .group {
+  margin-top: var(--s6);
+  padding-top: var(--s6);
+  border-top: 1px solid var(--input-line);
+}
+
+.row label {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+/* Always visible, never a tooltip. WCAG 2.2 1.4.13 asks that hover content be
+   dismissible, hoverable and persistent — a great deal of machinery to hide
+   eight words from an expert who can skip them in half a second. */
+.row .help {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-variant);
+}
+.row .entry {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-top: var(--s2);
+}
+.row input {
+  width: 100%;
+  font: inherit;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  /* Lighter than its ground, now that the form has no card behind it. An input
+     the same colour as the page is a line, not a field. */
+  background: var(--card);
+  border: 1px solid var(--input-line);
+  border-radius: var(--r);
+  padding: 11px 14px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+/* Optical, not on the scale: clears the `%` suffix and its 14px gutter. */
+.row.pct input { padding-right: 36px; }
+/* Instructive, not exemplary: "600,000" alone reads as a value somebody left
+   in the box. --ink-variant keeps it above the 4.5:1 floor, which --muted is
+   not, and the filled value sits darker at --ink. */
+.row input::placeholder { color: var(--ink-variant); opacity: 0.75; }
+.row input:hover { border-color: var(--outline-soft); }
+.row input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(164, 55, 0, 0.12);
+}
+.row .unit {
+  position: absolute;
+  right: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  /* Not --muted: it measures 4.29:1 here, and 14px is small text. */
+  color: var(--ink-variant);
+  pointer-events: none;
+}
+
+/* ── The answer ─────────────────────────────────────── */
+.result { position: sticky; top: 104px; }
+@media (max-width: 980px) { .result { position: static; } }
+
+.result .date {
+  font-size: clamp(30px, 3.6vw, 40px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+  text-wrap: balance;
+}
+.result .date.waiting { color: var(--ink-variant); }
+.result .count {
+  margin-top: var(--s2);
+  font-size: 16px;
+  color: var(--ink-variant);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The verdict and the chart are peers under the headline, so they take the
+   same separation. One had a rule and the other only space, which read as two
+   different kinds of relationship where there is one. */
+.verdict {
+  margin-top: var(--s5);
+  padding-top: var(--s5);
+  border-top: 1px solid var(--input-line);
+}
+.verdict .state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.verdict .dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+.verdict[data-alive="true"] .dot { background: var(--primary); }
+.verdict p {
+  margin-top: var(--s2);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-variant);
+}
+
+/* The balance falling, month by month. The bars are the content here rather
+   than decoration — this is the shape a growing burn makes, and it is the one
+   thing a division cannot show you. */
+.schedule {
+  margin-top: var(--s5);
+  padding-top: var(--s5);
+  border-top: 1px solid var(--input-line);
+}
+.schedule .bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 72px;
+}
+.schedule .bars i {
+  flex: 1;
+  min-width: 2px;
+  background: var(--primary);
+  border-radius: 2px 2px 0 0;
+}
+.schedule .axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ink-variant);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── What gets asked next ───────────────────────────── */
+/* Deliberately closer than the sections below it. The questions are about the
+   number you just made — a continuation of the instrument, not a new subject —
+   and four identical 96px gaps would have said all three were equally far. */
+.asked { padding: var(--s8) 0 0; }
+.asked h2 {
+  font-size: clamp(26px, 3.2vw, 32px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.asked > .shell > p {
+  margin-top: var(--s3);
+  font-size: 17px;
+  color: var(--ink-variant);
+  max-width: 62ch;
+}
+.asked ol {
+  list-style: none;
+  margin-top: var(--s6);
+  display: grid;
+  max-width: 72ch;
+}
+.asked li {
+  padding: var(--s5) 0;
+  border-top: 1px solid var(--input-line);
+}
+.asked li h3 {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-wrap: pretty;
+}
+.asked li p {
+  margin-top: var(--s2);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-variant);
+  max-width: 68ch;
+}
+/* A real element, not `::after` content. The label carries meaning — it is the
+   difference between a standard question and one drawn from what you typed —
+   and meaning in a pseudo-element is announced unreliably or not at all. */
+.asked .yours {
+  display: inline-block;
+  margin-left: var(--s3);
+  vertical-align: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--on-primary-fixed);
+  background: var(--primary-fixed);
+  border-radius: 999px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+
+/* ── Prose and definitions ──────────────────────────── */
+/* A change of reading mode: from operating a tool to reading about it. */
+.notes { padding: var(--s10) 0 0; }
+.notes .shell { max-width: 780px; }
+.notes h2 {
+  font-size: clamp(26px, 3.2vw, 32px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.notes h3 {
+  margin-top: var(--s7);
+  font-size: 19px;
+  font-weight: 700;
+}
+.notes p {
+  margin-top: var(--s3);
+  font-size: 17px;
+  line-height: 1.65;
+  color: var(--ink-variant);
+}
+.notes p strong { color: var(--ink); font-weight: 600; }
+
+.glossary { margin-top: var(--s7); display: grid; }
+.glossary div {
+  padding: var(--s5) 0;
+  border-top: 1px solid var(--input-line);
+}
+.glossary dt { font-size: 16px; font-weight: 700; }
+.glossary dd {
+  margin-top: var(--s2);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-variant);
+}
+
+/* ── One conversion block, at the end ───────────────── */
+/* The furthest gap on the page, because this is the one section that wants
+   something from the reader rather than giving them something. */
+.tool-cta { padding: var(--s10) 0 0; }
+.tool-cta .inner {
+  background: var(--band);
+  border-radius: var(--r-xl);
+  padding: var(--s8);
+  text-align: center;
+}
+@media (max-width: 640px) { .tool-cta .inner { padding: var(--s6) var(--s5); } }
+.tool-cta h2 {
+  font-size: clamp(24px, 3vw, 30px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  max-width: 24ch;
+  margin: 0 auto;
+}
+.tool-cta p {
+  margin: var(--s4) auto var(--s6);
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--ink-variant);
+  max-width: 56ch;
+}
+
+/* ── Sideways, to the other tools ───────────────────── */
+.siblings { padding: var(--s9) 0 0; }
+.siblings h2 {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-variant);
+}
+.siblings ul {
+  list-style: none;
+  margin-top: var(--s5);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0 var(--s7);
+}
+.siblings li { border-top: 1px solid var(--input-line); }
+.siblings a {
+  display: block;
+  padding: var(--s5) 0;
+  text-decoration: none;
+}
+.siblings b { display: block; font-size: 17px; font-weight: 600; color: var(--ink); }
+.siblings span { display: block; margin-top: 4px; font-size: 15px; color: var(--ink-variant); }
+.siblings a:hover b { color: var(--primary); }
+
+/* The hub */
+.hub { padding: var(--s10) 0 0; }
+.hub h1 {
+  font-size: clamp(32px, 4.4vw, 48px);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+  max-width: 16ch;
+}
+.hub .sub {
+  margin-top: var(--s4);
+  font-size: 18px;
+  line-height: 1.55;
+  color: var(--ink-variant);
+  max-width: 62ch;
+}
+.hub ul {
+  list-style: none;
+  margin-top: var(--s7);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 0 var(--s7);
+}
+.hub li { border-top: 1px solid var(--input-line); }
+.hub a { display: block; padding: var(--s5) 0; text-decoration: none; }
+.hub b { display: block; font-size: 20px; font-weight: 700; color: var(--ink); }
+.hub .who {
+  display: block; margin-top: 4px;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink-variant);
+}
+.hub .what { display: block; margin-top: 10px; font-size: 16px; line-height: 1.5; color: var(--ink-variant); }
+.hub a:hover b { color: var(--primary); }
+
+/* The last thing on the page needs air under it. */
+.tool-foot { height: var(--s10); }

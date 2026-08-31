@@ -1,0 +1,474 @@
+---
+/**
+ * /tools/runway-calculator
+ *
+ * The first of the free tools (#111). Three things make it worth building
+ * rather than being a worse spreadsheet: it gives a **date** instead of a
+ * count, it **grows** both spend and revenue instead of assuming either is
+ * flat, and it answers **default alive or default dead** — the question that
+ * sits on most diligence lists and that no free calculator seems to compute.
+ *
+ * The page is rendered with a plausible seed company already filled in, so an
+ * answer and a question list are on screen before anything is typed. The script
+ * then recomputes from today's date, because this file is built at deploy and
+ * "today" at build time is not today.
+ */
+import Tool from '../../layouts/Tool.astro';
+import { STANDARD_QUESTIONS } from '../../lib/questions';
+
+/**
+ * The fields start empty.
+ *
+ * A seeded company was built first and taken out: a pre-filled figure gets read
+ * as a number somebody else decided was normal, and on a page about defending
+ * your own arithmetic that is the wrong first impression. Placeholders carry
+ * the format instead, which is what a reader who has never done this actually
+ * needs — the shape of the answer, not an example company.
+ *
+ * So there is nothing to compute on arrival, and the page says so rather than
+ * reporting a confident zero. What it can honestly show is the standard
+ * question list, which is asked of every runway number ever quoted; the
+ * grounded ones join it the moment there are numbers to ground them in.
+ */
+
+const FIELDS = [
+  {
+    id: 'cash',
+    label: 'Cash in the bank',
+    help: 'What you can actually spend, net of anything already owed.',
+    placeholder: '600,000',
+  },
+  {
+    id: 'spend',
+    label: 'Monthly spend',
+    help: 'Everything going out: payroll, contractors, tools, rent.',
+    placeholder: '55,000',
+  },
+  {
+    id: 'revenue',
+    label: 'Monthly revenue',
+    help: 'Everything coming in. Leave it empty if you are pre-revenue.',
+    placeholder: '0',
+  },
+];
+
+const RATES = [
+  {
+    id: 'burn-growth',
+    label: 'Spend growth, each month',
+    help: 'Empty assumes your costs never move. Few companies manage that.',
+    placeholder: '0',
+  },
+  {
+    id: 'revenue-growth',
+    label: 'Revenue growth, each month',
+    help: 'Empty is the honest floor. Anything above it is a claim you will be asked to back.',
+    placeholder: '0',
+  },
+];
+
+const TITLE = 'Runway calculator — the month you run out, not the division';
+const DESCRIPTION =
+  'Free runway calculator that grows your spend and your revenue month by month, gives you the date your cash runs out, and answers whether you are default alive or default dead.';
+---
+
+<Tool
+  title={TITLE}
+  description={DESCRIPTION}
+  url="https://www.flintroom.app/tools/runway-calculator"
+  current="/tools/runway-calculator"
+>
+  <section class="tool">
+    <div class="shell">
+      <div class="tool-head">
+        <h1>Runway calculator</h1>
+        <p class="sub">
+          Most of them divide cash by burn and hand you a number. This one grows your spend,
+          grows your revenue, gives you the month you actually run out — and then tells you
+          what gets asked about it.
+        </p>
+      </div>
+
+      <div class="instrument">
+        <form class="inputs" data-runway novalidate>
+          <h2>Your numbers</h2>
+          <div class="rows">
+            <div class="group">
+            {FIELDS.map((field) => (
+              <div class="row">
+                <label for={field.id}>{field.label}</label>
+                <span class="help" id={`${field.id}-help`}>{field.help}</span>
+                <div class="entry">
+                  <input
+                    id={field.id}
+                    name={field.id}
+                    type="text"
+                    inputmode="decimal"
+                    autocomplete="off"
+                    maxlength="15"
+                    placeholder={field.placeholder}
+                    aria-describedby={`${field.id}-help`}
+                  />
+                </div>
+              </div>
+            ))}
+            </div>
+
+            <div class="group">
+            {RATES.map((rate) => (
+              <div class="row pct">
+                <label for={rate.id}>{rate.label}</label>
+                <span class="help" id={`${rate.id}-help`}>{rate.help}</span>
+                <div class="entry">
+                  <input
+                    id={rate.id}
+                    name={rate.id}
+                    type="text"
+                    inputmode="decimal"
+                    autocomplete="off"
+                    maxlength="6"
+                    data-signed
+                    placeholder={rate.placeholder}
+                    aria-describedby={`${rate.id}-help`}
+                  />
+                  <span class="unit" aria-hidden="true">%</span>
+                </div>
+              </div>
+            ))}
+            </div>
+          </div>
+        </form>
+
+        <div class="panel result">
+          <h2>Cash runs out</h2>
+
+          <!-- Not itself a live region. Every figure in here changes on every
+               keystroke, and announcing the whole block each time talks over
+               the person typing. `[data-out="announce"]` below carries one
+               debounced sentence instead. -->
+          <div>
+            <p class="date waiting" data-out="date">&#8212;</p>
+            <p class="count" data-out="count">Add your cash balance</p>
+
+            <div class="verdict" data-out="verdict" data-alive="false" hidden>
+              <p class="state">
+                <span class="dot" aria-hidden="true"></span>
+                <span data-out="state"></span>
+              </p>
+              <p data-out="state-why"></p>
+            </div>
+          </div>
+
+          <p class="sr-only" role="status" data-out="announce"></p>
+
+          <div class="schedule" data-out="schedule" hidden>
+            <div class="bars" data-out="bars" role="img" aria-label="Cash balance falling month by month"></div>
+            <p class="axis">
+              <span>Today</span>
+              <span data-out="axis-end"></span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="asked">
+    <div class="shell">
+      <h2>What gets asked about this number</h2>
+      <p>
+        The figure is not the end of the exercise — it is the thing somebody is about to
+        question. These four are asked of every runway number ever quoted. Fill the
+        calculator in and the ones drawn from your own figures join them, marked.
+      </p>
+      <ol data-out="questions">
+        {STANDARD_QUESTIONS.map((question) => (
+          <li data-grounded={String(question.grounded)}>
+            <h3>
+              {question.text}
+              {question.grounded && <span class="yours">From your numbers</span>}
+            </h3>
+            <p>{question.why}</p>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <section class="notes">
+    <div class="shell">
+      <h2>How this is calculated, and where the usual version goes wrong</h2>
+
+      <p>
+        The standard runway calculation is cash divided by net burn. It is correct arithmetic
+        and a poor forecast, because it holds two things still that are never still: what you
+        spend and what you earn. A company spending 3% more each month reaches zero months
+        earlier than the division says, and the gap widens the further out you look.
+      </p>
+
+      <h3>Gross burn and net burn are different numbers</h3>
+      <p>
+        <strong>Gross burn</strong> is everything leaving the account. <strong>Net burn</strong>
+        is gross burn minus revenue — the amount the bank balance actually falls by. Runway is
+        always calculated on net burn, and quoting the two interchangeably is the most common
+        way a founder and an investor end up describing different companies. This page asks for
+        spend and revenue separately so the distinction is made for you.
+      </p>
+
+      <h3>Default alive or default dead</h3>
+      <p>
+        Paul Graham's framing, and the reason the two growth fields exist. A company is
+        <strong>default alive</strong> if, on its current trajectory and with no new money, it
+        reaches profitability before it reaches zero. Being default dead is not a failure — most
+        companies are, and that is what a round is for. It changes what the round <em>is</em>:
+        a choice about speed, or a requirement for survival. Whoever is on the other side of the
+        table knows which one they are looking at.
+      </p>
+
+      <h3>What this does not model</h3>
+      <p>
+        Nothing seasonal, no step changes, no financing. Spend and revenue each compound at one
+        steady rate, which is a simplification and an honest one — the alternative is asking for
+        a twelve-month plan, and a page that asks for a plan is a spreadsheet with extra steps.
+        If your costs move in jumps when you hire, run it twice: once at today's spend, once at
+        what it becomes the month the offers land.
+      </p>
+
+      <h3>How much runway is enough</h3>
+      <p>
+        The convention since 2022 has been eighteen to twenty-four months, and it is a
+        convention rather than a rule. What sits underneath it is that a round takes three to
+        six months to close, and you want to be raising from a position where you could walk
+        away. Under twelve months, that leverage is thinning. Under six, the conversation has
+        already changed.
+      </p>
+
+      <h2 style="margin-top:64px">Terms on this page</h2>
+      <dl class="glossary">
+        <div>
+          <dt>Gross burn</dt>
+          <dd>Everything leaving the bank in a month, before any revenue is counted.</dd>
+        </div>
+        <div>
+          <dt>Net burn</dt>
+          <dd>Gross burn minus revenue. The amount the balance actually falls by, and the one runway is calculated on.</dd>
+        </div>
+        <div>
+          <dt>Runway</dt>
+          <dd>How long the cash lasts at the current net burn. Quoted in months, acted on as a date.</dd>
+        </div>
+        <div>
+          <dt>Default alive</dt>
+          <dd>Reaching profitability on the current trajectory, with no new funding, before the money runs out.</dd>
+        </div>
+        <div>
+          <dt>Burn multiple</dt>
+          <dd>Net burn divided by net new annual recurring revenue. A measure of how much you spend to add a unit of growth — not computed here, and the follow-up question if you are a SaaS business.</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+</Tool>
+
+<script>
+  import { runway } from '../../lib/runway';
+  import { questionsFor, STANDARD_QUESTIONS, type Question } from '../../lib/questions';
+  import {
+    clampPercent,
+    formatMonth,
+    formatMonths,
+    formatNumber,
+    parseAmount,
+    sanitizeTyping,
+  } from '../../lib/amount';
+
+  const form = document.querySelector<HTMLFormElement>('[data-runway]');
+  if (form) {
+    // A form with no submit button and no action still submits on Enter in
+    // some browsers, which reloads the page and takes every figure with it.
+    // There is nothing to submit — the answer is already on screen.
+    form.addEventListener('submit', (event) => event.preventDefault());
+
+    // Filter on the way in rather than validate on the way out. There is then
+    // no invalid state, so there is no error message to write and none to read
+    // — and the field never argues with the person using it.
+    for (const input of form.querySelectorAll<HTMLInputElement>('input')) {
+      const signed = input.hasAttribute('data-signed');
+
+      input.addEventListener('input', () => {
+        const before = input.value;
+        const clean = sanitizeTyping(before, { negative: signed });
+        if (clean === before) return;
+
+        // Hold the caret where the typing was. Replacing `value` sends it to
+        // the end, which on a five-digit field means retyping the number.
+        const caret = input.selectionStart ?? before.length;
+        input.value = clean;
+        const moved = Math.max(0, caret - (before.length - clean.length));
+        input.setSelectionRange(moved, moved);
+      });
+
+      // Tidying happens on the way out, never mid-word: thousands separators
+      // for an amount, a rate held to something a business could have.
+      input.addEventListener('blur', () => {
+        const value = parseAmount(input.value);
+        if (signed) {
+          input.value = String(clampPercent(value));
+        } else if (Number.isFinite(value)) {
+          input.value = formatNumber(Math.max(0, value));
+        }
+        draw();
+      });
+    }
+
+    const out = (name: string) => document.querySelector<HTMLElement>(`[data-out="${name}"]`);
+    const field = (id: string) => form.querySelector<HTMLInputElement>(`#${id}`);
+
+    const date = out('date');
+    const count = out('count');
+    const verdict = out('verdict');
+    const state = out('state');
+    const stateWhy = out('state-why');
+    const schedule = out('schedule');
+    const bars = out('bars');
+    const axisEnd = out('axis-end');
+    const questions = out('questions');
+    const announce = out('announce');
+    let pending = 0;
+
+    /** Two years of bars says everything; sixty says nothing legibly. */
+    const BARS = 24;
+
+    function list(asked: Question[]) {
+      if (!questions) return;
+
+      questions.replaceChildren(
+        ...asked.map((question) => {
+          const item = document.createElement('li');
+          item.dataset.grounded = String(question.grounded);
+
+          const text = document.createElement('h3');
+          text.textContent = question.text;
+
+          if (question.grounded) {
+            const badge = document.createElement('span');
+            badge.className = 'yours';
+            badge.textContent = 'From your numbers';
+            text.append(' ', badge);
+          }
+
+          const why = document.createElement('p');
+          why.textContent = question.why;
+
+          item.append(text, why);
+          return item;
+        }),
+      );
+    }
+
+    function draw() {
+      // Read the clock here rather than at build time. This page is static and
+      // may have been built months ago; "from today" has to mean today.
+      const from = new Date();
+      const cash = parseAmount(field('cash')?.value ?? '');
+      const spend = parseAmount(field('spend')?.value ?? '');
+
+      // An empty cash or spend box is an absence, not a zero. Reporting "0
+      // months, Default dead" for a field nobody has filled in is a confident
+      // answer to a question that was never asked, and it is the exact moment
+      // a reader decides the page is not paying attention.
+      const waiting = Number.isNaN(cash) || Number.isNaN(spend);
+
+      const input = {
+        cash,
+        monthlySpend: spend,
+        monthlyRevenue: parseAmount(field('revenue')?.value ?? '') || 0,
+        burnGrowthPercent: clampPercent(parseAmount(field('burn-growth')?.value ?? '')),
+        revenueGrowthPercent: clampPercent(parseAmount(field('revenue-growth')?.value ?? '')),
+        from,
+      };
+
+      if (waiting) {
+        if (date) date.textContent = '—';
+        if (count) {
+          count.textContent = Number.isNaN(cash)
+            ? 'Add your cash balance'
+            : 'Add your monthly spend';
+        }
+        if (verdict) verdict.hidden = true;
+        if (schedule) schedule.hidden = true;
+        if (announce) {
+          window.clearTimeout(pending);
+          announce.textContent = '';
+        }
+        // Back to the standard four. Leaving the grounded ones up would show
+        // questions about figures that are no longer on the screen.
+        list(STANDARD_QUESTIONS);
+        return;
+      }
+
+      if (verdict) verdict.hidden = false;
+      if (schedule) schedule.hidden = false;
+
+      const result = runway(input);
+
+      if (date) date.textContent = result.neverRunsOut ? 'It does not' : formatMonth(result.endsOn!);
+      if (count) {
+        count.textContent = result.neverRunsOut
+          ? 'Revenue covers spend before the money goes'
+          : `${formatMonths(result.months)} from today`;
+      }
+
+      if (verdict) verdict.dataset.alive = String(result.defaultAlive);
+      if (state) state.textContent = result.defaultAlive ? 'Default alive' : 'Default dead';
+      if (stateWhy) {
+        stateWhy.textContent = result.defaultAlive
+          ? 'On these numbers you reach profitability before the cash goes, without raising.'
+          : 'On these numbers profitability arrives after the cash does, so the next round is a requirement rather than a choice.';
+      }
+
+      const shown = result.schedule.slice(0, BARS);
+      const ceiling = Math.max(1, input.cash || 1, ...shown.map((month) => month.closing));
+      if (bars) {
+        bars.replaceChildren(
+          ...shown.map((month) => {
+            const bar = document.createElement('i');
+            bar.style.height = `${Math.max(2, (month.closing / ceiling) * 100)}%`;
+            return bar;
+          }),
+        );
+      }
+      if (axisEnd) axisEnd.textContent = `Month ${shown.length}`;
+
+      // The label is the chart, for anybody not looking at it. A fixed
+      // "balance falling month by month" describes the picture rather than
+      // the data, which is the same as describing nothing.
+      if (bars) {
+        bars.setAttribute(
+          'aria-label',
+          result.neverRunsOut
+            ? `Balance from ${formatNumber(input.cash)}, holding steady`
+            : `Balance falling from ${formatNumber(input.cash)} to zero over ${formatMonths(result.months)}`,
+        );
+      }
+
+      // Short, and on a delay. The figures move on every keystroke; a live
+      // region carrying all of them would talk over the person typing.
+      if (announce) {
+        window.clearTimeout(pending);
+        pending = window.setTimeout(() => {
+          announce.textContent = result.neverRunsOut
+            ? 'Cash does not run out on these numbers.'
+            : `Cash runs out ${formatMonth(result.endsOn!)}, ${formatMonths(result.months)} from today. ${
+                result.defaultAlive ? 'Default alive.' : 'Default dead.'
+              }`;
+        }, 700);
+      }
+
+      list(questionsFor(result, input));
+    }
+
+    form.addEventListener('input', draw);
+    draw();
+  }
+</script>
