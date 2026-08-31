@@ -361,6 +361,66 @@ async def test_a_sandbox_purchase_grants_nothing(db, account, ledger):
     assert (await ledger.balance(user_id=account.user_id)).allowance_seconds == 0
 
 
+async def test_a_free_trial_grants_nothing(db, account, ledger):
+    """A trial is a subscription that has not been paid for, and #109 says so.
+
+    Play can attach a free-trial offer to a subscription product from the
+    console, without a line of code changing here. RevenueCat then sends the
+    same `INITIAL_PURCHASE` a real sale sends, distinguished only by
+    `period_type` — which was parsed into the schema and read nowhere. The
+    result would be a full monthly allowance granted for zero revenue, to
+    somebody who can cancel before it ever bills.
+
+    The decision recorded on #109 is that no trial is ever configured: the app
+    already grants fifteen minutes at signup, which is a complete room, and a
+    Play trial would be a second and far more expensive free tier stacked on
+    the first. So this branch firing means a *misconfiguration* rather than a
+    user, and the audit row is an alarm rather than an explanation.
+    """
+    for period in ("TRIAL", "INTRO", "trial"):
+        with pytest.raises(WebhookRejected):
+            await billing(db).handle(
+                event(app_user_id=account.user_id, period_type=period)
+            )
+
+    await db.refresh(account)
+    assert account.entitlement_tier == "free"
+    assert (await ledger.balance(user_id=account.user_id)).allowance_seconds == 0
+
+
+async def test_a_refused_trial_says_which_product_it_was(db, account):
+    """The audit row is the only thing that will ever report this.
+
+    Nobody watches for a purchase that did not happen. What makes the
+    misconfiguration findable is a row naming the product, so that whoever
+    ticked the box in the Play console can be pointed at the offer they added.
+    """
+    with pytest.raises(WebhookRejected):
+        await billing(db).handle(
+            event(app_user_id=account.user_id, period_type="TRIAL")
+        )
+
+    (rejected,) = await audited(db, AuditEventType.WEBHOOK_REJECTED)
+    assert rejected.context["reason"] == "trial_period"
+    assert rejected.context["period_type"] == "TRIAL"
+
+
+async def test_a_paid_purchase_is_unaffected_by_the_trial_guard(db, account, ledger):
+    """The guard must not catch the thing it sits next to.
+
+    `NORMAL` is what a real purchase carries, and an absent `period_type` is
+    what a store that does not send one carries. Both grant.
+    """
+    for period in ("NORMAL", None):
+        await billing(db).handle(
+            event(app_user_id=account.user_id, period_type=period)
+        )
+
+    await db.refresh(account)
+    assert account.entitlement_tier != "free"
+    assert (await ledger.balance(user_id=account.user_id)).allowance_seconds > 0
+
+
 async def test_a_purchase_for_an_account_we_do_not_have_is_refused(db):
     """`app_user_id` is our id, and a value that is not one is not a guess to make.
 

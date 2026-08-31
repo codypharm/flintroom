@@ -165,6 +165,24 @@ them the same name across subscriptions so the pattern is boring.
 **Activate the base plan.** A subscription with an inactive base plan is invisible
 to the app and to RevenueCat, and looks exactly like a wrong identifier.
 
+**Do not add a free trial or an introductory offer.** Play attaches these to a
+base plan from this screen, with no code change anywhere — and the backend
+refuses them (#109). The reason is that the app already grants fifteen minutes
+at signup, lifetime and idempotent, which is one complete room from start to
+prep sheet. That *is* the trial. A Play trial on top would be a second free
+tier and by far the more expensive one: Starter is ninety minutes, which at the
+figures in `docs/voice-cost.md` is roughly $4–6 of real spend, taken by
+somebody who has already had their fifteen and can cancel before it ever bills.
+
+If one is added anyway, `apply_subscription` never runs. The webhook is
+refused with an `audit_events` row carrying `reason: trial_period` and the
+product ID, so the misconfiguration surfaces instead of quietly granting. That
+guard is deliberately blunt — a trial subscriber would be left with an active
+subscription and no minutes — because it is written for a checkbox rather than
+for a user, and there is not supposed to be one. Genuinely wanting a trial
+means replacing the guard with a policy in code, most likely granting the
+free-tier fifteen minutes, rather than deleting it.
+
 Play has **no subscription-group concept**. Apple's grouping is what makes Starter
 and Pro mutually exclusive; on Play, upgrade and downgrade are the client's job,
 declared at purchase time through the SDK's replacement mode. Nothing about that

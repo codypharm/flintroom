@@ -67,6 +67,15 @@ HANDLED_EVENT_TYPES: frozenset[str] = (
     SUBSCRIPTION_EVENTS | REVOCATION_EVENTS | TOPUP_EVENTS | {"CANCELLATION"}
 )
 
+#: Periods that are not paid for, and so grant nothing — #109.
+#:
+#: `TRIAL` is a free trial and `INTRO` an introductory-price offer; both are
+#: attached to a product from the store console with no code change here, and
+#: both arrive as an ordinary `INITIAL_PURCHASE` distinguished only by this
+#: field. `NORMAL`, and an absent value from a store that does not send one,
+#: are paid and grant.
+TRIAL_PERIODS = frozenset({"TRIAL", "INTRO"})
+
 
 class BillingService:
     """The only path through which a store's callback reaches an account."""
@@ -163,6 +172,37 @@ class BillingService:
                 environment=event.environment,
             )
             raise WebhookRejected(reason="sandbox_purchase")
+
+        # A trial, for the same reason and in the same place: everything below
+        # this grants, and `period_type` is the only thing separating a
+        # subscription somebody paid for from one they have not.
+        #
+        # **This is a guard against a checkbox, not against a user.** #109
+        # records the decision that no free trial is ever configured — the app
+        # already grants fifteen minutes at signup, which is one complete room,
+        # and a Play trial would stack a second and far costlier free tier on
+        # top of it. Play can attach a trial offer to a product from the console
+        # with no code change here, so without this the leak opens silently and
+        # nothing raises.
+        #
+        # It therefore fires only on a misconfiguration, and the audit row is an
+        # alarm rather than an explanation to anybody. That is also why refusing
+        # outright is acceptable: a trial subscriber left with an active
+        # subscription and no minutes would be poor treatment of a real user,
+        # and there is not supposed to be one. If a trial is ever genuinely
+        # wanted, this is replaced by a policy — most likely granting the
+        # free-tier fifteen minutes — rather than deleted.
+        #
+        # An expiry or cancellation carrying `TRIAL` is refused too, harmlessly:
+        # nothing was granted, so there is nothing to take back.
+        if event.period_type and event.period_type.upper() in TRIAL_PERIODS:
+            await self._reject(
+                "trial_period",
+                store_event=event.type,
+                period_type=event.period_type,
+                product_id=event.product_id,
+            )
+            raise WebhookRejected(reason="trial_period")
 
         user_id = await self._account_of(event)
 
