@@ -30,6 +30,13 @@ export interface Tool {
 
 export const TOOLS: Tool[] = [
   {
+    href: '/tools/price-change-calculator',
+    name: 'Price change impact',
+    blurb: 'How much volume a rise can lose, and how much a discount demands',
+    audience: 'Business owners',
+    icon: '<path d="M4 20 20 4"/><path d="M7 4h13v13"/><path d="M4 8v12h12"/>',
+  },
+  {
     href: '/tools/ltv-cac-calculator',
     name: 'LTV:CAC and payback',
     blurb: 'The ratio, the months to pay it back, and the lifetime it assumes',

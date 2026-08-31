@@ -1,0 +1,409 @@
+---
+/**
+ * /tools/price-change-calculator
+ *
+ * Tool five (#111). The question people ask before changing a price is "will
+ * they leave?", which nobody can answer. The one they can answer and almost
+ * never do is how many would have to leave before the change stopped being
+ * worth it — and that is arithmetic rather than judgement.
+ *
+ * The discount direction is the more valuable half. Discounting is the more
+ * common decision and far the more damaging: at a 30% margin, a 10% cut needs
+ * half again as many customers to stand still, and that figure is rarely on
+ * the table while it is being decided.
+ */
+import Tool from '../../layouts/Tool.astro';
+import { STANDARD_PRICING_QUESTIONS } from '../../lib/pricing-questions';
+
+const NOW = [
+  {
+    id: 'price',
+    label: 'Current price',
+    help: 'Per unit, per seat, per month — whatever you sell one of.',
+    placeholder: '100',
+  },
+  {
+    id: 'margin',
+    label: 'Gross margin at that price',
+    help: 'What is left after the direct cost of delivering it.',
+    placeholder: '30',
+    unit: '%',
+  },
+];
+
+const CHANGE = [
+  {
+    id: 'change',
+    label: 'Price change',
+    help: 'Negative for a discount. A cut of 10 is entered as -10.',
+    placeholder: '10',
+    unit: '%',
+    signed: true,
+  },
+  {
+    id: 'volume',
+    label: 'Customers or units a month',
+    help: 'Optional. It turns the percentage into a number of customers.',
+    placeholder: '400',
+  },
+];
+
+const TITLE = 'Price change calculator — how much volume you can afford to lose';
+const DESCRIPTION =
+  'Free price change calculator: work out the break-even volume for a price rise or a discount. At a 30% margin, a 10% rise survives losing a quarter of your customers, and a 10% cut needs half again as many.';
+---
+
+<Tool
+  title={TITLE}
+  description={DESCRIPTION}
+  url="https://www.flintroom.app/tools/price-change-calculator"
+  current="/tools/price-change-calculator"
+>
+  <section class="tool">
+    <div class="shell">
+      <div class="tool-head">
+        <h1>Price change calculator</h1>
+        <p class="sub">
+          Nobody can tell you whether customers will leave. What can be worked out exactly is
+          how many would have to, before the change stopped being worth making — and for a
+          discount, how many more you would need just to stand still.
+        </p>
+      </div>
+
+      <div class="instrument">
+        <form class="inputs" data-pricing novalidate>
+          <h2>Your numbers</h2>
+
+          <div class="rows">
+            <div class="group">
+              {NOW.map((field) => (
+                <div class={field.unit ? 'row pct' : 'row'}>
+                  <label for={field.id}>{field.label}</label>
+                  <span class="help" id={`${field.id}-help`}>{field.help}</span>
+                  <div class="entry">
+                    <input id={field.id} type="text" inputmode="decimal" autocomplete="off" maxlength="15" placeholder={field.placeholder} aria-describedby={`${field.id}-help`} />
+                    {field.unit && <span class="unit" aria-hidden="true">{field.unit}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div class="group">
+              {CHANGE.map((field) => (
+                <div class={field.unit ? 'row pct' : 'row'}>
+                  <label for={field.id}>{field.label}</label>
+                  <span class="help" id={`${field.id}-help`}>{field.help}</span>
+                  <div class="entry">
+                    <input
+                      id={field.id}
+                      type="text"
+                      inputmode="decimal"
+                      autocomplete="off"
+                      maxlength="15"
+                      placeholder={field.placeholder}
+                      aria-describedby={`${field.id}-help`}
+                      {...(field.signed ? { 'data-signed': true } : {})}
+                    />
+                    {field.unit && <span class="unit" aria-hidden="true">{field.unit}</span>}
+                  </div>
+                  {field.id === 'change' && (
+                    <span class="help translated" data-out="new-price" hidden></span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </form>
+
+        <div class="panel result">
+          <h2 data-out="heading">What it can cost you</h2>
+
+          <div>
+            <p class="date" data-out="tolerance">—</p>
+            <p class="count" data-out="tolerance-line">Add a price, a margin and a change</p>
+          </div>
+
+          <p class="sr-only" role="status" data-out="announce"></p>
+
+          <div class="attrib" data-out="figures" hidden>
+            <h3>Per sale, either side of the change</h3>
+            <ul data-out="figures-list"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="asked">
+    <div class="shell">
+      <h2>What gets asked about this decision</h2>
+      <p>
+        None of these ask how much volume you can afford to lose, because that is already on
+        the screen. They ask the things the arithmetic cannot: who leaves, who is told, and
+        whether the price can ever come back.
+      </p>
+      <ol data-out="questions">
+        {STANDARD_PRICING_QUESTIONS.map((question) => (
+          <li data-grounded="false">
+            <h3>{question.text}</h3>
+            <p>{question.why}</p>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <section class="notes">
+    <div class="shell">
+      <h2>Why a discount costs so much more than it looks</h2>
+
+      <p>
+        The instinct is that a 10% discount costs 10%. It does not, because the discount comes
+        out of margin rather than out of price. Sell at 100 with a 30% margin and each sale
+        contributes 30. Discount to 90 and it contributes 20 — <strong>a third of your profit
+        on the sale, gone, for a tenth off the price.</strong>
+      </p>
+      <p>
+        To earn back what you had, you need half again as many customers. Not ten percent more.
+        Fifty. That is the number worth having before the decision rather than after it, and
+        it is almost never calculated, because the discount is discussed as a percentage of
+        price while it lands as a percentage of margin.
+      </p>
+
+      <h3>A rise works the same way, in your favour</h3>
+      <p>
+        The same arithmetic run backwards is why price rises are usually under-attempted. At a
+        30% margin, raising 10% takes contribution from 30 to 40 — so you could lose a quarter
+        of your customers and be exactly where you started. Most businesses would not lose
+        anything like a quarter, which means the rise is worth more than it feels and the fear
+        of it is larger than the exposure.
+      </p>
+
+      <h3>Thin margins amplify both directions</h3>
+      <p>
+        This is the part that catches people out. At a 10% margin, a 10% price rise
+        <em>doubles</em> contribution — so it survives losing half the customers. The same
+        business discounting 10% goes to zero contribution and no amount of volume rescues it.
+        Low margin does not mean small effects; it means the price is doing nearly all the
+        work, and every move on it is enormous.
+      </p>
+
+      <h3>What this does not do</h3>
+      <p>
+        It does not predict whether anybody will leave. That is elasticity, it needs your own
+        data and your own market, and a page pretending to know it would be inventing the most
+        important input. What is on the screen is a <strong>threshold</strong>: the point at
+        which the change stops being worth it. Whether you cross it is a question about your
+        customers, not about arithmetic.
+      </p>
+      <p>
+        It also holds unit cost still, which is right for a price change and wrong for anything
+        that changes what you deliver. If the new price comes with a different product, the
+        cost moves too and this understates the effect.
+      </p>
+
+      <h2 style="margin-top:64px">Terms on this page</h2>
+      <dl class="glossary">
+        <div>
+          <dt>Contribution</dt>
+          <dd>What one sale leaves you after the direct cost of delivering it. Price minus unit cost.</dd>
+        </div>
+        <div>
+          <dt>Gross margin</dt>
+          <dd>Contribution as a percentage of price. A 100 sale at 30% margin contributes 30.</dd>
+        </div>
+        <div>
+          <dt>Break-even volume change</dt>
+          <dd>The change in units sold that leaves total contribution exactly where it was.</dd>
+        </div>
+        <div>
+          <dt>Elasticity</dt>
+          <dd>How much demand actually moves when price does. Not modelled here — it is the thing this page deliberately refuses to guess.</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+</Tool>
+
+<script>
+  import { priceChange } from '../../lib/pricing';
+  import { pricingQuestionsFor, STANDARD_PRICING_QUESTIONS } from '../../lib/pricing-questions';
+  import { formatNumber, parseAmount, sanitizeTyping } from '../../lib/amount';
+  import type { Question } from '../../lib/question';
+
+  const form = document.querySelector<HTMLFormElement>('[data-pricing]');
+
+  if (form) {
+    const out = (name: string) => document.querySelector<HTMLElement>(`[data-out="${name}"]`);
+    const read = (id: string) => parseAmount(form.querySelector<HTMLInputElement>(`#${id}`)?.value ?? '');
+
+    const heading = out('heading');
+    const tolerance = out('tolerance');
+    const toleranceLine = out('tolerance-line');
+    const newPrice = out('new-price');
+    const figures = out('figures');
+    const figuresList = out('figures-list');
+    const questions = out('questions');
+    const announce = out('announce');
+    let pending = 0;
+
+    function render(asked: Question[]) {
+      if (!questions) return;
+
+      questions.replaceChildren(
+        ...asked.map((question) => {
+          const item = document.createElement('li');
+          item.dataset.grounded = String(question.grounded);
+
+          const text = document.createElement('h3');
+          text.textContent = question.text;
+          if (question.grounded) {
+            const badge = document.createElement('span');
+            badge.className = 'yours';
+            badge.textContent = 'From your numbers';
+            text.append(' ', badge);
+          }
+
+          const why = document.createElement('p');
+          why.textContent = question.why;
+
+          item.append(text, why);
+          return item;
+        }),
+      );
+    }
+
+    function draw() {
+      const price = read('price');
+      const change = read('change');
+
+      const input = {
+        price: price || 0,
+        grossMarginPercent: read('margin') || 0,
+        changePercent: change || 0,
+        monthlyVolume: read('volume') || 0,
+      };
+
+      const result = priceChange(input);
+
+      // The new price, shown under the field that produced it — the same move
+      // the LTV page makes with the annual churn figure.
+      if (newPrice) {
+        const has = price > 0 && Number.isFinite(change) && change !== 0;
+        newPrice.hidden = !has;
+        newPrice.textContent = has ? `≈ a new price of ${formatNumber(result.newPrice)}.` : '';
+      }
+
+      const waiting = Number.isNaN(price) || Number.isNaN(change) || input.grossMarginPercent <= 0;
+
+      if (waiting) {
+        if (heading) heading.textContent = 'What it can cost you';
+        if (tolerance) tolerance.textContent = '—';
+        if (toleranceLine) {
+          toleranceLine.textContent = input.grossMarginPercent <= 0 && !Number.isNaN(price)
+            ? 'Add a gross margin — without one there is no contribution to protect'
+            : 'Add a price, a margin and a change';
+        }
+        if (figures) figures.hidden = true;
+        if (announce) { window.clearTimeout(pending); announce.textContent = ''; }
+        render(STANDARD_PRICING_QUESTIONS);
+        return;
+      }
+
+      const needed = result.volumeChangeNeededPercent;
+
+      if (result.belowCost) {
+        if (heading) heading.textContent = 'Below cost';
+        if (tolerance) tolerance.textContent = 'No volume helps';
+        if (toleranceLine) {
+          toleranceLine.textContent =
+            'this discount is deeper than the margin, so every sale loses money and more of them lose more.';
+        }
+      } else if (needed === null || change === 0) {
+        if (heading) heading.textContent = 'No change';
+        if (tolerance) tolerance.textContent = '—';
+        if (toleranceLine) toleranceLine.textContent = 'Enter a price change, up or down.';
+      } else if (result.raising) {
+        if (heading) heading.textContent = 'What you can afford to lose';
+        if (tolerance) tolerance.textContent = `${Math.abs(needed).toFixed(0)}%`;
+        if (toleranceLine) {
+          toleranceLine.textContent =
+            result.customersAtStake === null
+              ? 'of your customers could leave and you would be exactly where you started.'
+              : `— about ${Math.round(result.customersAtStake)} customers — could leave and you would be exactly where you started.`;
+        }
+      } else {
+        if (heading) heading.textContent = 'What this discount demands';
+        if (tolerance) tolerance.textContent = `+${needed.toFixed(0)}%`;
+        if (toleranceLine) {
+          toleranceLine.textContent =
+            result.customersAtStake === null
+              ? 'more volume, just to stand still.'
+              : `more volume — about ${Math.round(result.customersAtStake)} additional customers — just to stand still.`;
+        }
+      }
+
+      if (figures && figuresList) {
+        figures.hidden = false;
+        const lines: [string, string][] = [
+          ['Price', `${formatNumber(input.price)} → ${formatNumber(result.newPrice)}`],
+          ['Contribution', `${formatNumber(result.contributionBefore)} → ${formatNumber(result.contributionAfter)}`],
+          ['Unit cost', formatNumber(result.unitCost)],
+        ];
+
+        figuresList.replaceChildren(
+          ...lines.map(([label, value]) => {
+            const item = document.createElement('li');
+            const figure = document.createElement('b');
+            figure.textContent = value;
+            const name = document.createElement('span');
+            name.textContent = label;
+            item.append(figure, name);
+            return item;
+          }),
+        );
+      }
+
+      render(pricingQuestionsFor(result, input));
+
+      if (announce) {
+        window.clearTimeout(pending);
+        pending = window.setTimeout(() => {
+          announce.textContent = result.belowCost
+            ? 'This discount is deeper than the margin. Every sale loses money.'
+            : needed === null
+              ? ''
+              : result.raising
+                ? `You could lose ${Math.abs(needed).toFixed(0)} percent of customers and break even.`
+                : `This needs ${needed.toFixed(0)} percent more volume to break even.`;
+        }, 700);
+      }
+    }
+
+    for (const input of form.querySelectorAll<HTMLInputElement>('input')) {
+      const signed = input.hasAttribute('data-signed');
+
+      input.addEventListener('input', () => {
+        const clean = sanitizeTyping(input.value, { negative: signed });
+        if (clean !== input.value) {
+          const caret = input.selectionStart ?? input.value.length;
+          const shrank = input.value.length - clean.length;
+          input.value = clean;
+          const moved = Math.max(0, caret - shrank);
+          input.setSelectionRange(moved, moved);
+        }
+        draw();
+      });
+      input.addEventListener('blur', () => {
+        const value = parseAmount(input.value);
+        // A price change keeps its sign; everything else on this form is a
+        // quantity and cannot be negative.
+        if (Number.isFinite(value)) input.value = formatNumber(signed ? value : Math.max(0, value));
+        draw();
+      });
+    }
+
+    form.addEventListener('submit', (event) => event.preventDefault());
+    draw();
+  }
+</script>
