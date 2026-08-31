@@ -1,0 +1,380 @@
+---
+/**
+ * /tools/ltv-cac-calculator
+ *
+ * Tool four (#111). The ratio is what people quote and the softest number in
+ * any deck, because LTV assumes a customer lifetime nobody has lived yet. So
+ * the headline is the duration rather than the ratio: this assumes they stay
+ * 33 months, and you have been operating 14.
+ *
+ * Underneath it, the three things these calculators get wrong — value counted
+ * as revenue rather than gross profit, the ratio quoted without the payback,
+ * and monthly churn multiplied by twelve instead of compounded.
+ */
+import Tool from '../../layouts/Tool.astro';
+import { STANDARD_UNIT_QUESTIONS } from '../../lib/unit-economics-questions';
+
+const CUSTOMER = [
+  {
+    id: 'arpu',
+    label: 'Monthly revenue per customer',
+    help: 'What one customer pays you in a month, on average.',
+    placeholder: '100',
+  },
+  {
+    id: 'margin',
+    label: 'Gross margin',
+    help: 'What is left after the cost of serving them. Left empty, this counts revenue as value.',
+    placeholder: '70',
+    unit: '%',
+  },
+  {
+    id: 'churn',
+    label: 'Monthly churn',
+    help: 'The share of customers who leave in a month.',
+    placeholder: '3',
+    unit: '%',
+  },
+];
+
+const ACQUISITION = [
+  {
+    id: 'cac',
+    label: 'Cost to acquire one customer',
+    help: 'All of it: ad spend, plus the salaries of the people doing the acquiring.',
+    placeholder: '500',
+  },
+  {
+    id: 'age',
+    label: 'How long you have been operating',
+    help: 'What the assumed lifetime gets measured against.',
+    placeholder: '14',
+    unit: 'mo',
+  },
+];
+
+const TITLE = 'LTV:CAC calculator — the ratio, the payback, and the lifetime it assumes';
+const DESCRIPTION =
+  'Free LTV:CAC calculator with gross-margin-adjusted lifetime value, CAC payback period, and the customer lifetime your ratio quietly assumes — measured against how long you have actually been operating.';
+---
+
+<Tool
+  title={TITLE}
+  description={DESCRIPTION}
+  url="https://www.flintroom.app/tools/ltv-cac-calculator"
+  current="/tools/ltv-cac-calculator"
+>
+  <section class="tool">
+    <div class="shell">
+      <div class="tool-head">
+        <h1>LTV:CAC calculator</h1>
+        <p class="sub">
+          The ratio is the number you will quote and the softest one in the deck, because
+          lifetime value assumes a customer lifetime nobody has lived through yet. This works
+          out how long that assumption is, and how it compares to how long you have existed.
+        </p>
+      </div>
+
+      <div class="instrument">
+        <form class="inputs" data-unit novalidate>
+          <h2>Your numbers</h2>
+
+          <div class="rows">
+            <div class="group">
+              {CUSTOMER.map((field) => (
+                <div class={field.unit ? 'row pct' : 'row'}>
+                  <label for={field.id}>{field.label}</label>
+                  <span class="help" id={`${field.id}-help`}>{field.help}</span>
+                  <div class="entry">
+                    <input id={field.id} type="text" inputmode="decimal" autocomplete="off" maxlength="15" placeholder={field.placeholder} aria-describedby={`${field.id}-help`} />
+                    {field.unit && <span class="unit" aria-hidden="true">{field.unit}</span>}
+                  </div>
+                  {field.id === 'churn' && (
+                    <span class="help translated" data-out="churn-year" hidden></span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div class="group">
+              {ACQUISITION.map((field) => (
+                <div class={field.unit ? 'row pct' : 'row'}>
+                  <label for={field.id}>{field.label}</label>
+                  <span class="help" id={`${field.id}-help`}>{field.help}</span>
+                  <div class="entry">
+                    <input id={field.id} type="text" inputmode="decimal" autocomplete="off" maxlength="15" placeholder={field.placeholder} aria-describedby={`${field.id}-help`} />
+                    {field.unit && <span class="unit" aria-hidden="true">{field.unit}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </form>
+
+        <div class="panel result">
+          <h2>What this assumes</h2>
+
+          <div>
+            <p class="date" data-out="lifetime">—</p>
+            <p class="count" data-out="lifetime-line">Add revenue, margin and churn</p>
+          </div>
+
+          <p class="sr-only" role="status" data-out="announce"></p>
+
+          <div class="attrib" data-out="figures" hidden>
+            <h3>The numbers you would quote</h3>
+            <ul data-out="figures-list"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="asked">
+    <div class="shell">
+      <h2>What gets asked about this number</h2>
+      <p>
+        Almost every question about unit economics is the same question underneath — how do you
+        know? The ratio is built from two estimates and a forecast. These four come up whatever
+        the figures; fill the calculator in and the ones drawn from yours join them, marked.
+      </p>
+      <ol data-out="questions">
+        {STANDARD_UNIT_QUESTIONS.map((question) => (
+          <li data-grounded="false">
+            <h3>{question.text}</h3>
+            <p>{question.why}</p>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <section class="notes">
+    <div class="shell">
+      <h2>The three things these calculators get wrong</h2>
+
+      <h3>Revenue is not value</h3>
+      <p>
+        A customer paying 100 a month at 70% gross margin is worth 70 a month to you, not 100.
+        Lifetime value is built from <strong>gross profit</strong>, and a calculator that skips
+        the margin is computing revenue and calling it value — the same shape of error as
+        quoting gross burn where net burn was meant, and just as common. It also inflates the
+        ratio by exactly the amount the margin was going to cost you.
+      </p>
+
+      <h3>The ratio is a profitability statement. Payback is the cash one.</h3>
+      <p>
+        Four to one says a customer eventually returns four times what they cost. It says
+        nothing about <em>when</em>. A business can have an excellent ratio and a fatal payback
+        period, because every new customer is a hole in the bank balance until they have paid
+        for themselves. Past about a year, growth has to be funded by something — and the
+        faster you grow, the bigger the hole.
+      </p>
+
+      <h3>Monthly churn compounds</h3>
+      <p>
+        Three percent a month is about <strong>31% a year</strong>, not 36% and certainly not
+        3%. Quoting one number and meaning the other is the most common way an LTV:CAC ratio
+        ends up wrong by an order of magnitude rather than a few percent. This page asks for
+        monthly and shows you the annual figure as you type, so the two can never be confused.
+      </p>
+
+      <h3>And the assumption underneath all of it</h3>
+      <p>
+        Lifetime value is one over churn, multiplied by what a customer contributes. That
+        <em>one over churn</em> is an assumed duration: 3% monthly churn assumes the average
+        customer stays 33 months. If the company is eighteen months old, no customer has yet
+        had the chance to prove or disprove it — the number is a projection about behaviour
+        nobody has observed.
+      </p>
+      <p>
+        That does not make it wrong, and it is the standard way the figure is calculated. It
+        does make it a claim rather than a measurement, and the version that survives scrutiny
+        is the one where you say so before anybody else does.
+      </p>
+
+      <h3>What this does not do</h3>
+      <p>
+        No expansion revenue, no cohort analysis, no channel split. Each would make the figure
+        more accurate and each needs data a free page cannot ask for. Net revenue retention
+        above a hundred percent in particular makes LTV substantially larger, and is worth
+        modelling properly rather than approximating here.
+      </p>
+
+      <h2 style="margin-top:64px">Terms on this page</h2>
+      <dl class="glossary">
+        <div>
+          <dt>LTV</dt>
+          <dd>Lifetime value. Gross profit per customer per month, multiplied by how many months they stay.</dd>
+        </div>
+        <div>
+          <dt>CAC</dt>
+          <dd>Customer acquisition cost. Fully loaded — ad spend plus the salaries of the people doing the acquiring.</dd>
+        </div>
+        <div>
+          <dt>Payback period</dt>
+          <dd>Months until a customer's gross profit has repaid what it cost to acquire them.</dd>
+        </div>
+        <div>
+          <dt>Gross margin</dt>
+          <dd>What is left of a sale after the direct cost of serving it. The multiplier on everything here.</dd>
+        </div>
+        <div>
+          <dt>Churn</dt>
+          <dd>The share of customers lost in a period. One divided by monthly churn is the average lifetime in months.</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+</Tool>
+
+<script>
+  import { unitEconomics } from '../../lib/unit-economics';
+  import { STANDARD_UNIT_QUESTIONS, unitQuestionsFor } from '../../lib/unit-economics-questions';
+  import { clampPercent, formatMonths, formatNumber, parseAmount, sanitizeTyping } from '../../lib/amount';
+  import type { Question } from '../../lib/question';
+
+  const form = document.querySelector<HTMLFormElement>('[data-unit]');
+
+  if (form) {
+    const out = (name: string) => document.querySelector<HTMLElement>(`[data-out="${name}"]`);
+    const read = (id: string) => parseAmount(form.querySelector<HTMLInputElement>(`#${id}`)?.value ?? '');
+
+    const lifetime = out('lifetime');
+    const lifetimeLine = out('lifetime-line');
+    const churnYear = out('churn-year');
+    const figures = out('figures');
+    const figuresList = out('figures-list');
+    const questions = out('questions');
+    const announce = out('announce');
+    let pending = 0;
+
+    function render(asked: Question[]) {
+      if (!questions) return;
+
+      questions.replaceChildren(
+        ...asked.map((question) => {
+          const item = document.createElement('li');
+          item.dataset.grounded = String(question.grounded);
+
+          const text = document.createElement('h3');
+          text.textContent = question.text;
+          if (question.grounded) {
+            const badge = document.createElement('span');
+            badge.className = 'yours';
+            badge.textContent = 'From your numbers';
+            text.append(' ', badge);
+          }
+
+          const why = document.createElement('p');
+          why.textContent = question.why;
+
+          item.append(text, why);
+          return item;
+        }),
+      );
+    }
+
+    function draw() {
+      const input = {
+        monthlyRevenuePerCustomer: read('arpu') || 0,
+        grossMarginPercent: clampPercent(read('margin')) || 0,
+        monthlyChurnPercent: clampPercent(read('churn')) || 0,
+        cac: read('cac') || 0,
+        monthsOperating: read('age') || 0,
+      };
+
+      const result = unitEconomics(input);
+
+      // The translation that stops the factor-of-ten error, shown at the
+      // moment it would be made rather than explained further down the page.
+      if (churnYear) {
+        const has = input.monthlyChurnPercent > 0;
+        churnYear.hidden = !has;
+        churnYear.textContent = has
+          ? `≈ ${result.annualChurnPercent.toFixed(0)}% a year, and an average lifetime of ${formatMonths(result.averageLifetimeMonths ?? 0)}.`
+          : '';
+      }
+
+      const waiting = result.ltv === null || result.monthlyContribution <= 0;
+
+      if (waiting) {
+        if (lifetime) lifetime.textContent = '—';
+        if (lifetimeLine) {
+          lifetimeLine.textContent =
+            result.averageLifetimeMonths === null
+              ? 'Add a churn rate — without one, lifetime is infinite'
+              : 'Add revenue and margin';
+        }
+        if (figures) figures.hidden = true;
+        if (announce) { window.clearTimeout(pending); announce.textContent = ''; }
+        render(STANDARD_UNIT_QUESTIONS);
+        return;
+      }
+
+      const months = result.averageLifetimeMonths!;
+
+      if (lifetime) lifetime.textContent = formatMonths(months);
+      if (lifetimeLine) {
+        lifetimeLine.textContent = result.lifetimeExceedsHistory
+          ? `is how long this assumes a customer stays. You have been operating ${formatMonths(result.monthsOperating)}.`
+          : 'is how long this assumes the average customer stays.';
+      }
+
+      if (figures && figuresList) {
+        figures.hidden = false;
+        const lines: [string, string][] = [
+          ['LTV:CAC', result.ratio === null ? 'no acquisition cost' : `${result.ratio.toFixed(1)} : 1`],
+          ['Payback', result.paybackMonths === null ? 'does not pay back' : formatMonths(result.paybackMonths)],
+          ['LTV', formatNumber(result.ltv!)],
+          ['Monthly gross profit', formatNumber(result.monthlyContribution)],
+        ];
+
+        figuresList.replaceChildren(
+          ...lines.map(([label, value]) => {
+            const item = document.createElement('li');
+            const figure = document.createElement('b');
+            figure.textContent = value;
+            const name = document.createElement('span');
+            name.textContent = label;
+            item.append(figure, name);
+            return item;
+          }),
+        );
+      }
+
+      render(unitQuestionsFor(result, input));
+
+      if (announce) {
+        window.clearTimeout(pending);
+        pending = window.setTimeout(() => {
+          announce.textContent = `This assumes an average lifetime of ${formatMonths(months)}. ${
+            result.ratio === null ? '' : `LTV to CAC of ${result.ratio.toFixed(1)} to 1. `
+          }${result.paybackMonths === null ? '' : `Payback at ${formatMonths(result.paybackMonths)}.`}`;
+        }, 700);
+      }
+    }
+
+    for (const input of form.querySelectorAll<HTMLInputElement>('input')) {
+      input.addEventListener('input', () => {
+        const clean = sanitizeTyping(input.value, { negative: false });
+        if (clean !== input.value) {
+          const caret = input.selectionStart ?? input.value.length;
+          const shrank = input.value.length - clean.length;
+          input.value = clean;
+          const moved = Math.max(0, caret - shrank);
+          input.setSelectionRange(moved, moved);
+        }
+        draw();
+      });
+      input.addEventListener('blur', () => {
+        const value = parseAmount(input.value);
+        if (Number.isFinite(value)) input.value = formatNumber(Math.max(0, value));
+        draw();
+      });
+    }
+
+    form.addEventListener('submit', (event) => event.preventDefault());
+    draw();
+  }
+</script>

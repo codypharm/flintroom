@@ -30,6 +30,13 @@ export interface Tool {
 
 export const TOOLS: Tool[] = [
   {
+    href: '/tools/ltv-cac-calculator',
+    name: 'LTV:CAC and payback',
+    blurb: 'The ratio, the months to pay it back, and the lifetime it assumes',
+    audience: 'Founders and operators',
+    icon: '<path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 12 21 3"/><path d="M12 12v9"/>',
+  },
+  {
     href: '/tools/roi-calculator',
     name: 'Business case ROI',
     blurb: 'Payback, NPV, and the share of the benefit that actually has to land',

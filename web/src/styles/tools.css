@@ -130,6 +130,16 @@
   line-height: 1.45;
   color: var(--ink-variant);
 }
+/* The annual equivalent, computed as they type. It reads as a reply to the
+   field rather than as more instruction — which is carried by weight and by
+   the "≈" the string starts with, not by a rule down the side. A coloured
+   left border above a hairline is the callout costume the craft floor bans,
+   and it was here for one commit before this comment replaced it. */
+.row .translated {
+  margin-top: var(--s2);
+  font-weight: 600;
+  color: var(--on-primary-fixed);
+}
 .row .entry {
   position: relative;
   display: flex;
