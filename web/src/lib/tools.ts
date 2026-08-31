@@ -30,6 +30,13 @@ export interface Tool {
 
 export const TOOLS: Tool[] = [
   {
+    href: '/tools/break-even-calculator',
+    name: 'Break-even',
+    blurb: 'The sales you need, and the day of the month you start earning',
+    audience: 'Business owners',
+    icon: '<path d="M3 12h18"/><path d="M6 12V7a1 1 0 0 1 1-1h4"/><path d="M18 12v5a1 1 0 0 1-1 1h-4"/>',
+  },
+  {
     href: '/tools/price-change-calculator',
     name: 'Price change impact',
     blurb: 'How much volume a rise can lose, and how much a discount demands',

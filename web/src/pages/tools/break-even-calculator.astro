@@ -1,0 +1,395 @@
+---
+/**
+ * /tools/break-even-calculator
+ *
+ * Tool six (#111). Every break-even calculator gives a unit count, which is
+ * correct and forgettable. The headline here is the day of the month the fixed
+ * costs are covered — after which every sale is profit rather than rent. Same
+ * move the runway page makes: a date is a fact you plan around, a count is a
+ * number you have to convert first.
+ */
+import Tool from '../../layouts/Tool.astro';
+import { STANDARD_BREAK_EVEN_QUESTIONS } from '../../lib/break-even-questions';
+
+const COSTS = [
+  {
+    id: 'fixed',
+    label: 'Fixed costs a month',
+    help: 'What you pay whether you sell anything or not: rent, salaries, insurance.',
+    placeholder: '12,000',
+  },
+];
+
+const SALE = [
+  {
+    id: 'price',
+    label: 'Price of one sale',
+    help: 'Per unit, per job, per month — whatever you sell one of.',
+    placeholder: '100',
+  },
+  {
+    id: 'margin',
+    label: 'Gross margin on that sale',
+    help: 'What is left after the direct cost of delivering it.',
+    placeholder: '40',
+    unit: '%',
+  },
+  {
+    id: 'volume',
+    label: 'Sales in a normal month',
+    help: 'Optional, and it is what turns the target into a position.',
+    placeholder: '500',
+  },
+];
+
+const TITLE = 'Break-even calculator — the day of the month you start earning';
+const DESCRIPTION =
+  'Free break-even calculator: the units and revenue you need to cover fixed costs, how far sales could fall before it stops working, and the day of the month your costs are covered.';
+---
+
+<Tool
+  title={TITLE}
+  description={DESCRIPTION}
+  url="https://www.flintroom.app/tools/break-even-calculator"
+  current="/tools/break-even-calculator"
+>
+  <section class="tool">
+    <div class="shell">
+      <div class="tool-head">
+        <h1>Break-even calculator</h1>
+        <p class="sub">
+          The usual answer is a number of units, which is correct and hard to act on. This one
+          also tells you which day of the month your fixed costs are covered — and how much
+          could go wrong before they are not.
+        </p>
+      </div>
+
+      <div class="instrument">
+        <form class="inputs" data-breakeven novalidate>
+          <h2>Your numbers</h2>
+
+          <div class="rows">
+            <div class="group">
+              {COSTS.map((field) => (
+                <div class="row">
+                  <label for={field.id}>{field.label}</label>
+                  <span class="help" id={`${field.id}-help`}>{field.help}</span>
+                  <div class="entry">
+                    <input id={field.id} type="text" inputmode="decimal" autocomplete="off" maxlength="15" placeholder={field.placeholder} aria-describedby={`${field.id}-help`} />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div class="group">
+              {SALE.map((field) => (
+                <div class={field.unit ? 'row pct' : 'row'}>
+                  <label for={field.id}>{field.label}</label>
+                  <span class="help" id={`${field.id}-help`}>{field.help}</span>
+                  <div class="entry">
+                    <input id={field.id} type="text" inputmode="decimal" autocomplete="off" maxlength="15" placeholder={field.placeholder} aria-describedby={`${field.id}-help`} />
+                    {field.unit && <span class="unit" aria-hidden="true">{field.unit}</span>}
+                  </div>
+                  {field.id === 'margin' && (
+                    <span class="help translated" data-out="per-sale" hidden></span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </form>
+
+        <div class="panel result">
+          <h2 data-out="heading">Where you break even</h2>
+
+          <div>
+            <p class="date" data-out="headline">—</p>
+            <p class="count" data-out="headline-line">Add your costs, a price and a margin</p>
+          </div>
+
+          <p class="sr-only" role="status" data-out="announce"></p>
+
+          <div class="attrib" data-out="figures" hidden>
+            <h3>What it takes to get there</h3>
+            <ul data-out="figures-list"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="asked">
+    <div class="shell">
+      <h2>What gets asked about this number</h2>
+      <p>
+        Usually by a bank, a partner, or yourself at two in the morning. Nearly all of them are
+        really about the same thing — the number on the screen is an average month, and
+        averages are paid in real ones.
+      </p>
+      <ol data-out="questions">
+        {STANDARD_BREAK_EVEN_QUESTIONS.map((question) => (
+          <li data-grounded="false">
+            <h3>{question.text}</h3>
+            <p>{question.why}</p>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <section class="notes">
+    <div class="shell">
+      <h2>How break-even is calculated, and where it misleads</h2>
+
+      <p>
+        Fixed costs divided by what one sale contributes. A sale at 100 with a 40% margin
+        contributes 40, so 12,000 of fixed costs needs 300 sales. That part is simple and every
+        calculator agrees on it.
+      </p>
+      <p>
+        What makes it usable is the next step. If a normal month brings 500 sales, you pass 300
+        about three fifths of the way through — <strong>day 18</strong>. The first eighteen days
+        pay the rent; the last twelve are yours. That is the same figure said in a way you can
+        plan around, and it is why this page leads with it.
+      </p>
+
+      <h3>The classification problem</h3>
+      <p>
+        The most common error is not arithmetic, it is sorting. <strong>Fixed</strong> costs are
+        the ones you pay whether or not you sell anything: rent, salaries, insurance, the
+        accountant. <strong>Variable</strong> costs move with volume: materials, delivery,
+        payment processing, commission, contractors paid by the job, and most usage-priced
+        software.
+      </p>
+      <p>
+        Put a variable cost in the fixed column and break-even looks further away than it is.
+        Put a fixed cost in the variable column and it looks closer. The second error is the
+        dangerous one, and it is the more common, because it usually happens by leaving
+        something out entirely.
+      </p>
+
+      <h3>The founder's salary</h3>
+      <p>
+        A break-even that does not include what you need to live on is a break-even for the
+        business rather than for the person running it. Both numbers are real and they are
+        often far apart. Only one of them answers whether this is something you can keep doing.
+      </p>
+
+      <h3>Break-even is profit, and profit is not cash</h3>
+      <p>
+        A month can clear break-even comfortably and still empty the bank account, because
+        break-even says nothing about <em>when</em> the money arrives. Sixty-day payment terms,
+        a large customer who pays late, stock bought before it sells — each one puts the cash
+        behind the profit. More businesses fail above their break-even point than below it, and
+        the difference is almost always timing.
+      </p>
+
+      <h3>What this does not do</h3>
+      <p>
+        One price and one margin, so a business with several products is entering an average
+        and getting an average back. No seasonality — an even month is assumed, which is what
+        makes the day figure possible and also what makes it a simplification. And no cash
+        timing, for the reason above.
+      </p>
+
+      <h2 style="margin-top:64px">Terms on this page</h2>
+      <dl class="glossary">
+        <div>
+          <dt>Fixed costs</dt>
+          <dd>What you pay whether or not you sell anything. Rent, salaries, insurance, subscriptions that do not scale.</dd>
+        </div>
+        <div>
+          <dt>Contribution</dt>
+          <dd>What one sale leaves after its own direct costs. This is what pays down the fixed costs.</dd>
+        </div>
+        <div>
+          <dt>Break-even point</dt>
+          <dd>The sales at which contribution exactly covers fixed costs. Below it you are making a loss; above it, profit.</dd>
+        </div>
+        <div>
+          <dt>Margin of safety</dt>
+          <dd>How far sales could fall from where they are before reaching break-even, as a percentage.</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+</Tool>
+
+<script>
+  import { breakEven } from '../../lib/break-even';
+  import { breakEvenQuestionsFor, STANDARD_BREAK_EVEN_QUESTIONS } from '../../lib/break-even-questions';
+  import { formatNumber, parseAmount, sanitizeTyping } from '../../lib/amount';
+  import type { Question } from '../../lib/question';
+
+  const form = document.querySelector<HTMLFormElement>('[data-breakeven]');
+
+  if (form) {
+    const out = (name: string) => document.querySelector<HTMLElement>(`[data-out="${name}"]`);
+    const read = (id: string) => parseAmount(form.querySelector<HTMLInputElement>(`#${id}`)?.value ?? '');
+
+    const heading = out('heading');
+    const headline = out('headline');
+    const headlineLine = out('headline-line');
+    const perSale = out('per-sale');
+    const figures = out('figures');
+    const figuresList = out('figures-list');
+    const questions = out('questions');
+    const announce = out('announce');
+    let pending = 0;
+
+    function render(asked: Question[]) {
+      if (!questions) return;
+
+      questions.replaceChildren(
+        ...asked.map((question) => {
+          const item = document.createElement('li');
+          item.dataset.grounded = String(question.grounded);
+
+          const text = document.createElement('h3');
+          text.textContent = question.text;
+          if (question.grounded) {
+            const badge = document.createElement('span');
+            badge.className = 'yours';
+            badge.textContent = 'From your numbers';
+            text.append(' ', badge);
+          }
+
+          const why = document.createElement('p');
+          why.textContent = question.why;
+
+          item.append(text, why);
+          return item;
+        }),
+      );
+    }
+
+    function draw() {
+      const fixed = read('fixed');
+      const price = read('price');
+
+      const input = {
+        monthlyFixedCosts: fixed || 0,
+        price: price || 0,
+        grossMarginPercent: read('margin') || 0,
+        monthlyVolume: read('volume') || 0,
+      };
+
+      const result = breakEven(input);
+
+      // What one sale is actually worth to you, under the margin field that
+      // decides it — the same move the other pages make with their own
+      // derived figure.
+      if (perSale) {
+        const has = result.contributionPerSale > 0;
+        perSale.hidden = !has;
+        perSale.textContent = has
+          ? `≈ ${formatNumber(result.contributionPerSale)} of contribution per sale.`
+          : '';
+      }
+
+      // Inlined rather than held in a `waiting` boolean: TypeScript narrows
+      // `breakEvenUnits` through the condition itself, and not through a
+      // variable that happens to encode it. The alternative was a non-null
+      // assertion on every use below, which asserts what this proves.
+      if (Number.isNaN(fixed) || Number.isNaN(price) || result.breakEvenUnits === null) {
+        if (heading) heading.textContent = 'Where you break even';
+        if (headline) headline.textContent = '—';
+        if (headlineLine) {
+          headlineLine.textContent =
+            result.breakEvenUnits === null && !Number.isNaN(price)
+              ? 'Add a margin — without one, no number of sales covers the costs'
+              : 'Add your costs, a price and a margin';
+        }
+        if (figures) figures.hidden = true;
+        if (announce) { window.clearTimeout(pending); announce.textContent = ''; }
+        render(STANDARD_BREAK_EVEN_QUESTIONS);
+        return;
+      }
+
+      const units = result.breakEvenUnits;
+
+      if (result.breakEvenDay !== null) {
+        if (heading) heading.textContent = 'You start earning on';
+        if (headline) headline.textContent = `Day ${Math.round(result.breakEvenDay)}`;
+        if (headlineLine) {
+          headlineLine.textContent = `of the month. The last ${Math.round(result.profitableDays!)} days are profit.`;
+        }
+      } else if (result.salesShort !== null) {
+        if (heading) heading.textContent = 'Not yet covered';
+        if (headline) headline.textContent = `${Math.ceil(result.salesShort)} sales short`;
+        if (headlineLine) {
+          headlineLine.textContent = `a month. Break-even is ${formatNumber(units)} sales; a normal month brings ${formatNumber(input.monthlyVolume)}.`;
+        }
+      } else {
+        if (heading) heading.textContent = 'Where you break even';
+        if (headline) headline.textContent = `${formatNumber(units)} sales`;
+        if (headlineLine) {
+          headlineLine.textContent = 'a month. Add a normal month’s sales to see which day that lands on.';
+        }
+      }
+
+      if (figures && figuresList) {
+        figures.hidden = false;
+        const lines: [string, string][] = [
+          ['Sales needed', formatNumber(units)],
+          ['Revenue needed', formatNumber(result.breakEvenRevenue!)],
+          ['Per sale', formatNumber(result.contributionPerSale)],
+        ];
+        if (result.marginOfSafetyPercent !== null) {
+          lines.push([
+            'Room to fall',
+            `${result.marginOfSafetyPercent > 0 ? '' : '−'}${Math.abs(result.marginOfSafetyPercent).toFixed(0)}%`,
+          ]);
+        }
+
+        figuresList.replaceChildren(
+          ...lines.map(([label, value]) => {
+            const item = document.createElement('li');
+            const figure = document.createElement('b');
+            figure.textContent = value;
+            const name = document.createElement('span');
+            name.textContent = label;
+            item.append(figure, name);
+            return item;
+          }),
+        );
+      }
+
+      render(breakEvenQuestionsFor(result, input));
+
+      if (announce) {
+        window.clearTimeout(pending);
+        pending = window.setTimeout(() => {
+          announce.textContent =
+            result.breakEvenDay !== null
+              ? `Fixed costs are covered by day ${Math.round(result.breakEvenDay)} of the month.`
+              : result.salesShort !== null
+                ? `About ${Math.ceil(result.salesShort)} sales a month short of break-even.`
+                : `Break-even is ${formatNumber(units)} sales a month.`;
+        }, 700);
+      }
+    }
+
+    for (const input of form.querySelectorAll<HTMLInputElement>('input')) {
+      input.addEventListener('input', () => {
+        const clean = sanitizeTyping(input.value, { negative: false });
+        if (clean !== input.value) {
+          const caret = input.selectionStart ?? input.value.length;
+          const shrank = input.value.length - clean.length;
+          input.value = clean;
+          const moved = Math.max(0, caret - shrank);
+          input.setSelectionRange(moved, moved);
+        }
+        draw();
+      });
+      input.addEventListener('blur', () => {
+        const value = parseAmount(input.value);
+        if (Number.isFinite(value)) input.value = formatNumber(Math.max(0, value));
+        draw();
+      });
+    }
+
+    form.addEventListener('submit', (event) => event.preventDefault());
+    draw();
+  }
+</script>
