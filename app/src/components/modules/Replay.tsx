@@ -59,9 +59,27 @@ export function Replay({ onReplay, available = true, disabled = false }: ReplayP
    */
   const [getting, setGetting] = useState(false);
 
-  useEffect(() => {
+  /**
+   * The audio started, so the wait is over.
+   *
+   * Adjusted during render against the previous value rather than in an
+   * effect. React documents this as the way to reset state when a prop
+   * changes, and it is what `react-hooks/set-state-in-effect` is pointing at:
+   * an effect whose whole body syncs one piece of React state to another
+   * schedules a second render pass for no reason, and the compiler cannot
+   * reason about it. This branch runs during the same render, so there is no
+   * extra pass and no frame where the label is stale.
+   *
+   * Only the *arrival* of `disabled` clears the wait. Reading `disabled` alone
+   * would be enough for the label — it already wins — but `getting` has to be
+   * cleared before `disabled` goes away again, or the control would come back
+   * saying "Getting it…" for a tap that finished playing.
+   */
+  const [spoke, setSpoke] = useState(disabled);
+  if (spoke !== disabled) {
+    setSpoke(disabled);
     if (disabled) setGetting(false);
-  }, [disabled]);
+  }
 
   useEffect(() => {
     if (!getting) return;
