@@ -28,6 +28,13 @@ export interface Tool {
   icon: string;
 }
 
+/**
+ * Ordered by how many people are looking for each one, not by when it was
+ * built. Break-even and ROI carry the broadest evergreen search demand and
+ * the widest audience; runway and LTV:CAC are founder/operator staples; the
+ * dilution and price-change tools answer narrower queries and sit last. The
+ * header menu, the hub and the sibling links all inherit this order.
+ */
 export const TOOLS: Tool[] = [
   {
     href: '/tools/break-even-calculator',
@@ -37,11 +44,18 @@ export const TOOLS: Tool[] = [
     icon: '<path d="M3 12h18"/><path d="M6 12V7a1 1 0 0 1 1-1h4"/><path d="M18 12v5a1 1 0 0 1-1 1h-4"/>',
   },
   {
-    href: '/tools/price-change-calculator',
-    name: 'Price change impact',
-    blurb: 'How much volume a rise can lose, and how much a discount demands',
-    audience: 'Business owners',
-    icon: '<path d="M4 20 20 4"/><path d="M7 4h13v13"/><path d="M4 8v12h12"/>',
+    href: '/tools/roi-calculator',
+    name: 'Business case ROI',
+    blurb: 'Payback, NPV, and the share of the benefit that actually has to land',
+    audience: 'Executives',
+    icon: '<path d="M3 5v13a1 1 0 0 0 1 1h16"/><path d="m7 15 4-5 3 2 5-6"/><path d="M15 6h4v4"/>',
+  },
+  {
+    href: '/tools/runway-calculator',
+    name: 'Runway calculator',
+    blurb: 'The date you run out, with spend and revenue both growing',
+    audience: 'Founders',
+    icon: '<path d="M3 5v13a1 1 0 0 0 1 1h16"/><path d="m6 8 4 4 3.5-1L19 17"/>',
   },
   {
     href: '/tools/ltv-cac-calculator',
@@ -51,13 +65,6 @@ export const TOOLS: Tool[] = [
     icon: '<path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 12 21 3"/><path d="M12 12v9"/>',
   },
   {
-    href: '/tools/roi-calculator',
-    name: 'Business case ROI',
-    blurb: 'Payback, NPV, and the share of the benefit that actually has to land',
-    audience: 'Executives',
-    icon: '<path d="M3 5v13a1 1 0 0 0 1 1h16"/><path d="m7 15 4-5 3 2 5-6"/><path d="M15 6h4v4"/>',
-  },
-  {
     href: '/tools/dilution-calculator',
     name: 'Dilution calculator',
     blurb: 'SAFEs, the option pool shuffle, and where the points actually went',
@@ -65,10 +72,10 @@ export const TOOLS: Tool[] = [
     icon: '<circle cx="12" cy="12" r="9"/><path d="M12 3v9h9"/><path d="M12 12 5.6 18.4"/>',
   },
   {
-    href: '/tools/runway-calculator',
-    name: 'Runway calculator',
-    blurb: 'The date you run out, with spend and revenue both growing',
-    audience: 'Founders',
-    icon: '<path d="M3 5v13a1 1 0 0 0 1 1h16"/><path d="m6 8 4 4 3.5-1L19 17"/>',
+    href: '/tools/price-change-calculator',
+    name: 'Price change impact',
+    blurb: 'How much volume a rise can lose, and how much a discount demands',
+    audience: 'Business owners',
+    icon: '<path d="M4 20 20 4"/><path d="M7 4h13v13"/><path d="M4 8v12h12"/>',
   },
 ];
