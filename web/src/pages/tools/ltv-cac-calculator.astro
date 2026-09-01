@@ -325,7 +325,10 @@ const DESCRIPTION =
         figures.hidden = false;
         const lines: [string, string][] = [
           ['LTV:CAC', result.ratio === null ? 'no acquisition cost' : `${result.ratio.toFixed(1)} : 1`],
-          ['Payback', result.paybackMonths === null ? 'does not pay back' : formatMonths(result.paybackMonths)],
+          [
+            result.paybackMonths === null ? 'Payback — never, on these numbers' : 'Payback, in months',
+            result.paybackMonths === null ? '—' : `${result.paybackMonths.toFixed(1)}`,
+          ],
           ['LTV', formatNumber(result.ltv!)],
           ['Monthly gross profit', formatNumber(result.monthlyContribution)],
         ];

@@ -325,7 +325,7 @@ const DESCRIPTION =
         if (toleranceLine) toleranceLine.textContent = 'Enter a price change, up or down.';
       } else if (result.raising) {
         if (heading) heading.textContent = 'What you can afford to lose';
-        if (tolerance) tolerance.textContent = `${Math.abs(needed).toFixed(0)}%`;
+        if (tolerance) tolerance.textContent = `${formatNumber(Math.round(Math.abs(needed)))}%`;
         if (toleranceLine) {
           toleranceLine.textContent =
             result.customersAtStake === null
@@ -334,7 +334,7 @@ const DESCRIPTION =
         }
       } else {
         if (heading) heading.textContent = 'What this discount demands';
-        if (tolerance) tolerance.textContent = `+${needed.toFixed(0)}%`;
+        if (tolerance) tolerance.textContent = `+${formatNumber(Math.round(needed))}%`;
         if (toleranceLine) {
           toleranceLine.textContent =
             result.customersAtStake === null

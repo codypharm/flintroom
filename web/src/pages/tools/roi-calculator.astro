@@ -334,7 +334,7 @@ const DESCRIPTION =
       const result = businessCase(input);
       const share = result.breakEvenBenefitPercent;
 
-      if (breakeven) breakeven.textContent = share === null ? '—' : `${share.toFixed(0)}%`;
+      if (breakeven) breakeven.textContent = share === null ? '—' : `${formatNumber(Math.round(share))}%`;
       if (breakevenLine) {
         breakevenLine.textContent =
           share === null
@@ -347,9 +347,12 @@ const DESCRIPTION =
       if (figures && figuresList) {
         figures.hidden = false;
         const lines: [string, string][] = [
-          ['Payback', result.paybackMonths === null ? 'not inside the horizon' : formatMonths(result.paybackMonths)],
+          [
+            result.paybackMonths === null ? 'Payback — not inside the horizon' : 'Payback',
+            result.paybackMonths === null ? '—' : formatMonths(result.paybackMonths),
+          ],
           ['NPV', formatNumber(result.npv)],
-          ['Return on spend', `${result.roiPercent.toFixed(0)}%`],
+          ['Return on spend', `${formatNumber(Math.round(result.roiPercent))}%`],
           ['Total cost', formatNumber(result.totalCost)],
         ];
 

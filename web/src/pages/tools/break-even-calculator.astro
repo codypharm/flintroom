@@ -338,7 +338,7 @@ const DESCRIPTION =
         if (result.marginOfSafetyPercent !== null) {
           lines.push([
             'Room to fall',
-            `${result.marginOfSafetyPercent > 0 ? '' : '−'}${Math.abs(result.marginOfSafetyPercent).toFixed(0)}%`,
+            `${result.marginOfSafetyPercent > 0 ? '' : '−'}${formatNumber(Math.round(Math.abs(result.marginOfSafetyPercent)))}%`,
           ]);
         }
 
