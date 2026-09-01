@@ -12,6 +12,7 @@
  * and monthly churn multiplied by twelve instead of compounded.
  */
 import Tool from '../../layouts/Tool.astro';
+import ResultHook from '../../components/ResultHook.astro';
 import { STANDARD_UNIT_QUESTIONS } from '../../lib/unit-economics-questions';
 
 const CUSTOMER = [
@@ -125,6 +126,8 @@ const DESCRIPTION =
             <h3>The numbers you would quote</h3>
             <ul data-out="figures-list"></ul>
           </div>
+        
+          <ResultHook line="The first question about this ratio is always the lifetime." />
         </div>
       </div>
     </div>
@@ -247,6 +250,7 @@ const DESCRIPTION =
     const figuresList = out('figures-list');
     const questions = out('questions');
     const announce = out('announce');
+    const hook = out('hook');
     let pending = 0;
 
     function render(asked: Question[]) {
@@ -307,6 +311,7 @@ const DESCRIPTION =
               : 'Add revenue and margin';
         }
         if (figures) figures.hidden = true;
+        if (hook) hook.hidden = true;
         if (announce) { window.clearTimeout(pending); announce.textContent = ''; }
         render(STANDARD_UNIT_QUESTIONS);
         return;
@@ -323,6 +328,7 @@ const DESCRIPTION =
 
       if (figures && figuresList) {
         figures.hidden = false;
+        if (hook) hook.hidden = false;
         const lines: [string, string][] = [
           ['LTV:CAC', result.ratio === null ? 'no acquisition cost' : `${result.ratio.toFixed(1)} : 1`],
           [

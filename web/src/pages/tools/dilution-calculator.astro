@@ -14,6 +14,7 @@
  * the argument goes to the valuation while the pool quietly takes more.
  */
 import Tool from '../../layouts/Tool.astro';
+import ResultHook from '../../components/ResultHook.astro';
 import { STANDARD_DILUTION_QUESTIONS } from '../../lib/dilution-questions';
 
 const TITLE = 'Dilution calculator — SAFEs, option pools, where your points went';
@@ -139,6 +140,8 @@ const DESCRIPTION =
             <h3>After the round</h3>
             <ul data-out="stack-list"></ul>
           </div>
+        
+          <ResultHook line="Someone across the table will ask why you gave up those points." />
         </div>
       </div>
     </div>
@@ -307,6 +310,7 @@ const DESCRIPTION =
     const stackList = out('stack-list');
     const questions = out('questions');
     const announce = out('announce');
+    const hook = out('hook');
     let pending = 0;
 
     const LABELS: Record<string, string> = {
@@ -408,6 +412,7 @@ const DESCRIPTION =
         if (after) after.textContent = '—';
         if (points) points.textContent = 'Add what you own and the round';
         if (attrib) attrib.hidden = true;
+        if (hook) hook.hidden = true;
         if (stack) stack.hidden = true;
         if (announce) { window.clearTimeout(pending); announce.textContent = ''; }
         render(STANDARD_DILUTION_QUESTIONS);
@@ -446,6 +451,7 @@ const DESCRIPTION =
 
       if (stack && stackList) {
         stack.hidden = false;
+        if (hook) hook.hidden = false;
         rows(
           stackList,
           result.stack

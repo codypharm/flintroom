@@ -1,0 +1,25 @@
+---
+/**
+ * The conversion hook, where the eyes are.
+ *
+ * #113 parked the one pitch block at the foot of the page so a tool would
+ * not open as marketing — and buried it under two prose sections where
+ * nobody scrolls. The architect's original proposal had the fix: attach the
+ * hook to the *result*, in the moment the tool has just done something, with
+ * a sentence that ties this number to the room it will be defended in.
+ *
+ * Hidden until a result exists — a pitch under an empty card is a banner.
+ * Each page unhides it exactly where it unhides its figures.
+ */
+interface Props {
+  /** The sentence tying this tool's result to the room. */
+  line: string;
+}
+
+const { line } = Astro.props;
+---
+
+<div class="hook" data-out="hook" hidden>
+  <p>{line}</p>
+  <a href="/#waitlist">Rehearse it in Flintroom →</a>
+</div>

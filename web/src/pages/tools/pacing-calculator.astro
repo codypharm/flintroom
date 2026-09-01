@@ -15,6 +15,7 @@
  * material.
  */
 import Tool from '../../layouts/Tool.astro';
+import ResultHook from '../../components/ResultHook.astro';
 import { PACES } from '../../lib/pacing';
 import { STANDARD_PACING_QUESTIONS } from '../../lib/pacing-questions';
 
@@ -149,6 +150,8 @@ const DESCRIPTION =
               rushing happens.
             </p>
           </div>
+        
+          <ResultHook line="Reading on screen is not speaking to a room." />
         </div>
       </div>
     </div>
@@ -269,6 +272,7 @@ const DESCRIPTION =
     const legend = out('legend');
     const questions = out('questions');
     const announce = out('announce');
+    const hook = out('hook');
     let pending = 0;
 
     function render(asked: Question[]) {
@@ -327,6 +331,7 @@ const DESCRIPTION =
         if (headline) headline.textContent = '—';
         if (headlineLine) headlineLine.textContent = 'Paste a script and it times itself';
         if (figures) figures.hidden = true;
+        if (hook) hook.hidden = true;
         if (timeline) timeline.hidden = true;
         if (announce) { window.clearTimeout(pending); announce.textContent = ''; }
         render(STANDARD_PACING_QUESTIONS);
@@ -361,6 +366,7 @@ const DESCRIPTION =
 
       if (figures && figuresList) {
         figures.hidden = false;
+        if (hook) hook.hidden = false;
         const lines: [string, string][] = [
           ['Rehearsed, at your pace', formatDuration(timed.minutes)],
           ['Delivered, with nerves', formatDuration(timed.nervesMinutes)],

@@ -14,6 +14,7 @@
  * "today" at build time is not today.
  */
 import Tool from '../../layouts/Tool.astro';
+import ResultHook from '../../components/ResultHook.astro';
 import { STANDARD_QUESTIONS } from '../../lib/questions';
 
 /**
@@ -168,6 +169,8 @@ const DESCRIPTION =
               <span data-out="axis-end"></span>
             </p>
           </div>
+        
+          <ResultHook line="This date gets questioned in every meeting you show it in." />
         </div>
       </div>
     </div>
@@ -334,6 +337,7 @@ const DESCRIPTION =
     const axisEnd = out('axis-end');
     const questions = out('questions');
     const announce = out('announce');
+    const hook = out('hook');
     let pending = 0;
 
     /** Two years of bars says everything; sixty says nothing legibly. */
@@ -396,6 +400,7 @@ const DESCRIPTION =
             : 'Add your monthly spend';
         }
         if (verdict) verdict.hidden = true;
+        if (hook) hook.hidden = true;
         if (schedule) schedule.hidden = true;
         if (announce) {
           window.clearTimeout(pending);
@@ -408,6 +413,7 @@ const DESCRIPTION =
       }
 
       if (verdict) verdict.hidden = false;
+      if (hook) hook.hidden = false;
       if (schedule) schedule.hidden = false;
 
       const result = runway(input);

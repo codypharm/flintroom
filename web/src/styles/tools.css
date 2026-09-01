@@ -363,6 +363,27 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The hook at the foot of the result card — see ResultHook.astro. Body
+   quiet, link plainly a link; no button, no box. It reads as the card's
+   last sentence, not as an advert stapled to it. */
+.result .hook {
+  margin-top: var(--s5);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--input-line);
+}
+.result .hook p {
+  font-size: 14px;
+  color: var(--ink-variant);
+  margin: 0 0 6px;
+}
+.result .hook a {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary);
+  text-decoration: none;
+}
+.result .hook a:hover { text-decoration: underline; }
+
 /* ── What gets asked next ───────────────────────────── */
 /* Deliberately closer than the sections below it. The questions are about the
    number you just made — a continuation of the instrument, not a new subject —

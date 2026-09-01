@@ -14,6 +14,7 @@
  * is a far easier argument to hold.
  */
 import Tool from '../../layouts/Tool.astro';
+import ResultHook from '../../components/ResultHook.astro';
 import { STANDARD_ROI_QUESTIONS } from '../../lib/roi-questions';
 
 const COSTS = [
@@ -153,6 +154,8 @@ const DESCRIPTION =
               <span data-out="axis-end"></span>
             </p>
           </div>
+        
+          <ResultHook line="The committee attacks the benefit, not the arithmetic." />
         </div>
       </div>
     </div>
@@ -275,6 +278,7 @@ const DESCRIPTION =
     const axisEnd = out('axis-end');
     const questions = out('questions');
     const announce = out('announce');
+    const hook = out('hook');
     let pending = 0;
 
     const BARS = 36;
@@ -325,6 +329,7 @@ const DESCRIPTION =
         if (breakeven) breakeven.textContent = '—';
         if (breakevenLine) breakevenLine.textContent = 'Add the cost and the benefit';
         if (figures) figures.hidden = true;
+        if (hook) hook.hidden = true;
         if (schedule) schedule.hidden = true;
         if (announce) { window.clearTimeout(pending); announce.textContent = ''; }
         render(STANDARD_ROI_QUESTIONS);
@@ -346,6 +351,7 @@ const DESCRIPTION =
 
       if (figures && figuresList) {
         figures.hidden = false;
+        if (hook) hook.hidden = false;
         const lines: [string, string][] = [
           [
             result.paybackMonths === null ? 'Payback — not inside the horizon' : 'Payback',

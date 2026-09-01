@@ -13,6 +13,7 @@
  * the table while it is being decided.
  */
 import Tool from '../../layouts/Tool.astro';
+import ResultHook from '../../components/ResultHook.astro';
 import { STANDARD_PRICING_QUESTIONS } from '../../lib/pricing-questions';
 
 const NOW = [
@@ -129,6 +130,8 @@ const DESCRIPTION =
             <h3>Per sale, either side of the change</h3>
             <ul data-out="figures-list"></ul>
           </div>
+        
+          <ResultHook line="Announcing a price change is a speech with hostile questions." />
         </div>
       </div>
     </div>
@@ -245,6 +248,7 @@ const DESCRIPTION =
     const figuresList = out('figures-list');
     const questions = out('questions');
     const announce = out('announce');
+    const hook = out('hook');
     let pending = 0;
 
     function render(asked: Question[]) {
@@ -305,6 +309,7 @@ const DESCRIPTION =
             : 'Add a price, a margin and a change';
         }
         if (figures) figures.hidden = true;
+        if (hook) hook.hidden = true;
         if (announce) { window.clearTimeout(pending); announce.textContent = ''; }
         render(STANDARD_PRICING_QUESTIONS);
         return;
@@ -345,6 +350,7 @@ const DESCRIPTION =
 
       if (figures && figuresList) {
         figures.hidden = false;
+        if (hook) hook.hidden = false;
         const lines: [string, string][] = [
           ['Price', `${formatNumber(input.price)} → ${formatNumber(result.newPrice)}`],
           ['Contribution', `${formatNumber(result.contributionBefore)} → ${formatNumber(result.contributionAfter)}`],
