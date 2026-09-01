@@ -1,0 +1,467 @@
+---
+/**
+ * /tools/pacing-calculator
+ *
+ * Tool seven — the architect's proposal (#119). Every pacing tool divides a
+ * word count by 130 and answers "how long is my script?" The question people
+ * actually run over on is the reverse: *I have twenty minutes — what fits?*
+ * So this page also works backwards from the slot — slot minus Q&A is the
+ * speaking time, speaking time at your pace is a word budget, and the
+ * distance between the budget and the script is a sentence you can act on.
+ *
+ * The script is pasted, and it never leaves the browser. That is said on the
+ * page in one sentence, because the promise matters more here than on any of
+ * the number tools: this is the first one that touches somebody's actual
+ * material.
+ */
+import Tool from '../../layouts/Tool.astro';
+import { PACES } from '../../lib/pacing';
+import { STANDARD_PACING_QUESTIONS } from '../../lib/pacing-questions';
+
+const SLOT = [
+  {
+    id: 'slot',
+    label: 'Your slot',
+    help: 'The whole booking — what the agenda says you have.',
+    placeholder: '20',
+    unit: 'min',
+  },
+  {
+    id: 'qa',
+    label: 'Questions and everything else',
+    help: 'Q&A, the introduction, the demo loading. Time you will not be reading the script.',
+    placeholder: '5',
+    unit: 'min',
+  },
+];
+
+const TITLE = 'Speech timing calculator — what your script takes, and what the slot holds';
+const DESCRIPTION =
+  'Free speech and presentation timing calculator: paste your script, pick a pace, and see the delivery time, the minute-by-minute timeline, the paragraphs that will make you rush — and how many words to cut for your slot.';
+---
+
+<Tool
+  title={TITLE}
+  description={DESCRIPTION}
+  url="https://www.flintroom.app/tools/pacing-calculator"
+  current="/tools/pacing-calculator"
+>
+  <section class="tool">
+    <div class="shell">
+      <div class="tool-head">
+        <h1>Pacing &amp; script timing calculator</h1>
+        <p class="sub">
+          Most timing tools tell you how long your script is. This one also answers the question
+          you were actually asked — you have a slot, minus questions — and tells you what to cut
+          when the two disagree.
+        </p>
+      </div>
+
+      <div class="instrument">
+        <form class="inputs" data-pacing novalidate>
+          <h2>Your script</h2>
+
+          <div class="rows">
+            <div class="group">
+              <div class="row">
+                <label for="script">Paste it here</label>
+                <span class="help" id="script-help">
+                  Speaker notes or the full script. It stays in this tab — nothing is uploaded,
+                  stored, or sent anywhere.
+                </span>
+                <div class="entry">
+                  <textarea
+                    id="script"
+                    rows="10"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="Good morning. Before I show you the numbers, I want to name the problem the way our customers do…"
+                    aria-describedby="script-help"></textarea>
+                </div>
+                <span class="help translated" data-out="counted" hidden></span>
+              </div>
+
+              <div class="row">
+                <label for="pace">How you speak</label>
+                <span class="help" id="pace-help">
+                  Timed pace, not reading pace — reading silently runs two to three times faster.
+                </span>
+                <div class="entry">
+                  <select id="pace" aria-describedby="pace-help">
+                    {PACES.map((pace) => (
+                      <option value={pace.wpm} selected={pace.wpm === 130}>
+                        {pace.name} — {pace.wpm} wpm
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <span class="help translated" data-out="pace-hint"></span>
+              </div>
+            </div>
+
+            <div class="group">
+              {SLOT.map((field) => (
+                <div class="row pct">
+                  <label for={field.id}>{field.label}</label>
+                  <span class="help" id={`${field.id}-help`}>{field.help}</span>
+                  <div class="entry">
+                    <input
+                      id={field.id}
+                      type="text"
+                      inputmode="decimal"
+                      autocomplete="off"
+                      maxlength="6"
+                      placeholder={field.placeholder}
+                      aria-describedby={`${field.id}-help`}
+                    />
+                    <span class="unit" aria-hidden="true">{field.unit}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </form>
+
+        <div class="panel result">
+          <h2 data-out="heading">What it takes to say</h2>
+
+          <div>
+            <p class="date" data-out="headline">—</p>
+            <p class="count" data-out="headline-line">Paste a script and it times itself</p>
+          </div>
+
+          <p class="sr-only" role="status" data-out="announce"></p>
+
+          <div class="attrib wide" data-out="figures" hidden>
+            <h3>The same script, on the day</h3>
+            <ul data-out="figures-list"></ul>
+          </div>
+
+          <div class="schedule" data-out="timeline" hidden>
+            <h3>Where the minutes go</h3>
+            <div class="lanes" data-out="lanes" role="img"></div>
+            <div class="axis">
+              <span>Start</span>
+              <span data-out="axis-end"></span>
+            </div>
+            <p class="legend" data-out="legend" hidden>
+              Darker stretches run past forty-five seconds without a paragraph break — where
+              rushing happens.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="asked">
+    <div class="shell">
+      <h2>What gets asked about a timing</h2>
+      <p>
+        Not by the audience — by the organiser with a schedule, the chair with a hard stop, and
+        you at the lectern discovering the clock. A script that "takes 12 minutes" is an
+        estimate made in silence; these are the ways a room disagrees with an estimate.
+      </p>
+      <ol data-out="questions">
+        {STANDARD_PACING_QUESTIONS.map((question) => (
+          <li data-grounded="false">
+            <h3>{question.text}</h3>
+            <p>{question.why}</p>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <section class="notes">
+    <div class="shell">
+      <h2>How this is timed, and why scripts run over</h2>
+
+      <p>
+        Words divided by pace. Conversational English lands near 130 words a minute, a pitch
+        under time pressure nearer 160, and a keynote with numbers in it should run closer to
+        110. That part every timing tool agrees on, and it is the smaller half of the answer.
+      </p>
+      <p>
+        Scripts do not run over because the arithmetic was wrong. They run over because the
+        <strong>slot was budgeted instead of the speaking time</strong>. A twenty-minute slot
+        with five minutes of questions and a couple of minutes of introductions and settling is
+        thirteen minutes of script — and almost everybody writes for twenty. The overrun was
+        decided at the desk, weeks before the talk.
+      </p>
+
+      <h3>Reading is not speaking</h3>
+      <p>
+        Silent reading runs two to three times faster than delivery, which is why a script that
+        "reads fine" is usually long. The pace you select here assumes you are saying it to a
+        room. The only better number is your own: say a page out loud, time it, and see which
+        of the three paces you actually are.
+      </p>
+
+      <h3>Nerves speed you up, not down</h3>
+      <p>
+        Under pressure most speakers run ten to twenty percent faster than they rehearsed.
+        This page shows the delivered time beside the rehearsed one for exactly one reason: a
+        script that only fits at the faster number is not paced, it is rushed — and the speed
+        comes out of the sections that most needed room to land.
+      </p>
+
+      <h3>Dense paragraphs are a writing problem</h3>
+      <p>
+        A paragraph break is where the writing lets the speaker breathe and the audience catch
+        up. A stretch past forty-five seconds without one is where rushing happens — and the
+        fix is a break in the text now, not concentration on the day.
+      </p>
+
+      <h3>What this does not do</h3>
+      <p>
+        It cannot hear you. Your real pace, the pauses you actually take, the slide that needs
+        a beat of silence — those exist out loud, not in text. Reading a script and timing it
+        is the rehearsal before the rehearsal.
+      </p>
+
+      <h2 style="margin-top:64px">Terms on this page</h2>
+      <dl class="glossary">
+        <div>
+          <dt>Words per minute</dt>
+          <dd>Delivery pace. Conversational speech is around 130; nerves add ten to twenty percent.</dd>
+        </div>
+        <div>
+          <dt>Speaking time</dt>
+          <dd>Your slot minus questions and everything else that is not the script. The number to write for.</dd>
+        </div>
+        <div>
+          <dt>Word budget</dt>
+          <dd>The words that fit the speaking time at your pace. What the script is measured against.</dd>
+        </div>
+        <div>
+          <dt>Dense stretch</dt>
+          <dd>More than forty-five seconds of continuous speech with no paragraph break — where speakers rush and audiences fall behind.</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+</Tool>
+
+<script>
+  import { PACES, formatDuration, timeScript } from '../../lib/pacing';
+  import { pacingQuestionsFor, STANDARD_PACING_QUESTIONS } from '../../lib/pacing-questions';
+  import { formatNumber, parseAmount, sanitizeTyping } from '../../lib/amount';
+  import type { Question } from '../../lib/question';
+
+  const form = document.querySelector<HTMLFormElement>('[data-pacing]');
+
+  if (form) {
+    const out = (name: string) => document.querySelector<HTMLElement>(`[data-out="${name}"]`);
+    const script = form.querySelector<HTMLTextAreaElement>('#script');
+    const pace = form.querySelector<HTMLSelectElement>('#pace');
+
+    const heading = out('heading');
+    const headline = out('headline');
+    const headlineLine = out('headline-line');
+    const counted = out('counted');
+    const paceHint = out('pace-hint');
+    const figures = out('figures');
+    const figuresList = out('figures-list');
+    const timeline = out('timeline');
+    const lanes = out('lanes');
+    const axisEnd = out('axis-end');
+    const legend = out('legend');
+    const questions = out('questions');
+    const announce = out('announce');
+    let pending = 0;
+
+    function render(asked: Question[]) {
+      if (!questions) return;
+
+      questions.replaceChildren(
+        ...asked.map((question) => {
+          const item = document.createElement('li');
+          item.dataset.grounded = String(question.grounded);
+
+          const text = document.createElement('h3');
+          text.textContent = question.text;
+          if (question.grounded) {
+            const badge = document.createElement('span');
+            badge.className = 'yours';
+            badge.textContent = 'From your script';
+            text.append(' ', badge);
+          }
+
+          const why = document.createElement('p');
+          why.textContent = question.why;
+
+          item.append(text, why);
+          return item;
+        }),
+      );
+    }
+
+    function draw() {
+      const wpm = Number(pace?.value ?? 130);
+      const chosen = PACES.find((one) => one.wpm === wpm);
+      if (paceHint) paceHint.textContent = chosen ? chosen.hint : '';
+
+      const slot = parseAmount(form!.querySelector<HTMLInputElement>('#slot')?.value ?? '');
+      const qa = parseAmount(form!.querySelector<HTMLInputElement>('#qa')?.value ?? '');
+
+      const timed = timeScript({
+        script: script?.value ?? '',
+        paceWpm: wpm,
+        ...(Number.isFinite(slot) && slot > 0 ? { slotMinutes: slot } : {}),
+        ...(Number.isFinite(qa) ? { qaMinutes: qa } : {}),
+      });
+
+      if (counted) {
+        counted.hidden = timed.wordCount === 0;
+        counted.textContent =
+          timed.wordCount === 0
+            ? ''
+            : `${formatNumber(timed.wordCount)} words, in ${timed.paragraphs.length} ${
+                timed.paragraphs.length === 1 ? 'paragraph' : 'paragraphs'
+              }.`;
+      }
+
+      if (timed.wordCount === 0) {
+        if (heading) heading.textContent = 'What it takes to say';
+        if (headline) headline.textContent = '—';
+        if (headlineLine) headlineLine.textContent = 'Paste a script and it times itself';
+        if (figures) figures.hidden = true;
+        if (timeline) timeline.hidden = true;
+        if (announce) { window.clearTimeout(pending); announce.textContent = ''; }
+        render(STANDARD_PACING_QUESTIONS);
+        return;
+      }
+
+      // The verdict is the heading when there is a slot to have one about.
+      if (timed.speakingMinutes !== null && timed.wordsOver !== null) {
+        if (heading) heading.textContent = 'It does not fit';
+        if (headline) headline.textContent = formatDuration(timed.minutes);
+        if (headlineLine) {
+          headlineLine.textContent = `against ${formatDuration(
+            timed.speakingMinutes,
+          )} of speaking time. Cut about ${formatNumber(timed.wordsOver)} words.`;
+        }
+      } else if (timed.speakingMinutes !== null) {
+        if (heading) heading.textContent = 'It fits';
+        if (headline) headline.textContent = formatDuration(timed.minutes);
+        if (headlineLine) {
+          const spare = timed.speakingMinutes - timed.minutes;
+          headlineLine.textContent = `with ${formatDuration(
+            Math.max(0, spare),
+          )} of your speaking time to spare.`;
+        }
+      } else {
+        if (heading) heading.textContent = 'What it takes to say';
+        if (headline) headline.textContent = formatDuration(timed.minutes);
+        if (headlineLine) {
+          headlineLine.textContent = `at ${wpm} words a minute. Add your slot to see what fits.`;
+        }
+      }
+
+      if (figures && figuresList) {
+        figures.hidden = false;
+        const lines: [string, string][] = [
+          ['Rehearsed, at your pace', formatDuration(timed.minutes)],
+          ['Delivered, with nerves', formatDuration(timed.nervesMinutes)],
+        ];
+        if (timed.speakingMinutes !== null && timed.wordBudget !== null) {
+          lines.push(['Speaking time in the slot', formatDuration(timed.speakingMinutes)]);
+          lines.push(['Words that fit it', formatNumber(timed.wordBudget)]);
+        }
+
+        figuresList.replaceChildren(
+          ...lines.map(([label, value]) => {
+            const item = document.createElement('li');
+            const figure = document.createElement('b');
+            figure.textContent = value;
+            const name = document.createElement('span');
+            name.textContent = label;
+            item.append(figure, name);
+            return item;
+          }),
+        );
+      }
+
+      // The timeline: each paragraph a span, width proportional to its
+      // minutes; dense ones darker. When a slot exists the scale runs to
+      // whichever is longer — the script or the speaking time — so the
+      // deadline mark always lands inside the drawing.
+      if (timeline && lanes) {
+        timeline.hidden = false;
+        const total = Math.max(
+          timed.minutes,
+          timed.speakingMinutes ?? 0,
+          1 / 60,
+        );
+
+        lanes.replaceChildren(
+          ...timed.paragraphs.map((paragraph, index) => {
+            const span = document.createElement('i');
+            span.style.width = `${(paragraph.minutes / total) * 100}%`;
+            if (paragraph.dense) span.dataset.dense = 'true';
+            span.title = `Paragraph ${index + 1}: ${formatDuration(paragraph.minutes)}`;
+            return span;
+          }),
+        );
+
+        if (timed.speakingMinutes !== null && timed.speakingMinutes > 0) {
+          const deadline = document.createElement('b');
+          deadline.className = 'deadline';
+          deadline.style.left = `${(timed.speakingMinutes / total) * 100}%`;
+          deadline.title = `Your speaking time ends at ${formatDuration(timed.speakingMinutes)}`;
+          lanes.append(deadline);
+        }
+
+        lanes.setAttribute(
+          'aria-label',
+          `${timed.paragraphs.length} paragraphs over ${formatDuration(timed.minutes)}${
+            timed.paragraphs.some((paragraph) => paragraph.dense)
+              ? ', including stretches past forty-five seconds without a break'
+              : ''
+          }`,
+        );
+
+        if (axisEnd) axisEnd.textContent = formatDuration(total);
+        if (legend) legend.hidden = !timed.paragraphs.some((paragraph) => paragraph.dense);
+      }
+
+      render(pacingQuestionsFor(timed));
+
+      if (announce) {
+        window.clearTimeout(pending);
+        pending = window.setTimeout(() => {
+          announce.textContent =
+            timed.wordsOver !== null
+              ? `The script takes ${formatDuration(timed.minutes)} and does not fit. Cut about ${formatNumber(timed.wordsOver)} words.`
+              : `The script takes ${formatDuration(timed.minutes)} at ${wpm} words a minute.`;
+        }, 700);
+      }
+    }
+
+    script?.addEventListener('input', draw);
+    pace?.addEventListener('change', draw);
+
+    for (const input of form.querySelectorAll<HTMLInputElement>('input')) {
+      input.addEventListener('input', () => {
+        const clean = sanitizeTyping(input.value, { negative: false });
+        if (clean !== input.value) {
+          const caret = input.selectionStart ?? input.value.length;
+          const shrank = input.value.length - clean.length;
+          input.value = clean;
+          const moved = Math.max(0, caret - shrank);
+          input.setSelectionRange(moved, moved);
+        }
+        draw();
+      });
+      input.addEventListener('blur', () => {
+        const value = parseAmount(input.value);
+        if (Number.isFinite(value)) input.value = formatNumber(Math.max(0, value));
+        draw();
+      });
+    }
+
+    form.addEventListener('submit', (event) => event.preventDefault());
+    draw();
+  }
+</script>

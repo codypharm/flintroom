@@ -172,6 +172,30 @@
   border-color: var(--primary);
   box-shadow: 0 0 0 4px rgba(164, 55, 0, 0.12);
 }
+/* The script box (#119) wears the input's clothes at paragraph size. Not
+   tabular-nums — this is prose, and resize stays with the reader because a
+   pasted script is the longest thing any tool page takes. */
+.row .entry textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--input-line);
+  border-radius: var(--r);
+  padding: 11px 14px;
+  resize: vertical;
+  min-height: 180px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.row .entry textarea::placeholder { color: var(--ink-variant); opacity: 0.75; }
+.row .entry textarea:hover { border-color: var(--outline-soft); }
+.row .entry textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(164, 55, 0, 0.12);
+}
 /* One rule for every select on a tool page.
    `appearance: none` is the load-bearing line. Without it the browser draws
    its own control — system font, system chrome, and a platform focus ring in
@@ -299,6 +323,37 @@
    the first hands-on pass, #116). Muted measures 4.3:1 on the card, over
    the 3:1 WCAG 1.4.11 floor for meaningful graphics. */
 .schedule .bars i[data-under] { background: var(--muted); }
+/* The pacing timeline (#119): one lane of paragraph spans, in time order.
+   Ordinary stretches in muted, dense ones in primary — the same two colours
+   the ROI chart splits on, meaning the same thing: the darker one is where
+   the trouble is. The deadline is a vertical rule, not a bar; it is a fact
+   about the slot, not about the script. */
+.schedule .lanes {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  height: 28px;
+}
+.schedule .lanes i {
+  background: var(--muted);
+  border-radius: 2px;
+  min-width: 3px;
+}
+.schedule .lanes i[data-dense] { background: var(--primary); }
+.schedule .lanes .deadline {
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  width: 2px;
+  background: var(--ink);
+  border-radius: 1px;
+}
+.schedule .legend {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--ink-variant);
+}
+
 .schedule .axis {
   display: flex;
   justify-content: space-between;
@@ -602,6 +657,11 @@
   align-items: baseline;
   font-size: 15px;
 }
+/* Durations (#119): "1 min 48 sec" needs three times the width a money
+   figure does, and per-row auto-sizing would break the shared right edge —
+   so a page opts in to a wider fixed column instead. */
+.attrib.wide li { grid-template-columns: 108px 1fr; }
+.attrib.wide b { white-space: nowrap; }
 .attrib b, .stack b {
   font-variant-numeric: tabular-nums;
   font-weight: 700;

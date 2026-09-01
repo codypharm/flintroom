@@ -58,6 +58,14 @@ export const TOOLS: Tool[] = [
     icon: '<path d="M3 5v13a1 1 0 0 0 1 1h16"/><path d="m6 8 4 4 3.5-1L19 17"/>',
   },
   {
+    href: '/tools/pacing-calculator',
+    name: 'Pacing & script timing',
+    blurb: 'Paste the script — the time it takes, and what fits your slot',
+    audience: 'Speakers and presenters',
+    // A page of lines with a cursor mark — a script under the clock.
+    icon: '<path d="M5 4h11a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5"/><path d="M8 9h6"/><path d="M8 13h6"/><path d="M20 7v5l3 2"/>',
+  },
+  {
     href: '/tools/ltv-cac-calculator',
     name: 'LTV:CAC and payback',
     blurb: 'The ratio, the months to pay it back, and the lifetime it assumes',
