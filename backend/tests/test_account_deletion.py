@@ -387,7 +387,7 @@ async def test_the_purge_takes_the_audio_out_of_storage(
     """`docs/account-deletion.md`: object storage is included.
 
     Nothing cascades into a bucket. `session_recordings` goes with the session
-    it hangs off, and the `.ogg` behind it stays exactly where it was — so a
+    it hangs off, and the `.m4a` behind it stays exactly where it was — so a
     purge that only touched Postgres would leave a row saying the audio is gone
     over audio that is not, which the retention design calls out as worse than
     either state on its own.

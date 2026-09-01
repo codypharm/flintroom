@@ -18,7 +18,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.modules.sessions.models import SessionRecording
-from app.modules.voice.encoding import from_opus, to_opus
+from app.modules.voice.encoding import from_m4a, to_m4a
 from app.modules.voice.mixing import SAMPLE_RATE, RoomMixer
 from app.modules.voice.recording import RoomRecordings
 
@@ -32,17 +32,25 @@ def _tone(seconds: float) -> bytes:
     return samples.tobytes()
 
 
+#: What AAC may add, never subtract: priming plus a tail padded to whole
+#: 1024-sample frames, a fixed ~0.1 s regardless of room length (measured:
+#: 112 ms on 2 s, 88 ms on 1 s). Absolute rather than relative, because a
+#: fixed pad reads as enormous drift on a tiny test clip and as nothing on a
+#: real room — and the seed's clock cares about seconds, not percentages.
+_CODEC_PAD_BYTES = int(0.15 * SAMPLE_RATE) * 2
+
+
 def test_a_stored_room_decodes_back_to_the_length_it_had():
-    """Opus is lossy about waveforms, not about time. The seed's whole job is
-    carrying the clock, so length is the property that matters — within the
-    codec's own priming, which pads by milliseconds, not seconds."""
+    """The codec is lossy about waveforms, not about time. The seed's whole
+    job is carrying the clock, so length is the property that matters: never
+    shorter than the room, and longer only by the codec's fixed pad."""
     pcm = _tone(2.0)
 
-    decoded = from_opus(to_opus(pcm))
+    decoded = from_m4a(to_m4a(pcm))
 
     assert len(decoded) % 2 == 0
-    drift = abs(len(decoded) - len(pcm)) / len(pcm)
-    assert drift < 0.05
+    assert len(decoded) >= len(pcm)
+    assert len(decoded) - len(pcm) < _CODEC_PAD_BYTES
 
 
 def test_a_seeded_mixer_continues_the_clock_instead_of_restarting_it():
@@ -78,8 +86,8 @@ async def test_the_stored_segment_comes_back_as_the_next_mixers_seed(
 
     seed = await recordings.saved_pcm(session_id=session_id)
 
-    drift = abs(len(seed) - len(_tone(1.0))) / len(_tone(1.0))
-    assert drift < 0.05
+    assert len(seed) >= len(_tone(1.0))
+    assert len(seed) - len(_tone(1.0)) < _CODEC_PAD_BYTES
 
 
 async def test_a_room_never_saved_seeds_empty(storage):
@@ -108,4 +116,4 @@ async def test_saving_twice_keeps_one_row_with_the_newer_size(
     )
     count, size = rows.one()
     assert count == 1
-    assert size == len(to_opus(_tone(2.0)))
+    assert size == len(to_m4a(_tone(2.0)))

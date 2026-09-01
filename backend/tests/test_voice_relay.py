@@ -630,7 +630,9 @@ async def test_a_room_that_ends_normally_leaves_a_recording(
 
     saved = await storage.get(recording_key(session.id))
     assert saved is not None
-    assert saved[:4] == b"OggS"
+    # An MP4 opens with a box length then "ftyp" (the container decision of
+    # 2026-09-01: iPhones cannot play Ogg).
+    assert saved[4:8] == b"ftyp"
 
     # Both sources actually reached the mix. The container magic alone proves
     # only that *something* was encoded — mutation testing showed it passes with

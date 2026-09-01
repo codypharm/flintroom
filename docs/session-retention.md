@@ -125,6 +125,17 @@ Signing costs nothing at the moment somebody asks.
 
 ### One mixed track, positioned where it was heard
 
+> **Amended 2026-09-01 (#25):** the container is now **MP4/AAC**
+> (`rooms/{id}.m4a`, `audio/mp4`, AAC-LC at 48 kbps, faststart), approved by
+> the architect. iPhones cannot play Ogg at all, and MP4 is the one container
+> both platforms' built-in players stream natively over HTTP ranges. Storage
+> lands near 4.3 MB per twelve-minute room instead of Opus's 2.9 MB, still an
+> order of magnitude under the PCM. Everything below about *what* is stored
+> and for how long is unchanged; read "Opus/Ogg" as "AAC/MP4". Existing
+> objects are moved by `scripts/migrate_recordings.py`, which must run at
+> deploy: keys are derived, so an unmigrated `.ogg` is an orphan retention
+> can never expire.
+
 The stored artefact is a single Opus object: the user's continuous uplink, with
 panel speech mixed in at the position it actually played, truncated wherever
 barge-in cut a panelist off.

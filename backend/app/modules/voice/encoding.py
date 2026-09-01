@@ -21,20 +21,26 @@ smaller than 2.90 MB rather than larger.
 from __future__ import annotations
 
 import io
+import os
+import tempfile
 
 import av
 
 from app.modules.voice.mixing import SAMPLE_RATE
 
-#: What the object is served as. Ogg rather than raw Opus packets, because a
-#: bare Opus stream carries no timing and nothing on a phone will play one.
-OPUS_CONTENT_TYPE = "audio/ogg"
+#: What the object is served as. MP4 rather than Ogg, decided 2026-09-01 with
+#: the architect: iPhones cannot play Ogg at all — AVPlayer knows Opus only
+#: inside CAF/MP4-family containers — while both platforms' built-in players
+#: stream MP4 over HTTP ranges natively. Cross-platform is a property of the
+#: file, not of React Native.
+M4A_CONTENT_TYPE = "audio/mp4"
 
-#: Bits per second. Opus at 24k on mono speech is transparent enough that the
-#: difference is inaudible on a phone speaker, which is the only place these are
-#: ever heard — and it is the figure every storage projection in
-#: `docs/session-retention.md` is derived from, so moving it moves the bill.
-BIT_RATE = 24_000
+#: Bits per second. AAC-LC needs more than Opus for the same speech; 48k on
+#: 16 kHz mono is transparent on a phone speaker, which is the only place
+#: these are ever heard. Storage projections in `docs/session-retention.md`
+#: move with this figure: a twelve-minute room lands near 4.3 MB instead of
+#: Opus's 2.9 MB, still an order of magnitude under the PCM it replaces.
+BIT_RATE = 48_000
 
 #: How much is handed to the encoder at a time. Large enough that per-call
 #: overhead disappears, small enough that a room is never copied whole into a
@@ -42,8 +48,8 @@ BIT_RATE = 24_000
 _CHUNK_SAMPLES = SAMPLE_RATE
 
 
-def to_opus(pcm: bytes) -> bytes:
-    """One room's mixed PCM16, as an Ogg/Opus object.
+def to_m4a(pcm: bytes) -> bytes:
+    """One room's mixed PCM16, as an MP4/AAC object.
 
     **Blocking, and meant to be.** Twelve seconds of CPU for a full room is far
     too long for the event loop, so every caller runs this through
@@ -51,13 +57,32 @@ def to_opus(pcm: bytes) -> bytes:
     awaitable and still hold the loop for the whole encode.
 
     Mono at 16 kHz throughout, matching the relay's format in both directions —
-    Opus supports that rate natively, so nothing here resamples and no quality
-    is spent converting between formats that were already agreed.
-    """
-    buffer = io.BytesIO()
+    AAC-LC supports that rate natively, so nothing here resamples and no
+    quality is spent converting between formats that were already agreed.
 
-    with av.open(buffer, mode="w", format="ogg") as container:
-        stream = container.add_stream("libopus", rate=SAMPLE_RATE)
+    `faststart` moves the index (moov) ahead of the samples, which is what
+    lets a phone begin playing from a ranged GET instead of downloading the
+    whole room first. The muxer does that with a rewrite pass on close, and
+    the rewrite needs a real, named file: over an in-memory stream ffmpeg
+    tries to open a sibling temp file called "<none>" and dies. So this
+    encodes to a temp file and reads it back — one extra copy of a few
+    megabytes, on a call that is already twelve seconds of CPU.
+    """
+    handle = tempfile.NamedTemporaryFile(suffix=".m4a", delete=False)
+    handle.close()
+    try:
+        _encode_into(handle.name, pcm)
+        with open(handle.name, "rb") as done:
+            return done.read()
+    finally:
+        os.unlink(handle.name)
+
+
+def _encode_into(path: str, pcm: bytes) -> None:
+    with av.open(
+        path, mode="w", format="mp4", options={"movflags": "+faststart"}
+    ) as container:
+        stream = container.add_stream("aac", rate=SAMPLE_RATE)
         stream.bit_rate = BIT_RATE
 
         for offset in range(0, len(pcm), _CHUNK_SAMPLES * 2):
@@ -83,19 +108,17 @@ def to_opus(pcm: bytes) -> bytes:
         for packet in stream.encode(None):
             container.mux(packet)
 
-    return buffer.getvalue()
+def from_m4a(encoded: bytes) -> bytes:
+    """A stored MP4/AAC room, back as the PCM16 it was mixed from.
 
-def from_opus(encoded: bytes) -> bytes:
-    """A stored Ogg/Opus room, back as the PCM16 it was mixed from.
-
-    The other half of `to_opus`, and it exists for one caller: seeding a
+    The other half of `to_m4a`, and it exists for one caller: seeding a
     resumed room's mixer with the segment the dropped connection stored
     (docs/reconnect.md), so the clock — and with it every transcript offset —
-    continues instead of restarting. Blocking for the same reason `to_opus`
+    continues instead of restarting. Blocking for the same reason `to_m4a`
     is, and run through `asyncio.to_thread` by that caller.
 
-    Lossy about the waveform and not about time: Opus decodes to the length it
-    encoded, give or take the codec's own priming — milliseconds, which is
+    Lossy about the waveform and not about time: the codec decodes to the
+    length it encoded, give or take its own priming — milliseconds, which is
     noise against offsets read by humans scrubbing a player.
     """
     pcm = io.BytesIO()
@@ -103,10 +126,11 @@ def from_opus(encoded: bytes) -> bytes:
     # `mode="r"` is what the stubs need to know this is an input container —
     # the same call the tests make without it, and the read is the default.
     with av.open(io.BytesIO(encoded), mode="r") as container:
-        # Back to the wire's own format whatever the file says: libopus
-        # decodes at 48 kHz regardless of the rate it was fed, so without
-        # this the seed would run three times slower than the room it is
-        # supposed to continue.
+        # Back to the wire's own format whatever the file says — kept from
+        # the Opus era, where the decoder came back at 48 kHz regardless of
+        # what it was fed. AAC decodes at its stored rate, so this is now a
+        # no-op that costs nothing and keeps the seed correct if the codec
+        # ever changes again.
         resampler = av.AudioResampler(format="s16", layout="mono", rate=SAMPLE_RATE)
         for frame in container.decode(audio=0):
             for resampled in resampler.resample(frame):

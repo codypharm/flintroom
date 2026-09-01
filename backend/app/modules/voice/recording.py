@@ -25,7 +25,7 @@ from app.core.storage import ObjectStorage
 from app.modules.sessions.models import SessionRecording
 from sqlalchemy.dialects.postgresql import insert
 
-from app.modules.voice.encoding import OPUS_CONTENT_TYPE, from_opus, to_opus
+from app.modules.voice.encoding import M4A_CONTENT_TYPE, from_m4a, to_m4a
 
 log = get_logger(__name__, tag="voice")
 
@@ -38,7 +38,7 @@ def recording_key(session_id: uuid.UUID) -> str:
     rather than from a key, so encoding either here would be a second copy of a
     fact that changes — a user's tier moves, and a key cannot.
     """
-    return f"rooms/{session_id}.ogg"
+    return f"rooms/{session_id}.m4a"
 
 
 class RoomRecordings:
@@ -80,9 +80,9 @@ class RoomRecordings:
             return
 
         try:
-            encoded = await asyncio.to_thread(to_opus, pcm)
+            encoded = await asyncio.to_thread(to_m4a, pcm)
             await self._storage.put(
-                recording_key(session_id), encoded, content_type=OPUS_CONTENT_TYPE
+                recording_key(session_id), encoded, content_type=M4A_CONTENT_TYPE
             )
         except (FFmpegError, ClientError):
             # Caught narrowly and by name, never as a bare `Exception`
@@ -145,7 +145,7 @@ class RoomRecordings:
             return b""
 
         try:
-            return await asyncio.to_thread(from_opus, stored)
+            return await asyncio.to_thread(from_m4a, stored)
         except FFmpegError:
             log.exception("room_recording_undecodable", session_id=str(session_id))
             return b""
