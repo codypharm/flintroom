@@ -325,6 +325,16 @@ class Session(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    #: When this room's reading included strengths (#118) — the score's birth
+    #: certificate. Null on every room debriefed before scores existed: those
+    #: were read by a model never asked what held, and their zero strong rows
+    #: mean "never judged that way", not "nothing held". Stamped on the same
+    #: winning write as `debriefed_at`, so the two cannot disagree about which
+    #: reading a score belongs to.
+    scored_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
@@ -850,6 +860,56 @@ class SessionWeakAnswer(Base):
     #: by `weakness._suggestion`. The finding survives either way — it was
     #: verified by its own quote — and the entry falls back to diagnosis.
     next_time: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    found_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class SessionStrongAnswer(Base):
+    """One question the room got a good enough answer to (#118).
+
+    The other half of `SessionWeakAnswer`, written in the same transaction on
+    the same first debrief open, for the same reason: the reading moves
+    between runs on the same transcript, and the score these rows produce is
+    shown beside the previous room's — a numerator recomputed on every open
+    would let the same room's score drift under somebody comparing.
+    """
+
+    __tablename__ = "session_strong_answers"
+    __table_args__ = (
+        # Ordinal rather than rank: strengths are unranked — the score counts
+        # them, and a count has no order. One row per question is the fact,
+        # enforced upstream by `verified_strengths` deduping on ordinal and
+        # here by the key.
+        PrimaryKeyConstraint(
+            "session_id", "ordinal", name="pk_session_strong_answers"
+        ),
+    )
+
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    #: Which transcript line the *question* is. Copied text below rather than
+    #: a join, exactly as the weak half does.
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    asked_by: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    #: What they said that held. Not nullable — an answer that held exists, or
+    #: `verified_strengths` dropped the claim before it got here.
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+
+    #: One of `Strength`. Plain text, not a Postgres enum, for the reason
+    #: `weakness` is.
+    strength: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    #: The model's sentence to the presenter about what worked.
+    why: Mapped[str] = mapped_column(Text, nullable=False)
 
     found_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

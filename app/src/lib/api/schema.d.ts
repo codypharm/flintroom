@@ -1165,6 +1165,10 @@ export interface components {
         DebriefRead: {
             /** Weak Answers */
             weak_answers: components["schemas"]["WeakAnswerRead"][];
+            /** Held Answers */
+            held_answers?: components["schemas"]["StrongAnswerRead"][];
+            score?: components["schemas"]["ScoreRead"] | null;
+            previous_score?: components["schemas"]["ScoreRead"] | null;
             /** Pressed */
             pressed?: ("harder" | "easier") | null;
             opening?: components["schemas"]["CoachTurnRead"] | null;
@@ -1609,6 +1613,21 @@ export interface components {
             level?: number | null;
         };
         /**
+         * ScoreRead
+         * @description (held, judged), counted in code from verified findings (#118).
+         *
+         *     Two integers rather than a percentage, so the client renders "1 of 2
+         *     held" and derives any figure itself — the API states facts and never
+         *     rounds them. The model never produced either number; it produced quoted
+         *     findings, and this is arithmetic over the ones that survived checking.
+         */
+        ScoreRead: {
+            /** Held */
+            held: number;
+            /** Judged */
+            judged: number;
+        };
+        /**
          * SessionRead
          * @description What a client is told about its own session.
          *
@@ -1833,6 +1852,27 @@ export interface components {
         StreamTicket: {
             /** Stream Ticket */
             stream_ticket: string;
+        };
+        /**
+         * StrongAnswerRead
+         * @description One question the room got a good enough answer to (#118).
+         *
+         *     The presenter's own words back, like `WeakAnswerRead` — a strength that
+         *     arrived as a bare category would be praise nobody can learn from.
+         */
+        StrongAnswerRead: {
+            /** Ordinal */
+            ordinal: number;
+            /** Question */
+            question: string;
+            /** Asked By */
+            asked_by: string;
+            /** Answer */
+            answer: string;
+            /** Strength */
+            strength: string;
+            /** Why */
+            why: string;
         };
         /**
          * TallyRead

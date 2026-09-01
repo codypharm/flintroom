@@ -420,11 +420,14 @@ class ScriptedWeaknessReader:
 
     def __init__(self) -> None:
         self.judged: tuple = ()
+        self.strong: tuple = ()
         self.calls = 0
 
     async def rank(self, *, room):
         self.calls += 1
-        return WeaknessReading(judged=self.judged, usage=TurnUsage(1200, 300))
+        return WeaknessReading(
+            judged=self.judged, strong=self.strong, usage=TurnUsage(1200, 300)
+        )
 
 
 @pytest.fixture

@@ -50,6 +50,8 @@ from app.modules.sessions.schemas import (
     TallyRead,
     TranscriptLineRead,
     TranscriptRead,
+    ScoreRead,
+    StrongAnswerRead,
     WeakAnswerRead,
 )
 from app.modules.voice.dependencies import VoiceTicketServiceDep
@@ -462,6 +464,23 @@ async def read_debrief(
             )
             for answer in await debrief.weak_answers(session_id=session.id)
         ],
+        # All three read after the weak answers, which is what computes and
+        # stores the reading they depend on.
+        held_answers=[
+            StrongAnswerRead(
+                ordinal=one.ordinal,
+                question=one.question,
+                asked_by=one.asked_by,
+                answer=one.answer,
+                strength=one.strength.value,
+                why=one.why,
+            )
+            for one in await debrief.strong_answers(session_id=session.id)
+        ],
+        score=_score_read(await debrief.score(session_id=session.id)),
+        previous_score=_score_read(
+            await debrief.previous_score(session_id=session.id)
+        ),
         # Read after the weak answers, not before, and the order is the whole
         # of it: reading them is what moves the rung, so a comparison taken
         # first would describe the world one calibration out of date.
@@ -484,6 +503,14 @@ async def read_debrief(
             for attempt in await coaching.attempts(session_id=session.id)
         ],
     )
+
+
+def _score_read(counted: tuple[int, int] | None) -> ScoreRead | None:
+    """Two integers onto the wire, or the absence of a score, unchanged."""
+    if counted is None:
+        return None
+    held, judged = counted
+    return ScoreRead(held=held, judged=judged)
 
 
 @router.post(

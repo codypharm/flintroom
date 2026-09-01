@@ -246,3 +246,60 @@ def test_a_reply_with_no_held_list_is_an_empty_answer_not_an_error():
     assert to_strengths({}) == ()
     assert to_strengths({"held": "yes"}) == ()
     assert to_strengths(None) == ()
+
+
+def test_a_question_praised_twice_counts_once():
+    """The score counts questions, not labels. A model that files the same
+    answer as held AND grounded has read one answer, and the first filing
+    wins because order is the model's."""
+    judged = (
+        StrengthJudgement(
+            ordinal=1,
+            quote="Forty percent from what base?",
+            strength=Strength.HELD,
+            why="The figure survived.",
+        ),
+        StrengthJudgement(
+            ordinal=1,
+            quote="Forty percent from what base?",
+            strength=Strength.GROUNDED,
+            why="You named the source.",
+        ),
+    )
+
+    (kept,) = verified_strengths(judged, ROOM)
+    assert kept.strength is Strength.HELD
+
+
+async def test_a_question_in_both_lists_is_a_fault_not_a_strength():
+    """A reading that praises and faults the same answer has contradicted
+    itself. The weakness wins — the product's premise is the grill, and a
+    presenter told an answer held will give it again to a real room."""
+
+    class ContradictoryReader:
+        async def rank(self, *, room):
+            return WeaknessReading(
+                judged=(
+                    Judgement(
+                        ordinal=1,
+                        quote="Forty percent from what base?",
+                        weakness=Weakness.UNSUPPORTED,
+                        why="Two point eight was asserted with nothing behind it.",
+                    ),
+                ),
+                strong=(
+                    StrengthJudgement(
+                        ordinal=1,
+                        quote="Forty percent from what base?",
+                        strength=Strength.HELD,
+                        why="The base was ready.",
+                    ),
+                ),
+            )
+
+    ranked = await weak_answers(
+        ROOM, ended=EndReason.USER_ENDED, reader=ContradictoryReader()
+    )
+
+    assert len(ranked.answers) == 1
+    assert ranked.strong == ()

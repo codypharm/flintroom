@@ -727,3 +727,208 @@ async def test_the_marker_is_put_back_when_the_rows_outlive_it(
         select(Session.debriefed_at).where(Session.id == session.id)
     )
     assert mark is not None
+
+
+async def test_what_held_is_kept_beside_what_broke_and_read_from_the_kept_rows(
+    db, engine, sessions, settlement, funded_account
+):
+    """#118. Both halves of the reading land in one transaction on the first
+    open, and every later open reads the rows — the strong list must not be
+    recomputable on its own, or the score could drift under somebody
+    comparing it to the previous room's."""
+    from app.agents.weakness import Strength, StrengthJudgement
+
+    class BothHalvesReader(CountingReader):
+        async def rank(self, *, room):
+            reading = await super().rank(room=room)
+            return WeaknessReading(
+                judged=reading.judged,
+                strong=(
+                    StrengthJudgement(
+                        ordinal=3,
+                        quote="What does the margin look like after that?",
+                        strength=Strength.CONCEDED,
+                        why="You granted the cost plainly instead of dressing it.",
+                    ),
+                ),
+                usage=reading.usage,
+            )
+
+    session = await room_that_happened(
+        db,
+        engine,
+        sessions,
+        settlement,
+        funded_account,
+        ROOM[0],
+        ROOM[1],
+        ROOM[2],
+        Said(speaker="cfo", text="What does the margin look like after that?"),
+        Said(speaker=USER, text="Margin took the hit, about six points of it."),
+    )
+
+    reader = BothHalvesReader(CAUGHT)
+    service = DebriefService(db, reader=reader)
+
+    await service.weak_answers(session_id=session.id)
+    first = await service.strong_answers(session_id=session.id)
+    second = await service.strong_answers(session_id=session.id)
+
+    assert reader.calls == 1
+    assert first == second
+    (kept,) = first
+    assert kept.strength is Strength.CONCEDED
+    assert kept.question == "What does the margin look like after that?"
+    assert kept.answer == "Margin took the hit, about six points of it."
+
+
+async def test_a_room_where_only_strengths_were_found_still_keeps_them(
+    db, engine, sessions, settlement, funded_account
+):
+    """An empty weak list with a full held list is a room that went well —
+    the good half must not depend on the bad half existing."""
+    from app.agents.weakness import Strength, StrengthJudgement
+
+    class OnlyPraiseReader(CountingReader):
+        async def rank(self, *, room):
+            self.calls += 1
+            return WeaknessReading(
+                judged=(),
+                strong=(
+                    StrengthJudgement(
+                        ordinal=1,
+                        quote="Off what base, and at what cost?",
+                        strength=Strength.HELD,
+                        why="The figure survived the press.",
+                    ),
+                ),
+                usage=TurnUsage(1200, 300),
+            )
+
+    session = await room_that_happened(
+        db,
+        engine,
+        sessions,
+        settlement,
+        funded_account,
+        ROOM[0],
+        ROOM[1],
+        Said(speaker=USER, text="Two million, and margin carried the cost."),
+    )
+
+    reader = OnlyPraiseReader()
+    service = DebriefService(db, reader=reader)
+
+    assert await service.weak_answers(session_id=session.id) == ()
+    (kept,) = await service.strong_answers(session_id=session.id)
+    assert kept.strength is Strength.HELD
+
+
+async def test_the_score_is_counted_and_the_first_room_has_nothing_before_it(
+    db, engine, sessions, settlement, funded_account
+):
+    """#118. One question faulted at the presenter, one that held: 1 of 2.
+    Room one's previous is null — there is nothing to compare against, and
+    the client says nothing rather than inventing a baseline."""
+    from app.agents.weakness import Strength, StrengthJudgement
+
+    class OneEachReader(CountingReader):
+        async def rank(self, *, room):
+            self.calls += 1
+            return WeaknessReading(
+                judged=(CAUGHT,),
+                strong=(
+                    StrengthJudgement(
+                        ordinal=3,
+                        quote="What does the margin look like after that?",
+                        strength=Strength.HELD,
+                        why="The figure survived.",
+                    ),
+                ),
+                usage=TurnUsage(1200, 300),
+            )
+
+    session = await room_that_happened(
+        db,
+        engine,
+        sessions,
+        settlement,
+        funded_account,
+        *ROOM,
+        Said(speaker="cfo", text="What does the margin look like after that?"),
+        Said(speaker=USER, text="Six points down, back in four months."),
+    )
+
+    service = DebriefService(db, reader=OneEachReader())
+    await service.weak_answers(session_id=session.id)
+
+    assert await service.score(session_id=session.id) == (1, 2)
+    assert await service.previous_score(session_id=session.id) is None
+
+
+async def test_the_previous_score_comes_from_the_last_scored_room_in_the_lineage(
+    db, engine, sessions, settlement, funded_account
+):
+    from app.agents.weakness import Strength, StrengthJudgement
+
+    class OneEachReader(CountingReader):
+        async def rank(self, *, room):
+            self.calls += 1
+            return WeaknessReading(
+                judged=(CAUGHT,),
+                strong=(
+                    StrengthJudgement(
+                        ordinal=3,
+                        quote="What does the margin look like after that?",
+                        strength=Strength.HELD,
+                        why="The figure survived.",
+                    ),
+                ),
+                usage=TurnUsage(1200, 300),
+            )
+
+    lines = (
+        *ROOM,
+        Said(speaker="cfo", text="What does the margin look like after that?"),
+        Said(speaker=USER, text="Six points down, back in four months."),
+    )
+
+    first = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *lines
+    )
+    service = DebriefService(db, reader=OneEachReader())
+    await service.weak_answers(session_id=first.id)
+
+    second = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *lines, repeats=first.id
+    )
+    await service.weak_answers(session_id=second.id)
+
+    assert await service.previous_score(session_id=second.id) == (1, 2)
+
+
+async def test_a_room_read_before_scores_existed_has_no_score_to_show(
+    db, engine, sessions, settlement, funded_account
+):
+    """A pre-#118 debrief was read by a model never asked what held. Its
+    score does not exist — which is not the same fact as 0 held — and a
+    later room in the lineage must not compare against it."""
+    session = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM
+    )
+    service = DebriefService(db, reader=CountingReader(CAUGHT))
+    await service.weak_answers(session_id=session.id)
+
+    # A room debriefed by the previously deployed build: read, but never scored.
+    await db.execute(
+        update(Session).where(Session.id == session.id).values(scored_at=None)
+    )
+    await db.commit()
+
+    assert await service.score(session_id=session.id) is None
+
+    later = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *ROOM, repeats=session.id
+    )
+    await service.weak_answers(session_id=later.id)
+    assert await service.previous_score(session_id=later.id) is None

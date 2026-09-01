@@ -426,3 +426,63 @@ async def test_a_rehearsal_is_never_compared_against_a_different_one(
     # Against the board readout's own last attempt, which pressed exactly as
     # hard — not against the gentle demo-day room that happened in between.
     assert body["pressed"] is None
+
+
+async def test_the_debrief_carries_the_score_and_what_held(
+    client, db, engine, sessions, settlement, funded_account, bearer, weakness_reader
+):
+    """#118. The wire carries the held answers, the counted score, and the
+    previous room's — never a number the model said, only rows it quoted."""
+    from app.agents.weakness import Strength, StrengthJudgement
+
+    lines = (
+        *ROOM,
+        Said(speaker="cfo", text="What does the margin look like after that?"),
+        Said(speaker=USER, text="Six points down, back inside four months."),
+    )
+    weakness_reader.judged = (FOUND,)
+    weakness_reader.strong = (
+        StrengthJudgement(
+            ordinal=3,
+            quote="What does the margin look like after that?",
+            strength=Strength.CONCEDED,
+            why="You gave the cost plainly instead of dressing it.",
+        ),
+    )
+
+    first = await room_that_happened(
+        db, engine, sessions, settlement, funded_account, *lines
+    )
+    one = await client.get(
+        f"/v1/sessions/{first.id}/debrief", headers=bearer(funded_account.user_id)
+    )
+    assert one.status_code == 200
+    body = one.json()
+    assert body["held_answers"] == [
+        {
+            "ordinal": 3,
+            "question": "What does the margin look like after that?",
+            "asked_by": "cfo",
+            "answer": "Six points down, back inside four months.",
+            "strength": "conceded",
+            "why": "You gave the cost plainly instead of dressing it.",
+        }
+    ]
+    assert body["score"] == {"held": 1, "judged": 2}
+    assert body["previous_score"] is None
+
+    second = await room_that_happened(
+        db,
+        engine,
+        sessions,
+        settlement,
+        funded_account,
+        *lines,
+        repeats=first.id,
+    )
+    two = await client.get(
+        f"/v1/sessions/{second.id}/debrief", headers=bearer(funded_account.user_id)
+    )
+    assert two.status_code == 200
+    assert two.json()["score"] == {"held": 1, "judged": 2}
+    assert two.json()["previous_score"] == {"held": 1, "judged": 2}

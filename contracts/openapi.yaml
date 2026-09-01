@@ -1870,6 +1870,19 @@ components:
             $ref: '#/components/schemas/WeakAnswerRead'
           type: array
           title: Weak Answers
+        held_answers:
+          items:
+            $ref: '#/components/schemas/StrongAnswerRead'
+          type: array
+          title: Held Answers
+        score:
+          anyOf:
+          - $ref: '#/components/schemas/ScoreRead'
+          - type: 'null'
+        previous_score:
+          anyOf:
+          - $ref: '#/components/schemas/ScoreRead'
+          - type: 'null'
         pressed:
           anyOf:
           - type: string
@@ -2580,6 +2593,29 @@ components:
         and the first thing it would draw is a trend that tells an improving
 
         presenter they are getting worse.'
+    ScoreRead:
+      properties:
+        held:
+          type: integer
+          title: Held
+        judged:
+          type: integer
+          title: Judged
+      type: object
+      required:
+      - held
+      - judged
+      title: ScoreRead
+      description: '(held, judged), counted in code from verified findings (#118).
+
+
+        Two integers rather than a percentage, so the client renders "1 of 2
+
+        held" and derives any figure itself — the API states facts and never
+
+        rounds them. The model never produced either number; it produced quoted
+
+        findings, and this is arithmetic over the ones that survived checking.'
     SessionRead:
       properties:
         id:
@@ -2943,6 +2979,41 @@ components:
         asking for this already holds the session, and echoing the row back would
 
         be a second copy of state it did not ask about.'
+    StrongAnswerRead:
+      properties:
+        ordinal:
+          type: integer
+          title: Ordinal
+        question:
+          type: string
+          title: Question
+        asked_by:
+          type: string
+          title: Asked By
+        answer:
+          type: string
+          title: Answer
+        strength:
+          type: string
+          title: Strength
+        why:
+          type: string
+          title: Why
+      type: object
+      required:
+      - ordinal
+      - question
+      - asked_by
+      - answer
+      - strength
+      - why
+      title: StrongAnswerRead
+      description: 'One question the room got a good enough answer to (#118).
+
+
+        The presenter''s own words back, like `WeakAnswerRead` — a strength that
+
+        arrived as a bare category would be praise nobody can learn from.'
     TallyRead:
       properties:
         name:

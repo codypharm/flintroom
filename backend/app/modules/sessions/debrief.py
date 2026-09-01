@@ -28,7 +28,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.calibration import calibrate
 from app.agents.difficulty import GENTLE
-from app.agents.weakness import WeakAnswer, Weakness, WeaknessReader, weak_answers
+from app.agents.weakness import (
+    Strength,
+    StrongAnswer,
+    WeakAnswer,
+    Weakness,
+    WeaknessReader,
+    weak_answers,
+)
+from app.agents.weakness import score as weakness_score
 from app.core.database import rows_touched
 from app.core.errors import (
     RoomBroke,
@@ -38,7 +46,12 @@ from app.core.errors import (
 )
 from app.core.logging import get_logger
 from app.modules.billing.models import Account
-from app.modules.sessions.models import Session, SessionWeakAnswer, TranscriptLine
+from app.modules.sessions.models import (
+    Session,
+    SessionStrongAnswer,
+    SessionWeakAnswer,
+    TranscriptLine,
+)
 from app.modules.sessions.schemas import EndReason, SessionState
 from app.agents.context import USER, Said
 
@@ -124,6 +137,7 @@ class DebriefService:
         return await self._keep(
             session_id,
             ranked.answers,
+            strong=ranked.strong,
             user_id=session.user_id,
             questions=questions,
         )
@@ -179,11 +193,114 @@ class DebriefService:
             for row in rows.scalars()
         )
 
+    async def strong_answers(
+        self, *, session_id: uuid.UUID
+    ) -> tuple[StrongAnswer, ...]:
+        """What held in this room (#118). The stored rows, always.
+
+        No compute path of its own, on purpose: both halves of the reading are
+        born together in `weak_answers` and written in one transaction, so a
+        caller here before any debrief open gets an empty tuple — which is
+        also what a pre-#118 room truthfully has. A separate computation would
+        be a second reading free to disagree with the one the score already
+        showed somebody.
+
+        Ordered by ordinal — the room's own order — because a count has no
+        ranking and the transcript's is the only order that means anything.
+        """
+        rows = await self._db.execute(
+            select(SessionStrongAnswer)
+            .where(SessionStrongAnswer.session_id == session_id)
+            .order_by(SessionStrongAnswer.ordinal)
+        )
+        return tuple(
+            StrongAnswer(
+                ordinal=row.ordinal,
+                question=row.question,
+                asked_by=row.asked_by,
+                answer=row.answer,
+                strength=Strength(row.strength),
+                why=row.why,
+            )
+            for row in rows.scalars()
+        )
+
+    async def score(self, *, session_id: uuid.UUID) -> tuple[int, int] | None:
+        """(held, judged) for this room, or None when no score exists (#118).
+
+        None and (0, n) are different facts. A room debriefed before scores
+        existed was read by a model never asked what held — its zero strong
+        rows mean "never judged that way", and showing that as nothing-held
+        would tell somebody they failed a test that was never run. `scored_at`
+        is the witness, stamped on the same write as the reading.
+
+        Arithmetic over the kept rows, never stored: the rows are already the
+        single record of the reading, and a stored total would be a second
+        copy free to disagree with them.
+        """
+        mark = await self._db.execute(
+            select(Session.scored_at).where(Session.id == session_id)
+        )
+        if mark.scalar_one_or_none() is None:
+            return None
+
+        return weakness_score(
+            await self.strong_answers(session_id=session_id),
+            await self._kept(session_id),
+        )
+
+    async def previous_score(
+        self, *, session_id: uuid.UUID
+    ) -> tuple[int, int] | None:
+        """The score of the last scored room in this room's lineage, or None.
+
+        The comparison the testers asked for, shaped by `docs/rehearsals.md`:
+        rooms group by the argument they are attempts at, so the room before
+        this one *in the lineage* is the meaningful baseline — a rehearsal of
+        a different argument says nothing about this one.
+
+        Skips unscored rooms rather than stopping at them, so one pre-#118
+        debrief in the middle of a lineage costs the comparison one step of
+        recency, not its existence.
+        """
+        this = await self._db.execute(
+            select(Session).where(Session.id == session_id)
+        )
+        room = this.scalar_one_or_none()
+        if room is None:
+            return None
+
+        lineage = room.rehearsal
+        before = room.debriefed_at
+        if before is None:
+            return None
+
+        previous = await self._db.execute(
+            select(Session.id)
+            .where(
+                func.coalesce(Session.rehearsal_id, Session.id) == lineage,
+                Session.id != room.id,
+                Session.scored_at.is_not(None),
+                Session.debriefed_at < before,
+            )
+            .order_by(Session.debriefed_at.desc())
+            .limit(1)
+        )
+        earlier = previous.scalar_one_or_none()
+        if earlier is None:
+            return None
+
+        return weakness_score(
+            await self.strong_answers(session_id=earlier),
+            await self._kept(earlier),
+        )
+
     async def _keep(
         self,
         session_id: uuid.UUID,
         answers: tuple[WeakAnswer, ...],
         *,
+        strong: tuple[StrongAnswer, ...],
         user_id: uuid.UUID,
         questions: int,
     ) -> tuple[WeakAnswer, ...]:
@@ -208,7 +325,7 @@ class DebriefService:
         claimed = await self._db.execute(
             update(Session)
             .where(Session.id == session_id, Session.debriefed_at.is_(None))
-            .values(debriefed_at=func.now())
+            .values(debriefed_at=func.now(), scored_at=func.now())
         )
         if not rows_touched(claimed):
             # Somebody else read this room first. Their transaction held the
@@ -232,6 +349,21 @@ class DebriefService:
                 next_time=answer.next_time,
             )
             for rank, answer in enumerate(answers)
+        )
+        # The other half, in the same transaction (#118). One reading, one
+        # write: a crash between two commits would leave a score with a
+        # denominator and no numerator, shown as a worse room than was read.
+        self._db.add_all(
+            SessionStrongAnswer(
+                session_id=session_id,
+                ordinal=one.ordinal,
+                question=one.question,
+                asked_by=one.asked_by,
+                answer=one.answer,
+                strength=one.strength.value,
+                why=one.why,
+            )
+            for one in strong
         )
 
         moved = calibrate(

@@ -475,8 +475,15 @@ def verified_strengths(
     prompt regression becomes a score that silently sinks.
     """
     kept: list[StrongAnswer] = []
+    praised: set[int] = set()
 
     for judgement in judged:
+        if judgement.ordinal in praised:
+            # The score counts questions, not labels. A model that filed one
+            # answer as both held and grounded read one answer; the first
+            # filing wins because the order is the model's.
+            continue
+
         answer = (
             _answer_to(transcript, judgement.ordinal)
             if _quotes_the_room(judgement, transcript)
@@ -493,6 +500,7 @@ def verified_strengths(
             continue
 
         line = transcript[judgement.ordinal]
+        praised.add(judgement.ordinal)
         kept.append(
             StrongAnswer(
                 ordinal=judgement.ordinal,
@@ -694,11 +702,18 @@ async def weak_answers(
     """
     reading = await reader.rank(room=annotate(transcript, ended=ended))
 
-    return Ranked(
-        answers=verified(reading.judged, transcript),
-        strong=verified_strengths(reading.strong, transcript),
-        usage=reading.usage,
-    )
+    answers = verified(reading.judged, transcript)
+    strong = verified_strengths(reading.strong, transcript)
+
+    # A reading that praises and faults the same answer has contradicted
+    # itself. The weakness wins: the product's premise is the grill, and a
+    # presenter told an answer held will give it again to a real room. The
+    # asymmetric cost decides it — a strength wrongly dropped understates a
+    # score; a fault wrongly dropped hides the finding the debrief exists for.
+    faulted = {weak.ordinal for weak in answers}
+    strong = tuple(one for one in strong if one.ordinal not in faulted)
+
+    return Ranked(answers=answers, strong=strong, usage=reading.usage)
 
 
 def to_judgements(reported: Any) -> tuple[Judgement, ...]:

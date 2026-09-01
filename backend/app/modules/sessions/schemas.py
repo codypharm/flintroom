@@ -533,6 +533,39 @@ class WeakAnswerRead(BaseModel):
     next_time: str | None = None
 
 
+class StrongAnswerRead(BaseModel):
+    """One question the room got a good enough answer to (#118).
+
+    The presenter's own words back, like `WeakAnswerRead` — a strength that
+    arrived as a bare category would be praise nobody can learn from.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    ordinal: int
+    question: str
+    asked_by: str
+
+    #: Never null: an answer that held exists, or verification dropped the
+    #: claim before it was stored.
+    answer: str
+    strength: str
+    why: str
+
+
+class ScoreRead(BaseModel):
+    """(held, judged), counted in code from verified findings (#118).
+
+    Two integers rather than a percentage, so the client renders "1 of 2
+    held" and derives any figure itself — the API states facts and never
+    rounds them. The model never produced either number; it produced quoted
+    findings, and this is arithmetic over the ones that survived checking.
+    """
+
+    held: int
+    judged: int
+
+
 class DebriefRead(BaseModel):
     """What the coach and the prep sheet are both grounded in.
 
@@ -546,6 +579,25 @@ class DebriefRead(BaseModel):
     """
 
     weak_answers: list[WeakAnswerRead]
+
+    #: The answers that held (#118), in transcript order. Empty on rooms read
+    #: before strengths existed — see `score` for how that case is told apart
+    #: from a room where nothing held.
+    held_answers: list[StrongAnswerRead] = Field(default_factory=list)
+
+    #: This room's score, or null when no score exists — a room debriefed
+    #: before strengths were judged has no numerator, and null is that fact
+    #: rather than a zero pretending to be one.
+    #:
+    #: A score, deliberately, where `pressed` below still refuses a level:
+    #: the decision of 2026-09-01 (#118) publishes a *count of verified
+    #: findings* — every point traces to a quoted line — not a model's opinion
+    #: of the person. The difficulty rung stays unpublished.
+    score: ScoreRead | None = None
+
+    #: The last scored room in this room's lineage, or null on a first
+    #: attempt. The comparison testers asked for: same argument, last time.
+    previous_score: ScoreRead | None = None
 
     #: How this room compared to the one before it — `"harder"`, `"easier"`, or
     #: null when there is nothing to compare against.
