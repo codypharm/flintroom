@@ -71,7 +71,7 @@ class FakePanelModel:
     async def select(self, *, candidates, context) -> ModelReply:
         return ModelReply(text=self._selects)
 
-    async def compose(self, *, archetype, context, finding=None, dispute=None) -> ModelReply:
+    async def compose(self, *, archetype, context, finding=None, dispute=None, rephrasing=None) -> ModelReply:
         self.wrote_as.append(archetype.name)
         self.composed_with.append(context)
         return ModelReply(text=LINE)
@@ -306,7 +306,7 @@ async def test_a_dead_panel_model_refunds_instead_of_billing_for_silence(db, fun
     """
 
     class BrokenModel(FakePanelModel):
-        async def compose(self, *, archetype, context, finding=None, dispute=None) -> ModelReply:
+        async def compose(self, *, archetype, context, finding=None, dispute=None, rephrasing=None) -> ModelReply:
             raise ProviderUnavailable(reason="panel_model_error")
 
     session, ticket = await _admitted(db, funded_account, archetypes=["cfo"])

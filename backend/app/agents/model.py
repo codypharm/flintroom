@@ -58,7 +58,7 @@ class PanelModel(Protocol):
         ...
 
     async def compose(
-        self, *, archetype: Archetype, context, finding=None, dispute=None
+        self, *, archetype: Archetype, context, finding=None, dispute=None, rephrasing=None
     ) -> ModelReply:
         """Write this archetype's next line.
 
@@ -73,6 +73,12 @@ class PanelModel(Protocol):
         well as to the routing, because an archetype handed the floor for a
         contradiction and not told what the contradiction was produces a
         challenge that sounds authoritative and cites nothing.
+
+        `rephrasing` is one of this archetype's own earlier questions, to be
+        asked again in different words (#117). It is the only argument that
+        *replaces* the prompt rather than adding to it: the standard one
+        forbids repeating a question already asked, which is exactly what a
+        rephrase is. When it is set, nothing else here is used.
 
         `dispute` is a colleague's line this archetype may take issue with —
         never with its substance, only with whether it is what matters most.

@@ -60,6 +60,22 @@ class Said:
     #: somewhere.
     disputed: bool = False
 
+    #: Whether this line is an earlier question of the same panelist's, asked
+    #: again in different words because the presenter said they did not follow
+    #: it (#117).
+    #:
+    #: Here for exactly the reason `disputed` is, and against the same failure.
+    #: Unmarked, a rephrase and a fresh question are the same shape — panel text
+    #: following panel text — so the debrief would find the original question
+    #: with no answer after it and rank it as the strongest kind of weak answer,
+    #: the one nobody even tried. It would then tell somebody they ducked a
+    #: question they had asked to have re-put and then answered.
+    #:
+    #: Not persisting the rephrase at all was the other option and is worse: the
+    #: presenter answers *these* words, and the debrief would grade that answer
+    #: against wording they never treated as final.
+    rephrasing: bool = False
+
     #: What handed this speaker the floor, for panel lines. `None` for the user's
     #: own, which nobody chose.
     #:

@@ -19,6 +19,7 @@ import pytest
 
 from app.agents.archetypes import DEFAULT_PANEL
 from app.agents.context import Grounding, Said, USER
+from app.agents.model import ModelReply
 from app.agents.repeat import asked_to_rephrase, asked_to_repeat, question_to_repeat
 from app.modules.voice.events import AgentTranscript
 from app.modules.voice.orchestrated import OrchestratedChannel
@@ -242,26 +243,157 @@ async def test_come_again_replays_the_question_verbatim_from_the_same_voice():
     assert len(panel_lines) == 1
 
 
-async def test_a_rephrase_request_does_not_hand_the_floor_to_somebody_else():
-    """The tester's report, 2026-09-01 — and the half of it that ships now.
+class SlowToRephrase(ScriptedPanelModel):
+    """Never answers a rephrase, so the deadline is what ends the wait."""
 
-    They asked the panelist to rephrase and a *different* panelist took over,
-    because every pattern in `asked_to_repeat` means *I did not hear you* and
-    theirs meant *I did not understand you*. The utterance matched nothing and
-    selection routed it like an answer.
+    async def compose(self, *, archetype, context, finding=None, dispute=None, rephrasing=None):
+        if rephrasing is not None:
+            await asyncio.sleep(3600)
+        return await super().compose(
+            archetype=archetype, context=context, finding=finding, dispute=dispute
+        )
 
-    What is asserted here is the interruption gone, not the confusion solved.
-    The resolved design on #117 is a composed re-wording, and this is
-    deliberately the wrong answer shipped ahead of the right one: somebody who
-    did not follow the words does not want the identical words back. But the
-    composed version touches nine files including a migration, all in this hot
-    path, and a stranger interrupting a request for help is the part that reads
-    as broken.
 
-    **This test is expected to change when that lands** — the assertion that
-    the same voice answers stays; the one that the words are identical does not.
+class BrokenRephrase(ScriptedPanelModel):
+    """Fails a rephrase the way a provider does — after the room is committed."""
+
+    def __init__(self, *, reply: str | None = None, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._reply = reply
+
+    async def compose(self, *, archetype, context, finding=None, dispute=None, rephrasing=None):
+        if rephrasing is not None:
+            if self._reply is None:
+                raise RuntimeError("provider said no")
+            return ModelReply(text=self._reply)
+        return await super().compose(
+            archetype=archetype, context=context, finding=finding, dispute=dispute
+        )
+
+
+async def _room(model, *, second: str, store: FakeTranscript | None = None):
+    """One question, then whatever the presenter says next."""
+    store = store if store is not None else FakeTranscript()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=AfterTheQuestion(
+            Transcription(text="Our margin is north of sixty percent.", final=True),
+            Transcription(text=second, final=True),
+            store=store,
+        ),
+        model=model,
+        grounding=Grounding(),
+        floor=mid_room(),
+        transcript=store,
+    )
+    return await events_of(channel), store
+
+
+async def test_a_rephrase_is_put_again_by_the_same_panelist_in_new_words():
+    """The tester's report, answered — #117, 2026-09-01.
+
+    They asked for a rephrase and a *different* panelist took the floor. Now
+    the panelist who asked puts it again, and in different words: returning the
+    identical sentence to somebody who has just said they did not follow reads
+    as the panel ignoring them twice.
+    """
+    model = ScriptedPanelModel(
+        line="Walk me through that margin number.",
+        rephrased="Which number is the sixty — gross or net?",
+    )
+
+    events, _ = await _room(model, second="can you rephrase that?")
+    spoken = [event for event in events if isinstance(event, AgentTranscript)]
+
+    assert [event.speaker for event in spoken] == ["cfo", "cfo"]
+    assert [event.text for event in spoken] == [
+        "Walk me through that margin number.",
+        "Which number is the sixty — gross or net?",
+    ]
+
+
+async def test_the_rephrase_is_composed_against_the_question_already_asked():
+    """The substance is held by construction, not by a prompt asking nicely.
+
+    What the composer is handed is the original line itself. With only that
+    sentence in front of it there is nothing else to ask about — which is why
+    `_rephrasing_prompt` carries no claims, no transcript and no finding. #45
+    is the standing warning about showing a composer material it does not need.
     """
     model = ScriptedPanelModel(line="Walk me through that margin number.")
+
+    await _room(model, second="what do you mean")
+
+    assert model.rephrasings == ["Walk me through that margin number."]
+
+
+async def test_the_rephrase_is_recorded_and_marked_as_one():
+    """Persisted because they answer *these* words; marked because of #56.
+
+    Unmarked, the original question would sit in the transcript with no answer
+    after it and rank as the strongest weak answer there is — the one nobody
+    even tried — telling somebody they ducked a question they had asked to have
+    re-put and then answered.
+    """
+    model = ScriptedPanelModel(line="Walk me through that margin number.", rephrased="Gross or net?")
+
+    _, store = await _room(model, second="I don't understand")
+    panel_lines = [line for line in store.lines if line.speaker != USER]
+
+    assert [line.text for line in panel_lines] == [
+        "Walk me through that margin number.",
+        "Gross or net?",
+    ]
+    assert [line.rephrasing for line in panel_lines] == [False, True]
+
+
+async def test_a_slow_rephrase_falls_back_to_the_words_already_said():
+    """It degrades to the free version, never to silence.
+
+    Open Risk #3 puts the illusion at ~1.5s. A replay is instant and a model
+    call is not, and the pause lands where the presenter is already confused —
+    so the deadline hands back the answer that shipped first rather than
+    waiting on a provider that is not coming.
+    """
+    model = SlowToRephrase(line="Walk me through that margin number.")
+
+    events, _ = await _room(model, second="can you rephrase that?")
+    spoken = [event.text for event in events if isinstance(event, AgentTranscript)]
+
+    assert spoken == [
+        "Walk me through that margin number.",
+        "Walk me through that margin number.",
+    ]
+
+
+@pytest.mark.parametrize("reply", [None, "", "   "])
+async def test_a_failed_or_empty_rephrase_falls_back_the_same_way(reply):
+    """A raised provider error and a reply with nothing in it are one case.
+
+    Both mean no new words exist, and both have the same correct answer. This
+    is the only broad `except` in the channel, and it is justified by there
+    being a free fallback — unlike a turn, where failing the room is honest.
+    """
+    model = BrokenRephrase(reply=reply, line="Walk me through that margin number.")
+
+    events, _ = await _room(model, second="can you rephrase that?")
+    spoken = [event for event in events if isinstance(event, AgentTranscript)]
+
+    assert [event.speaker for event in spoken] == ["cfo", "cfo"]
+    assert [event.text for event in spoken] == [
+        "Walk me through that margin number.",
+        "Walk me through that margin number.",
+    ]
+
+
+async def test_a_rephrase_of_a_rephrase_gets_the_words_verbatim():
+    """Composed once per question, and the second request is not the words.
+
+    Re-wording a re-wording drifts further from the original each pass, and
+    somebody asking twice usually needs the panelist to move on rather than to
+    try a third phrasing.
+    """
+    model = ScriptedPanelModel(line="Walk me through that margin number.", rephrased="Gross or net?")
     store = FakeTranscript()
     channel = OrchestratedChannel(
         panel=DEFAULT_PANEL,
@@ -271,15 +403,19 @@ async def test_a_rephrase_request_does_not_hand_the_floor_to_somebody_else():
             store=store,
         ),
         model=model,
-        grounding=Grounding(),
+        grounding=Grounding(
+            transcript=(
+                Said(speaker=USER, text="Our margin is sixty."),
+                Said(speaker="cfo", text="Walk me through that margin number."),
+            )
+        ),
         floor=mid_room(),
         transcript=store,
     )
+    channel._rephrased.add("Walk me through that margin number.")
 
     events = await events_of(channel)
-    spoken = [event for event in events if isinstance(event, AgentTranscript)]
+    spoken = [event.text for event in events if isinstance(event, AgentTranscript)]
 
-    # One voice, twice — never a second panelist answering a request for help.
-    assert [event.speaker for event in spoken] == ["cfo", "cfo"]
-    # Composed once. The re-delivery costs synthesis, not a model call.
-    assert model.composed_for == ["cfo"]
+    assert model.rephrasings == []
+    assert spoken[-1] == "Walk me through that margin number."

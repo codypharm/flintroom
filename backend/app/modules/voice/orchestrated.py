@@ -82,6 +82,17 @@ log = get_logger(__name__, tag="voice")
 #: settled as a user who had hung up, while somebody was still talking to them.
 HEARTBEAT_SECONDS = 10.0
 
+#: How long a re-wording may take before the room says the original words.
+#:
+#: Tighter than `MODEL_TIMEOUT_SECS`, and the difference is that this call has
+#: a correct free answer waiting. Twenty seconds is right for a turn, where the
+#: alternative to waiting is silence; here the alternative is the verbatim
+#: replay, which is instant and already shipped. Composition measures ~0.8s and
+#: `CLAUDE.md` puts the illusion at ~1.5s, so this is generous by more than
+#: double while still landing inside the pause a confused presenter will
+#: tolerate.
+REPHRASE_DEADLINE_SECS = 3.0
+
 #: What the transcriber is billed against. The relay carries PCM16 at 16 kHz
 #: mono in both directions, so a second of audio is a fixed number of bytes and
 #: needs no clock to measure.
@@ -323,6 +334,10 @@ class OrchestratedChannel:
         # it.
         self._claims = grounding.claims if grounding else ()
         self._transcript: list[Said] = list(grounding.transcript) if grounding else []
+        #: Questions already put a second way, so a rephrase of a rephrase gets
+        #: the verbatim. Re-wording a re-wording drifts further each pass, and a
+        #: second request usually means the words were never the problem.
+        self._rephrased: set[str] = set()
         # Audio forwarded to the transcriber, and how much of it has already
         # been reported. Two counters rather than one because a turn reports
         # whole seconds and the bytes do not arrive in second-sized pieces —
@@ -649,6 +664,101 @@ class OrchestratedChannel:
             async for pcm in self._speaker.speak(text=line.text, voice=who.voice):
                 await out.put(AgentAudio(pcm))
             await out.put(Spent(tts_characters=len(line.text)))
+        await out.put(AgentFinished())
+        return True
+
+    async def _rephrase_the_question(
+        self, out: asyncio.Queue[VoiceEvent | BaseException | None]
+    ) -> bool:
+        """Ask the same thing again in different words, in the voice that asked.
+
+        The fourth delivery, and the only one that composes. *I did not hear*
+        wants the same words and `_repeat_the_question` gives them; *I did not
+        understand* wants different ones, and repeating identical words to
+        somebody who has just said they did not follow reads as the panel
+        ignoring them twice (#117).
+
+        **Three bounds, and they are what make a model call safe here.**
+
+        It degrades to the free version rather than to broken: any timeout,
+        error, or empty reply falls through to the verbatim replay. Open Risk
+        #3 puts the illusion at ~1.5s, a replay is instant and a model call is
+        not, and the pause lands exactly where the presenter is already
+        confused. The worst case is therefore the answer we shipped first.
+
+        It composes once per question. A rephrase of a rephrase gets the
+        verbatim: re-wording a re-wording drifts further each pass, and a
+        second request usually means the words were never the problem.
+
+        And it does not touch the pressure dial. #55 is driven by weak answers
+        the presenter was at fault for, and asking to have a question re-put is
+        not a fumble — feeding it in would make the room harder for people who
+        ask for clarity, which is backwards.
+        """
+        line = question_to_repeat(self._transcript)
+        if line is None:
+            return False
+        who = next((one for one in self._panel if one.name == line.speaker), None)
+        if who is None:
+            return False
+
+        # Already re-worded once. Anything further is the verbatim path, which
+        # is also where every failure below lands.
+        if line.text in self._rephrased:
+            return await self._repeat_the_question(out)
+
+        if self._speaking is not None:
+            self._speaking = await self._stop(self._speaking)
+        if self._routing is not None:
+            self._routing.cancel()
+            await asyncio.gather(self._routing, return_exceptions=True)
+            self._routing = None
+
+        said = ""
+        usage = None
+        try:
+            async with asyncio.timeout(REPHRASE_DEADLINE_SECS):
+                reply = await self._model.compose(
+                    archetype=who,
+                    context=None,
+                    rephrasing=line.text,
+                )
+            said, usage = reply.text.strip(), reply.usage
+        except (TimeoutError, asyncio.CancelledError):
+            log.info("rephrase_timed_out", speaker=who.name)
+        except Exception:
+            # Broad on purpose, and the only place in this file that is. A
+            # provider fault here has a correct fallback that costs nothing —
+            # unlike `_turn`, where failing the room is the honest outcome.
+            log.warning("rephrase_failed", speaker=who.name, exc_info=True)
+
+        if not said:
+            return await self._repeat_the_question(out)
+
+        self._rephrased.add(line.text)
+
+        log.info("question_rephrased", speaker=who.name)
+        # Persisted, and marked. Not persisting would have the debrief rank
+        # their answer against wording they never treated as final; persisting
+        # unmarked recreates #56, where the original reads as a question nobody
+        # even tried to answer. `chosen_by` is not set: nothing selected this
+        # line, the presenter asked for it.
+        asked = Said(speaker=who.name, text=said, rephrasing=True)
+        self._transcript.append(asked)
+        await self._keep(asked, at=self._at())
+
+        await out.put(AgentTranscript(said, speaker=who.name))
+        if usage is not None:
+            await out.put(
+                Spent(
+                    llm_input_tokens=usage.input_tokens,
+                    llm_output_tokens=usage.output_tokens,
+                )
+            )
+        if self._speaker is not None:
+            async for pcm in self._speaker.speak(text=said, voice=who.voice):
+                await out.put(AgentAudio(pcm))
+            await out.put(Spent(tts_characters=len(said)))
         await out.put(AgentFinished())
         return True
 
@@ -1103,24 +1213,24 @@ class OrchestratedChannel:
                     # panelist re-asked their own question (first Play build,
                     # 2026-08-26). Falls through when nobody has asked anything
                     # yet, which is the only honest thing to repeat.
-                    # *I did not understand you* routes here too, for now (#117).
-                    # A tester asked a panelist to rephrase on 2026-09-01 and a
-                    # different one took the floor — the same failure above, by
-                    # the door `asked_to_repeat` does not cover, because every
-                    # pattern in it means *I did not hear*.
+                    # *I did not understand you* is a different request and
+                    # takes a different answer (#117). The same panelist puts
+                    # the question again in different words — composed, because
+                    # returning the identical words to somebody who has just
+                    # said they did not follow reads as the panel ignoring them
+                    # twice.
                     #
-                    # **Deliberately the wrong answer, shipped ahead of the
-                    # right one.** Somebody who did not follow the words does
-                    # not want the identical words, and the resolved design on
-                    # #117 is a composed re-wording. That change touches nine
-                    # files including a migration, all in this hot path. This
-                    # line is three, needs no model call, and removes the thing
-                    # that actually reads as broken — a stranger interrupting a
-                    # request for help. It is replaced, not extended, when the
-                    # composed version lands.
-                    if (
-                        asked_to_repeat(result.text) or asked_to_rephrase(result.text)
-                    ) and await self._repeat_the_question(out):
+                    # Bounded three ways, all in `_rephrase_the_question`: a
+                    # deadline with the verbatim replay as the fallback, so a
+                    # slow or failed model degrades to the free answer rather
+                    # than to silence; once per question, because re-wording a
+                    # re-wording drifts; and no effect on the pressure dial,
+                    # because asking for clarity is not a fumble.
+                    if asked_to_rephrase(result.text) and await self._rephrase_the_question(out):
+                        await self._attend(out)
+                        continue
+
+                    if asked_to_repeat(result.text) and await self._repeat_the_question(out):
                         await self._attend(out)
                         continue
 

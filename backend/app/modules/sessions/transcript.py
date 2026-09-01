@@ -102,6 +102,7 @@ class SessionTranscript:
                     speaker=line.speaker,
                     text=line.text,
                     disputed=line.disputed,
+                    rephrasing=line.rephrasing,
                     chosen_by=line.chosen_by,
                     # #69. Null rather than zero when nothing was keeping time —
                     # a room with no relay behind it, or one that ran before the
@@ -135,6 +136,7 @@ class SessionTranscript:
                     speaker=row.speaker,
                     text=row.text,
                     disputed=row.disputed,
+                    rephrasing=row.rephrasing,
                     chosen_by=row.chosen_by,
                 )
                 for row in rows.scalars()

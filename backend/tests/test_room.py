@@ -43,7 +43,7 @@ class FakePanelModel:
     async def select(self, *, candidates, context):  # pragma: no cover
         raise NotImplementedError
 
-    async def compose(self, *, archetype, context, finding=None, dispute=None):  # pragma: no cover
+    async def compose(self, *, archetype, context, finding=None, dispute=None, rephrasing=None):  # pragma: no cover
         raise NotImplementedError
 
 

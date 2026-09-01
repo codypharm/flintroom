@@ -575,6 +575,18 @@ class TranscriptLine(Base):
         Boolean, nullable=False, server_default="false"
     )
 
+    #: This panel line is an earlier question of the same speaker's, put again
+    #: in different words because the presenter said they did not follow it
+    #: (#117).
+    #:
+    #: Beside `disputed` because it is the same failure with a different cause.
+    #: Unmarked, the original question reads as one nobody answered — the
+    #: strongest weak answer there is — when in fact the presenter asked for it
+    #: to be re-put and then answered the second wording.
+    rephrasing: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+
     #: What handed this speaker the floor — `finding`, `model` or `fallback`.
     #: Null for the user's own lines, which nobody chose.
     #:

@@ -126,7 +126,7 @@ class GeminiPanelModel:
         self._composition_model = composition_model
 
     async def compose(
-        self, *, archetype: Archetype, context, finding=None, dispute=None
+        self, *, archetype: Archetype, context, finding=None, dispute=None, rephrasing=None
     ) -> ModelReply:
         """Write this archetype's next line.
 
@@ -139,7 +139,11 @@ class GeminiPanelModel:
         return await self._generate(
             model=self._composition_model,
             system=_persona_of(archetype),
-            prompt=_composition_prompt(context, finding, archetype, dispute),
+            prompt=(
+                _rephrasing_prompt(rephrasing)
+                if rephrasing is not None
+                else _composition_prompt(context, finding, archetype, dispute)
+            ),
             max_tokens=MAX_LINE_TOKENS,
         )
 
@@ -522,6 +526,42 @@ _SHAPED_NOT_SPOKEN = (
     "to them — they wrote it, and a room that recites it is not a room. "
     "Nothing in it is a fact about their business that you may state."
 )
+
+
+def _rephrasing_prompt(original: str) -> str:
+    """Ask the same thing again, in different words — #117.
+
+    **Its own prompt, not `_composition_prompt` with a clause added**, and the
+    reason is one line in that function: *"You have already asked — do not
+    repeat these"*. A rephrase is precisely a repeat, so the standard prompt
+    would forbid the only thing this call is for. `context.said` is no help
+    either — it holds "can you rephrase that", which is not something to
+    respond to.
+
+    So this is deliberately the smallest prompt in the codebase. It carries the
+    persona in the system instruction and one question in the body, and nothing
+    else: no claims, no audience, no finding, no transcript. Every one of those
+    is a surface a re-wording could drift across, and none of them is needed to
+    say an existing sentence differently. #45 is the standing warning — the
+    composer invented figures when it was shown material it did not need.
+
+    The substance is held by construction rather than by instruction: with only
+    this sentence in front of it, there is nothing else for the model to ask
+    about. The prohibitions below are the second line of defence, not the first.
+    """
+    return (
+        "They did not follow this question. Ask the same thing again, in "
+        "different words — plainer and shorter, still in your own voice.\n\n"
+        f"The question:\n{original}\n\n"
+        # Each of these forbids a specific way the re-wording stops being the
+        # same question. "No new figures" is #45's lesson stated locally; the
+        # ban on softening matters because a room that waters a challenge down
+        # when somebody says they do not understand has taught them that
+        # confusion is a way out, which is the opposite of the product.
+        "Ask for exactly what it asked for. Do not add a figure, a claim or a "
+        "second question. Do not soften it. Do not remark on their asking — "
+        "just put it again, differently."
+    )
 
 
 def _composition_prompt(

@@ -75,9 +75,17 @@ class FakeSpeaker:
 class ScriptedPanelModel:
     """Answers with a fixed speaker and a fixed line, and records what it saw."""
 
-    def __init__(self, *, speaker: str = "cfo", line: str = "Where is that from?") -> None:
+    def __init__(
+        self,
+        *,
+        speaker: str = "cfo",
+        line: str = "Where is that from?",
+        rephrased: str | None = None,
+    ) -> None:
         self._speaker = speaker
         self._line = line
+        self._rephrased = rephrased
+        self.rephrasings: list[str] = []
         self.composed_for: list[str] = []
         self.said: list[str] = []
         #: Every `TurnContext` the composer was handed, kept whole. Individual
@@ -98,8 +106,16 @@ class ScriptedPanelModel:
         self.selecting.set()
         return ModelReply(text=self._speaker)
 
-    async def compose(self, *, archetype: Archetype, context, finding=None, dispute=None) -> ModelReply:
+    async def compose(
+        self, *, archetype: Archetype, context, finding=None, dispute=None, rephrasing=None
+    ) -> ModelReply:
         self.composed_for.append(archetype.name)
+        #: Every question this fake was asked to put another way (#117). The
+        #: text matters: a rephrase composed against anything other than the
+        #: question already asked is one that can change what is being asked.
+        if rephrasing is not None:
+            self.rephrasings.append(rephrasing)
+            return ModelReply(text=self._rephrased or self._line)
         self.said.append(context.said)
         self.contexts.append(context)
         return ModelReply(text=self._line)

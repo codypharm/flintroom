@@ -39,6 +39,7 @@ from app.agents.panel_models.gemini import (
     MODEL_TIMEOUT_SECS,
     _bare_name,
     _composition_prompt,
+    _rephrasing_prompt,
     _persona_of,
     _selection_prompt,
 )
@@ -78,12 +79,16 @@ class OpenAIPanelModel:
         self._composition_model = composition_model
 
     async def compose(
-        self, *, archetype: Archetype, context, finding=None, dispute=None
+        self, *, archetype: Archetype, context, finding=None, dispute=None, rephrasing=None
     ) -> ModelReply:
         return await self._generate(
             model=self._composition_model,
             system=_persona_of(archetype),
-            prompt=_composition_prompt(context, finding, archetype, dispute),
+            prompt=(
+                _rephrasing_prompt(rephrasing)
+                if rephrasing is not None
+                else _composition_prompt(context, finding, archetype, dispute)
+            ),
             max_tokens=MAX_LINE_TOKENS,
         )
 
