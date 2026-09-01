@@ -132,7 +132,7 @@ export function revenueCatStore({
       // across a console refresh deserves one more look before a refusal.
       const found = shelf.get(what.id) ?? (await stock(sdk)).find((one) => one.identifier === what.id);
       if (!found) {
-        throw new Error(`"${what.id}" is no longer offered — the console moved under this screen`);
+        throw new Error(`"${what.id}" is no longer offered; the console moved under this screen`);
       }
 
       try {

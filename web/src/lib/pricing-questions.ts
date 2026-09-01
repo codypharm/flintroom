@@ -33,7 +33,7 @@ export const STANDARD_PRICING_QUESTIONS: Question[] = [
   {
     id: 'existing-or-new',
     text: 'Does this apply to existing customers, or only to new ones?',
-    why: 'The most commonly skipped decision, and it changes the arithmetic completely — a new-customers-only change earns nothing from the base you already have, and takes far longer to show up. It also decides whether anybody has to be told at all.',
+    why: 'The most commonly skipped decision, and it changes the arithmetic completely: a new-customers-only change earns nothing from the base you already have, and takes far longer to show up. It also decides whether anybody has to be told at all.',
     grounded: false,
   },
   {
@@ -65,7 +65,7 @@ export function pricingQuestionsFor(result: PriceChange, input: PriceChangeInput
     grounded.push({
       id: 'below-cost',
       text: 'At this discount every sale is made below cost. What is the argument for it that is not volume?',
-      why: 'There are real ones — clearing stock, buying a strategic logo, entering a market — and they are all arguments about something other than this quarter. What does not survive is a discount presented as a growth move when each additional sale deepens the loss.',
+      why: 'There are real ones (clearing stock, buying a strategic logo, entering a market) and they are all arguments about something other than this quarter. What does not survive is a discount presented as a growth move when each additional sale deepens the loss.',
       grounded: true,
     });
   }

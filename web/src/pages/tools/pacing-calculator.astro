@@ -23,7 +23,7 @@ const SLOT = [
   {
     id: 'slot',
     label: 'Your slot',
-    help: 'The whole booking — what the agenda says you have.',
+    help: 'The whole booking, as the agenda states it.',
     placeholder: '20',
     unit: 'min',
   },
@@ -36,7 +36,7 @@ const SLOT = [
   },
 ];
 
-const TITLE = 'Speech timing calculator — your script, your pace, your slot';
+const TITLE = 'Speech timing calculator: your script, your pace, your slot';
 const DESCRIPTION =
   'Free speech timing calculator: paste your script, pick a pace, and see the delivery time, the paragraphs that make you rush, and what fits your slot.';
 ---
@@ -53,7 +53,7 @@ const DESCRIPTION =
         <h1>Pacing &amp; script timing calculator</h1>
         <p class="sub">
           Most timing tools tell you how long your script is. This one also answers the question
-          you were actually asked — you have a slot, minus questions — and tells you what to cut
+          you were actually asked, a slot minus questions, and tells you what to cut
           when the two disagree.
         </p>
       </div>
@@ -67,7 +67,7 @@ const DESCRIPTION =
               <div class="row">
                 <label for="script">Paste it here</label>
                 <span class="help" id="script-help">
-                  Speaker notes or the full script. It stays in this tab — nothing is uploaded,
+                  Speaker notes or the full script. It stays in this tab: nothing is uploaded,
                   stored, or sent anywhere.
                 </span>
                 <div class="entry">
@@ -85,13 +85,13 @@ const DESCRIPTION =
               <div class="row">
                 <label for="pace">How you speak</label>
                 <span class="help" id="pace-help">
-                  Timed pace, not reading pace — reading silently runs two to three times faster.
+                  Timed pace, not reading pace. Reading silently runs two to three times faster.
                 </span>
                 <div class="entry">
                   <select id="pace" aria-describedby="pace-help">
                     {PACES.map((pace) => (
                       <option value={pace.wpm} selected={pace.wpm === 130}>
-                        {pace.name} — {pace.wpm} wpm
+                        {pace.name}, {pace.wpm} wpm
                       </option>
                     ))}
                   </select>
@@ -146,7 +146,7 @@ const DESCRIPTION =
               <span data-out="axis-end"></span>
             </div>
             <p class="legend" data-out="legend" hidden>
-              Darker stretches run past forty-five seconds without a paragraph break — where
+              Darker stretches run past forty-five seconds without a paragraph break, where
               rushing happens.
             </p>
           </div>
@@ -161,7 +161,7 @@ const DESCRIPTION =
     <div class="shell">
       <h2>What gets asked about a timing</h2>
       <p>
-        Not by the audience — by the organiser with a schedule, the chair with a hard stop, and
+        Not by the audience, but by the organiser with a schedule, the chair with a hard stop, and
         you at the lectern discovering the clock. A script that "takes 12 minutes" is an
         estimate made in silence; these are the ways a room disagrees with an estimate.
       </p>
@@ -189,7 +189,7 @@ const DESCRIPTION =
         Scripts do not run over because the arithmetic was wrong. They run over because the
         <strong>slot was budgeted instead of the speaking time</strong>. A twenty-minute slot
         with five minutes of questions and a couple of minutes of introductions and settling is
-        thirteen minutes of script — and almost everybody writes for twenty. The overrun was
+        thirteen minutes of script, and almost everybody writes for twenty. The overrun was
         decided at the desk, weeks before the talk.
       </p>
 
@@ -205,21 +205,21 @@ const DESCRIPTION =
       <p>
         Under pressure most speakers run ten to twenty percent faster than they rehearsed.
         This page shows the delivered time beside the rehearsed one for exactly one reason: a
-        script that only fits at the faster number is not paced, it is rushed — and the speed
+        script that only fits at the faster number is not paced, it is rushed, and the speed
         comes out of the sections that most needed room to land.
       </p>
 
       <h3>Dense paragraphs are a writing problem</h3>
       <p>
         A paragraph break is where the writing lets the speaker breathe and the audience catch
-        up. A stretch past forty-five seconds without one is where rushing happens — and the
+        up. A stretch past forty-five seconds without one is where rushing happens, and the
         fix is a break in the text now, not concentration on the day.
       </p>
 
       <h3>What this does not do</h3>
       <p>
         It cannot hear you. Your real pace, the pauses you actually take, the slide that needs
-        a beat of silence — those exist out loud, not in text. Reading a script and timing it
+        a beat of silence: those exist out loud, not in text. Reading a script and timing it
         is the rehearsal before the rehearsal.
       </p>
 
@@ -239,7 +239,7 @@ const DESCRIPTION =
         </div>
         <div>
           <dt>Dense stretch</dt>
-          <dd>More than forty-five seconds of continuous speech with no paragraph break — where speakers rush and audiences fall behind.</dd>
+          <dd>More than forty-five seconds of continuous speech with no paragraph break, where speakers rush and audiences fall behind.</dd>
         </div>
       </dl>
     </div>

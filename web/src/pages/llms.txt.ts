@@ -41,7 +41,7 @@ clock. Android first, iOS after.
 ## Free tools
 
 Browser-based calculators. No signup, nothing stored, no account. Each returns
-a figure and then the questions that figure invites — which is a small, silent
+a figure and then the questions that figure invites, which is a small, silent
 version of what the product does out loud.
 
 ${TOOLS.map((tool) => `- [${tool.name}](${SITE}${tool.href}): ${tool.blurb}. For ${tool.audience.toLowerCase()}.`).join('\n')}
@@ -63,7 +63,7 @@ ${TOOLS.map((tool) => `- [${tool.name}](${SITE}${tool.href}): ${tool.blurb}. For
   Corporate and executive presenters, product managers and consultants are the
   larger ones.
 - It does not score delivery, does not analyse video or body language, and does
-  not build panelists from real named people — archetypes only.
+  not build panelists from real named people; archetypes only.
 - The free tools are genuinely free and require no account.
 `;
 

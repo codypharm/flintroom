@@ -23,7 +23,7 @@ export const STANDARD_BREAK_EVEN_QUESTIONS: Question[] = [
   {
     id: 'which-costs-fixed',
     text: 'Which of those fixed costs are actually fixed?',
-    why: 'Rent and salaries are. Contractors, commission, delivery, payment fees and most software are not — they move with volume and belong on the other side of the calculation. A cost filed as fixed when it is not moves break-even in the flattering direction.',
+    why: 'Rent and salaries are. Contractors, commission, delivery, payment fees and most software are not: they move with volume and belong on the other side of the calculation. A cost filed as fixed when it is not moves break-even in the flattering direction.',
     grounded: false,
   },
   {
@@ -52,7 +52,7 @@ export function breakEvenQuestionsFor(result: BreakEven, input: BreakEvenInput):
   if (result.salesShort !== null) {
     grounded.push({
       id: 'short',
-      text: `You are about ${Math.ceil(result.salesShort)} sales a month short of covering costs. Which lever is nearest — price, volume, or the fixed costs themselves?`,
+      text: `You are about ${Math.ceil(result.salesShort)} sales a month short of covering costs. Which lever is nearest: price, volume, or the fixed costs themselves?`,
       why: 'All three work and they take very different amounts of time. Price moves immediately and risks volume; volume takes a quarter to build; cutting fixed costs is the fastest and the hardest to undo. Naming which one you are pulling is what turns a gap into a plan.',
       grounded: true,
     });
@@ -80,7 +80,7 @@ export function breakEvenQuestionsFor(result: BreakEven, input: BreakEvenInput):
     grounded.push({
       id: 'late-day',
       text: `You do not start earning until day ${Math.round(result.breakEvenDay)}. What is the fixed cost you would remove first?`,
-      why: 'When most of the month goes on covering costs, the fastest change is usually on the cost side rather than the sales side — and knowing which line you would cut before you need to is what makes it survivable.',
+      why: 'When most of the month goes on covering costs, the fastest change is usually on the cost side rather than the sales side, and knowing which line you would cut before you need to is what makes it survivable.',
       grounded: true,
     });
   }

@@ -17,7 +17,7 @@ import Tool from '../../layouts/Tool.astro';
 import ResultHook from '../../components/ResultHook.astro';
 import { STANDARD_DILUTION_QUESTIONS } from '../../lib/dilution-questions';
 
-const TITLE = 'Dilution calculator — SAFEs, option pools, where your points went';
+const TITLE = 'Dilution calculator: SAFEs, option pools, where your points went';
 const DESCRIPTION =
   'Free startup dilution calculator: SAFEs converting at cap or discount, the option pool shuffle, and which of the three actually cost you the most points.';
 ---
@@ -175,7 +175,7 @@ const DESCRIPTION =
       <p>
         Y Combinator replaced the pre-money SAFE with the post-money SAFE in 2018, and the two
         behave completely differently. A <strong>post-money</strong> note's percentage is fixed
-        at its cap — 500,000 on a 5,000,000 cap is ten percent, full stop — so a second note
+        at its cap (500,000 on a 5,000,000 cap is ten percent, full stop), so a second note
         does not shrink the first one. It shrinks you. Two ten-percent notes are twenty percent
         between them and the founders absorb all of it.
       </p>
@@ -188,7 +188,7 @@ const DESCRIPTION =
 
       <h3>A cap and a discount are not added together</h3>
       <p>
-        A note carrying both converts at whichever gives the holder <em>more shares</em> — that
+        A note carrying both converts at whichever gives the holder <em>more shares</em>, that
         is, at the <em>lower</em> effective valuation. A twenty percent discount on an eight
         million pre-money is an effective six-point-four million; against a five million cap,
         the cap wins. Averaging the two, or applying whichever is listed first, quietly shorts
@@ -206,7 +206,7 @@ const DESCRIPTION =
       <p>
         Term sheets almost always ask for pre-money, and the request usually arrives without the
         word "pre-money" being said out loud. On a large pool and a small round, the pool can
-        cost you more points than the money does — which is why this page leads with where the
+        cost you more points than the money does, which is why this page leads with where the
         dilution went rather than with what you have left.
       </p>
 
@@ -222,8 +222,8 @@ const DESCRIPTION =
         It works entirely in percentages and never asks for a share count, because a founder
         holding SAFEs usually has no formal cap table yet. That makes it a thinking tool and
         not a document: the output is not something to hand a lawyer. Real pre-money SAFE
-        conversion with several notes is circular, and the convention used here — each note
-        prices off the pre-money valuation over the existing base — is the standard
+        conversion with several notes is circular, and the convention used here (each note
+        prices off the pre-money valuation over the existing base) is the standard
         simplification. It is right to a fraction of a point. Liquidation preferences,
         anti-dilution ratchets and secondary sales are not modelled at all.
       </p>

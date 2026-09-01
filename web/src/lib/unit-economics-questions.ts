@@ -31,7 +31,7 @@ const THIN_MARGIN = 50;
 export const STANDARD_UNIT_QUESTIONS: Question[] = [
   {
     id: 'cac-contents',
-    text: 'What is inside CAC — only the ad spend, or the salaries of the people doing the acquiring?',
+    text: 'What is inside CAC: only the ad spend, or the salaries of the people doing the acquiring?',
     why: 'Fully loaded CAC includes sales and marketing headcount, tooling and commissions. Ad-spend-only CAC is a smaller and more flattering number, and the difference between the two is usually where a disagreement about this slide actually lives.',
     grounded: false,
   },
@@ -64,7 +64,7 @@ export function unitQuestionsFor(result: UnitEconomics, input: UnitEconomicsInpu
     grounded.push({
       id: 'lifetime-vs-history',
       text: `This assumes the average customer stays ${result.averageLifetimeMonths.toFixed(0)} months. You have been operating ${result.monthsOperating.toFixed(0)}. What is the longest anybody has actually stayed?`,
-      why: 'LTV is a forecast in the shape of a measurement. Where the assumed lifetime runs past the company\'s own age, no customer has yet had the opportunity to prove it — which does not make the figure false, but does make it a projection, and the strongest version of the answer says so first.',
+      why: 'LTV is a forecast in the shape of a measurement. Where the assumed lifetime runs past the company\'s own age, no customer has yet had the opportunity to prove it, which does not make the figure false, but does make it a projection, and the strongest version of the answer says so first.',
       grounded: true,
     });
   }
@@ -88,7 +88,7 @@ export function unitQuestionsFor(result: UnitEconomics, input: UnitEconomicsInpu
   } else if (result.ratio !== null && result.ratio < THIN_RATIO) {
     grounded.push({
       id: 'thin-ratio',
-      text: 'Under three to one is where the model itself gets questioned rather than the inputs. Which side moves — the value or the cost?',
+      text: 'Under three to one is where the model itself gets questioned rather than the inputs. Which side moves: the value or the cost?',
       why: 'Three to one is the convention, not a law, and plenty of businesses run below it deliberately while a channel matures. What gets asked is whether you know which lever you are pulling and by when.',
       grounded: true,
     });
@@ -107,7 +107,7 @@ export function unitQuestionsFor(result: UnitEconomics, input: UnitEconomicsInpu
     grounded.push({
       id: 'thin-margin',
       text: `At ${input.grossMarginPercent.toFixed(0)}% margin, most of what a customer pays goes straight back out. Is that structural or is it early?`,
-      why: 'Margin is the multiplier on everything here — it scales LTV and payback together. Whether it improves with volume is the difference between a business that gets better as it grows and one that gets bigger.',
+      why: 'Margin is the multiplier on everything here: it scales LTV and payback together. Whether it improves with volume is the difference between a business that gets better as it grows and one that gets bigger.',
       grounded: true,
     });
   }
@@ -116,7 +116,7 @@ export function unitQuestionsFor(result: UnitEconomics, input: UnitEconomicsInpu
     grounded.push({
       id: 'free-growth',
       text: 'There is no acquisition cost here. Is growth genuinely free, or is somebody\'s time not being counted?',
-      why: 'Organic and word-of-mouth growth are real and they are rarely free — founder selling time, content, community work and support all cost something. A zero makes the ratio infinite and the slide unreadable.',
+      why: 'Organic and word-of-mouth growth are real and they are rarely free: founder selling time, content, community work and support all cost something. A zero makes the ratio infinite and the slide unreadable.',
       grounded: true,
     });
   }

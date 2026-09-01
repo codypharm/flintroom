@@ -25,7 +25,7 @@ const SALE = [
   {
     id: 'price',
     label: 'Price of one sale',
-    help: 'Per unit, per job, per month — whatever you sell one of.',
+    help: 'Per unit, per job, per month: whatever you sell one of.',
     placeholder: '100',
   },
   {
@@ -43,7 +43,7 @@ const SALE = [
   },
 ];
 
-const TITLE = 'Break-even calculator — the day of the month you start earning';
+const TITLE = 'Break-even calculator: the day of the month you start earning';
 const DESCRIPTION =
   'Free break-even calculator: the sales and revenue needed to cover fixed costs, the day of the month you start earning, and how far sales could fall.';
 ---
@@ -60,7 +60,7 @@ const DESCRIPTION =
         <h1>Break-even calculator</h1>
         <p class="sub">
           The usual answer is a number of units, which is correct and hard to act on. This one
-          also tells you which day of the month your fixed costs are covered — and how much
+          also tells you which day of the month your fixed costs are covered, and how much
           could go wrong before they are not.
         </p>
       </div>
@@ -126,7 +126,7 @@ const DESCRIPTION =
       <h2>What gets asked about this number</h2>
       <p>
         Usually by a bank, a partner, or yourself at two in the morning. Nearly all of them are
-        really about the same thing — the number on the screen is an average month, and
+        really about the same thing: the number on the screen is an average month, and
         averages are paid in real ones.
       </p>
       <ol data-out="questions">
@@ -151,7 +151,7 @@ const DESCRIPTION =
       </p>
       <p>
         What makes it usable is the next step. If a normal month brings 500 sales, you pass 300
-        about three fifths of the way through — <strong>day 18</strong>. The first eighteen days
+        about three fifths of the way through, on <strong>day 18</strong>. The first eighteen days
         pay the rent; the last twelve are yours. That is the same figure said in a way you can
         plan around, and it is why this page leads with it.
       </p>
@@ -182,7 +182,7 @@ const DESCRIPTION =
       <p>
         A month can clear break-even comfortably and still empty the bank account, because
         break-even says nothing about <em>when</em> the money arrives. Sixty-day payment terms,
-        a large customer who pays late, stock bought before it sells — each one puts the cash
+        a large customer who pays late, stock bought before it sells: each one puts the cash
         behind the profit. More businesses fail above their break-even point than below it, and
         the difference is almost always timing.
       </p>
@@ -190,7 +190,7 @@ const DESCRIPTION =
       <h3>What this does not do</h3>
       <p>
         One price and one margin, so a business with several products is entering an average
-        and getting an average back. No seasonality — an even month is assumed, which is what
+        and getting an average back. No seasonality: an even month is assumed, which is what
         makes the day figure possible and also what makes it a simplification. And no cash
         timing, for the reason above.
       </p>
@@ -301,7 +301,7 @@ const DESCRIPTION =
         if (headlineLine) {
           headlineLine.textContent =
             result.breakEvenUnits === null && !Number.isNaN(price)
-              ? 'Add a margin — without one, no number of sales covers the costs'
+              ? 'Add a margin. Without one, no number of sales covers the costs'
               : 'Add your costs, a price and a margin';
         }
         if (figures) figures.hidden = true;

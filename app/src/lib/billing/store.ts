@@ -114,7 +114,7 @@ export interface Store {
  */
 export function unconfiguredStore(): Store {
   const refuse = async (): Promise<never> => {
-    throw new Error('the store is not configured — see docs/billing-setup.md');
+    throw new Error('the store is not configured; see docs/billing-setup.md');
   };
 
   return {

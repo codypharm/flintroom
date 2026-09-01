@@ -20,7 +20,7 @@ const NOW = [
   {
     id: 'price',
     label: 'Current price',
-    help: 'Per unit, per seat, per month — whatever you sell one of.',
+    help: 'Per unit, per seat, per month: whatever you sell one of.',
     placeholder: '100',
   },
   {
@@ -49,7 +49,7 @@ const CHANGE = [
   },
 ];
 
-const TITLE = 'Price change calculator — how much volume you can afford to lose';
+const TITLE = 'Price change calculator: how much volume you can afford to lose';
 const DESCRIPTION =
   'Free price change calculator: the volume a price rise can afford to lose and the extra volume a discount demands, from your own price and margin.';
 ---
@@ -66,7 +66,7 @@ const DESCRIPTION =
         <h1>Price change calculator</h1>
         <p class="sub">
           Nobody can tell you whether customers will leave. What can be worked out exactly is
-          how many would have to, before the change stopped being worth making — and for a
+          how many would have to, before the change stopped being worth making, and for a
           discount, how many more you would need just to stand still.
         </p>
       </div>
@@ -163,7 +163,7 @@ const DESCRIPTION =
       <p>
         The instinct is that a 10% discount costs 10%. It does not, because the discount comes
         out of margin rather than out of price. Sell at 100 with a 30% margin and each sale
-        contributes 30. Discount to 90 and it contributes 20 — <strong>a third of your profit
+        contributes 30. Discount to 90 and it contributes 20: <strong>a third of your profit
         on the sale, gone, for a tenth off the price.</strong>
       </p>
       <p>
@@ -176,7 +176,7 @@ const DESCRIPTION =
       <h3>A rise works the same way, in your favour</h3>
       <p>
         The same arithmetic run backwards is why price rises are usually under-attempted. At a
-        30% margin, raising 10% takes contribution from 30 to 40 — so you could lose a quarter
+        30% margin, raising 10% takes contribution from 30 to 40, so you could lose a quarter
         of your customers and be exactly where you started. Most businesses would not lose
         anything like a quarter, which means the rise is worth more than it feels and the fear
         of it is larger than the exposure.
@@ -185,7 +185,7 @@ const DESCRIPTION =
       <h3>Thin margins amplify both directions</h3>
       <p>
         This is the part that catches people out. At a 10% margin, a 10% price rise
-        <em>doubles</em> contribution — so it survives losing half the customers. The same
+        <em>doubles</em> contribution, so it survives losing half the customers. The same
         business discounting 10% goes to zero contribution and no amount of volume rescues it.
         Low margin does not mean small effects; it means the price is doing nearly all the
         work, and every move on it is enormous.
@@ -221,7 +221,7 @@ const DESCRIPTION =
         </div>
         <div>
           <dt>Elasticity</dt>
-          <dd>How much demand actually moves when price does. Not modelled here — it is the thing this page deliberately refuses to guess.</dd>
+          <dd>How much demand actually moves when price does. Not modelled here: it is the thing this page deliberately refuses to guess.</dd>
         </div>
       </dl>
     </div>
@@ -305,7 +305,7 @@ const DESCRIPTION =
         if (tolerance) tolerance.textContent = '—';
         if (toleranceLine) {
           toleranceLine.textContent = input.grossMarginPercent <= 0 && !Number.isNaN(price)
-            ? 'Add a gross margin — without one there is no contribution to protect'
+            ? 'Add a gross margin. Without one there is no contribution to protect'
             : 'Add a price, a margin and a change';
         }
         if (figures) figures.hidden = true;

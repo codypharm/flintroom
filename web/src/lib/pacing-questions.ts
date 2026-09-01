@@ -14,7 +14,7 @@ export const STANDARD_PACING_QUESTIONS: Question[] = [
   {
     id: 'reading-is-not-speaking',
     text: 'Have you said this out loud yet, or only read it?',
-    why: 'Reading silently runs two to three times faster than speech, so a script that "reads fine" is usually long. The number on this page assumes delivery pace — the only way to know your actual pace is to say it and time it.',
+    why: 'Reading silently runs two to three times faster than speech, so a script that "reads fine" is usually long. The number on this page assumes delivery pace. The only way to know your actual pace is to say it and time it.',
     grounded: false,
   },
   {
@@ -26,7 +26,7 @@ export const STANDARD_PACING_QUESTIONS: Question[] = [
   {
     id: 'the-speaker-before-you',
     text: 'What is the plan when the speaker before you runs over?',
-    why: 'Slots shrink from the front. The version of this talk that fits in two-thirds of the time is a decision to make now, calmly — the one made live on stage is always "talk faster", which loses the room.',
+    why: 'Slots shrink from the front. The version of this talk that fits in two-thirds of the time is a decision to make now, calmly. The one made live on stage is always "talk faster", which loses the room.',
     grounded: false,
   },
   {
@@ -57,14 +57,14 @@ export function pacingQuestionsFor(timed: TimedScript): Question[] {
     grounded.push({
       id: 'over-budget',
       text: `You are about ${timed.wordsOver} words past what the slot holds. Which section gives them up?`,
-      why: 'Cuts made at the desk come out of the weakest section; cuts made on stage come out of whatever was last — usually the ask, the summary, the reason you were speaking at all. Nobody cuts evenly under pressure, so the decision is better made here.',
+      why: 'Cuts made at the desk come out of the weakest section; cuts made on stage come out of whatever was last: usually the ask, the summary, the reason you were speaking at all. Nobody cuts evenly under pressure, so the decision is better made here.',
       grounded: true,
     });
   } else if (fitsOnlyRushed(timed)) {
     grounded.push({
       id: 'only-fits-rushed',
       text: 'This only fits at the pace you talk when nervous. Is that the plan?',
-      why: 'At your rehearsed pace it runs over; it fits only with the speed that nerves add. Speed that comes from nerves is not pacing, it is rushing — and it spends exactly the sections that needed the room to follow.',
+      why: 'At your rehearsed pace it runs over; it fits only with the speed that nerves add. Speed that comes from nerves is not pacing, it is rushing, and it spends exactly the sections that needed the room to follow.',
       grounded: true,
     });
   }
@@ -73,7 +73,7 @@ export function pacingQuestionsFor(timed: TimedScript): Question[] {
     grounded.push({
       id: 'dense',
       text: 'There are stretches here past forty-five seconds with nowhere to breathe. Where does the audience catch up?',
-      why: 'A paragraph is where the writing gives the speaker a break. A long one delivered at pace is where rushing happens and where listeners fall behind — the fix is a break in the text, not effort on the day.',
+      why: 'A paragraph is where the writing gives the speaker a break. A long one delivered at pace is where rushing happens and where listeners fall behind. The fix is a break in the text, not effort on the day.',
       grounded: true,
     });
   }

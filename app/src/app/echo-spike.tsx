@@ -444,7 +444,7 @@ export default function EchoSpikeScreen() {
                 <Text style={[styles.body, { color: colors.text }]}>
                   Noise floor {report.noiseFloorDbfs.toFixed(1)} dBFS
                   {isGatedFloor(report.noiseFloorDbfs)
-                    ? ' — gated to digital silence by noise suppression, so the ratio below is not meaningful and the verdict uses the absolute level above.'
+                    ? ', gated to digital silence by noise suppression, so the ratio below is not meaningful and the verdict uses the absolute level above.'
                     : `, so playback sits ${report.echoDb.toFixed(1)} dB above it.`}
                 </Text>
                 <Text style={[styles.body, { color: colors.text }]}>

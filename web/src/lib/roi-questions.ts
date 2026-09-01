@@ -29,7 +29,7 @@ const SLOW_PAYBACK = 24;
 export const STANDARD_ROI_QUESTIONS: Question[] = [
   {
     id: 'do-nothing',
-    text: 'What does doing nothing cost? Not zero — what is the price of carrying on as we are?',
+    text: 'What does doing nothing cost? Not zero: what is the price of carrying on as we are?',
     why: 'Every case is implicitly a comparison, and the alternative is rarely free. A case that has priced the status quo is arguing about a difference; one that has not is arguing about a spend.',
     grounded: false,
   },
@@ -75,7 +75,7 @@ export function roiQuestionsFor(result: Roi, input: RoiInput): Question[] {
     grounded.push({
       id: 'too-good',
       text: 'This pays back even if most of the projected benefit never arrives. What is being left out?',
-      why: 'A very comfortable margin usually means a cost line is missing rather than that the case is unusually good — internal time, change management and the thing being replaced are the three that go absent most often.',
+      why: 'A very comfortable margin usually means a cost line is missing rather than that the case is unusually good. Internal time, change management and the thing being replaced are the three that go absent most often.',
       grounded: true,
     });
   }

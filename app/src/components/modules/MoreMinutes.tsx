@@ -297,7 +297,7 @@ function note(
     // (`waiting`) the money has moved and the minutes have not, and saying
     // "done" there would be claiming a number the ledger has not written.
     return {
-      text: 'All set — they are yours.',
+      text: 'All set. They are yours.',
       wrong: false,
       live: true,
     };

@@ -363,26 +363,44 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* The hook at the foot of the result card — see ResultHook.astro. Body
-   quiet, link plainly a link; no button, no box. It reads as the card's
-   last sentence, not as an advert stapled to it. */
+/* The hook at the foot of the result card — see ResultHook.astro.
+   First cut was a muted line with a text link, and the architect's verdict
+   was "not legible or grabbing" — a CTA whispering is a CTA lying about
+   what it is. The sentence now reads at full ink and the action is the
+   site's own button. What still separates it from a banner: it only exists
+   once a result does, and the sentence is about *their* number. */
 .result .hook {
   margin-top: var(--s5);
-  padding-top: var(--s4);
+  padding-top: var(--s5);
   border-top: 1px solid var(--input-line);
 }
 .result .hook p {
-  font-size: 14px;
-  color: var(--ink-variant);
-  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--ink);
+  margin: 0 0 12px;
 }
 .result .hook a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
   font-weight: 600;
-  color: var(--primary);
+  letter-spacing: 0.02em;
+  background: var(--primary);
+  color: var(--on-primary);
+  border-radius: 999px;
+  padding: 10px 20px;
   text-decoration: none;
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
-.result .hook a:hover { text-decoration: underline; }
+.result .hook a:hover {
+  background: var(--primary-hover);
+  box-shadow: var(--glow);
+  transform: translateY(-2px);
+}
+.result .hook a:active { transform: translateY(0); }
 
 /* ── What gets asked next ───────────────────────────── */
 /* Deliberately closer than the sections below it. The questions are about the

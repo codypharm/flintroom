@@ -96,7 +96,7 @@ export function questionsFor(result: Runway, input: RunwayInput): Question[] {
   } else if ((input.revenueGrowthPercent ?? 0) === 0) {
     grounded.push({
       id: 'flat-revenue',
-      text: 'Revenue is held flat here. If it is climbing, at what rate — and where does that rate come from?',
+      text: 'Revenue is held flat here. If it is climbing, at what rate, and where does that rate come from?',
       why: 'A growth rate is a claim about the future and gets treated like one. The follow-up is almost always what the last three months actually did.',
       grounded: true,
     });
@@ -112,7 +112,7 @@ export function questionsFor(result: Runway, input: RunwayInput): Question[] {
   } else {
     grounded.push({
       id: 'default-dead',
-      text: 'On these numbers, profitability arrives after the cash does. What closes the gap — the raise, the costs, or the revenue?',
+      text: 'On these numbers, profitability arrives after the cash does. What closes the gap: the raise, the costs, or the revenue?',
       why: "Paul Graham's default alive or default dead, and it sits on most diligence lists because the answer decides whether the next round is a choice or a requirement.",
       grounded: true,
     });

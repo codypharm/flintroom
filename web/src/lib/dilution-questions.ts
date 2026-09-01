@@ -33,7 +33,7 @@ const CONTROL_LINE = 50;
 export const STANDARD_DILUTION_QUESTIONS: Question[] = [
   {
     id: 'pool-purpose',
-    text: 'What is the option pool actually for — which roles, over what period?',
+    text: 'What is the option pool actually for: which roles, over what period?',
     why: 'A pool is sized from a hiring plan, and a plan can be discussed. A round number cannot, which is why the number usually arrives without one attached.',
     grounded: false,
   },
@@ -88,7 +88,7 @@ export function dilutionQuestionsFor(result: Dilution, input: DilutionInput): Qu
     grounded.push({
       id: 'pool-outweighs',
       text: 'The pool is costing you more than the money is. Is that the trade you meant to make?',
-      why: 'It is a common shape and almost never the one a founder expects walking in — the negotiation goes to the valuation while the larger number sits in a different line of the same term sheet.',
+      why: 'It is a common shape and almost never the one a founder expects walking in. The negotiation goes to the valuation while the larger number sits in a different line of the same term sheet.',
       grounded: true,
     });
   }
