@@ -447,3 +447,55 @@ each is a sum over rows that already exist, materialised when a phase closes.
 spend arriving after settlement adds to the same row rather than fighting the
 settlement write. §4.3 calls the unmetered phases the model's largest
 uncontrolled exposure; it gets measured for the price of a sum.
+
+
+---
+
+## Amendment — the score (#118, 2026-09-01)
+
+Testers asked for a rating after a room, and a way to see progress when they
+try again. The recorded position was no scorecard; the architect reversed it
+after hearing the counter-argument, and the reversal is narrower than it
+sounds. What ships is not a model's opinion of a person — it is arithmetic
+over the same verified findings this document already created.
+
+**The reading gained its other half.** `Strength` sits beside `Weakness` in
+`agents/weakness.py` — `held`, `grounded`, `conceded`, `direct`. Four, matching
+the four weaknesses the presenter owns, and not a mirror: they name what a
+hostile substance room actually rewards, and only `direct` is a true opposite
+(of `evasive`). The same single `rank()` call reports a `held` list beside
+`weak`, so the numerator costs no extra model call — the transcript, the
+expensive part of the prompt, was already being sent.
+
+**The same oath, against the opposite temptation.** A model told to find
+strengths will flatter, so `verified_strengths` demands the quote — and one
+check more than weaknesses need: the answer being praised must exist.
+Praising silence is the flattery a quote alone cannot catch. A question filed
+in both lists is a reading that contradicted itself, and the weakness wins,
+because a presenter told an answer held will give it again to a real room.
+
+**The score is computed, never asked for.** `score()` returns
+`(held, judged)` where judged is held plus the at-fault weaknesses only —
+`dismissed` and `not_reached` never reach the denominator, the same fault
+split as #56, applied to arithmetic instead of layout. The model never says
+"78%"; the client renders "You held 7 of 9 answers." from two integers.
+
+**The comparison is the lineage's.** `previous_score` is the last scored room
+in the same rehearsal lineage (`docs/rehearsals.md`), because the baseline
+that means anything is the same argument, last time. Room one shows the score
+alone. Known and accepted: #55 pressing harder after a good room can lower
+the next score even when the presenter improved — which is why the score is
+shown per room beside its predecessor, never blended into one figure.
+
+**Persistence follows decision 1.** `session_strong_answers` is written in
+the same transaction as the weak rows on the first debrief open, and every
+later open reads the rows. `sessions.scored_at` is the score's birth
+certificate: a room debriefed before strengths existed was read by a model
+never asked what held, and its zero strong rows mean "never judged that way",
+not "nothing held" — null score, and the lineage walk skips it.
+
+**What this does not change.** The difficulty rung stays unpublished
+(`docs/difficulty-calibration.md` decision 5 — a note there marks the
+distinction). Sparring still renders no verdict. The debrief screen shows the
+score as a sentence in the page's own voice, no badge and no colour — the
+retired mockup's "B+" remains the anti-reference.

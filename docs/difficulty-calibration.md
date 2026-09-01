@@ -158,6 +158,13 @@ than numerals follows `PrepSheet.tsx`'s `howOften()`, and a level with no number
 is much harder to treat as a score — which is the drift toward the
 delivery-metrics product the wedge exists to refuse.
 
+(#118, 2026-09-01, does not reopen this. The debrief now shows a *score* —
+"you held 7 of 9" — but it is a count of verified findings about answers,
+each pinned to a quoted transcript line, computed in code. The **rung** stays
+unpublished: it is a number about the room's aggression, would be gamed if
+shown, and says nothing about any answer. Two different numbers; only one of
+them is about the person's work, and that is the one that ships.)
+
 **And the user may set it, up or down.** The control lives on panel setup,
 beside choosing who is in the room: how hard they push is the same decision,
 made at the same moment, and it is the only screen where the choice has visible
