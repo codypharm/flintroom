@@ -226,3 +226,61 @@ async def test_the_debrief_is_not_held_to_the_five_second_client_default():
     budget = handler.request.extensions.get("timeout")
     assert budget is not None, "the debrief inherited the shared five-second default"
     assert budget["read"] >= 60, budget
+
+
+async def test_what_held_comes_back_beside_what_broke():
+    """#118. One call, both halves — the `held` list rides the same reply,
+    and the schema the request carries must ask for it, or the model has no
+    channel to say anything held at all."""
+    from app.agents.weakness import Strength, StrengthJudgement
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        handler.request = request
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": json.dumps(
+                                        {
+                                            "weak": [],
+                                            "held": [
+                                                {
+                                                    "ordinal": 2,
+                                                    "quote": "What does it cost to carry?",
+                                                    "strength": "direct",
+                                                    "why": "You answered with the actual cost.",
+                                                }
+                                            ],
+                                        }
+                                    )
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 1},
+            },
+        )
+
+    reader = reader_over(handler)
+    reading = await reader.rank(room=annotate(ROOM, ended=EndReason.USER_ENDED))
+
+    assert reading.strong == (
+        StrengthJudgement(
+            ordinal=2,
+            quote="What does it cost to carry?",
+            strength=Strength.DIRECT,
+            why="You answered with the actual cost.",
+        ),
+    )
+
+    sent = json.loads(handler.request.content)
+    schema = sent["generationConfig"]["responseSchema"]
+    assert "held" in schema["properties"]
+    assert "held" in schema["required"]
+    strengths = schema["properties"]["held"]["items"]["properties"]["strength"]
+    assert set(strengths["enum"]) == {"held", "grounded", "conceded", "direct"}

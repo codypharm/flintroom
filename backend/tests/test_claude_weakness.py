@@ -188,3 +188,62 @@ async def test_a_room_the_model_found_nothing_wrong_with_is_not_an_error():
 
     assert reading.judged == ()
     assert reading.usage == TurnUsage(900, 40)
+
+
+async def test_what_held_comes_back_beside_what_broke():
+    """#118. The `held` list rides the same tool call, and the tool schema
+    must ask for it — a model with no channel for strengths reports none."""
+    import json
+
+    from app.agents.weakness import Strength, StrengthJudgement
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        handler.request = request
+        return httpx.Response(
+            200,
+            json={
+                "id": "msg_1",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-sonnet-5",
+                "stop_reason": "tool_use",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_1",
+                        "name": "report_weak_answers",
+                        "input": {
+                            "weak": [],
+                            "held": [
+                                {
+                                    "ordinal": 2,
+                                    "quote": "What does it cost to carry?",
+                                    "strength": "direct",
+                                    "why": "You answered with the actual cost.",
+                                }
+                            ],
+                        },
+                    }
+                ],
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+        )
+
+    reader = reader_with(handler)
+    reading = await reader.rank(room=annotate(ROOM, ended=EndReason.USER_ENDED))
+
+    assert reading.strong == (
+        StrengthJudgement(
+            ordinal=2,
+            quote="What does it cost to carry?",
+            strength=Strength.DIRECT,
+            why="You answered with the actual cost.",
+        ),
+    )
+
+    sent = json.loads(handler.request.content)
+    schema = sent["tools"][0]["input_schema"]
+    assert "held" in schema["properties"]
+    assert "held" in schema["required"]
+    strengths = schema["properties"]["held"]["items"]["properties"]["strength"]
+    assert set(strengths["enum"]) == {"held", "grounded", "conceded", "direct"}

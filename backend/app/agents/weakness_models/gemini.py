@@ -39,10 +39,12 @@ from app.agents.model import TurnUsage
 from app.agents.weakness import (
     INSTRUCTION,
     Annotated,
+    Strength,
     Weakness,
     WeaknessReading,
     render,
     to_judgements,
+    to_strengths,
 )
 from app.core.errors import ProviderUnavailable
 from app.core.logging import get_logger
@@ -98,6 +100,19 @@ WEAKNESS_MEANINGS = "Which kind of weakness this is. " + " ".join(
     )
 )
 
+#: What the four strengths mean, in the schema for the reason the weaknesses
+#: are: bare enum strings say nothing about what separates them, and the score
+#: counts what lands here.
+STRENGTH_MEANINGS = "Which kind of strength this is. " + " ".join(
+    f"'{value}': {meaning}"
+    for value, meaning in (
+        ("held", "a figure survived being pressed — it was questioned and did not move."),
+        ("grounded", "a mechanism explained or a source named, rather than asserted."),
+        ("conceded", "a limit admitted cleanly instead of bluffed through."),
+        ("direct", "the question asked was the question answered."),
+    )
+)
+
 #: What a reply must look like. Gemini honours this as `responseSchema`, which is
 #: how a category outside the vocabulary is refused at the vendor rather than
 #: dropped by us — cheaper than parsing it and throwing it away, and it keeps the
@@ -134,9 +149,29 @@ _SCHEMA: dict[str, Any] = {
                 },
                 "required": ["ordinal", "quote", "weakness", "why"],
             },
-        }
+        },
+        "held": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "ordinal": {"type": "INTEGER"},
+                    "quote": {"type": "STRING"},
+                    "strength": {
+                        "type": "STRING",
+                        "enum": [strength.value for strength in Strength],
+                        "description": STRENGTH_MEANINGS,
+                    },
+                    "why": {"type": "STRING"},
+                },
+                "required": ["ordinal", "quote", "strength", "why"],
+            },
+        },
     },
-    "required": ["weak"],
+    # Both required, so an empty room reports two empty lists rather than
+    # omitting one — an omitted `held` and a room where nothing held are
+    # different facts, and the schema keeps the model from conflating them.
+    "required": ["weak", "held"],
 }
 
 
@@ -175,8 +210,11 @@ class GeminiWeaknessReader:
         """One call, offline, after everything."""
         payload = await self._generate(render(room))
 
+        reported = _reported(payload)
         return WeaknessReading(
-            judged=to_judgements(_reported(payload)), usage=_usage_of(payload)
+            judged=to_judgements(reported),
+            strong=to_strengths(reported),
+            usage=_usage_of(payload),
         )
 
     async def _generate(self, room: str) -> dict[str, Any]:

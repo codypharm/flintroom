@@ -39,10 +39,12 @@ from app.agents.model import TurnUsage
 from app.agents.weakness import (
     INSTRUCTION,
     Annotated,
+    Strength,
     Weakness,
     WeaknessReading,
     render,
     to_judgements,
+    to_strengths,
 )
 from app.core.logging import get_logger
 
@@ -72,7 +74,8 @@ TOOL = "report_weak_answers"
 _TOOL_SCHEMA: ToolParam = {
     "name": TOOL,
     "description": (
-        "Report the answers that were weakest in this session, worst first."
+        "Report the answers that were weakest in this session, worst first — "
+        "and separately, the answers that held."
     ),
     "input_schema": {
         "type": "object",
@@ -111,9 +114,55 @@ _TOOL_SCHEMA: ToolParam = {
                     },
                     "required": ["ordinal", "quote", "weakness", "why"],
                 },
-            }
+            },
+            "held": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "ordinal": {
+                            "type": "integer",
+                            "description": (
+                                "The numbered line of the QUESTION this is about."
+                            ),
+                        },
+                        "quote": {
+                            "type": "string",
+                            "description": (
+                                "Words copied exactly from that line. Checked "
+                                "against the transcript; an entry whose quote "
+                                "does not appear there is discarded."
+                            ),
+                        },
+                        "strength": {
+                            "type": "string",
+                            "enum": [strength.value for strength in Strength],
+                            "description": (
+                                "'held': a figure survived being pressed. "
+                                "'grounded': a mechanism explained or a source "
+                                "named, rather than asserted. 'conceded': a "
+                                "limit admitted cleanly instead of bluffed "
+                                "through. 'direct': the question asked was the "
+                                "question answered."
+                            ),
+                        },
+                        "why": {
+                            "type": "string",
+                            "description": (
+                                "One or two sentences addressed to the "
+                                "presenter, saying what worked in what they "
+                                "actually said. Never generic praise."
+                            ),
+                        },
+                    },
+                    "required": ["ordinal", "quote", "strength", "why"],
+                },
+            },
         },
-        "required": ["weak"],
+        # Both required, so an empty room reports two empty lists rather than
+        # omitting one — an omitted `held` and a room where nothing held are
+        # different facts.
+        "required": ["weak", "held"],
     },
 }
 
@@ -145,8 +194,10 @@ class ClaudeWeaknessReader:
             messages=[MessageParam(role="user", content=render(room))],
         )
 
+        reported = _reported(reply)
         return WeaknessReading(
-            judged=to_judgements(_reported(reply)),
+            judged=to_judgements(reported),
+            strong=to_strengths(reported),
             usage=TurnUsage(
                 input_tokens=reply.usage.input_tokens,
                 output_tokens=reply.usage.output_tokens,

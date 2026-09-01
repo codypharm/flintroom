@@ -309,6 +309,59 @@ class Judgement:
     next_time: str | None = None
 
 
+class Strength(Enum):
+    """The vocabulary an answer that held may be filed under (#118).
+
+    The other half of `Weakness`, added when testers asked for a rating. The
+    debrief had only ever reported failure, and the score the product now
+    shows — answers that held over answers judged — needs the numerator found,
+    not just the faults.
+
+    Four, matching the four weaknesses the presenter owns, but **not a
+    mirror**: "not unsupported" is not a strength. These name what a hostile
+    substance room actually rewards. Only `DIRECT` is a true opposite (of
+    `EVASIVE`), because answering the question asked is the one axis where
+    doing well and not doing badly are the same act.
+    """
+
+    #: A figure survived being pressed — they asked, it did not move.
+    HELD = "held"
+
+    #: A mechanism explained or a source named, rather than asserted.
+    GROUNDED = "grounded"
+
+    #: A limit admitted cleanly instead of bluffed through. A room that only
+    #: rewards confidence teaches bluffing, which is the opposite of the
+    #: product.
+    CONCEDED = "conceded"
+
+    #: The question asked was the question answered.
+    DIRECT = "direct"
+
+
+@dataclass(frozen=True)
+class StrengthJudgement:
+    """What the model says held, before anything is believed.
+
+    The same claim/conclusion split as `Judgement`: this is what a model said,
+    a `StrongAnswer` is what survived checking. The temptation runs the other
+    way — a model told to find strengths will flatter — so the checking
+    matters at least as much here.
+    """
+
+    #: Which question line it is judging. Checked against `quote`.
+    ordinal: int
+
+    #: The words it read there. The evidence that it read there at all.
+    quote: str
+
+    strength: Strength
+
+    #: The sentence to the presenter about what worked in what they actually
+    #: said. Never generic praise — a category cannot say what held.
+    why: str
+
+
 @dataclass(frozen=True)
 class WeakAnswer:
     """One question the room did not get a good enough answer to.
@@ -379,6 +432,75 @@ def verified(
                 weakness=judgement.weakness,
                 why=judgement.why,
                 next_time=_suggestion(judgement, transcript),
+            )
+        )
+
+    return tuple(kept)
+
+
+@dataclass(frozen=True)
+class StrongAnswer:
+    """One question the room got a good enough answer to (#118).
+
+    Everything but `strength` and `why` is read from the transcript, exactly
+    as `WeakAnswer` does — the score counts these, and a count of things a
+    model was free to invent would be a rating in the sense the product
+    refuses.
+    """
+
+    ordinal: int
+    question: str
+    asked_by: str
+
+    #: What they said that held. Never None — praising silence is dropped in
+    #: verification, not represented.
+    answer: str
+
+    strength: Strength
+    why: str
+
+
+def verified_strengths(
+    judged: Sequence[StrengthJudgement], transcript: Sequence[Said]
+) -> tuple[StrongAnswer, ...]:
+    """The strengths that survive being checked against the room.
+
+    Two checks where weaknesses need one. The quote check is the same: a
+    strength must name the question line and quote it. The second is
+    `_answer_to` returning something — a "held answer" to a question the
+    presenter never answered is the flattery the quote alone cannot catch,
+    because the question is real and the praise is invented.
+
+    Dropped rather than raised, logged like `verified`: a quiet drop is how a
+    prompt regression becomes a score that silently sinks.
+    """
+    kept: list[StrongAnswer] = []
+
+    for judgement in judged:
+        answer = (
+            _answer_to(transcript, judgement.ordinal)
+            if _quotes_the_room(judgement, transcript)
+            else None
+        )
+        if answer is None:
+            # Never the quote itself — transcript text, or an invention about
+            # it, and `CLAUDE.md` forbids either in logs.
+            log.warning(
+                "strong_answer_unverified",
+                ordinal=judgement.ordinal,
+                strength=judgement.strength.value,
+            )
+            continue
+
+        line = transcript[judgement.ordinal]
+        kept.append(
+            StrongAnswer(
+                ordinal=judgement.ordinal,
+                question=line.text,
+                asked_by=line.speaker,
+                answer=answer,
+                strength=judgement.strength,
+                why=judgement.why,
             )
         )
 
@@ -462,7 +584,9 @@ _NUMERALS = re.compile(r"\d+(?:\.\d+)?")
 _SCALES = ("hundred", "thousand", "million", "billion", "trillion")
 
 
-def _quotes_the_room(judgement: Judgement, transcript: Sequence[Said]) -> bool:
+def _quotes_the_room(
+    judgement: Judgement | StrengthJudgement, transcript: Sequence[Said]
+) -> bool:
     """Whether the quoted words are really at the ordinal named.
 
     Containment rather than equality, and normalised for case and whitespace. A
@@ -508,6 +632,12 @@ class WeaknessReading:
     """
 
     judged: tuple[Judgement, ...] = ()
+
+    #: What the model says held (#118). Same claim status as `judged` — nothing
+    #: downstream believes it until `verified_strengths` has checked the quote
+    #: and found the answer it praises.
+    strong: tuple[StrengthJudgement, ...] = ()
+
     usage: TurnUsage = TurnUsage()
 
 
@@ -516,6 +646,11 @@ class Ranked:
     """The room's weak answers, verified, and what reading them cost."""
 
     answers: tuple[WeakAnswer, ...] = ()
+
+    #: The answers that held, verified (#118). Unranked — the score counts
+    #: them, and a count has no order.
+    strong: tuple[StrongAnswer, ...] = ()
+
     usage: TurnUsage = TurnUsage()
 
 
@@ -560,7 +695,9 @@ async def weak_answers(
     reading = await reader.rank(room=annotate(transcript, ended=ended))
 
     return Ranked(
-        answers=verified(reading.judged, transcript), usage=reading.usage
+        answers=verified(reading.judged, transcript),
+        strong=verified_strengths(reading.strong, transcript),
+        usage=reading.usage,
     )
 
 
@@ -639,6 +776,55 @@ def _judgement(entry: Any) -> Judgement | None:
     )
 
 
+def to_strengths(reported: Any) -> tuple[StrengthJudgement, ...]:
+    """Typed strength judgements from the model's `held` list (#118).
+
+    The same dropped-not-raised policy as `to_judgements`, and unlike there,
+    order carries nothing — the score counts these. Kept anyway, because
+    throwing away an ordering costs nothing and reordering here would be a
+    decision with no owner.
+    """
+    if not isinstance(reported, dict) or not isinstance(reported.get("held"), list):
+        return ()
+
+    strengths: list[StrengthJudgement] = []
+
+    for entry in reported["held"]:
+        strength = _strength(entry)
+        if strength is None:
+            log.warning("strong_answer_malformed")
+            continue
+        strengths.append(strength)
+
+    return tuple(strengths)
+
+
+def _strength(entry: Any) -> StrengthJudgement | None:
+    """One entry, or `None` if it is not one — `_judgement`'s checks, applied
+    to the other half."""
+    if not isinstance(entry, dict):
+        return None
+
+    ordinal, quote = entry.get("ordinal"), entry.get("quote")
+    strength, why = entry.get("strength"), entry.get("why")
+
+    if not isinstance(ordinal, int) or isinstance(ordinal, bool):
+        return None
+    if not isinstance(quote, str) or not isinstance(why, str):
+        return None
+    if not quote.strip() or not why.strip():
+        return None
+
+    try:
+        named = Strength(strength)
+    except ValueError:
+        # An invented category. Dropped rather than coerced — the score counts
+        # what survives, and a coerced default would count flattery.
+        return None
+
+    return StrengthJudgement(ordinal=ordinal, quote=quote, strength=named, why=why)
+
+
 def render(room: Sequence[Annotated]) -> str:
     """The transcript, one numbered line each, notes indented beneath.
 
@@ -698,7 +884,20 @@ base you grew from", not "tell him you grew from two million".
 
 Do not blame the presenter for a question a note says they were never given the \
 chance to answer. It still belongs on the list — they will face it again — but \
-say what actually happened.\
+say what actually happened.
+
+Separately, in `held`, report the answers that genuinely held — a figure that \
+survived being pressed, a mechanism explained rather than asserted, a limit \
+admitted cleanly instead of bluffed through, the question asked being the \
+question answered. Same rules: `ordinal` is the question line, `quote` is \
+copied exactly from it, `why` speaks to the presenter about what worked in \
+what they actually said.
+
+Do not be generous. An answer that held is one that would have satisfied the \
+person who asked it, and most answers are neither weak enough for the first \
+list nor strong enough for this one — leave those out of both. Flattery here \
+is worse than silence: these are counted, and a presenter told an answer held \
+will give it again to a real room.\
 """
 
 
@@ -722,3 +921,28 @@ PRESENTER_AT_FAULT: frozenset[Weakness] = frozenset(
         Weakness.EVASIVE,
     }
 )
+
+
+def score(
+    strong: Sequence[StrongAnswer], weak: Sequence[WeakAnswer]
+) -> tuple[int, int]:
+    """(held, judged) — the score, as arithmetic over verified findings (#118).
+
+    **Computed, never asked for.** The model never says "78%"; it says which
+    answers held and which broke, each pinned to a quoted line, and this
+    counts them. That is the whole difference between a rating the product
+    can stand behind and a model's opinion of a person.
+
+    The denominator is what the presenter owns: answers that held plus the
+    at-fault weaknesses. `dismissed` and `not_reached` stay out — a colleague
+    cutting across them or the clock running out is not evidence about the
+    person, and counting either would score somebody down for a room that ran
+    long. Same split, same reason, as `PRESENTER_AT_FAULT`'s note on #55.
+
+    Known and accepted: #55 pressing harder after a good room can lower the
+    next score even when the presenter improved. The score is shown per room,
+    beside the previous one, rather than blended into a figure that would
+    have to carry "harder room" and "same performance" at once.
+    """
+    faults = sum(1 for one in weak if one.weakness in PRESENTER_AT_FAULT)
+    return len(strong), len(strong) + faults
