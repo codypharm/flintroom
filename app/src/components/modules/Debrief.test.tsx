@@ -55,6 +55,9 @@ const SPOKEN = 'QUJD';
 async function setup(overrides: Partial<DebriefProps> = {}) {
   const props: DebriefProps = {
     answers: ANSWERS,
+    heldAnswers: [],
+    score: null,
+    previousScore: null,
     pressed: null,
     thread: [],
     attempts: {},
@@ -72,12 +75,13 @@ async function setup(overrides: Partial<DebriefProps> = {}) {
   return props;
 }
 
-it('opens on what came loose, worst first, without a score anywhere', async () => {
+it('opens on what came loose, worst first, with no grade anywhere', async () => {
   // The ranking is a model's judgement made with the whole room in view (#57),
   // so it is rendered in the order it arrived. What must never appear is a
-  // number standing for how the session went: a grade on this screen is the
-  // delivery-metrics product §1 exists to refuse, and the retired mockup for
-  // this surface opened with a "B+".
+  // verdict standing for the person: the retired mockup for this surface
+  // opened with a "B+", and nothing here can carry one. The score (#118) is
+  // different in kind — a count of verified findings, shown only when the
+  // server sent one — and with no score in the props, no number appears.
   await setup();
 
   expect(screen.getByText('Where it came loose')).toBeTruthy();
@@ -85,6 +89,52 @@ it('opens on what came loose, worst first, without a score anywhere', async () =
   const questions = screen.getAllByLabelText(/^Question from/);
   expect(questions).toHaveLength(2);
   expect(screen.getByText(/What does it cost you to acquire a customer/)).toBeTruthy();
+});
+
+it('counts what held, and sets last time on the same argument beside it', async () => {
+  // #118. Two integers from the server, a sentence from the client — the
+  // model never produced either number, and the screen never rounds a
+  // verdict out of them beyond the arithmetic itself.
+  await setup({ score: { held: 7, judged: 9 }, previousScore: { held: 5, judged: 8 } });
+
+  expect(screen.getByText('You held 7 of 9 answers.')).toBeTruthy();
+  expect(screen.getByText('Last time on this argument: 5 of 8.')).toBeTruthy();
+});
+
+it('shows the score alone on a first attempt', async () => {
+  // Room one has nothing to compare against, and the screen says nothing
+  // rather than inventing a baseline.
+  await setup({ score: { held: 3, judged: 4 }, previousScore: null });
+
+  expect(screen.getByText('You held 3 of 4 answers.')).toBeTruthy();
+  expect(screen.queryByText(/Last time on this argument/)).toBeNull();
+});
+
+it('shows no score for a room that was never scored', async () => {
+  // A room debriefed before strengths existed has no score — null, which is
+  // not the same fact as 0 held, and the screen stays quiet about it.
+  await setup({ score: null, previousScore: null });
+
+  expect(screen.queryByText(/You held/)).toBeNull();
+});
+
+it("shows what held, in the room's own order", async () => {
+  await setup({
+    heldAnswers: [
+      {
+        ordinal: 3,
+        question: 'What does the margin look like after that?',
+        askedBy: 'cfo',
+        answer: 'Six points down, back inside four months.',
+        strength: 'conceded' as const,
+        why: 'You gave the cost plainly instead of dressing it.',
+      },
+    ],
+  });
+
+  expect(screen.getByText('What held')).toBeTruthy();
+  expect(screen.getByText('What does the margin look like after that?')).toBeTruthy();
+  expect(screen.getByText('You gave the cost plainly instead of dressing it.')).toBeTruthy();
 });
 
 it('says how the room compared with the last one, in words', async () => {

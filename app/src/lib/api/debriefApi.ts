@@ -52,6 +52,33 @@ export interface WeakAnswer {
   nextTime: string | null;
 }
 
+export type StrengthKind = 'held' | 'grounded' | 'conceded' | 'direct';
+
+/** One question the room got a good enough answer to (#118). */
+export interface HeldAnswer {
+  ordinal: number;
+  question: string;
+  askedBy: string;
+  /** Never null — an answer that held exists, or the server dropped the claim. */
+  answer: string;
+  strength: StrengthKind;
+  /** The coach's sentence about what worked. */
+  why: string;
+}
+
+/**
+ * (held, judged), counted server-side from verified findings (#118).
+ *
+ * Two integers, never a percentage: the screen renders "1 of 2 held" and
+ * derives any figure itself. Null when no score exists — a room debriefed
+ * before strengths were judged has no numerator, and null is that fact
+ * rather than a zero pretending to be one.
+ */
+export interface Score {
+  held: number;
+  judged: number;
+}
+
 /**
  * How this room compared with the last, or nothing at all.
  *
@@ -65,6 +92,12 @@ export type Pressed = 'harder' | 'easier' | null;
 export interface Debrief {
   /** Worst first, as the model ranked them with the whole room in view. */
   weakAnswers: WeakAnswer[];
+  /** The answers that held (#118), in transcript order. */
+  heldAnswers: HeldAnswer[];
+  /** This room's score, or null when none exists. */
+  score: Score | null;
+  /** The last scored room in this room's lineage, or null on a first attempt. */
+  previousScore: Score | null;
   pressed: Pressed;
   /**
    * What the coach says before anybody has said anything, or null.
@@ -204,6 +237,16 @@ interface WeakAnswerBody {
   next_time: string | null;
 }
 
+/** The wire's spelling of an answer that held. */
+interface HeldAnswerBody {
+  ordinal: number;
+  question: string;
+  asked_by: string;
+  answer: string;
+  strength: StrengthKind;
+  why: string;
+}
+
 /** One stored re-answer, as the wire spells it. */
 interface SparringAttemptBody {
   weak_rank: number;
@@ -309,6 +352,9 @@ export function createDebriefApi({
         opening: CoachTurn | null;
         thread?: CoachTurn[];
         attempts?: SparringAttemptBody[];
+        held_answers?: HeldAnswerBody[];
+        score?: Score | null;
+        previous_score?: Score | null;
       };
 
       return {
@@ -335,6 +381,19 @@ export function createDebriefApi({
           nextTime: weak.next_time ?? null,
         })),
         pressed: body.pressed ?? null,
+        // Defaulted for the reason `thread` is: a server from before #118
+        // sends none of these keys, and absence means "no score exists",
+        // which is exactly what null already says.
+        heldAnswers: (body.held_answers ?? []).map((held) => ({
+          ordinal: held.ordinal,
+          question: held.question,
+          askedBy: held.asked_by,
+          answer: held.answer,
+          strength: held.strength,
+          why: held.why,
+        })),
+        score: body.score ?? null,
+        previousScore: body.previous_score ?? null,
       };
     },
 

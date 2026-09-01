@@ -94,6 +94,53 @@ describe('read', () => {
     expect(debrief.weakAnswers[0].nextTime).toBeNull();
   });
 
+  it('carries the score, what held, and the previous room in the lineage', async () => {
+    const debrief = await api(
+      answering(200, {
+        weak_answers: [],
+        pressed: null,
+        held_answers: [
+          {
+            ordinal: 3,
+            question: 'What does the margin look like after that?',
+            asked_by: 'cfo',
+            answer: 'Six points down, back inside four months.',
+            strength: 'conceded',
+            why: 'You gave the cost plainly instead of dressing it.',
+          },
+        ],
+        score: { held: 1, judged: 2 },
+        previous_score: { held: 0, judged: 3 },
+      })
+    ).read('session-9');
+
+    expect(debrief.heldAnswers).toEqual([
+      {
+        ordinal: 3,
+        question: 'What does the margin look like after that?',
+        askedBy: 'cfo',
+        answer: 'Six points down, back inside four months.',
+        strength: 'conceded',
+        why: 'You gave the cost plainly instead of dressing it.',
+      },
+    ]);
+    expect(debrief.score).toEqual({ held: 1, judged: 2 });
+    expect(debrief.previousScore).toEqual({ held: 0, judged: 3 });
+  });
+
+  it('reads a room from before scores existed as having none, not zero', async () => {
+    // A server that predates #118 sends none of the three keys; a scored
+    // room with no history sends null. Both must land as null/empty rather
+    // than as a crash or an invented zero.
+    const debrief = await api(answering(200, { weak_answers: [], pressed: null })).read(
+      'session-10'
+    );
+
+    expect(debrief.heldAnswers).toEqual([]);
+    expect(debrief.score).toBeNull();
+    expect(debrief.previousScore).toBeNull();
+  });
+
   it('keeps an empty list as a list, not as an absence', async () => {
     // `DebriefRead` says this in as many words: an empty list is "this room had
     // nothing worth raising", and it is not the same as any of the refusals.

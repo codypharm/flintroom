@@ -2,7 +2,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import type { Pressed, WeakAnswer } from '../../lib/api/debriefApi';
+import type { HeldAnswer, Pressed, Score, WeakAnswer } from '../../lib/api/debriefApi';
 import { panelistName } from '../../lib/panel/vocabulary';
 import { color, radius, space, type } from '../../theme/tokens';
 import { DebriefEntry, type Exchange } from './DebriefEntry';
@@ -58,6 +58,26 @@ import { TalkControl, type Listening } from './TalkControl';
 export interface DebriefProps {
   /** Worst first, as `GET /v1/sessions/{id}/debrief` ranked them. */
   answers: WeakAnswer[];
+  /**
+   * The answers that held (#118), in the room's own order.
+   *
+   * The other half of the reading, under the same oath: every one is pinned
+   * to a quoted line, so nothing here can be flattery.
+   */
+  heldAnswers: HeldAnswer[];
+  /**
+   * (held, judged) counted server-side from verified findings, or null when
+   * no score exists — a room read before strengths were judged has none, and
+   * null is that fact rather than a zero pretending to be one.
+   *
+   * A count, not a grade. The decision of 2026-09-01 (#118): testers asked
+   * for a rating, and what the product publishes is arithmetic over findings
+   * that each quote the transcript — never a model's opinion of the person,
+   * and never the difficulty rung, which stays unpublished below.
+   */
+  score: Score | null;
+  /** The last scored room in this room's lineage, or null on a first attempt. */
+  previousScore: Score | null;
   pressed: Pressed;
   /**
    * What the coach said on arrival, before anybody said anything.
@@ -130,6 +150,9 @@ function movement(pressed: Pressed): string | null {
 
 export function Debrief({
   answers,
+  heldAnswers,
+  score,
+  previousScore,
   pressed,
   opening,
   thread,
@@ -191,6 +214,27 @@ export function Debrief({
           </Text>
         )}
 
+        {/*
+          The score, as a sentence rather than a badge (#118). The retired
+          mockup's "B+" is a verdict on the person; this is arithmetic over
+          findings the server verified against the transcript, and it reads
+          in the page's own voice. Absent entirely when the server sent none
+          — a room read before scores existed is not a room where nothing
+          held. "Last time" only when there is a last time on this argument.
+        */}
+        {score !== null && score.judged > 0 && (
+          <View style={styles.score}>
+            <Text style={styles.scoreHeld}>
+              {`You held ${score.held} of ${score.judged} answers.`}
+            </Text>
+            {previousScore !== null && previousScore.judged > 0 && (
+              <Text style={styles.scoreLast}>
+                {`Last time on this argument: ${previousScore.held} of ${previousScore.judged}.`}
+              </Text>
+            )}
+          </View>
+        )}
+
         {moved && <Text style={styles.moved}>{moved}</Text>}
 
         {/*
@@ -234,6 +278,26 @@ export function Debrief({
             onOpen={() => setStaged(rank)}
           />
         ))}
+
+        {/*
+          What held, after what came loose. Second on purpose: the work is
+          the findings, and the product's premise is the grill — but a sheet
+          that only ever lists failure teaches nothing about what to keep
+          doing, which is the half the testers asked for. Same card, same
+          type, no ticks and no green: an answer that held is stated, not
+          celebrated.
+        */}
+        {heldAnswers.length > 0 && (
+          <View style={styles.thread}>
+            <Text style={styles.threadHeading}>What held</Text>
+            {heldAnswers.map((held) => (
+              <View key={held.ordinal} style={styles.turn}>
+                <Text style={styles.heard}>{held.question}</Text>
+                <Text style={styles.said}>{held.why}</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         {thread.length > 0 && (
           <View style={styles.thread}>
@@ -322,6 +386,15 @@ const styles = StyleSheet.create({
     color: color.onSurfaceVariant,
     marginTop: space.snug,
   },
+  /**
+   * The score, set as prose directly under the standfirst. No container and
+   * no colour — a box around a number is a grade block, which is the retired
+   * mockup's opening move. The previous room reads a step quieter, because
+   * it is context rather than news.
+   */
+  score: { marginTop: space.base },
+  scoreHeld: { ...type.bodyLg, color: color.onSurface },
+  scoreLast: { ...type.bodyMd, color: color.onSurfaceVariant, marginTop: 2 },
   /**
    * The one sentence about difficulty, set apart from the standfirst and from
    * the findings. It is about the room rather than about any answer, and

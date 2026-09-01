@@ -11,7 +11,13 @@ import {
   type Exchange,
   type Listening,
 } from '../../components/modules/Debrief';
-import { createDebriefApi, type Pressed, type WeakAnswer } from '../../lib/api/debriefApi';
+import {
+  createDebriefApi,
+  type HeldAnswer,
+  type Pressed,
+  type Score,
+  type WeakAnswer,
+} from '../../lib/api/debriefApi';
 import { collectClip, type Clip } from '../../lib/audio/clip';
 import { API_BASE_URL, auth } from '../../lib/auth';
 import { useGateway } from '../../lib/auth/gateway';
@@ -58,6 +64,9 @@ export default function DebriefRoute() {
 
   const [answers, setAnswers] = useState<WeakAnswer[] | null>(null);
   const [pressed, setPressed] = useState<Pressed>(null);
+  const [held, setHeld] = useState<HeldAnswer[]>([]);
+  const [score, setScore] = useState<Score | null>(null);
+  const [previousScore, setPreviousScore] = useState<Score | null>(null);
   const [refusal, setRefusal] = useState<RoomRefusal | null>(null);
   const [opening, setOpening] = useState<Exchange | null>(null);
   const [thread, setThread] = useState<Exchange[]>([]);
@@ -133,6 +142,9 @@ export default function DebriefRoute() {
         if (!live) return;
         setAnswers(debrief.weakAnswers);
         setPressed(debrief.pressed);
+        setHeld(debrief.heldAnswers);
+        setScore(debrief.score);
+        setPreviousScore(debrief.previousScore);
 
         if (debrief.opening) {
           setOpening({
@@ -492,6 +504,9 @@ export default function DebriefRoute() {
       />
       <Debrief
         answers={answers}
+        heldAnswers={held}
+        score={score}
+        previousScore={previousScore}
         pressed={pressed}
         opening={opening}
         thread={thread}
