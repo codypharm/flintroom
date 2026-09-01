@@ -52,14 +52,52 @@ _REQUESTS = tuple(
 #: start softens; "sorry" mid-sentence is an apology, which is an answer.
 _PREAMBLE = re.compile(r"^(sorry|sorry but|excuse me|uh|um|er|hm+|wait|oh)[,\s]+")
 
+#: *I did not understand you* — a different request, wanting the opposite
+#: thing (#117).
+#:
+#: Reported by a tester 2026-09-01: they asked the panelist to rephrase, and a
+#: different panelist took the floor. Every pattern above is a variant of *I
+#: did not hear you*, so the utterance matched nothing and selection routed it
+#: as an ordinary answer — the failure this module was written to fix, arriving
+#: through the door it did not cover.
+#:
+#: **The two must not overlap**, which is why they are separate tuples rather
+#: than one list with a flag. A misfiled *did not hear* costs a composer call
+#: and a re-wording nobody wanted. A misfiled *did not understand* returns the
+#: identical words to somebody who has just said they did not follow, which
+#: reads as the panel ignoring them a second time.
+#:
+#: Anchored to the whole utterance under the same rule, and for the same
+#: reason: a false positive re-asks a question over somebody mid-argument.
+_REPHRASINGS = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"(can|could|would) you (please )?rephrase (that|it|the question)?( please)?",
+        r"(please )?rephrase( that| it| the question)?( please)?",
+        r"what do you mean( by (that|it))?",
+        r"(i )?(don'?t|do not|didn'?t|did not) understand( that| it| the question)?",
+        r"(can|could|would) you (please )?(put|say) (that|it) another way( please)?",
+        r"(please )?(put|say) (that|it) another way( please)?",
+        r"(in )?plain english( please)?",
+        r"(i'?m )?not sure what you('?re| are) asking",
+        r"(i )?(don'?t|do not) (get|follow) (that|it|you|the question)",
+    )
+)
+
 #: A request is short. Anything past this is somebody making a point that
 #: happens to contain a trigger phrase, and the anchoring already refuses it —
 #: the cap is defence in depth against a pattern growing a loose tail.
 _MOST_WORDS = 8
 
 
-def asked_to_repeat(text: str) -> bool:
-    """Whether this utterance is a request to hear the last question again."""
+def _normalised(text: str) -> str | None:
+    """The utterance reduced to bare words, or `None` if it cannot be a request.
+
+    Shared by both readings so that "sorry, what do you mean?" and "sorry, come
+    again?" are softened, punctuated and length-capped identically. Two copies
+    of this would drift, and the drift would show up as one request being
+    recognised and the other not.
+    """
     plain = re.sub(r"[^a-z' ]", " ", text.lower()).strip()
     plain = re.sub(r"\s+", " ", plain)
     for _ in range(3):
@@ -69,9 +107,33 @@ def asked_to_repeat(text: str) -> bool:
         plain = softened
 
     if not plain or len(plain.split()) > _MOST_WORDS:
-        return False
+        return None
+    return plain
 
-    return any(request.fullmatch(plain) for request in _REQUESTS)
+
+def asked_to_repeat(text: str) -> bool:
+    """Whether this utterance is a request to hear the last question again.
+
+    *I did not hear you.* Answered verbatim, by the same panelist — see
+    `question_to_repeat`.
+    """
+    plain = _normalised(text)
+    return plain is not None and any(one.fullmatch(plain) for one in _REQUESTS)
+
+
+def asked_to_rephrase(text: str) -> bool:
+    """Whether this utterance is a request to hear it put differently (#117).
+
+    *I did not understand you*, which is not the same request and does not want
+    the same answer. Repeating identical words to somebody who has just said
+    they did not follow reads as the panel ignoring them twice.
+
+    Answering this one costs a composer call, so it is deliberately the
+    narrower of the two: anything ambiguous falls to `asked_to_repeat` or to
+    ordinary routing, both of which are free.
+    """
+    plain = _normalised(text)
+    return plain is not None and any(one.fullmatch(plain) for one in _REPHRASINGS)
 
 
 def question_to_repeat(transcript: Sequence[Said]) -> Said | None:

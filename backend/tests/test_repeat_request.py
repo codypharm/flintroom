@@ -19,7 +19,7 @@ import pytest
 
 from app.agents.archetypes import DEFAULT_PANEL
 from app.agents.context import Grounding, Said, USER
-from app.agents.repeat import asked_to_repeat, question_to_repeat
+from app.agents.repeat import asked_to_rephrase, asked_to_repeat, question_to_repeat
 from app.modules.voice.events import AgentTranscript
 from app.modules.voice.orchestrated import OrchestratedChannel
 from app.modules.voice.transcription import Transcription
@@ -77,6 +77,85 @@ def test_a_repeat_request_is_recognised(said: str):
 )
 def test_an_answer_is_never_mistaken_for_a_repeat_request(said: str):
     assert not asked_to_repeat(said)
+
+
+# ------------------------------------------------------- did not understand
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "can you rephrase that",
+        "Rephrase that?",
+        "could you rephrase the question",
+        "rephrase",
+        "what do you mean",
+        "what do you mean by that?",
+        "sorry, what do you mean",
+        "I don't understand",
+        "i dont understand the question",
+        "put that another way",
+        "can you put that another way",
+        "say that another way",
+        "in plain english?",
+        "I'm not sure what you're asking",
+        "not sure what you're asking",
+    ],
+)
+def test_a_rephrase_request_is_recognised(said: str):
+    """Reported by a tester 2026-09-01, and the reason this half exists.
+
+    Every pattern in `asked_to_repeat` is a variant of *I did not hear you*.
+    None of them is *I did not understand you*, so "can you rephrase that" fell
+    through to selection and a different panelist took the floor — the exact
+    failure the repeat path was written to fix, arriving through the door it
+    did not cover.
+    """
+    assert asked_to_rephrase(said)
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        # Plainly answers, and a false positive here re-asks a question over
+        # somebody mid-argument — the same cost the repeat side guards against.
+        "I don't understand why the market has not moved on this yet",
+        "what I mean is that churn is concentrated in the first month",
+        "we can put that another way of working in front of the board",
+        "let me rephrase my earlier answer about the margin",
+        "in plain english the unit economics work at scale",
+        "",
+    ],
+)
+def test_an_answer_is_never_mistaken_for_a_rephrase_request(said: str):
+    assert not asked_to_rephrase(said)
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "come again",
+        "pardon?",
+        "what?",
+        "one more time please",
+        "I didn't catch that",
+    ],
+)
+def test_hearing_and_understanding_are_told_apart(said: str):
+    """The two requests want opposite things, so they must not overlap.
+
+    A misfiled *did not hear* costs a composer call and a re-wording nobody
+    wanted. A misfiled *did not understand* gets the identical words back,
+    which is the failure this task exists to fix.
+    """
+    assert asked_to_repeat(said)
+    assert not asked_to_rephrase(said)
+
+
+def test_a_rephrase_request_is_not_also_a_repeat_request():
+    for said in ("can you rephrase that", "what do you mean", "I don't understand"):
+        assert asked_to_rephrase(said)
+        assert not asked_to_repeat(said)
 
 
 # ------------------------------------------------------------- what to repeat
@@ -161,3 +240,46 @@ async def test_come_again_replays_the_question_verbatim_from_the_same_voice():
     # downstream as a question asked twice.
     panel_lines = [line for line in store.lines if line.speaker != USER]
     assert len(panel_lines) == 1
+
+
+async def test_a_rephrase_request_does_not_hand_the_floor_to_somebody_else():
+    """The tester's report, 2026-09-01 — and the half of it that ships now.
+
+    They asked the panelist to rephrase and a *different* panelist took over,
+    because every pattern in `asked_to_repeat` means *I did not hear you* and
+    theirs meant *I did not understand you*. The utterance matched nothing and
+    selection routed it like an answer.
+
+    What is asserted here is the interruption gone, not the confusion solved.
+    The resolved design on #117 is a composed re-wording, and this is
+    deliberately the wrong answer shipped ahead of the right one: somebody who
+    did not follow the words does not want the identical words back. But the
+    composed version touches nine files including a migration, all in this hot
+    path, and a stranger interrupting a request for help is the part that reads
+    as broken.
+
+    **This test is expected to change when that lands** — the assertion that
+    the same voice answers stays; the one that the words are identical does not.
+    """
+    model = ScriptedPanelModel(line="Walk me through that margin number.")
+    store = FakeTranscript()
+    channel = OrchestratedChannel(
+        panel=DEFAULT_PANEL,
+        transcription=AfterTheQuestion(
+            Transcription(text="Our margin is north of sixty percent.", final=True),
+            Transcription(text="can you rephrase that?", final=True),
+            store=store,
+        ),
+        model=model,
+        grounding=Grounding(),
+        floor=mid_room(),
+        transcript=store,
+    )
+
+    events = await events_of(channel)
+    spoken = [event for event in events if isinstance(event, AgentTranscript)]
+
+    # One voice, twice — never a second panelist answering a request for help.
+    assert [event.speaker for event in spoken] == ["cfo", "cfo"]
+    # Composed once. The re-delivery costs synthesis, not a model call.
+    assert model.composed_for == ["cfo"]

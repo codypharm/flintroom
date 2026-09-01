@@ -35,7 +35,11 @@ from app.agents.opening import (
     reentry_from,
 )
 from app.agents.panel import interrogate, select_speaker, who_takes_the_floor
-from app.agents.repeat import asked_to_repeat, question_to_repeat
+from app.agents.repeat import (
+    asked_to_rephrase,
+    asked_to_repeat,
+    question_to_repeat,
+)
 from app.agents.routing import choose
 from app.agents.closing import TimeCall, closer_from
 from app.agents.silence import Silence, nudge_from
@@ -1099,7 +1103,24 @@ class OrchestratedChannel:
                     # panelist re-asked their own question (first Play build,
                     # 2026-08-26). Falls through when nobody has asked anything
                     # yet, which is the only honest thing to repeat.
-                    if asked_to_repeat(result.text) and await self._repeat_the_question(out):
+                    # *I did not understand you* routes here too, for now (#117).
+                    # A tester asked a panelist to rephrase on 2026-09-01 and a
+                    # different one took the floor — the same failure above, by
+                    # the door `asked_to_repeat` does not cover, because every
+                    # pattern in it means *I did not hear*.
+                    #
+                    # **Deliberately the wrong answer, shipped ahead of the
+                    # right one.** Somebody who did not follow the words does
+                    # not want the identical words, and the resolved design on
+                    # #117 is a composed re-wording. That change touches nine
+                    # files including a migration, all in this hot path. This
+                    # line is three, needs no model call, and removes the thing
+                    # that actually reads as broken — a stranger interrupting a
+                    # request for help. It is replaced, not extended, when the
+                    # composed version lands.
+                    if (
+                        asked_to_repeat(result.text) or asked_to_rephrase(result.text)
+                    ) and await self._repeat_the_question(out):
                         await self._attend(out)
                         continue
 
