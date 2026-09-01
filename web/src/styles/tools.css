@@ -290,8 +290,15 @@
   border-radius: 2px 2px 0 0;
 }
 /* Still in the red. Lighter, so the month the bars change is the month the
-   case turns — which is the one thing this chart is for. */
-.schedule .bars i[data-under] { background: var(--outline-variant); }
+   case turns — which is the one thing this chart is for.
+
+   `--muted`, not a new token. This said `--outline-variant` — a name from
+   the app's palette that this site never defined — so the declaration was
+   invalid and under-zero bars had no background at all. A case that never
+   pays back is all under-zero, and its chart rendered as nothing (found in
+   the first hands-on pass, #116). Muted measures 4.3:1 on the card, over
+   the 3:1 WCAG 1.4.11 floor for meaningful graphics. */
+.schedule .bars i[data-under] { background: var(--muted); }
 .schedule .axis {
   display: flex;
   justify-content: space-between;
