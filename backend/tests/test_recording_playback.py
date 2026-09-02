@@ -27,6 +27,7 @@ from app.modules.sessions.schemas import SessionState
 from app.modules.sessions.service import SessionService
 from app.core.errors import FlintroomError
 from app.modules.sessions.router import play_recording
+from app.modules.voice.dependencies import get_room_recordings
 from app.modules.voice.recording import RoomRecordings
 
 pytestmark = pytest.mark.asyncio
@@ -52,6 +53,37 @@ async def _settled_days_ago(db, session_id, *, days: int) -> None:
     )
     await db.commit()
 
+
+
+async def test_the_dependency_hands_save_a_database(
+    db, sessions, storage, funded_account
+):
+    """`get_room_recordings` must build a `RoomRecordings` that puts the row on
+    the books, not just the object in the bucket.
+
+    Every other test in the suite constructs `RoomRecordings(storage, db=db)`
+    by hand, which is exactly how the one call site that matters — the
+    production dependency — shipped without a database and nothing went red.
+    Found in prod on 2026-09-02: twenty settled rooms, objects in storage,
+    zero `session_recordings` rows. No row means no play button, and worse, a
+    retention sweep that cannot see audio it is supposed to expire.
+    """
+    session = await sessions.start(user_id=funded_account.user_id)
+    await db.commit()
+
+    class _App:
+        class state:
+            object_storage = storage
+
+    class _Connection:
+        app = _App
+
+    built = get_room_recordings(_Connection(), db)
+    assert built is not None
+    await built.save(session_id=session.id, pcm=b"\x10\x00" * 16_000)
+
+    recording = await SessionService(db).recording(session_id=session.id)
+    assert recording.state is RecordingState.AVAILABLE
 
 
 async def test_a_room_with_audio_reports_that_it_can_be_played(

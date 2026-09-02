@@ -78,7 +78,9 @@ def get_room_parts(websocket: WebSocket) -> RoomParts:
 RoomPartsDep = Annotated[RoomParts, Depends(get_room_parts)]
 
 
-def get_room_recordings(connection: HTTPConnection) -> RoomRecordings | None:
+def get_room_recordings(
+    connection: HTTPConnection, db: Annotated[AsyncSession, Depends(get_db)]
+) -> RoomRecordings | None:
     """Somewhere to save a finished room, if this deployment has one.
 
     `None` rather than a refusal, unlike `ingestion`'s storage dependency which
@@ -90,12 +92,19 @@ def get_room_recordings(connection: HTTPConnection) -> RoomRecordings | None:
     `HTTPConnection` rather than `Request`, for the reason `get_db` documents at
     length: a WebSocket is not a `Request`, and asking for one dies in dependency
     resolution before any of our code runs.
+
+    The database is not optional here. `RoomRecordings` accepts `db=None` so
+    the relay can be exercised without one, and this dependency shipped taking
+    that path — every room's audio landed in storage with no
+    `session_recordings` row, which meant no play button and a retention sweep
+    blind to audio it was supposed to expire. The row is the books; a
+    production save must always be able to write it.
     """
     storage = getattr(connection.app.state, "object_storage", None)
     if storage is None:
         log.warning("room_recordings_unconfigured")
         return None
-    return RoomRecordings(storage)
+    return RoomRecordings(storage, db=db)
 
 
 RoomRecordingsDep = Annotated[RoomRecordings | None, Depends(get_room_recordings)]
