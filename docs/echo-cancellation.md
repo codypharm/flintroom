@@ -316,6 +316,35 @@ the handset, which is the case #17 had already covered. No `vad_score` was
 read. It is a field report, and it moves the end-to-end path from untested to
 working; it is not the measurement the Open item below asks for.
 
+## The owned stack, measured — 2026-09-02
+
+The reopen condition above fired: #25 replaced the audio layer with
+`modules/room-audio`, so the silent room was re-measured, through the same
+spike screen's owned-stack run, on the same Galaxy S24+, phone flat on a
+desk, speaker up.
+
+| | Owned stack | Patched library (2026-08-21) |
+| --- | --- | --- |
+| Noise floor | −120.0 dBFS (gated) | −120.0 dBFS (gated) |
+| During playback | **−120.0 dBFS** | −120.0 dBFS |
+| Recorder rate | 16000 Hz, as asked | 16000 Hz |
+
+**Exact digital silence, matching the patched pair.** The property survives
+the ownership change: `VOICE_COMMUNICATION` on the recorder and
+`USAGE_VOICE_COMMUNICATION` on the player, now two plain declarations in
+`RoomAudioModule.kt` instead of a patch nothing in the suite protects.
+
+The dead-microphone half was answered live rather than by a capture: a real
+room on the owned stack, the architect talking over a panelist mid-line, and
+the room heard and answered what was said. Same shape as the 2026-08-27 run,
+on the new stack.
+
+`unheard`'s precondition holds: the gate still returns exact zeros, so the
+latch in `app/modules/voice/hearing.py` remains reachable.
+
+What this run does not answer is unchanged from the section above: quiet and
+across-the-room interruptions (#27), and iOS in its entirety (#99).
+
 ## Open
 
 - **Whether the gate swallows a quiet interruption.** Still open — narrowed,

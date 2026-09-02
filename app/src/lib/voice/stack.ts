@@ -22,10 +22,15 @@ import type { UplinkRecorder } from './uplink';
  * says the silent room must be re-measured whenever the audio layer changes,
  * and that measurement needs a phone, not a test suite. Gating on `__DEV__`
  * means a dev-client build exercises the owned pair while every tester build
- * keeps the stack whose numbers are in the doc. Flip `OWNED_IN_RELEASE` when
- * #25's measurement lands, and delete the library the release after.
+ * keeps the stack whose numbers are in the doc.
+ *
+ * Flipped 2026-09-02: the owned pair measured exact digital silence during
+ * playback on the S24+ — the same figure as the patched library — and a live
+ * room on it heard the architect talking over a panelist. Both halves of the
+ * doc's proof, on hardware. The library remains installed for the debrief
+ * and replay paths until their own slices land, then it goes.
  */
-const OWNED_IN_RELEASE = false;
+const OWNED_IN_RELEASE = true;
 
 function preferOwned(): boolean {
   return roomAudioAvailable() && (__DEV__ || OWNED_IN_RELEASE);
