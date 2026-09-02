@@ -100,22 +100,27 @@ Consequence worth stating plainly, because it is the first question anyone asks:
 decisions on the client side follow from what is stored, and both are easy to get
 wrong in a way that only shows up on a long room or a slow reader.
 
-**The room is streamed, not decoded.** `react-native-audio-api`'s published
-playback route is `decodeAudioData(url)`, which decodes the whole file into a
+**The room is streamed, not decoded.** The then-library's published
+playback route was `decodeAudioData(url)`, which decodes the whole file into a
 Float32 buffer before it makes a sound. A room has no length cap — the allowance
 is monthly minutes, not minutes per room — and thirty minutes at 16 kHz mono is
 about 115 MB of buffer. That is a crash on tapping play, and it lands on the
-longest and most valuable rooms first. The library's `<Audio>` element streams
-over HTTP ranges instead, and presigned GETs serve ranges, so the phone reads the
-object in pieces and holds none of it.
+longest and most valuable rooms first. Streaming over HTTP ranges is the
+answer — presigned GETs serve ranges, so the phone reads the object in pieces
+and holds none of it.
 
-The cost of that choice is recorded where it is paid: `<Audio>` is not exported
-from the package root, so `app/src/lib/replay/element.ts` is a deep import into
-`lib/module/Audio`, `package.json` pins the library to an exact `0.13.2`, and no
-test in the repo can protect either — the module cannot even be *imported* under
-Jest. Alternatives weighed and declined: `expo-audio` (a public API, but a second
-audio stack in an app whose #25 exists to consolidate the first), and deferring
-into #25 entirely.
+> **Amended 2026-09-02 (#25):** the player now runs on `expo-audio`
+> (`useAudioPlayer` in `RoomPlayer.tsx`), which streams from a URL by nature —
+> the same property, through a public API. When #68 was decided, `expo-audio`
+> was declined as "a second audio stack beside the library"; with the library
+> gone it is the only file-playback stack, and the deep import
+> (`lib/replay/element.ts`), the exact pin, and the private-path caveats below
+> went with it.
+
+The cost of that choice was recorded where it was paid: `<Audio>` was not
+exported from the package root, so reaching it took a deep import into
+`lib/module/Audio` behind an exact version pin, with no test able to protect
+either — the module could not even be *imported* under Jest.
 
 **The link is signed on the tap, never on arrival.** Fifteen minutes is longer
 than a room and shorter than a reading session, and this screen is mostly used

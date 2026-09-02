@@ -73,7 +73,7 @@ class RoomAudioModule : Module() {
 
     Events("frame", "played")
 
-    AsyncFunction("startCapture") { promise: Promise ->
+    AsyncFunction("startCapture") { communication: Boolean, promise: Promise ->
       if (capturing.get()) {
         promise.resolve(null)
         return@AsyncFunction
@@ -91,10 +91,14 @@ class RoomAudioModule : Module() {
 
       val record = try {
         AudioRecord(
-          // The half of the AEC pair the recorder carries. VOICE_RECOGNITION —
-          // the default the old library inherited — deliberately leaves echo
-          // cancellation off; this is the source that engages it.
-          MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+          // The half of the AEC pair the recorder carries, when a pair is
+          // wanted. VOICE_COMMUNICATION engages the platform's echo
+          // cancellation for the live room; the debrief's clips ask for MIC
+          // instead — nothing plays while somebody answers a coach, so
+          // call-tuned processing would only colour a solo recording
+          // (#25's last slice; the debrief route documents the refusal).
+          if (communication) MediaRecorder.AudioSource.VOICE_COMMUNICATION
+          else MediaRecorder.AudioSource.MIC,
           SAMPLE_RATE,
           AudioFormat.CHANNEL_IN_MONO,
           AudioFormat.ENCODING_PCM_16BIT,
@@ -159,7 +163,7 @@ class RoomAudioModule : Module() {
       recorder = null
     }
 
-    AsyncFunction("startPlayback") { promise: Promise ->
+    AsyncFunction("startPlayback") { communication: Boolean, promise: Promise ->
       if (playing.get()) {
         promise.resolve(null)
         return@AsyncFunction
@@ -174,10 +178,16 @@ class RoomAudioModule : Module() {
       val out = AudioTrack.Builder()
         .setAudioAttributes(
           AudioAttributes.Builder()
-            // The other half of the AEC pair: this is what names the far-end
-            // reference. Declared here, in code we own, instead of by a patch
-            // nothing in the test suite protects.
-            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+            // The other half of the AEC pair: voice-communication usage is
+            // what names the far-end reference for the canceller. The
+            // debrief's coach voice declares MEDIA instead — outside
+            // communication mode a voice-communication stream routes to the
+            // earpiece (#26's finding), and a coach nobody can hear is worse
+            // than a coach without a canceller it does not need.
+            .setUsage(
+              if (communication) AudioAttributes.USAGE_VOICE_COMMUNICATION
+              else AudioAttributes.USAGE_MEDIA
+            )
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
             .build(),
         )

@@ -14,12 +14,25 @@ import { requireOptionalNativeModule } from 'expo-modules-core';
  * already speaks (coach speech arrives from the server the same way).
  */
 export interface RoomAudioNative {
-  /** Open the microphone. Frames arrive as `frame` events. */
-  startCapture(): Promise<void>;
+  /**
+   * Open the microphone. Frames arrive as `frame` events.
+   *
+   * `communication` is the profile: true opens the live room's half of the
+   * AEC pair (VOICE_COMMUNICATION / voice-processed input); false is the
+   * debrief's plain microphone — nothing plays while somebody answers a
+   * coach, and call-tuned processing would only colour a solo recording.
+   */
+  startCapture(communication: boolean): Promise<void>;
   stopCapture(): void;
 
-  /** Open the output stream. Silent until something is enqueued. */
-  startPlayback(): Promise<void>;
+  /**
+   * Open the output stream. Silent until something is enqueued.
+   *
+   * `communication` true names the far-end reference for the canceller;
+   * false is media playback — the coach's voice, which outside
+   * communication mode would otherwise route to the earpiece (#26).
+   */
+  startPlayback(communication: boolean): Promise<void>;
   stopPlayback(): void;
 
   /** Append one PCM16 chunk to the playback queue. */

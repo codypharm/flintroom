@@ -3,7 +3,7 @@ import { fromPcm16, resampleLinear, toPcm16 } from './pcm';
 /**
  * The conversion between what the recorder gives and what the wire takes.
  *
- * `react-native-audio-api` emits normalised Float32 (-1.0 to 1.0); the stream
+ * The owned capture module emits normalised Float32 (-1.0 to 1.0); the stream
  * protocol carries PCM16 little-endian. Nothing else in the client does
  * arithmetic on audio, so this is the whole of the risk — and it is worth real
  * tests because every way it can go wrong is inaudible in review and obvious in

@@ -90,7 +90,18 @@ export interface NativeCapture {
   stop(): void;
 }
 
+export interface Profile {
+  /**
+   * True is the live room: both halves of the AEC pair declared. False is
+   * the debrief: a plain microphone and media playback, because call-tuned
+   * processing on a solo recording and an earpiece-routed coach are the two
+   * failures the profile exists to refuse.
+   */
+  communication: boolean;
+}
+
 export function openNativeCapture(
+  { communication }: Profile,
   native: RoomAudioNative | null = defaultNative
 ): NativeCapture | null {
   if (!native) {
@@ -120,7 +131,7 @@ export function openNativeCapture(
       subscription?.remove();
       subscription = null;
     },
-    start: () => native.startCapture(),
+    start: () => native.startCapture(communication),
     stop: () => {
       native.stopCapture();
     },
@@ -160,6 +171,7 @@ export interface NativePlaybackContext {
 }
 
 export function openNativePlayback(
+  { communication }: Profile,
   native: RoomAudioNative | null = defaultNative
 ): NativePlaybackContext | null {
   if (!native) {
@@ -223,7 +235,7 @@ export function openNativePlayback(
               isLastBufferInQueue: event.drained && queued.length === 0,
             });
           });
-          void native.startPlayback();
+          void native.startPlayback(communication);
         },
         stop: () => {
           subscription?.remove();

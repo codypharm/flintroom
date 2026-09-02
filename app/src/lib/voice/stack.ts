@@ -1,9 +1,7 @@
-import { AudioContext, AudioManager, AudioRecorder } from 'react-native-audio-api';
-
 import {
   openNativeCapture,
   openNativePlayback,
-  roomAudioAvailable,
+  type Profile,
 } from '../../../modules/room-audio';
 import type { PlaybackContext } from './playback';
 import type { UplinkRecorder } from './uplink';
@@ -11,95 +9,65 @@ import type { UplinkRecorder } from './uplink';
 /**
  * Which audio stack a screen gets, decided in exactly one place (#25).
  *
- * Two implementations exist while the owned module earns its way in: the
- * library the app shipped on, and `modules/room-audio`. Every screen that
- * opens a microphone or a speaker asks here rather than constructing either
- * directly, so the cutover — and, if hardware disagrees, the retreat — is
- * one constant, not a hunt through call sites.
+ * Since 2026-09-02 there is one answer: `modules/room-audio`, the owned
+ * pair, measured on hardware (exact digital silence on the uplink during
+ * playback, a talking presenter heard through it — `docs/echo-cancellation.md`
+ * → "The owned stack, measured"). The library it replaced is gone, with its
+ * patch and its deep import; this file remains because *which profile* a
+ * screen opens is still a decision worth owning in one place:
  *
- * **Owned is dev-only until the pair is proven on a device.** The property
- * that matters is acoustic; `docs/echo-cancellation.md`'s reopen condition
- * says the silent room must be re-measured whenever the audio layer changes,
- * and that measurement needs a phone, not a test suite. Gating on `__DEV__`
- * means a dev-client build exercises the owned pair while every tester build
- * keeps the stack whose numbers are in the doc.
+ * - the live room opens `communication: true` — both halves of the AEC pair;
+ * - the debrief opens `communication: false` — a plain microphone (nothing
+ *   plays while somebody answers a coach, and call-tuned processing would
+ *   only colour a solo recording) and media playback (voice-communication
+ *   usage outside communication mode routes to the earpiece, #26).
  *
- * Flipped 2026-09-02: the owned pair measured exact digital silence during
- * playback on the S24+ — the same figure as the patched library — and a live
- * room on it heard the architect talking over a panelist. Both halves of the
- * doc's proof, on hardware. The library remains installed for the debrief
- * and replay paths until their own slices land, then it goes.
+ * **Loud when the native module is absent.** That is a build missing its own
+ * audio layer — a dev client from before the module existed, or a broken
+ * autolink — and a silent fallback would be a room that opens and hears
+ * nothing, the exact failure mode this file refuses to reintroduce.
  */
-const OWNED_IN_RELEASE = true;
 
-function preferOwned(): boolean {
-  return roomAudioAvailable() && (__DEV__ || OWNED_IN_RELEASE);
-}
-
-/** What a screen needs from a microphone, whoever provides it. */
+/** What a screen needs from a microphone. */
 export interface CaptureStack {
   recorder: UplinkRecorder & { start(): unknown; stop(): void };
-  /** True when `modules/room-audio` is underneath. Logged, never branched on. */
-  owned: boolean;
 }
 
-/** What a screen needs from a speaker, whoever provides it. */
+/** What a screen needs from a speaker. */
 export interface PlaybackStack {
   context: PlaybackContext;
-  owned: boolean;
   /**
-   * Make the output path actually able to make sound.
-   *
-   * The library's context starts suspended and renders silence *without
-   * complaining* if never resumed — the trap both screens document. The
-   * owned path opens its stream on `source.start` and needs nothing here.
-   * Either way, callers call this once and stop knowing which stack it is.
+   * Kept for the call sites' shape: the owned path opens its stream on
+   * `source.start` and configures its own session natively, so this resolves
+   * immediately. It survives because "make the output path able to sound"
+   * is a sentence the screens say once, whoever is underneath.
    */
   ready(): Promise<void>;
   close(): Promise<void>;
 }
 
-export function openCaptureStack(): CaptureStack {
-  if (preferOwned()) {
-    const capture = openNativeCapture();
-    if (capture) {
-      return { recorder: capture, owned: true };
-    }
-  }
-  return { recorder: new AudioRecorder(), owned: false };
+function missing(): never {
+  throw new Error(
+    'the room-audio native module is not in this build; rebuild the dev client'
+  );
 }
 
-export function openPlaybackStack(): PlaybackStack {
-  if (preferOwned()) {
-    const context = openNativePlayback();
-    if (context) {
-      return {
-        context,
-        owned: true,
-        ready: async () => {},
-        close: async () => context.close(),
-      };
-    }
+export function openCaptureStack(profile: Profile = { communication: true }): CaptureStack {
+  const capture = openNativeCapture(profile);
+  if (!capture) {
+    missing();
   }
+  return { recorder: capture };
+}
 
-  const context = new AudioContext();
+export function openPlaybackStack(profile: Profile = { communication: true }): PlaybackStack {
+  const context = openNativePlayback(profile);
+  if (!context) {
+    missing();
+  }
   return {
     context,
-    owned: false,
-    ready: async () => {
-      // iOS session options belong to whichever stack is live. The owned
-      // module sets its own session natively; the library needs to be told.
-      AudioManager.setAudioSessionOptions({
-        iosCategory: 'playAndRecord',
-        iosMode: 'voiceChat',
-        iosOptions: ['defaultToSpeaker', 'allowBluetoothHFP'],
-      });
-      if (context.state !== 'running') {
-        await context.resume();
-      }
-    },
-    close: async () => {
-      await context.close().catch(() => undefined);
-    },
+    ready: async () => {},
+    close: async () => context.close(),
   };
 }

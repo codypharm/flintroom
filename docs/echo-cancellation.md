@@ -342,22 +342,25 @@ on the new stack.
 `unheard`'s precondition holds: the gate still returns exact zeros, so the
 latch in `app/modules/voice/hearing.py` remains reachable.
 
-What this run does not answer is unchanged from the section above: quiet and
-across-the-room interruptions (#27), and iOS in its entirety (#99).
+**#27 closed in the same session.** Two live rooms on the owned stack, same
+phone: the architect talked over a panelist mid-line at conversational volume
+close to the handset, and again from across the room, and both times the room
+heard and answered what was said. The residual-echo suppressor does not
+swallow a real interruption, near or far. What remains unanswered is iOS in
+its entirety (#99).
+
+**The library is gone — 2026-09-02.** With the owned pair measured equal to
+the patched library, #25 finished: `react-native-audio-api`, `app/patches/`,
+`scripts/apply-patches.sh`, the `postinstall` hook and the exact pin were all
+removed. Everything above that describes the library's internals is history —
+kept because it is the recorded reason the owned module declares what it
+declares, and the measurement this stack was accepted against. File playback
+(saved rooms, coach lines) moved to `expo-audio`; the live room and the
+debrief's clips run on `modules/room-audio`, profile chosen in
+`app/src/lib/voice/stack.ts`.
 
 ## Open
 
-- **Whether the gate swallows a quiet interruption.** Still open — narrowed,
-  not closed, by the run above. The acoustic question has flipped: it is no
-  longer whether echo reaches the provider's VAD — nothing reaches it — but
-  whether a *hesitant* barge-in survives the residual-echo suppressor. What is
-  now known is that a **conversational-volume, close-to-the-handset**
-  interruption survives it. What remains untested is the case the whole item
-  exists for: talk over the panel *softly*, and again *from across the room*,
-  and watch whether `vad_score` crosses 0.5. Note that `vad_score` is bimodal
-  in practice (`docs/voice-latency.md`), so it reads as a decision, not a
-  level — a gated interruption will not show as a weak score, it will show as
-  no score at all.
 - **iOS is unmeasured.** There is no iPhone on this project; the simulator
   routes audio through the host Mac and cannot answer an acoustic question. The
   code sets `voiceChat` and `defaultToSpeaker`, which *should* be sufficient,
@@ -378,11 +381,15 @@ straight through the panelist for the whole line, without waiting for gaps. Pull
 them and measure:
 
 ```bash
-adb shell "run-as com.flintroom.app cat cache/AudioAPI/<file>.wav" > capture.wav
+adb shell "run-as com.flintroom.app cat cache/residual.wav" > capture.wav
 uv run python -m scripts.wav_level capture.wav   # from backend/
 ```
 
-They land in the app's *cache* directory, so Android may evict them and a
-reinstall will clear them — pull before rebuilding. `adb pull` cannot read that
-path directly; `run-as` is what makes it readable, and the byte count must match
-`ls -l` on the device or the shell has mangled the file.
+The WAV is assembled on the phone from the same frames the uplink would have
+sent — the owned recorder deliberately has no file output, so the spike writes
+one itself (`toWav` plus `expo-file-system`). It lands in the app's *cache*
+directory, so Android may evict it and a reinstall will clear it — pull before
+rebuilding, and pull between captures, because each overwrites the last.
+`adb pull` cannot read that path directly; `run-as` is what makes it readable,
+and the byte count must match `ls -l` on the device or the shell has mangled
+the file.

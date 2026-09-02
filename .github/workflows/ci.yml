@@ -134,9 +134,7 @@ jobs:
           cache-dependency-path: app/package-lock.json
 
       # `ci`, not `install`: the lockfile is the input, and a run that resolved
-      # its own versions would be testing a tree nobody has. This also runs the
-      # `postinstall` hook, which reapplies `patches/` — see
-      # `docs/echo-cancellation.md` for what silently breaks without it.
+      # its own versions would be testing a tree nobody has.
       - name: Install
         run: npm ci
 

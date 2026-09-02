@@ -1,16 +1,19 @@
-import { AudioManager } from 'react-native-audio-api';
+import type * as ExpoAudio from 'expo-audio';
 
 import { ensureMicrophone, type RecordingPermissions } from './permission';
 
 /**
- * The real manager satisfies the structural interface, checked by the
- * typechecker rather than assumed. The same check caught an invented option
- * name in `uplink.ts`, where every test passed against a shape that did not
- * exist.
+ * The real API satisfies the structural interface, checked by the
+ * typechecker rather than assumed — the same check caught an invented
+ * option name in `uplink.ts`. A *type-only* import, because `expo-audio`
+ * cannot be evaluated under Jest at all: its native binding throws at load,
+ * which is the very reason `permission.ts` takes the API as a parameter.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-function theRealManagerFits(manager: typeof AudioManager): RecordingPermissions {
-  return manager;
+function theRealManagerFits(
+  api: Pick<typeof ExpoAudio, 'getRecordingPermissionsAsync' | 'requestRecordingPermissionsAsync'>
+): RecordingPermissions {
+  return api;
 }
 
 /**
@@ -31,25 +34,25 @@ class FakeAudioManager {
   checks = 0;
 
   constructor(
-    private status: 'Undetermined' | 'Denied' | 'Granted',
-    private readonly grantsOnRequest: 'Granted' | 'Denied' = 'Granted'
+    private status: 'undetermined' | 'denied' | 'granted',
+    private readonly grantsOnRequest: 'granted' | 'denied' = 'granted'
   ) {}
 
-  async checkRecordingPermissions() {
+  async getRecordingPermissionsAsync() {
     this.checks += 1;
-    return this.status;
+    return { status: this.status, granted: this.status === 'granted' };
   }
 
-  async requestRecordingPermissions() {
+  async requestRecordingPermissionsAsync() {
     this.requests += 1;
     this.status = this.grantsOnRequest;
-    return this.status;
+    return { status: this.status, granted: this.status === 'granted' };
   }
 }
 
 describe('asking for the microphone', () => {
   it('prompts when the user has not been asked before', async () => {
-    const manager = new FakeAudioManager('Undetermined');
+    const manager = new FakeAudioManager('undetermined');
 
     await expect(ensureMicrophone(manager)).resolves.toBe('granted');
     expect(manager.requests).toBe(1);
@@ -62,7 +65,7 @@ describe('asking for the microphone', () => {
     // button that appears to do nothing, which reads as the app being broken
     // rather than as a setting the user controls. We explain and offer
     // Settings instead.
-    const manager = new FakeAudioManager('Denied');
+    const manager = new FakeAudioManager('denied');
 
     await expect(ensureMicrophone(manager)).resolves.toBe('denied');
     expect(manager.requests).toBe(0);
@@ -72,14 +75,14 @@ describe('asking for the microphone', () => {
     // Every session start runs through here, not just the first. A prompt on
     // the second session would be the OS dialog appearing for no reason the
     // user can see.
-    const manager = new FakeAudioManager('Granted');
+    const manager = new FakeAudioManager('granted');
 
     await expect(ensureMicrophone(manager)).resolves.toBe('granted');
     expect(manager.requests).toBe(0);
   });
 
   it('reports a refusal at the prompt as denied', async () => {
-    const manager = new FakeAudioManager('Undetermined', 'Denied');
+    const manager = new FakeAudioManager('undetermined', 'denied');
 
     await expect(ensureMicrophone(manager)).resolves.toBe('denied');
   });
@@ -91,8 +94,8 @@ describe('asking for the microphone', () => {
     // the app is lying to them. It also has to not throw: this runs on the tap
     // that enters the room, and an unhandled rejection there loses the tap.
     const broken = {
-      checkRecordingPermissions: () => Promise.reject(new Error('native module not linked')),
-      requestRecordingPermissions: () => Promise.reject(new Error('native module not linked')),
+      getRecordingPermissionsAsync: () => Promise.reject(new Error('native module not linked')),
+      requestRecordingPermissionsAsync: () => Promise.reject(new Error('native module not linked')),
     };
 
     await expect(ensureMicrophone(broken)).resolves.toBe('unavailable');

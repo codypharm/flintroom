@@ -1,4 +1,4 @@
-import type { AudioRecorder } from 'react-native-audio-api';
+import type { NativeCapture } from '../../../modules/room-audio';
 
 import { fromPcm16 } from '../audio/pcm';
 import { createUplink, type UplinkRecorder } from './uplink';
@@ -9,10 +9,11 @@ import { createUplink, type UplinkRecorder } from './uplink';
  * named `bufferLengthInSamples`, which does not exist — the real one is
  * `bufferLength`, and `channelCount` is required alongside it. Every test in
  * this file passed against the invented shape, because a hand-written
- * interface tests only itself.
+ * interface tests only itself. Since #25 the real recorder is the owned
+ * module's capture adapter, checked the same way.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-function theRealRecorderFits(recorder: AudioRecorder): UplinkRecorder {
+function theRealRecorderFits(recorder: NativeCapture): UplinkRecorder {
   return recorder;
 }
 

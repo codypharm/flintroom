@@ -1,7 +1,7 @@
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { AudioContext, AudioManager, AudioRecorder } from 'react-native-audio-api';
+import { requestRecordingPermissionsAsync } from 'expo-audio';
 
 import { enterHandsFree, leaveHandsFree } from '../../../modules/audio-routing';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,6 +26,7 @@ import { refusedRoom, refusedTurn, type RoomRefusal } from '../../lib/debrief/re
 import { byQuestion, exchanged } from '../../lib/debrief/resumed';
 import { streamedExchange } from '../../lib/debrief/streamedExchange';
 import { createCoachVoice, type CoachVoice } from '../../lib/debrief/voice';
+import { openCaptureStack, openPlaybackStack, type CaptureStack, type PlaybackStack } from '../../lib/voice/stack';
 import { color, radius, space, type } from '../../theme/tokens';
 
 /**
@@ -78,9 +79,9 @@ export default function DebriefRoute() {
   // speaker — and the voice's drained signal is what clears it.
   const [coachSpeaking, setCoachSpeaking] = useState(false);
 
-  const recorder = useRef<AudioRecorder | null>(null);
+  const recorder = useRef<CaptureStack['recorder'] | null>(null);
   const voice = useRef<CoachVoice | null>(null);
-  const speaker = useRef<AudioContext | null>(null);
+  const speaker = useRef<PlaybackStack | null>(null);
   const clip = useRef<Clip | null>(null);
   const target = useRef<number | null>(null);
 
@@ -107,16 +108,17 @@ export default function DebriefRoute() {
    */
   const ensureVoice = useCallback(async (): Promise<CoachVoice> => {
     if (!voice.current) {
-      const context = new AudioContext();
-      speaker.current = context;
+      // The debrief's profile, not the room's (#25): media playback, because
+      // voice-communication usage outside communication mode routes to the
+      // earpiece — a coach nobody can hear. The old suspended-context resume
+      // lives inside ready() now, a no-op on the owned stack.
+      const sound = openPlaybackStack({ communication: false });
+      speaker.current = sound;
+      await sound.ready();
       voice.current = createCoachVoice({
-        context,
+        context: sound.context,
         onQuiet: () => setCoachSpeaking(false),
       });
-    }
-
-    if (speaker.current && speaker.current.state !== 'running') {
-      await speaker.current.resume();
     }
 
     return voice.current;
@@ -238,7 +240,7 @@ export default function DebriefRoute() {
     () => () => {
       voice.current?.stop();
       voice.current = null;
-      void speaker.current?.close();
+      void speaker.current?.close().catch(() => undefined);
       speaker.current = null;
     },
     []
@@ -382,28 +384,21 @@ export default function DebriefRoute() {
       voice.current?.silence();
 
       try {
-        const permission = await AudioManager.requestRecordingPermissions();
-        if (permission !== 'Granted') {
+        const permission = await requestRecordingPermissionsAsync();
+        if (!permission.granted) {
           setTurnRefusal('I need the microphone to hear you. Turn it on in Settings.');
           return;
         }
-
-        AudioManager.setAudioSessionOptions({
-          // `default` mode rather than the room's `voiceChat`. `voiceChat`
-          // engages Apple's duplex voice processing, which exists to cancel the
-          // panel out of the microphone — and here nothing is playing while the
-          // user speaks, so it would only apply call-tuned processing to a
-          // clip that is about to be transcribed.
-          iosCategory: 'playAndRecord',
-          iosMode: 'default',
-          iosOptions: ['defaultToSpeaker'],
-        });
 
         const gathering = collectClip();
         clip.current = gathering;
         target.current = at;
 
-        const capture = new AudioRecorder();
+        // A plain microphone, not the room's AEC half: nothing is playing
+        // while the user answers a coach, so call-tuned processing would
+        // only colour a clip that is about to be transcribed. The profile
+        // carries the whole of the session shape the old code set by hand.
+        const { recorder: capture } = openCaptureStack({ communication: false });
         recorder.current = capture;
 
         capture.onAudioReady(CAPTURE, (event) => {

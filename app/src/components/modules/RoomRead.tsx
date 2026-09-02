@@ -32,13 +32,12 @@ import { color, radius, space, type } from '../../theme/tokens';
  * ---
  *
  * **Playback arrives as a slot, not as a component this file imports.** #68
- * settled the architecture: streaming a room means the `<Audio>` element from
- * `react-native-audio-api`, reached by a path the package does not publish,
- * because the published one decodes a whole room into memory before making a
- * sound — a crash rather than a refusal on any long one.
+ * settled the architecture: streaming a room, never decoding a whole one into
+ * memory before making a sound — a crash rather than a refusal on any long
+ * one. Since #25 the player runs on `expo-audio`, which streams by nature.
  *
- * That module cannot be imported under Jest at all; it throws "the native
- * module could not be found" at load. So a screen that pulled it in
+ * That module cannot be imported under Jest at all; its native binding throws
+ * at load. So a screen that pulled it in
  * transitively would need it mocked in every test it has, over a control none
  * of those tests are about. `player` keeps this file presentational and lets
  * the route compose the thing that makes noise.

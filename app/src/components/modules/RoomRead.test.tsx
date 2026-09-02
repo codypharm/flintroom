@@ -33,9 +33,9 @@ async function setup(overrides: Partial<RoomReadProps> = {}) {
 
 it('puts the player above the room it plays, and below the way to work on it', async () => {
   // A slot rather than a component this file imports, and the reason is not
-  // taste: what streams a room is reached by a private path into
-  // `react-native-audio-api` (#68), and that module cannot even be *imported*
-  // under Jest — it throws "the native module could not be found" at load. Any
+  // taste: what streams a room is `expo-audio` (#68, re-homed by #25), and
+  // that module cannot even be *imported*
+  // under Jest — its native binding throws at load. Any
   // screen that pulled it in transitively would need it mocked in every test it
   // has, over a control none of them are about.
   //

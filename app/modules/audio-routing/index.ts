@@ -3,16 +3,15 @@ import native from './src/native';
 /**
  * Put Android's audio stack into speakerphone, and take it back out.
  *
- * This exists because `react-native-audio-api` cannot express it. Its
- * `SessionOptions` is iOS-only and its Kotlin touches `AudioManager` for focus,
- * media session and volume but never for mode or routing — so the app stays in
- * `MODE_NORMAL`, where the `Usage::VoiceCommunication` player that
- * `app/patches/` introduces routes to the *earpiece*. Working as documented,
- * and wrong for a product whose whole premise is a phone lying on a desk.
+ * This exists because routing is app policy, not a property of a stream. In
+ * `MODE_NORMAL` a `USAGE_VOICE_COMMUNICATION` player routes to the
+ * *earpiece* — working as documented, and wrong for a product whose whole
+ * premise is a phone lying on a desk (#26).
  *
- * It is deliberately not part of that patch. Which speaker the panel comes out
- * of is app policy, and it has to outlive whichever audio library sits
- * underneath — including the one task #25 replaces it with.
+ * It is deliberately separate from `modules/room-audio` (#25): which preset a
+ * stream opens with is a property of the stream and lives there; which
+ * speaker the panel comes out of is decided per screen, here, and has to
+ * outlive whichever audio layer sits underneath.
  *
  * iOS needs none of this: `setAudioSessionOptions({ iosCategory:
  * 'playAndRecord', iosMode: 'voiceChat', iosOptions: ['defaultToSpeaker'] })`

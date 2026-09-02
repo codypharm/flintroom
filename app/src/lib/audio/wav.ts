@@ -8,11 +8,11 @@ import { toPcm16 } from './pcm';
  * the clip to a transcription vendor, and a vendor is given a file with a
  * format in it. These 44 bytes are the difference.
  *
- * **No dependency.** `expo-audio` would record straight to a container, and it
- * would also mean a second recording stack beside `react-native-audio-api` —
- * which #25 already plans to replace — for the sake of a header that is fully
- * specified in one page of the RIFF document. `toPcm16` already produces the
- * payload; this writes what sits in front of it.
+ * **No dependency.** `expo-audio` would record straight to a container, and
+ * it would also mean a second recording stack beside the owned capture module
+ * (#25) for the sake of a header that is fully specified in one page of the
+ * RIFF document. `toPcm16` already produces the payload; this writes what
+ * sits in front of it.
  */
 
 /** Canonical PCM: RIFF, fmt and data, with nothing optional in between. */

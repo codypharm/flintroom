@@ -3,13 +3,8 @@ import { useCallback, useRef, useState } from 'react';
 import { Button, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  AudioContext,
-  AudioManager,
-  AudioRecorder,
-  FileDirectory,
-  FileFormat,
-} from 'react-native-audio-api';
+import { requestRecordingPermissionsAsync } from 'expo-audio';
+import * as FileSystem from 'expo-file-system/legacy';
 
 import {
   ECHO_ABSOLUTE_DBFS,
@@ -22,7 +17,8 @@ import {
   verdict,
 } from '@/lib/audio/level';
 import { PANEL_SPEECH_BASE64 } from '@/lib/audio/panelSpeech';
-import { fromPcm16, resampleLinear } from '@/lib/audio/pcm';
+import { fromPcm16 } from '@/lib/audio/pcm';
+import { toWav } from '@/lib/audio/wav';
 import { enterHandsFree, leaveHandsFree } from '../../modules/audio-routing';
 import { openCaptureStack, openPlaybackStack } from '../lib/voice/stack';
 
@@ -46,6 +42,12 @@ import { openCaptureStack, openPlaybackStack } from '../lib/voice/stack';
  * speech-band signal playing out of the speaker. A working acoustic echo
  * canceller leaves the two roughly equal. Everything else is a failure with a
  * magnitude attached.
+ *
+ * Since #25 there is exactly one stack to measure: `modules/room-audio`, the
+ * pair the live room itself runs on. The library it replaced, and the button
+ * that measured it, are gone with it — its numbers survive in
+ * `docs/echo-cancellation.md`, alongside the owned pair's, taken on the same
+ * phone in the same room in the same minute.
  *
  * Undesigned on purpose — this is an instrument, not a screen, and it should
  * never reach `design-guide/`.
@@ -74,8 +76,6 @@ type Phase =
   | 'error';
 
 interface Report {
-  /** Which audio layer the numbers describe. A figure without this is void. */
-  stack: 'library' | 'owned';
   noiseFloorDbfs: number;
   playbackDbfs: number;
   echoDb: number;
@@ -88,80 +88,18 @@ const wait = (seconds: number) =>
   new Promise((resolve) => setTimeout(resolve, seconds * 1000));
 
 /**
- * Four seconds of speech-band signal, looped.
+ * Four seconds of speech-band signal, as bare samples.
  *
  * Not a pure tone. Echo cancellers and voice-activity detectors are both tuned
  * for speech, and a steady sine is the one input where an AEC can look far
  * better than it is — it is trivially predictable. Stacked harmonics inside the
  * voice band, gated by a 4 Hz syllabic envelope, are a closer surrogate for a
  * panelist talking, without needing a speech asset on the device.
- */
-function speechLikeSignal(context: AudioContext, seconds: number) {
-  const buffer = context.createBuffer(
-    1,
-    Math.floor(context.sampleRate * seconds),
-    context.sampleRate
-  );
-  const data = buffer.getChannelData(0);
-
-  for (let i = 0; i < data.length; i += 1) {
-    const t = i / context.sampleRate;
-    const syllable = 0.5 * (1 - Math.cos(2 * Math.PI * 4 * t));
-    const voice =
-      (Math.sin(2 * Math.PI * 220 * t) +
-        Math.sin(2 * Math.PI * 440 * t) +
-        Math.sin(2 * Math.PI * 880 * t) +
-        Math.sin(2 * Math.PI * 1760 * t)) /
-      4;
-
-    data[i] = 0.9 * syllable * voice;
-  }
-
-  return buffer;
-}
-
-/** The asset's own rate. `docs/voice-stream-protocol.md` fixes it, both ways. */
-const PANEL_SAMPLE_RATE = 16000;
-
-/**
- * The checked-in panel speech, as something the audio graph can play.
  *
- * Resampled to the context's own rate before the buffer is built. The obvious
- * reading of `createBuffer(channels, length, 16000)` is that the third argument
- * declares the data's rate and the graph reconciles it with the hardware; it
- * does not. The rate is carried but not acted on, so 16 kHz samples in a 48 kHz
- * context play three times too fast. Measured, not assumed — the first capture
- * taken with this screen was chipmunked, and a speech detector cannot judge
- * audio that is no longer speech.
- *
- * This is the same conversion the live downlink will need, which is why it
- * lives in `lib/audio/pcm` rather than here.
- */
-function panelSpeech(context: AudioContext) {
-  const binary = atob(PANEL_SPEECH_BASE64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-
-  const samples = resampleLinear(
-    fromPcm16(bytes.buffer),
-    PANEL_SAMPLE_RATE,
-    context.sampleRate
-  );
-  const buffer = context.createBuffer(1, samples.length, context.sampleRate);
-  buffer.getChannelData(0).set(samples);
-
-  return buffer;
-}
-
-/**
- * The same speech-band formula as `speechLikeSignal`, as bare samples.
- *
- * The owned stack takes PCM through a queue rather than an audio graph, so
- * its test signal is synthesised in JavaScript and fed as buffers. Same
- * harmonics, same 4 Hz syllabic gate — a different container for the same
- * sound, so the two stacks' numbers are comparable.
+ * Bare `Float32Array` rather than an audio-graph buffer because the owned
+ * stack takes PCM through a queue: the signal is synthesised in JavaScript
+ * and fed as chunks. Same formula as every measurement recorded in
+ * `docs/echo-cancellation.md`, so the numbers stay comparable across stacks.
  */
 function speechLikeSamples(seconds: number, sampleRate: number): Float32Array {
   const data = new Float32Array(Math.floor(sampleRate * seconds));
@@ -179,6 +117,32 @@ function speechLikeSamples(seconds: number, sampleRate: number): Float32Array {
   return data;
 }
 
+/**
+ * The checked-in panel speech, as bare samples.
+ *
+ * No resample: the asset is 16 kHz (`docs/voice-stream-protocol.md` fixes the
+ * wire's rate both ways) and the owned playback stream runs at exactly that
+ * rate — the alignment the live downlink relies on, exercised here too.
+ */
+function panelSpeechSamples(): Float32Array {
+  const binary = atob(PANEL_SPEECH_BASE64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return fromPcm16(bytes.buffer);
+}
+
+/** Chunked, because `String.fromCharCode(...everything)` overflows the stack. */
+function base64Encode(bytes: Uint8Array): string {
+  let binary = '';
+  const CHUNK = 8192;
+  for (let at = 0; at < bytes.length; at += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(at, at + CHUNK));
+  }
+  return btoa(binary);
+}
+
 export default function EchoSpikeScreen() {
   // See the note in `index.tsx`: an uncoloured `Text` is black regardless of
   // appearance, so on the dark theme it reads as an empty screen.
@@ -191,45 +155,33 @@ export default function EchoSpikeScreen() {
   const levels = useRef<number[]>([]);
   const observedRate = useRef<number>(0);
 
+  /**
+   * The go/no-go measurement, through the owned stack (#25) — which since the
+   * library's removal is the stack, the same pair the live room opens. What
+   * this button measures is therefore exactly what a session would hear.
+   */
   const run = useCallback(async () => {
     setReport(null);
     setError(null);
 
     try {
-      const permission = await AudioManager.requestRecordingPermissions();
-      if (permission !== 'Granted') {
-        throw new Error(`Microphone permission ${permission}`);
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) {
+        throw new Error(`Microphone permission ${permission.status}`);
       }
 
-      // On iOS this is the whole fix: `voiceChat` engages Apple's voice
-      // processing I/O, which cancels echo for us. `defaultToSpeaker` matters
-      // just as much — `playAndRecord` otherwise routes to the earpiece, which
-      // would measure a phone held to the ear and quietly pass a test the
-      // product never runs. Android has no equivalent here: every field on
-      // SessionOptions is iOS-prefixed, which is the finding this spike exists
-      // to confirm.
-      AudioManager.setAudioSessionOptions({
-        iosCategory: 'playAndRecord',
-        iosMode: 'voiceChat',
-        iosOptions: ['defaultToSpeaker', 'allowBluetoothHFP'],
-      });
-
-      // The Android half of the same sentence, and the reason the first two
-      // patched runs are void: without it the phone routes panel audio to the
-      // earpiece and the measurement is of a device the product never uses.
+      // Routing is policy and stays the app's: the owned player declares
+      // voice-communication usage, which outside communication mode routes to
+      // the earpiece — the #26 finding, unchanged by who owns the stream.
       await enterHandsFree();
 
-      const recorder = new AudioRecorder();
+      const { recorder } = openCaptureStack();
+
       recorder.onAudioReady(
-        {
-          sampleRate: RECORD_SAMPLE_RATE,
-          bufferLength: 1600,
-          channelCount: 1,
-        },
+        { sampleRate: RECORD_SAMPLE_RATE, bufferLength: 1600, channelCount: 1 },
         (event) => {
-          const channel = event.buffer.getChannelData(0);
           observedRate.current = event.buffer.sampleRate;
-          levels.current.push(rms(channel));
+          levels.current.push(rms(event.buffer.getChannelData(0)));
         }
       );
 
@@ -241,96 +193,9 @@ export default function EchoSpikeScreen() {
       await wait(PHASE_SECONDS);
       const silent = [...levels.current];
 
-      // Phase two: same room, same mic, speaker now loud. The recorder is never
-      // stopped between phases — restarting it would renegotiate the stream and
-      // could hand us a different input path than the one just measured.
-      setPhase('playback');
-      const context = new AudioContext();
-      const source = context.createBufferSource();
-      source.buffer = speechLikeSignal(context, PHASE_SECONDS);
-      source.loop = true;
-      source.connect(context.destination);
-      source.start();
-
-      await wait(SETTLE_SECONDS);
-      levels.current = [];
-      await wait(PHASE_SECONDS);
-      const playing = [...levels.current];
-
-      source.stop();
-      await context.close();
-      await recorder.stop();
-
-      const noiseFloor = median(silent);
-      const duringPlayback = median(playing);
-
-      setReport({
-        stack: 'library',
-        noiseFloorDbfs: toDbfs(noiseFloor),
-        playbackDbfs: toDbfs(duringPlayback),
-        echoDb: echoAboveFloorDb(noiseFloor, duringPlayback),
-        observedSampleRate: observedRate.current,
-        buffersSilent: silent.length,
-        buffersPlayback: playing.length,
-      });
-      setPhase('done');
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-      setPhase('error');
-    } finally {
-      // In `finally` because the audio mode is process-wide and outlives this
-      // screen. A run that throws halfway would otherwise leave the whole app
-      // in communication mode, and the symptom — the volume rocker adjusting
-      // the wrong stream — shows up nowhere near the cause.
-      leaveHandsFree();
-    }
-  }, []);
-
-  /**
-   * The same measurement, through the owned stack (#25).
-   *
-   * A parallel run rather than a replacement, on purpose: the library's
-   * numbers are the ones in `docs/echo-cancellation.md`, and the owned pair
-   * earns its way in by being measured on the same phone in the same room in
-   * the same minute. `openCaptureStack` prefers the owned module in a dev
-   * build, so this button measures whatever the room itself would use.
-   */
-  const runOwned = useCallback(async () => {
-    setReport(null);
-    setError(null);
-
-    try {
-      const permission = await AudioManager.requestRecordingPermissions();
-      if (permission !== 'Granted') {
-        throw new Error(`Microphone permission ${permission}`);
-      }
-
-      // Routing is policy and stays the app's: the owned player declares
-      // voice-communication usage, which outside communication mode routes to
-      // the earpiece — the #26 finding, unchanged by who owns the stream.
-      await enterHandsFree();
-
-      const { recorder, owned } = openCaptureStack();
-      if (!owned) {
-        throw new Error(
-          'The owned module is not in this build. Rebuild the dev client and run again.'
-        );
-      }
-
-      recorder.onAudioReady(
-        { sampleRate: RECORD_SAMPLE_RATE, bufferLength: 1600, channelCount: 1 },
-        (event) => {
-          observedRate.current = event.buffer.sampleRate;
-          levels.current.push(rms(event.buffer.getChannelData(0)));
-        }
-      );
-
-      setPhase('silence');
-      levels.current = [];
-      await recorder.start();
-      await wait(PHASE_SECONDS);
-      const silent = [...levels.current];
-
+      // Phase two: same room, same mic, speaker now loud. The recorder is
+      // never stopped between phases — restarting it would renegotiate the
+      // stream and could hand us a different input path than just measured.
       setPhase('playback');
       const sound = openPlaybackStack();
       await sound.ready();
@@ -367,7 +232,6 @@ export default function EchoSpikeScreen() {
       const duringPlayback = median(playing);
 
       setReport({
-        stack: 'owned',
         noiseFloorDbfs: toDbfs(noiseFloor),
         playbackDbfs: toDbfs(duringPlayback),
         echoDb: echoAboveFloorDb(noiseFloor, duringPlayback),
@@ -380,6 +244,10 @@ export default function EchoSpikeScreen() {
       setError(caught instanceof Error ? caught.message : String(caught));
       setPhase('error');
     } finally {
+      // In `finally` because the audio mode is process-wide and outlives this
+      // screen. A run that throws halfway would otherwise leave the whole app
+      // in communication mode, and the symptom — the volume rocker adjusting
+      // the wrong stream — shows up nowhere near the cause.
       leaveHandsFree();
     }
   }, []);
@@ -388,16 +256,16 @@ export default function EchoSpikeScreen() {
    * Capture the residual: what the mic still hears while real panel speech
    * plays, after the echo canceller has had its go.
    *
-   * The acoustic run measured a level and ran out of resolution at −44.9 dBFS,
-   * a tenth of a decibel from a threshold that was a judgement rather than a
-   * measurement. Whether that residual reads as *speech* is not a question a
+   * The acoustic run measures a level, and a level runs out of resolution at
+   * the noise gate. Whether the residual reads as *speech* is not a question a
    * level can answer — only the provider's own VAD can, and `vad_score` is
    * bimodal, so the answer is unambiguous once asked.
    *
-   * Written to a file rather than streamed because the socket client is task
-   * #21 and does not exist yet. Decoupling costs an `adb pull` and isolates
-   * exactly one question, instead of waiting on sign-in and permission work to
-   * answer something that gates them.
+   * Written to a file rather than streamed, so one `adb pull` isolates exactly
+   * one question. The WAV is assembled here from the same frames the uplink
+   * would have sent — `toWav` plus the capture stream — because the owned
+   * recorder deliberately has no file output: the product streams, and a
+   * second sink in the native module would exist only for this screen.
    */
   const captureResidual = useCallback(async () => {
     setReport(null);
@@ -405,58 +273,76 @@ export default function EchoSpikeScreen() {
     setResidualPath(null);
 
     try {
-      const permission = await AudioManager.requestRecordingPermissions();
-      if (permission !== 'Granted') {
-        throw new Error(`Microphone permission ${permission}`);
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) {
+        throw new Error(`Microphone permission ${permission.status}`);
       }
-
-      AudioManager.setAudioSessionOptions({
-        iosCategory: 'playAndRecord',
-        iosMode: 'voiceChat',
-        iosOptions: ['defaultToSpeaker', 'allowBluetoothHFP'],
-      });
 
       await enterHandsFree();
 
-      const recorder = new AudioRecorder();
-      // WAV because it is the one format that needs no FFmpeg backend, and this
-      // file is going straight into a Python script that would rather not
-      // decode anything either.
-      recorder.enableFileOutput({
-        directory: FileDirectory.Cache,
-        format: FileFormat.Wav,
-        channelCount: 1,
-        fileNamePrefix: 'residual',
-      });
+      const { recorder } = openCaptureStack();
+
+      const heard: Float32Array[] = [];
+      recorder.onAudioReady(
+        { sampleRate: RECORD_SAMPLE_RATE, bufferLength: 1600, channelCount: 1 },
+        (event) => {
+          observedRate.current = event.buffer.sampleRate;
+          // Copied: the adapter is free to reuse its buffer between frames.
+          heard.push(new Float32Array(event.buffer.getChannelData(0)));
+        }
+      );
 
       setPhase('capturing');
       await recorder.start();
 
-      const context = new AudioContext();
-      const source = context.createBufferSource();
-      const buffer = panelSpeech(context);
-      source.buffer = buffer;
-      source.connect(context.destination);
-      source.start();
+      const sound = openPlaybackStack();
+      await sound.ready();
+      const source = sound.context.createBufferQueueSource();
+      source.connect(sound.context.destination);
+      source.start(0, 0);
+
+      const speech = panelSpeechSamples();
+      const CHUNK = 3200;
+      for (let at = 0; at < speech.length; at += CHUNK) {
+        const buffer = sound.context.createBuffer(
+          1,
+          Math.min(CHUNK, speech.length - at),
+          sound.context.sampleRate
+        );
+        buffer.copyToChannel(speech.subarray(at, at + CHUNK) as Float32Array, 0);
+        source.enqueueBuffer(buffer);
+      }
 
       // The asset's length plus a moment either side: the tail matters because
       // an echo canceller converging is exactly when it leaks most.
-      await wait(buffer.duration + 1);
+      await wait(speech.length / RECORD_SAMPLE_RATE + 1);
 
-      source.stop();
-      await context.close();
-      const stopped = await recorder.stop();
+      source.stop(0);
+      await sound.close();
+      recorder.stop();
 
-      // `Result<T>` is a discriminated union, so the failure has to be read
-      // before the paths exist at all — which is the point of the shape.
-      if (stopped.status === 'error') {
-        throw new Error(stopped.message);
-      }
-      if (stopped.paths.length === 0) {
-        throw new Error('Recorder wrote no file');
+      if (heard.length === 0) {
+        throw new Error('The capture stream delivered no frames');
       }
 
-      setResidualPath(stopped.paths[0]);
+      const total = heard.reduce((sum, frame) => sum + frame.length, 0);
+      const samples = new Float32Array(total);
+      let at = 0;
+      for (const frame of heard) {
+        samples.set(frame, at);
+        at += frame.length;
+      }
+
+      // WAV because it is the one format that needs no FFmpeg backend, and
+      // this file is going straight into a Python script that would rather
+      // not decode anything either.
+      const wav = toWav(samples, observedRate.current || RECORD_SAMPLE_RATE);
+      const path = `${FileSystem.cacheDirectory}residual.wav`;
+      await FileSystem.writeAsStringAsync(path, base64Encode(new Uint8Array(wav)), {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      setResidualPath(path);
       setPhase('captured');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -489,12 +375,6 @@ export default function EchoSpikeScreen() {
         <Button
           title={running ? 'Measuring…' : 'Run measurement'}
           onPress={run}
-          disabled={running}
-        />
-
-        <Button
-          title={running ? 'Measuring…' : 'Run measurement (owned stack)'}
-          onPress={runOwned}
           disabled={running}
         />
 
@@ -568,8 +448,7 @@ export default function EchoSpikeScreen() {
             return (
               <View style={styles.report}>
                 <Text style={[styles.verdict, { color: colors.text }]}>
-                  {decision === 'no-go' ? 'NO-GO' : 'GO'}{' '}
-                  ({report.stack === 'owned' ? 'owned stack' : 'library'})
+                  {decision === 'no-go' ? 'NO-GO' : 'GO'} (owned stack)
                 </Text>
                 <Text style={[styles.figure, { color: colors.text }]}>
                   During playback: {report.playbackDbfs.toFixed(1)} dBFS

@@ -78,13 +78,11 @@ export function createPlayback({ context, onDrained }: PlaybackOptions): Playbac
   // on playback to be told to begin — which would cost the opening of the
   // first question, the one moment the room has to land.
   //
-  // Both arguments are passed because `react-native-audio-api` cannot be called
-  // without them. Its `start(when = 0, offset = -1)` then rejects any offset
-  // below zero — so its own default fails its own validation, and a bare
-  // `start()` throws `offset must be a finite non-negative number: -1` every
-  // time. Nothing in the test suite catches it: the fake here has no such
-  // guard, so this surfaced only on a device, as a room that opened and
-  // immediately died. More evidence for task #25.
+  // Both arguments passed explicitly — a scar from the library #25 replaced,
+  // whose `start(when = 0, offset = -1)` rejected its own default and threw on
+  // every bare `start()`, surfacing only on a device as a room that opened and
+  // immediately died. The owned module has no such trap; the explicit call
+  // stays because it is what the tests can assert.
   // Released as they finish, and this is not housekeeping. A panel line is
   // roughly ninety frames, so three exchanges leave two hundred and seventy
   // buffers held by a node that has already played them — the only quantity in

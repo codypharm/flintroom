@@ -69,11 +69,11 @@ public class RoomAudioModule: Module {
 
     Events("frame", "played")
 
-    AsyncFunction("startCapture") { (promise: Promise) in
+    AsyncFunction("startCapture") { (communication: Bool, promise: Promise) in
       self.state.async {
         do {
-          try self.configureSession()
-          try self.beginCapture()
+          try self.configureSession(communication: communication)
+          try self.beginCapture(communication: communication)
           promise.resolve(nil)
         } catch {
           promise.reject("ERR_CAPTURE", error.localizedDescription)
@@ -90,10 +90,10 @@ public class RoomAudioModule: Module {
       }
     }
 
-    AsyncFunction("startPlayback") { (promise: Promise) in
+    AsyncFunction("startPlayback") { (communication: Bool, promise: Promise) in
       self.state.async {
         do {
-          try self.configureSession()
+          try self.configureSession(communication: communication)
           try self.beginPlayback()
           promise.resolve(nil)
         } catch {
@@ -165,13 +165,16 @@ public class RoomAudioModule: Module {
 
   // ── Session ────────────────────────────────────────────
 
-  private func configureSession() throws {
+  private func configureSession(communication: Bool) throws {
     let session = AVAudioSession.sharedInstance()
-    // `.voiceChat` engages Apple's voice-processing I/O; `.defaultToSpeaker`
-    // is the hands-free premise — a phone flat on a desk, not held to an ear.
+    // The live room runs as a call: `.voiceChat` engages Apple's
+    // voice-processing I/O and `.defaultToSpeaker` is the hands-free
+    // premise. The debrief runs plain — nothing plays while somebody
+    // answers a coach, so call-tuned processing would only colour a solo
+    // recording, the same refusal its Android half makes with MIC/MEDIA.
     try session.setCategory(
       .playAndRecord,
-      mode: .voiceChat,
+      mode: communication ? .voiceChat : .default,
       options: [.defaultToSpeaker, .allowBluetoothHFP]
     )
     try session.setActive(true)
@@ -179,13 +182,14 @@ public class RoomAudioModule: Module {
 
   // ── Capture ────────────────────────────────────────────
 
-  private func beginCapture() throws {
+  private func beginCapture(communication: Bool) throws {
     guard !capturing else { return }
 
     let input = engine.inputNode
-    // Apple's echo cancellation. The engine-level equivalent of Android's
-    // VOICE_COMMUNICATION pair, and the reason this module exists on iOS.
-    try input.setVoiceProcessingEnabled(true)
+    // Apple's echo cancellation, for the live room. The engine-level
+    // equivalent of Android's VOICE_COMMUNICATION pair, and off for the
+    // debrief's plain clips.
+    try input.setVoiceProcessingEnabled(communication)
 
     let native = input.outputFormat(forBus: 0)
     guard let converter = AVAudioConverter(from: native, to: wireFormat) else {

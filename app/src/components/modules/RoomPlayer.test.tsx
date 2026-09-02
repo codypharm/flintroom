@@ -61,10 +61,8 @@ jest.mock('expo-audio', () => {
   return {
     useAudioPlayer: (source: unknown) => {
       mockSources.push(source);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       return useContext(mockDeckContext).player;
     },
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     useAudioPlayerStatus: () => useContext(mockDeckContext).status,
   };
 });

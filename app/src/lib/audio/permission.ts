@@ -16,10 +16,14 @@ export type MicrophoneOutcome =
   /** We could not ask. Our failure, not the user's — do not send them to Settings. */
   | 'unavailable';
 
-/** The slice of `AudioManager` this needs. Structural, so tests need no native. */
+/**
+ * The slice of `expo-audio`'s permission API this needs. Structural, so
+ * tests need no native — and shaped after its `PermissionResponse`, which
+ * replaced the old library's bare status strings when #25 deleted it.
+ */
 export interface RecordingPermissions {
-  checkRecordingPermissions(): Promise<'Undetermined' | 'Denied' | 'Granted'>;
-  requestRecordingPermissions(): Promise<'Undetermined' | 'Denied' | 'Granted'>;
+  getRecordingPermissionsAsync(): Promise<{ status: string; granted: boolean }>;
+  requestRecordingPermissionsAsync(): Promise<{ status: string; granted: boolean }>;
 }
 
 export async function ensureMicrophone(
@@ -38,20 +42,20 @@ export async function ensureMicrophone(
 }
 
 async function settle(manager: RecordingPermissions): Promise<MicrophoneOutcome> {
-  const existing = await manager.checkRecordingPermissions();
+  const existing = await manager.getRecordingPermissionsAsync();
 
-  if (existing === 'Granted') {
+  if (existing.granted) {
     return 'granted';
   }
 
-  // Asked once, ever. The platform reports 'Denied' without saying whether
+  // Asked once, ever. The platform reports a denial without saying whether
   // asking again would show anything, and on iOS it never will — the call
-  // resolves 'Denied' immediately, with no dialog. A retry button that
-  // silently does nothing reads as a broken app rather than as a setting the
-  // user controls, so a refusal is routed to Settings instead.
-  if (existing === 'Denied') {
+  // resolves denied immediately, with no dialog. A retry button that
+  // silently does nothing reads as a broken app rather than as a setting
+  // the user controls, so a refusal is routed to Settings instead.
+  if (existing.status === 'denied') {
     return 'denied';
   }
 
-  return (await manager.requestRecordingPermissions()) === 'Granted' ? 'granted' : 'denied';
+  return (await manager.requestRecordingPermissionsAsync()).granted ? 'granted' : 'denied';
 }

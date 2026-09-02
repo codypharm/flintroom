@@ -3,7 +3,7 @@ import { router , useNavigation } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { AudioManager } from 'react-native-audio-api';
+import { getRecordingPermissionsAsync, requestRecordingPermissionsAsync } from 'expo-audio';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -352,7 +352,8 @@ export default function InterrogationScreen() {
             new Promise<void>((shown) => {
               setDisclosing({ retentionDays: days, continue: shown });
             }),
-          ensureMicrophone: () => ensureMicrophone(AudioManager),
+          ensureMicrophone: () =>
+            ensureMicrophone({ getRecordingPermissionsAsync, requestRecordingPermissionsAsync }),
           // The real one. Handing `enterRoom` a no-op and starting the session
           // below would keep today's order by luck rather than by structure —
           // and the whole reason that module exists is that a screen is where

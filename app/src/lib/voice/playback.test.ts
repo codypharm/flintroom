@@ -1,4 +1,4 @@
-import type { AudioContext } from 'react-native-audio-api';
+import type { NativePlaybackContext } from '../../../modules/room-audio';
 
 import { toPcm16 } from '../audio/pcm';
 import { createPlayback, type PlaybackContext } from './playback';
@@ -8,14 +8,15 @@ import { createPlayback, type PlaybackContext } from './playback';
  * shape, so the typechecker is asked directly. A `type` import, so nothing
  * native is loaded to run the tests — the assertion is erased entirely.
  *
- * Without this the structural interface could drift from the library it
+ * Without this the structural interface could drift from the module it
  * describes and every test here would keep passing, which is the standard way
  * a suite of green tests ends up describing a module that no longer works.
+ * Since #25 the real context is the owned module's playback adapter.
  */
 // Never called. It exists to be typechecked, and it compiles with no cast,
-// which is the assertion: the real `AudioContext` is assignable as-is.
+// which is the assertion: the real context is assignable as-is.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-function theRealContextFits(context: AudioContext): PlaybackContext {
+function theRealContextFits(context: NativePlaybackContext): PlaybackContext {
   return context;
 }
 
@@ -227,16 +228,15 @@ describe('when the room ends', () => {
 });
 
 describe('starting the queue', () => {
-  it('passes both arguments, because the library cannot be called without them', () => {
+  it('passes both arguments explicitly', () => {
     /**
-     * `react-native-audio-api` declares `start(when = 0, offset = -1)` and then
-     * throws on any offset below zero — its own default fails its own guard, so
-     * a bare `start()` raises `offset must be a finite non-negative number: -1`
-     * on every call.
-     *
-     * The fake in this file has no such guard, which is exactly why this needs
-     * an explicit assertion: without one the bug is invisible here and shows up
-     * only on a device, as a room that opens and dies before a word is spoken.
+     * A scar from the library this stack replaced (#25): it declared
+     * `start(when = 0, offset = -1)` and then threw on any offset below zero
+     * — its own default failed its own guard, so a bare `start()` raised on
+     * every call, surfacing only on a device as a room that opened and died.
+     * The owned module has no such trap, but the interface keeps both
+     * arguments and the call sites keep passing them: explicit arguments are
+     * what let this suite assert the call at all.
      */
     const context = new FakeContext(16_000);
     createPlayback({ context });

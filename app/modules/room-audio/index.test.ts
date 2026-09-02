@@ -20,15 +20,19 @@ class FakeNative implements RoomAudioNative {
   discards = 0;
   private listeners = new Map<string, Set<(event: never) => void>>();
 
-  startCapture(): Promise<void> {
+  captureProfiles: boolean[] = [];
+  playbackProfiles: boolean[] = [];
+  startCapture(communication: boolean): Promise<void> {
     this.captures += 1;
+    this.captureProfiles.push(communication);
     return Promise.resolve();
   }
   stopCapture(): void {
     this.stopped += 1;
   }
-  startPlayback(): Promise<void> {
+  startPlayback(communication: boolean): Promise<void> {
     this.playbacks += 1;
+    this.playbackProfiles.push(communication);
     return Promise.resolve();
   }
   stopPlayback(): void {
@@ -63,14 +67,14 @@ function base64Of(samples: number[]): string {
 
 it('is unavailable where the native module is absent, without throwing', () => {
   expect(roomAudioAvailable(null)).toBe(false);
-  expect(openNativeCapture(null)).toBeNull();
-  expect(openNativePlayback(null)).toBeNull();
+  expect(openNativeCapture({ communication: true }, null)).toBeNull();
+  expect(openNativePlayback({ communication: true }, null)).toBeNull();
 });
 
 describe('capture', () => {
   it('wears the recorder shape: a frame arrives as float samples at the reported rate', () => {
     const native = new FakeNative();
-    const capture = openNativeCapture(native)!;
+    const capture = openNativeCapture({ communication: true }, native)!;
 
     const heard: { samples: Float32Array; rate: number; frames: number }[] = [];
     capture.onAudioReady({ sampleRate: 16000, bufferLength: 320, channelCount: 1 }, (event) => {
@@ -93,7 +97,7 @@ describe('capture', () => {
     // `uplink.ts` treats a wrong rate as fatal to the room rather than
     // resampling. The adapter must carry the truth through, not paper it.
     const native = new FakeNative();
-    const capture = openNativeCapture(native)!;
+    const capture = openNativeCapture({ communication: true }, native)!;
 
     let reported = 0;
     capture.onAudioReady({ sampleRate: 16000, bufferLength: 320, channelCount: 1 }, (event) => {
@@ -106,7 +110,7 @@ describe('capture', () => {
 
   it('a cleared callback hears nothing more', () => {
     const native = new FakeNative();
-    const capture = openNativeCapture(native)!;
+    const capture = openNativeCapture({ communication: true }, native)!;
 
     let frames = 0;
     capture.onAudioReady({ sampleRate: 16000, bufferLength: 320, channelCount: 1 }, () => {
@@ -118,26 +122,41 @@ describe('capture', () => {
     expect(frames).toBe(0);
   });
 
-  it('start and stop reach the microphone', async () => {
+  it('start and stop reach the microphone, carrying the profile', async () => {
     const native = new FakeNative();
-    const capture = openNativeCapture(native)!;
+    const capture = openNativeCapture({ communication: true }, native)!;
 
     await capture.start();
     capture.stop();
 
     expect(native.captures).toBe(1);
     expect(native.stopped).toBe(1);
+    expect(native.captureProfiles).toEqual([true]);
+  });
+
+  it('the debrief profile crosses the bridge as plainly as the room one', async () => {
+    // The profile is the whole difference between the AEC pair and a plain
+    // microphone; an adapter that dropped it would colour every coaching
+    // clip with call-tuned processing and nobody would trace it here.
+    const native = new FakeNative();
+    await openNativeCapture({ communication: false }, native)!.start();
+    openNativePlayback({ communication: false }, native)!
+      .createBufferQueueSource()
+      .start(0, 0);
+
+    expect(native.captureProfiles).toEqual([false]);
+    expect(native.playbackProfiles).toEqual([false]);
   });
 });
 
 describe('playback', () => {
   it('runs at the wire rate, so the resample upstream is an identity', () => {
-    expect(openNativePlayback(new FakeNative())!.sampleRate).toBe(16000);
+    expect(openNativePlayback({ communication: true }, new FakeNative())!.sampleRate).toBe(16000);
   });
 
   it('an enqueued buffer crosses the bridge as the PCM16 it holds', () => {
     const native = new FakeNative();
-    const context = openNativePlayback(native)!;
+    const context = openNativePlayback({ communication: true }, native)!;
     const source = context.createBufferQueueSource();
     source.start(0, 0);
 
@@ -150,10 +169,10 @@ describe('playback', () => {
 
   it('played events come back as per-id ended calls, in queue order', () => {
     const native = new FakeNative();
-    const source = openNativePlayback(native)!.createBufferQueueSource();
+    const source = openNativePlayback({ communication: true }, native)!.createBufferQueueSource();
     source.start(0, 0);
 
-    const context = openNativePlayback(native)!;
+    const context = openNativePlayback({ communication: true }, native)!;
     const buffer = context.createBuffer(1, 1, 16000);
     buffer.copyToChannel(new Float32Array([0]), 0);
     const first = source.enqueueBuffer(buffer);
@@ -176,7 +195,7 @@ describe('playback', () => {
     // nobody heard would release the panelist while the room believes the
     // loudspeaker just finished their line.
     const native = new FakeNative();
-    const context = openNativePlayback(native)!;
+    const context = openNativePlayback({ communication: true }, native)!;
     const source = context.createBufferQueueSource();
     source.start(0, 0);
 
@@ -198,7 +217,7 @@ describe('playback', () => {
 
   it('stop unsubscribes and closes the output stream', () => {
     const native = new FakeNative();
-    const source = openNativePlayback(native)!.createBufferQueueSource();
+    const source = openNativePlayback({ communication: true }, native)!.createBufferQueueSource();
     source.start(0, 0);
     source.stop(0);
 
