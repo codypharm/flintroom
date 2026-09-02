@@ -24,6 +24,7 @@ import {
 import { PANEL_SPEECH_BASE64 } from '@/lib/audio/panelSpeech';
 import { fromPcm16, resampleLinear } from '@/lib/audio/pcm';
 import { enterHandsFree, leaveHandsFree } from '../../modules/audio-routing';
+import { openCaptureStack, openPlaybackStack } from '../lib/voice/stack';
 
 /**
  * The echo go/no-go spike (task #17), run on a real device.
@@ -73,6 +74,8 @@ type Phase =
   | 'error';
 
 interface Report {
+  /** Which audio layer the numbers describe. A figure without this is void. */
+  stack: 'library' | 'owned';
   noiseFloorDbfs: number;
   playbackDbfs: number;
   echoDb: number;
@@ -150,6 +153,30 @@ function panelSpeech(context: AudioContext) {
   buffer.getChannelData(0).set(samples);
 
   return buffer;
+}
+
+/**
+ * The same speech-band formula as `speechLikeSignal`, as bare samples.
+ *
+ * The owned stack takes PCM through a queue rather than an audio graph, so
+ * its test signal is synthesised in JavaScript and fed as buffers. Same
+ * harmonics, same 4 Hz syllabic gate — a different container for the same
+ * sound, so the two stacks' numbers are comparable.
+ */
+function speechLikeSamples(seconds: number, sampleRate: number): Float32Array {
+  const data = new Float32Array(Math.floor(sampleRate * seconds));
+  for (let i = 0; i < data.length; i += 1) {
+    const t = i / sampleRate;
+    const syllable = 0.5 * (1 - Math.cos(2 * Math.PI * 4 * t));
+    const voice =
+      (Math.sin(2 * Math.PI * 220 * t) +
+        Math.sin(2 * Math.PI * 440 * t) +
+        Math.sin(2 * Math.PI * 880 * t) +
+        Math.sin(2 * Math.PI * 1760 * t)) /
+      4;
+    data[i] = 0.9 * syllable * voice;
+  }
+  return data;
 }
 
 export default function EchoSpikeScreen() {
@@ -238,6 +265,7 @@ export default function EchoSpikeScreen() {
       const duringPlayback = median(playing);
 
       setReport({
+        stack: 'library',
         noiseFloorDbfs: toDbfs(noiseFloor),
         playbackDbfs: toDbfs(duringPlayback),
         echoDb: echoAboveFloorDb(noiseFloor, duringPlayback),
@@ -254,6 +282,104 @@ export default function EchoSpikeScreen() {
       // screen. A run that throws halfway would otherwise leave the whole app
       // in communication mode, and the symptom — the volume rocker adjusting
       // the wrong stream — shows up nowhere near the cause.
+      leaveHandsFree();
+    }
+  }, []);
+
+  /**
+   * The same measurement, through the owned stack (#25).
+   *
+   * A parallel run rather than a replacement, on purpose: the library's
+   * numbers are the ones in `docs/echo-cancellation.md`, and the owned pair
+   * earns its way in by being measured on the same phone in the same room in
+   * the same minute. `openCaptureStack` prefers the owned module in a dev
+   * build, so this button measures whatever the room itself would use.
+   */
+  const runOwned = useCallback(async () => {
+    setReport(null);
+    setError(null);
+
+    try {
+      const permission = await AudioManager.requestRecordingPermissions();
+      if (permission !== 'Granted') {
+        throw new Error(`Microphone permission ${permission}`);
+      }
+
+      // Routing is policy and stays the app's: the owned player declares
+      // voice-communication usage, which outside communication mode routes to
+      // the earpiece — the #26 finding, unchanged by who owns the stream.
+      await enterHandsFree();
+
+      const { recorder, owned } = openCaptureStack();
+      if (!owned) {
+        throw new Error(
+          'The owned module is not in this build. Rebuild the dev client and run again.'
+        );
+      }
+
+      recorder.onAudioReady(
+        { sampleRate: RECORD_SAMPLE_RATE, bufferLength: 1600, channelCount: 1 },
+        (event) => {
+          observedRate.current = event.buffer.sampleRate;
+          levels.current.push(rms(event.buffer.getChannelData(0)));
+        }
+      );
+
+      setPhase('silence');
+      levels.current = [];
+      await recorder.start();
+      await wait(PHASE_SECONDS);
+      const silent = [...levels.current];
+
+      setPhase('playback');
+      const sound = openPlaybackStack();
+      await sound.ready();
+      const source = sound.context.createBufferQueueSource();
+      source.connect(sound.context.destination);
+      source.start(0, 0);
+
+      // The whole phase enqueued up front: the native queue is the loop.
+      const samples = speechLikeSamples(
+        SETTLE_SECONDS + PHASE_SECONDS + 1,
+        sound.context.sampleRate
+      );
+      const CHUNK = 3200; // 200 ms — coarse is fine, nothing is latency-bound
+      for (let at = 0; at < samples.length; at += CHUNK) {
+        const buffer = sound.context.createBuffer(
+          1,
+          Math.min(CHUNK, samples.length - at),
+          sound.context.sampleRate
+        );
+        buffer.copyToChannel(samples.subarray(at, at + CHUNK) as Float32Array, 0);
+        source.enqueueBuffer(buffer);
+      }
+
+      await wait(SETTLE_SECONDS);
+      levels.current = [];
+      await wait(PHASE_SECONDS);
+      const playing = [...levels.current];
+
+      source.stop(0);
+      await sound.close();
+      recorder.stop();
+
+      const noiseFloor = median(silent);
+      const duringPlayback = median(playing);
+
+      setReport({
+        stack: 'owned',
+        noiseFloorDbfs: toDbfs(noiseFloor),
+        playbackDbfs: toDbfs(duringPlayback),
+        echoDb: echoAboveFloorDb(noiseFloor, duringPlayback),
+        observedSampleRate: observedRate.current,
+        buffersSilent: silent.length,
+        buffersPlayback: playing.length,
+      });
+      setPhase('done');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+      setPhase('error');
+    } finally {
       leaveHandsFree();
     }
   }, []);
@@ -367,6 +493,12 @@ export default function EchoSpikeScreen() {
         />
 
         <Button
+          title={running ? 'Measuring…' : 'Run measurement (owned stack)'}
+          onPress={runOwned}
+          disabled={running}
+        />
+
+        <Button
           title={running ? 'Working…' : 'Capture residual for vad test'}
           onPress={captureResidual}
           disabled={running}
@@ -436,7 +568,8 @@ export default function EchoSpikeScreen() {
             return (
               <View style={styles.report}>
                 <Text style={[styles.verdict, { color: colors.text }]}>
-                  {decision === 'no-go' ? 'NO-GO' : 'GO'}
+                  {decision === 'no-go' ? 'NO-GO' : 'GO'}{' '}
+                  ({report.stack === 'owned' ? 'owned stack' : 'library'})
                 </Text>
                 <Text style={[styles.figure, { color: colors.text }]}>
                   During playback: {report.playbackDbfs.toFixed(1)} dBFS
