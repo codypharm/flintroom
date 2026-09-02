@@ -97,8 +97,9 @@ it('counts what held, and sets last time on the same argument beside it', async 
   // verdict out of them beyond the arithmetic itself.
   await setup({ score: { held: 7, judged: 9 }, previousScore: { held: 5, judged: 8 } });
 
-  expect(screen.getByText('You held 7 of 9 answers.')).toBeTruthy();
-  expect(screen.getByText('Last time on this argument: 5 of 8.')).toBeTruthy();
+  expect(screen.getByText('78%')).toBeTruthy();
+  expect(screen.getByText('7 of 9 answers held')).toBeTruthy();
+  expect(screen.getByText('Last time on this argument: 5 of 8 (63%).')).toBeTruthy();
 });
 
 it('shows the score alone on a first attempt', async () => {
@@ -106,7 +107,8 @@ it('shows the score alone on a first attempt', async () => {
   // rather than inventing a baseline.
   await setup({ score: { held: 3, judged: 4 }, previousScore: null });
 
-  expect(screen.getByText('You held 3 of 4 answers.')).toBeTruthy();
+  expect(screen.getByText('75%')).toBeTruthy();
+  expect(screen.getByText('3 of 4 answers held')).toBeTruthy();
   expect(screen.queryByText(/Last time on this argument/)).toBeNull();
 });
 
@@ -115,7 +117,8 @@ it('shows no score for a room that was never scored', async () => {
   // not the same fact as 0 held, and the screen stays quiet about it.
   await setup({ score: null, previousScore: null });
 
-  expect(screen.queryByText(/You held/)).toBeNull();
+  expect(screen.queryByText(/answers held/)).toBeNull();
+  expect(screen.queryByText(/%$/)).toBeNull();
 });
 
 it("shows what held, in the room's own order", async () => {
@@ -451,10 +454,13 @@ it('puts no grade on the room, however the coach opens', async () => {
   // prohibition test starts failing for reasons that have nothing to do with
   // the prohibition.
   expect(screen.queryByText(/^[A-F][+-]?$/)).toBeNull();
-  // And the other shapes a score arrives in.
+  // And a rating this room was never given: with no score in the props, no
+  // figure of any shape may appear. (#118 made the *counted* score a real
+  // feature, so the word itself is no longer banned — the standfirst says
+  // "scored" legitimately. What stays banned is a grade, and a number for a
+  // room the server never scored.)
   expect(screen.queryByText(/\d+\s*\/\s*(10|100|5)/)).toBeNull();
   expect(screen.queryByText(/\d+\s*%/)).toBeNull();
-  expect(screen.queryByText(/score/i)).toBeNull();
 });
 
 

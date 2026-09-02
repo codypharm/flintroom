@@ -1,5 +1,5 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { HeldAnswer, Pressed, Score, WeakAnswer } from '../../lib/api/debriefApi';
@@ -148,6 +148,48 @@ function movement(pressed: Pressed): string | null {
   return null;
 }
 
+/**
+ * The score arc: the ring fills clockwise from twelve, in primary, to the
+ * percent it holds. Ruled 2026-09-02 over the static ring — the architect
+ * wanted the rating readable from the fill, not only the figure.
+ *
+ * Plain views, no SVG dependency: a grey track circle under two clipped
+ * half-ring layers. A half-ring is a bordered circle with only its top and
+ * right sides coloured (a continuous 180 degrees from twelve to six); each
+ * layer is rotated into place and a half-width wrapper clips away the part
+ * that belongs to the other side. The 45-degree colour boundary at the arc
+ * ends is the known artifact of border-drawn arcs, invisible at this stroke.
+ */
+function ScoreArc({ percent, children }: { percent: number; children: ReactNode }) {
+  const sweep = Math.min(100, Math.max(0, percent)) * 3.6;
+  const right = Math.min(sweep, 180);
+  const left = Math.max(sweep - 180, 0);
+
+  // The half-ring's coloured span runs between the 45-degree border
+  // diagonals — from 10:30 to 4:30, not from twelve to six — so every
+  // rotation carries a 45-degree correction. Measured on the device: the
+  // first cut omitted it and 62% filled barely past a third of the ring,
+  // which the architect caught by eye.
+  return (
+    <View style={styles.arcFrame}>
+      <View style={styles.arcTrack} />
+      {right > 0 && (
+        <View style={styles.arcClipRight} pointerEvents="none">
+          <View
+            style={[styles.arcHalf, styles.arcInRight, { transform: [{ rotate: `${right - 135}deg` }] }]}
+          />
+        </View>
+      )}
+      {left > 0 && (
+        <View style={styles.arcClipLeft} pointerEvents="none">
+          <View style={[styles.arcHalf, { transform: [{ rotate: `${left + 45}deg` }] }]} />
+        </View>
+      )}
+      {children}
+    </View>
+  );
+}
+
 export function Debrief({
   answers,
   heldAnswers,
@@ -204,38 +246,74 @@ export function Debrief({
           {answers.length === 0 ? 'Nothing came loose' : 'Where it came loose'}
         </Text>
 
+        {/*
+          The score card (#118; composition ruled 2026-09-02, taken from
+          `design-guide/coaching_debrief/` at the architect's direction): the
+          mockup's centred card with a ring, a verdict line, and assessment
+          rows. Its *content* stays retired — no letter grade, no delivery
+          read. The ring holds the counted percent, the verdict is the count,
+          and the rows are the two facts this screen already carried: the
+          last attempt at this argument, and how hard the room pressed.
+          Absent entirely when the server sent no score, because a room read
+          before scores existed is not a room where nothing held.
+        */}
+        {score !== null && score.judged > 0 && (
+          <View style={styles.scoreCard}>
+            <ScoreArc percent={(score.held / score.judged) * 100}>
+              <Text style={styles.scoreValue}>
+                {`${Math.round((score.held / score.judged) * 100)}%`}
+              </Text>
+            </ScoreArc>
+            <Text style={styles.scoreVerdict}>
+              {`${score.held} of ${score.judged} answers held`}
+            </Text>
+
+            {((previousScore !== null && previousScore.judged > 0) || moved) && (
+              <View style={styles.scoreRows}>
+                {previousScore !== null && previousScore.judged > 0 && (
+                  <View style={styles.scoreRow}>
+                    <MaterialIcons
+                      name="history"
+                      size={20}
+                      color={color.onSurfaceVariant}
+                    />
+                    <Text style={styles.scoreRowText}>
+                      {`Last time on this argument: ${previousScore.held} of ${previousScore.judged} (${Math.round(
+                        (previousScore.held / previousScore.judged) * 100
+                      )}%).`}
+                    </Text>
+                  </View>
+                )}
+                {moved && (
+                  <View style={styles.scoreRow}>
+                    <MaterialIcons
+                      name={pressed === 'harder' ? 'trending-up' : 'trending-down'}
+                      size={20}
+                      color={color.onSurfaceVariant}
+                    />
+                    <Text style={styles.scoreRowText}>{moved}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+        )}
+
         {answers.length === 0 ? (
           <Text style={styles.standfirst}>
             The panel pressed and your answers held. Ask me about any of it.
           </Text>
         ) : (
           <Text style={styles.standfirst}>
-            Say these again until they hold. Nothing here is being marked.
+            Practice these until they hold. Practice is never scored; a fresh
+            room is.
           </Text>
         )}
 
-        {/*
-          The score, as a sentence rather than a badge (#118). The retired
-          mockup's "B+" is a verdict on the person; this is arithmetic over
-          findings the server verified against the transcript, and it reads
-          in the page's own voice. Absent entirely when the server sent none
-          — a room read before scores existed is not a room where nothing
-          held. "Last time" only when there is a last time on this argument.
-        */}
-        {score !== null && score.judged > 0 && (
-          <View style={styles.score}>
-            <Text style={styles.scoreHeld}>
-              {`You held ${score.held} of ${score.judged} answers.`}
-            </Text>
-            {previousScore !== null && previousScore.judged > 0 && (
-              <Text style={styles.scoreLast}>
-                {`Last time on this argument: ${previousScore.held} of ${previousScore.judged}.`}
-              </Text>
-            )}
-          </View>
+        {/* Standalone only when there is no card to carry it. */}
+        {moved && (score === null || score.judged === 0) && (
+          <Text style={styles.moved}>{moved}</Text>
         )}
-
-        {moved && <Text style={styles.moved}>{moved}</Text>}
 
         {/*
           The coach, before the list.
@@ -387,14 +465,71 @@ const styles = StyleSheet.create({
     marginTop: space.snug,
   },
   /**
-   * The score, set as prose directly under the standfirst. No container and
-   * no colour — a box around a number is a grade block, which is the retired
-   * mockup's opening move. The previous room reads a step quieter, because
-   * it is context rather than news.
+   * The score card, composed after `design-guide/coaching_debrief/`: centred
+   * card, static ring with the value inside, verdict line, assessment rows.
+   * The ring is a border, not a progress arc — the mockup's own is static,
+   * and an arc would turn a counted fact back into a gauge. Everything on
+   * incumbent tokens; the percent takes the page's one accent.
    */
-  score: { marginTop: space.base },
-  scoreHeld: { ...type.bodyLg, color: color.onSurface },
-  scoreLast: { ...type.bodyMd, color: color.onSurfaceVariant, marginTop: 2 },
+  scoreCard: {
+    backgroundColor: color.card,
+    borderRadius: radius.container,
+    padding: space.loose,
+    alignItems: 'center',
+    marginTop: space.loose,
+  },
+  arcFrame: {
+    width: 116,
+    height: 116,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  arcTrack: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 58,
+    borderWidth: 8,
+    borderColor: color.surface,
+  },
+  /** Top and right coloured: a continuous half-ring from twelve to six. */
+  arcHalf: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 116,
+    height: 116,
+    borderRadius: 58,
+    borderWidth: 8,
+    borderTopColor: color.primary,
+    borderRightColor: color.primary,
+    borderBottomColor: 'transparent',
+    borderLeftColor: 'transparent',
+  },
+  arcClipRight: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 58,
+    height: 116,
+    overflow: 'hidden',
+  },
+  arcInRight: { left: -58 },
+  arcClipLeft: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 58,
+    height: 116,
+    overflow: 'hidden',
+  },
+  scoreValue: { ...type.headlineLg, color: color.primary },
+  scoreVerdict: { ...type.headlineSm, color: color.onSurface, marginTop: space.base },
+  scoreRows: { alignSelf: 'stretch', marginTop: space.base, gap: space.snug },
+  scoreRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.snug },
+  scoreRowText: { ...type.bodyMd, color: color.onSurfaceVariant, flex: 1 },
   /**
    * The one sentence about difficulty, set apart from the standfirst and from
    * the findings. It is about the room rather than about any answer, and
