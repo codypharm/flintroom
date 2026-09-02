@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import { router } from 'expo-router';
+import { router , useNavigation } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
@@ -27,6 +27,8 @@ import { RecordingDisclosure } from '../components/modules/RecordingDisclosure';
 import { createDisclosureRecord } from '../lib/consent/disclosure';
 import { enterRoom } from '../lib/consent/entry';
 import { createPanelsApi } from '../lib/api/panelsApi';
+import { usePreventRemove } from 'expo-router/react-navigation';
+
 import { closeRoom } from '../lib/room/closing';
 import { reconnectRoom } from '../lib/room/reconnect';
 import { takeIntent } from '../lib/room/intent';
@@ -131,6 +133,7 @@ export default function InterrogationScreen() {
   const [challenging, setChallenging] = useState<string | null>(null);
   const [heard, setHeard] = useState<Hearing>('silent');
   const [volume, setVolume] = useState(0);
+  const navigation = useNavigation();
   const [phase, setPhase] = useState<'opening' | 'live' | 'reconnecting' | 'ending'>(
     'opening'
   );
@@ -550,30 +553,56 @@ export default function InterrogationScreen() {
     };
   }, [phase]);
 
-  const end = useCallback(() => {
+  /**
+   * File the room's ending with the server, whatever leaves the screen.
+   *
+   * One function for the End button and the removal guard, because the order
+   * is the whole fix (#82): the intent must reach the server before the
+   * socket drops, or the business records a hung-up line where somebody
+   * decided they were done.
+   *
+   * The no-session branch is loud now (#120). It fired live on 2026-09-02 —
+   * a rerun room's screen remounted with fresh refs, the End tap took this
+   * branch, and the server's first news was the socket dying. A screen in
+   * that state cannot name the session, so the reconnect window and the
+   * reaper remain the recovery; what it must never be again is silent.
+   */
+  const filePaperwork = useCallback(() => {
     const settled = session.current;
 
-    // **The intent first, then the socket — and now it actually is.** This said
-    // the same thing and did not do it: `void sessions.end(...)` does not wait,
-    // so the `leave()` on the next line raced a network round trip and won
-    // every time. Every room in the dev database had settled as
-    // `client_disconnect`, five of five (#82).
-    //
-    // `closeRoom` owns the order and is tested on it. The screen moves on
-    // immediately either way — `finish` is not awaited, because a presenter who
-    // has tapped End should not watch a spinner while we file the paperwork.
     if (settled === null) {
+      console.warn(
+        'interrogation ended with no session id; the server will settle this room as a dropped line (#120)'
+      );
       room.current?.leave();
-      finish('ended');
       return;
     }
 
+    // `closeRoom` owns the order and is tested on it. Not awaited — a
+    // presenter who is done should not watch a spinner while we file.
     void closeRoom({
       tell: () => sessions.end(settled),
       hangUp: () => room.current?.leave(),
     });
+  }, []);
+
+  const end = useCallback(() => {
+    filePaperwork();
     finish('ended');
-  }, [finish]);
+  }, [filePaperwork, finish]);
+
+  /**
+   * Back-navigation files the same paperwork (#120). #82 fixed the End
+   * button; the edge swipe kept the old failure — unmount, socket drop,
+   * `client_disconnect` on a room the presenter deliberately left. The
+   * original navigation then proceeds: backing out of a room lands where
+   * back goes, and only the End button routes to the debrief.
+   */
+  usePreventRemove(phase === 'live' || phase === 'reconnecting', ({ data }) => {
+    filePaperwork();
+    setPhase('ending');
+    navigation.dispatch(data.action);
+  });
 
   const sheet = disclosing !== null && (
     <Modal
