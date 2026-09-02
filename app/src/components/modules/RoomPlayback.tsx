@@ -7,13 +7,11 @@ import { color, radius, space, type } from '../../theme/tokens';
 /**
  * Hearing a room again — the transport, and nothing that makes a sound.
  *
- * **Presentation only, and the split is the whole design.** What actually plays
- * a room is `<Audio>` from `react-native-audio-api`, reached by a path the
- * package does not publish (#68) because the published one decodes an entire
- * room into memory before the first sound — a crash rather than a refusal on a
- * long readout. A private path is a thing that can move under a version bump,
- * so everything this screen *says* lives on this side of the seam, where a test
- * can reach it without mounting a native decoder.
+ * **Presentation only, and the split is the whole design.** What actually
+ * plays a room is the platform player behind `expo-audio` (#25 retired the
+ * old library's privately-imported element that #68 chose). Everything this
+ * screen *says* lives on this side of the seam, where a test can reach it
+ * without mounting a native decoder.
  *
  * **The clock is not a depleting counter.** §4.6 forbids one, and it is about
  * minutes: a number counting down on something bought makes a rehearsal feel

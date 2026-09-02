@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { createContext, createRef, type ReactNode } from 'react';
+import { createContext, createRef } from 'react';
 
 import { Refused } from '../../lib/api/refused';
 import { RoomPlayer, type RoomPlayerHandle } from './RoomPlayer';
@@ -7,41 +7,43 @@ import { RoomPlayer, type RoomPlayerHandle } from './RoomPlayer';
 /**
  * Fetching the link, and what the screen says when that goes wrong.
  *
- * **The streaming element is faked here on purpose, and the fake is small.**
- * What it stands in for is a native decoder reached by a private path into
- * `react-native-audio-api` (#68) — the one thing in this feature no test can
- * meaningfully assert, because whether it decodes Ogg Opus over HTTP ranges is
- * a question about a device. What *is* worth asserting is everything on this
- * side of it: that a presigned link is never signed before somebody asks for
- * one, that a room whose audio has gone says so in its own words, and that a
- * room played to the end offers to play it again from the top rather than from
- * the end.
+ * **The player is faked here on purpose, and the fake is small.** What it
+ * stands in for is `expo-audio` — the platform players, whose streaming is a
+ * question about a device, not a suite. What *is* worth asserting is
+ * everything on this side of it: that a presigned link is never signed
+ * before somebody asks for one, that a room whose audio has gone says so in
+ * its own words, and that a room played to the end offers to play it again
+ * from the top rather than from the end.
  */
 
-interface Tag {
-  play: jest.Mock;
-  pause: jest.Mock;
-  seekToTime: jest.Mock;
-  ready: boolean;
-  playbackState: 'idle' | 'playing' | 'paused';
-  currentTime: number;
-  duration: number;
+interface Deck {
+  player: {
+    play: jest.Mock;
+    pause: jest.Mock;
+    seekTo: jest.Mock;
+  };
+  status: {
+    isLoaded: boolean;
+    playing: boolean;
+    playbackState: string;
+    currentTime: number;
+    duration: number;
+  };
 }
 
 /**
  * Every one of these is `mock`-prefixed because Jest requires it.
  *
- * `jest.mock`'s factory is hoisted above the imports, so a plain name captured
- * inside it is read before it exists — and rather than let that fail at run
- * time, Babel refuses the file outright unless the name says it is a mock.
+ * `jest.mock`'s factory is hoisted above the imports, so a plain name
+ * captured inside it is read before it exists — and rather than let that
+ * fail at run time, Babel refuses the file outright unless the name says it
+ * is a mock.
  */
-const mockTagContext = createContext<Tag | null>(null);
+const mockDeckContext = createContext<Deck | null>(null);
 
-/** What the faked element hands its children, set per test. */
-let mockTag: Tag;
-/** The last `onError` the element was given, so a test can make it fail. */
-let mockBreaks: (error: Error) => void;
-/** Every source the element was mounted against, in order. */
+/** What the faked hooks hand the component, set per test. */
+let mockDeck: Deck;
+/** Every source a player was created against, in order. */
 let mockSources: unknown[];
 /** How many times the audio session was put into a playing shape. */
 const mockForPlayingBack = jest.fn();
@@ -50,55 +52,46 @@ jest.mock('../../lib/replay/session', () => ({
   forPlayingBack: () => mockForPlayingBack(),
 }));
 
-jest.mock('../../lib/replay/element', () => {
-  // Required inside rather than imported above, for the hoisting reason the
-  // names carry: the factory runs before this file's imports have been
-  // evaluated.
+jest.mock('expo-audio', () => {
   // `require`, because `jest.mock`'s factory is hoisted above this file's
-  // imports — an `import` would not have been evaluated yet. Suppressed with
-  // the reason attached rather than left as a standing warning that implies
-  // somebody should have known better.
+  // imports — an `import` would not have been evaluated yet.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { useContext } = require('react');
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { View } = require('react-native');
 
   return {
-    AudioElement: ({
-      children,
-      source,
-      onError,
-    }: {
-      children: ReactNode;
-      source: unknown;
-      onError: (error: Error) => void;
-    }) => {
+    useAudioPlayer: (source: unknown) => {
       mockSources.push(source);
-      mockBreaks = onError;
-      return <View testID="element">{children}</View>;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      return useContext(mockDeckContext).player;
     },
-    useAudioTagContext: () => useContext(mockTagContext),
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    useAudioPlayerStatus: () => useContext(mockDeckContext).status,
   };
 });
 
-function seated(over: Partial<Tag> = {}): Tag {
+function seated(over: Partial<Deck['status']> = {}): Deck {
   return {
-    play: jest.fn(),
-    pause: jest.fn(),
-    seekToTime: jest.fn(),
-    ready: true,
-    playbackState: 'playing',
-    currentTime: 0,
-    duration: 600,
-    ...over,
+    player: {
+      play: jest.fn(),
+      pause: jest.fn(),
+      seekTo: jest.fn().mockResolvedValue(undefined),
+    },
+    status: {
+      isLoaded: true,
+      playing: true,
+      playbackState: 'readyToPlay',
+      currentTime: 0,
+      duration: 600,
+      ...over,
+    },
   };
 }
 
 async function show(findIt: () => Promise<string>) {
   await render(
-    <mockTagContext.Provider value={mockTag}>
+    <mockDeckContext.Provider value={mockDeck}>
       <RoomPlayer findIt={findIt} />
-    </mockTagContext.Provider>
+    </mockDeckContext.Provider>
   );
   return findIt;
 }
@@ -107,15 +100,15 @@ async function show(findIt: () => Promise<string>) {
 async function shown(findIt: () => Promise<string>) {
   const handle = createRef<RoomPlayerHandle>();
   await render(
-    <mockTagContext.Provider value={mockTag}>
+    <mockDeckContext.Provider value={mockDeck}>
       <RoomPlayer findIt={findIt} ref={handle} />
-    </mockTagContext.Provider>
+    </mockDeckContext.Provider>
   );
   return handle;
 }
 
 beforeEach(() => {
-  mockTag = seated();
+  mockDeck = seated();
   mockSources = [];
   mockForPlayingBack.mockClear();
 });
@@ -128,34 +121,45 @@ async function askToHearIt() {
 }
 
 it('signs nothing until somebody asks to hear it', async () => {
-  // The link lives fifteen minutes. Signing on the way in would hand a dead URL
-  // to anybody who read the transcript first — which is what this screen is
-  // mostly for — and would spend a presign on every glance at a past room.
-  const findIt = jest.fn().mockResolvedValue('https://store.test/room.opus');
+  // The link lives fifteen minutes. Signing on the way in would hand a dead
+  // URL to anybody who read the transcript first — which is what this screen
+  // is mostly for — and would spend a presign on every glance at a past room.
+  const findIt = jest.fn().mockResolvedValue('https://store.test/room.m4a');
   await show(findIt);
 
   expect(findIt).not.toHaveBeenCalled();
-  expect(screen.queryByTestId('element')).toBeNull();
+  expect(mockSources).toHaveLength(0);
 });
 
 it('mounts the room against the link it was just given', async () => {
-  const findIt = jest.fn().mockResolvedValue('https://store.test/room.opus');
+  const findIt = jest.fn().mockResolvedValue('https://store.test/room.m4a');
   await show(findIt);
 
   await askToHearIt();
 
   expect(findIt).toHaveBeenCalledTimes(1);
-  expect(mockSources[0]).toEqual({ uri: 'https://store.test/room.opus' });
+  expect(mockSources[0]).toEqual({ uri: 'https://store.test/room.m4a' });
+});
+
+it('starts playing the moment the room has loaded, without a second tap', async () => {
+  // The tap already said "hear this room". A second tap to start what the
+  // first one asked for is the control not working.
+  const findIt = jest.fn().mockResolvedValue('https://store.test/room.m4a');
+  await show(findIt);
+
+  await askToHearIt();
+
+  expect(mockDeck.player.play).toHaveBeenCalled();
 });
 
 it('puts the audio session into a shape that makes sound before it asks for any', async () => {
-  // The session is global and imperative, and every screen that has touched it
-  // left it as it was: the room and the debrief both set `playAndRecord`, which
-  // keeps the microphone hot and plays quietly. Worse is the untouched case —
-  // a cold launch straight into the Library never sets a category at all, and
-  // the platform default respects the ringer switch, so a room played with the
-  // phone on silent makes no sound and gives no reason.
-  const findIt = jest.fn().mockResolvedValue('https://store.test/room.opus');
+  // The session is global and imperative, and every screen that has touched
+  // it left it as it was: the room and the debrief both run it as a two-way
+  // call, which keeps the microphone hot and plays quietly. Worse is the
+  // untouched case — a cold launch straight into the Library never sets it
+  // at all, and the platform default respects the ringer switch, so a room
+  // played with the phone on silent makes no sound and gives no reason.
+  const findIt = jest.fn().mockResolvedValue('https://store.test/room.m4a');
   await show(findIt);
 
   await askToHearIt();
@@ -164,9 +168,9 @@ it('puts the audio session into a shape that makes sound before it asks for any'
 });
 
 it('says a room whose audio is gone is gone, not that something broke', async () => {
-  // Reachable without doing anything wrong: recording can be switched off, the
-  // tier window can expire between the list and the tap, or the delete control
-  // further down this same screen can have run a moment ago.
+  // Reachable without doing anything wrong: recording can be switched off,
+  // the tier window can expire between the list and the tap, or the delete
+  // control further down this same screen can have run a moment ago.
   const findIt = jest
     .fn()
     .mockRejectedValue(
@@ -177,7 +181,7 @@ it('says a room whose audio is gone is gone, not that something broke', async ()
   await askToHearIt();
 
   expect(screen.getByText('There is no saved audio for this room.')).toBeTruthy();
-  expect(screen.queryByTestId('element')).toBeNull();
+  expect(mockSources).toHaveLength(0);
 });
 
 it('offers the tap again after a failure, because the next one signs a fresh link', async () => {
@@ -190,60 +194,60 @@ it('offers the tap again after a failure, because the next one signs a fresh lin
   expect(screen.getByRole('button', { name: 'Hear this room' })).toBeTruthy();
 });
 
-it('does not name the vendor when the stream itself fails', async () => {
-  // `CLAUDE.md`: a provider failure must never name the vendor to the user. The
-  // element hands us its own `Error`, whose message is whatever ffmpeg or the
-  // store said.
-  const findIt = jest.fn().mockResolvedValue('https://store.test/room.opus');
+it('says only its own sentence when the stream itself fails', async () => {
+  // `CLAUDE.md`: a provider failure must never name the vendor to the user.
+  // The platform surfaces its failure through status, and whatever detail it
+  // carries — on a bad day, a signed URL with our bucket host in it — never
+  // reaches the screen. The link is dropped too, so the next tap signs a
+  // fresh one rather than retrying a URL that may have expired mid-stream.
+  mockDeck = seated({ playbackState: 'failed', isLoaded: false, playing: false });
+  const findIt = jest.fn().mockResolvedValue('https://store.test/room.m4a');
   await show(findIt);
+
   await askToHearIt();
 
-  await act(async () => {
-    mockBreaks(new Error('AVFoundation: cannot decode https://r2.cloudflarestorage.com/x'));
-  });
-
-  expect(screen.queryByText(/AVFoundation|cloudflare|r2/i)).toBeNull();
+  expect(screen.queryByText(/failed|cloudflare|r2|exoplayer|avplayer/i)).toBeNull();
   expect(screen.getByText(/did not play/)).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Hear this room' })).toBeTruthy();
 });
 
 it('takes a finished room back to the top rather than replaying its last second', async () => {
-  // The playhead sits at the end when a room finishes, which is right — it says
-  // you heard all of it. What is wrong is Play from there: it starts at the end
-  // and appears to do nothing at all.
+  // The playhead sits at the end when a room finishes, which is right — it
+  // says you heard all of it. What is wrong is Play from there: it starts at
+  // the end and appears to do nothing at all.
   //
-  // Read off the position rather than remembered from an `ended` event. The
+  // Read off the position rather than remembered from an ended event. The
   // same thing is true of somebody who dragged the bar to the end and then
   // pressed Play, and an event would have covered one of the two.
-  mockTag = seated({ playbackState: 'idle', currentTime: 600, duration: 600 });
-  const findIt = jest.fn().mockResolvedValue('https://store.test/room.opus');
+  mockDeck = seated({ playing: false, currentTime: 600, duration: 600 });
+  const findIt = jest.fn().mockResolvedValue('https://store.test/room.m4a');
   await show(findIt);
   await askToHearIt();
 
   fireEvent.press(screen.getByRole('button', { name: 'Play' }));
 
-  expect(mockTag.seekToTime).toHaveBeenCalledWith(0);
-  expect(mockTag.play).toHaveBeenCalled();
+  expect(mockDeck.player.seekTo).toHaveBeenCalledWith(0);
+  expect(mockDeck.player.play).toHaveBeenCalled();
 });
 
 it('goes on from where it was paused, which is not the top', async () => {
-  mockTag = seated({ playbackState: 'paused', currentTime: 240, duration: 600 });
-  const findIt = jest.fn().mockResolvedValue('https://store.test/room.opus');
+  mockDeck = seated({ playing: false, currentTime: 240, duration: 600 });
+  const findIt = jest.fn().mockResolvedValue('https://store.test/room.m4a');
   await show(findIt);
   await askToHearIt();
 
   fireEvent.press(screen.getByRole('button', { name: 'Play' }));
 
-  expect(mockTag.seekToTime).not.toHaveBeenCalled();
-  expect(mockTag.play).toHaveBeenCalled();
+  expect(mockDeck.player.seekTo).not.toHaveBeenCalled();
+  expect(mockDeck.player.play).toHaveBeenCalled();
 });
 
-
 it('opens the room and lands on the moment somebody asked for', async () => {
-  // #69's payoff. Tapping a timestamp in the transcript on a room that is not
-  // playing has to do both halves — sign the link and seek — because the
+  // #69's payoff. Tapping a timestamp in the transcript on a room that is
+  // not playing has to do both halves — sign the link and seek — because the
   // alternative is a control that starts from the top and leaves somebody to
   // find the moment themselves, which is the offer that already existed.
-  const findIt = jest.fn().mockResolvedValue('https://store.test/room.opus');
+  const findIt = jest.fn().mockResolvedValue('https://store.test/room.m4a');
   const handle = await shown(findIt);
 
   await act(async () => {
@@ -251,35 +255,35 @@ it('opens the room and lands on the moment somebody asked for', async () => {
   });
 
   expect(findIt).toHaveBeenCalledTimes(1);
-  expect(mockTag.seekToTime).toHaveBeenCalledWith(92);
-  expect(mockTag.play).toHaveBeenCalled();
+  expect(mockDeck.player.seekTo).toHaveBeenCalledWith(92);
+  expect(mockDeck.player.play).toHaveBeenCalled();
 });
 
 it('seeks again when the same moment is asked for twice', async () => {
   // Tapping one line twice is a real thing to do — you missed it the first
-  // time. Two calls are two seeks, which is the plain reading of a command and
-  // the reason this is a handle rather than a changing prop: a prop holding the
-  // same number would be unchanged, and the control would look broken exactly
-  // when somebody leaned on it.
-  const findIt = jest.fn().mockResolvedValue('https://store.test/room.opus');
+  // time. Two calls are two seeks, which is the plain reading of a command
+  // and the reason this is a handle rather than a changing prop: a prop
+  // holding the same number would be unchanged, and the control would look
+  // broken exactly when somebody leaned on it.
+  const findIt = jest.fn().mockResolvedValue('https://store.test/room.m4a');
   const handle = await shown(findIt);
 
   await act(async () => {
     handle.current?.hearFrom(92);
   });
-  mockTag.seekToTime.mockClear();
+  mockDeck.player.seekTo.mockClear();
   await act(async () => {
     handle.current?.hearFrom(92);
   });
 
-  expect(mockTag.seekToTime).toHaveBeenCalledWith(92);
+  expect(mockDeck.player.seekTo).toHaveBeenCalledWith(92);
 });
 
 it('signs nothing until somebody asks for a moment or presses play', async () => {
   // The guard that keeps the presign lazy. Merely holding a handle must not
-  // spend a signature — that would put a request on every visit to a past room,
-  // which is the thing this component exists to avoid.
-  const findIt = jest.fn().mockResolvedValue('https://store.test/room.opus');
+  // spend a signature — that would put a request on every visit to a past
+  // room, which is the thing this component exists to avoid.
+  const findIt = jest.fn().mockResolvedValue('https://store.test/room.m4a');
   await shown(findIt);
 
   expect(findIt).not.toHaveBeenCalled();

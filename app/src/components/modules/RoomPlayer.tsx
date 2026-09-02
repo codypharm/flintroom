@@ -1,28 +1,36 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 
 import { Refused } from '../../lib/api/refused';
-import { AudioElement, useAudioTagContext } from '../../lib/replay/element';
 import { forPlayingBack } from '../../lib/replay/session';
 import { RoomPlayback, type Heard } from './RoomPlayback';
 
 /**
  * Hearing a room again — the half that reaches the audio layer.
  *
- * Split from `RoomPlayback` so that everything the screen *says* stays on the
- * other side of a private import (#68). What is here is the link, the element,
- * and the four things that can go wrong; what is there is every sentence and
- * every control, testable without a native decoder.
+ * Split from `RoomPlayback` so that everything the screen *says* stays on
+ * the presentation side of the seam, testable without a native decoder.
  *
- * **The link is signed on the tap, never on the way in.** `presign_get` issues
- * a URL that lives fifteen minutes, and this screen is mostly used for reading
- * a transcript — somebody who scrolls a forty-turn room first and then decides
- * to hear it would arrive at a dead link. Signing costs nothing at the moment
- * of the tap and it is the only moment we know somebody wants it.
+ * **`expo-audio` underneath, since #25.** The old library's published
+ * playback route decoded a whole room into memory before the first sound —
+ * a crash on long rooms — so #68 reached its streaming element by a private
+ * path, held in place by an exact version pin. `expo-audio` is a thin
+ * wrapper over the platform players (ExoPlayer, AVPlayer), which stream
+ * over HTTP ranges as their ordinary behaviour, on both platforms, through
+ * a published API. The deep import and the pin die with this file's
+ * previous version.
  *
- * **The element is mounted only once there is a link**, which is also what
- * stops it fetching. `preload` defaults to `auto`, so an element rendered
- * against an empty source on every visit would be a network request per glance
- * at a past room.
+ * **The link is signed on the tap, never on the way in.** `presign_get`
+ * issues a URL that lives fifteen minutes, and this screen is mostly used
+ * for reading a transcript — somebody who scrolls a forty-turn room first
+ * and then decides to hear it would arrive at a dead link. Signing costs
+ * nothing at the moment of the tap and it is the only moment we know
+ * somebody wants it.
+ *
+ * **The player is created only once there is a link**, which is also what
+ * stops it fetching: a player mounted against a source begins loading it,
+ * and one request per glance at a past room is the thing the lazy presign
+ * exists to avoid.
  */
 
 export interface RoomPlayerProps {
@@ -36,15 +44,12 @@ export interface RoomPlayerProps {
   /**
    * How the transcript above asks for a moment — #69's payoff.
    *
-   * **A command, not a prop, and the shape is the decision.** Somebody tapping
-   * a timestamp wants both halves at once: the link signed if it is not
-   * already, and the playhead put on that second. Expressed as a changing prop
-   * that would be an effect kicking off a fetch and setting state — which React
-   * rightly warns about, and which needs a nonce beside the seconds so that
-   * tapping the *same* line twice is not silently a no-op.
-   *
-   * A handle needs none of that. Two taps are two calls, and the request looks
-   * like the imperative thing it is.
+   * **A command, not a prop, and the shape is the decision.** Somebody
+   * tapping a timestamp wants both halves at once: the link signed if it is
+   * not already, and the playhead put on that second. As a changing prop
+   * that would be an effect kicking off a fetch and setting state, needing a
+   * nonce beside the seconds so tapping the *same* line twice is not
+   * silently a no-op. A handle needs none of that: two taps are two calls.
    */
   ref?: React.Ref<RoomPlayerHandle>;
 }
@@ -54,10 +59,10 @@ export interface RoomPlayerHandle {
   /**
    * Open the room if it is not open, and land on this second.
    *
-   * Safe before anything is mounted, which is the ordinary case rather than a
-   * corner: the tap almost always arrives while the transcript is all that is
-   * on screen. The position waits for an element to exist and is spent the
-   * moment one is ready.
+   * Safe before anything is mounted, which is the ordinary case rather than
+   * a corner: the tap almost always arrives while the transcript is all
+   * that is on screen. The position waits for a loaded player and is spent
+   * the moment one is ready.
    */
   hearFrom: (seconds: number) => void;
 }
@@ -67,32 +72,23 @@ export function RoomPlayer({ findIt, ref }: RoomPlayerProps) {
   const [asking, setAsking] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   /**
-   * A seek waiting for an element to play it on.
+   * A seek waiting for a player to land it.
    *
-   * The tap that asks for a moment usually arrives while nothing is mounted —
-   * the ordinary case, not a corner — so the position is held here and spent by
-   * `Chrome` once there is a tag to spend it on.
-   *
-   * **State rather than a ref, and `nth` rather than the seconds alone.** A ref
-   * was tried first and is quietly broken: writing one does not re-render, so a
-   * second request while the element is already mounted sat there until some
-   * unrelated tag update happened to re-run the effect. It appeared to work
-   * only because position tracking re-renders constantly, which is a thing that
-   * works by accident.
-   *
-   * `nth` makes asking for the *same* second twice a new request. Tapping one
-   * line twice is a real thing to do — you missed it the first time — and
-   * without the counter the second tap would be a no-op.
+   * State rather than a ref, and `nth` rather than the seconds alone: a ref
+   * write does not re-render, so a second request while already mounted sat
+   * unspent until unrelated updates happened to re-run the effect — a thing
+   * that worked by accident. `nth` makes asking for the *same* second twice
+   * a new request; missing it the first time is a real thing to do.
    */
   const [wanted, setWanted] = useState<{ seconds: number; nth: number } | null>(null);
 
   const hearIt = useCallback(() => {
     setAsking(true);
     setRefusal(null);
-    // Before the link rather than after it. The session is process-wide and the
-    // last screen to touch it left it configured for a two-way call — or, on a
-    // cold launch into the Library, nobody has touched it and the platform
-    // default honours the ringer switch. See `forPlayingBack`.
+    // Before the link rather than after it. The session is process-wide and
+    // the last screen to touch it left it configured for a two-way call —
+    // or, on a cold launch into the Library, nobody has touched it and the
+    // platform default honours the ringer switch. See `forPlayingBack`.
     forPlayingBack();
 
     void findIt()
@@ -105,8 +101,8 @@ export function RoomPlayer({ findIt, ref }: RoomPlayerProps) {
         // The server's own sentence when it had one. A room whose audio was
         // switched off, expired on the tier window, or deleted from further
         // down this same screen is not a failure — and "that did not play"
-        // would send somebody back to try again at something that will never
-        // work.
+        // would send somebody back to try again at something that will
+        // never work.
         setRefusal(
           error instanceof Refused
             ? error.message
@@ -120,10 +116,11 @@ export function RoomPlayer({ findIt, ref }: RoomPlayerProps) {
     () => ({
       hearFrom: (seconds: number) => {
         setWanted((asked) => ({ seconds, nth: (asked?.nth ?? 0) + 1 }));
-        // Signing here as well as on the transport's own control, because the
-        // two taps mean the same thing to the person making them. A second
-        // call while a link is in flight signs a second one and the last to
-        // land wins — which costs a presign and never a wrong position.
+        // Signing here as well as on the transport's own control, because
+        // the two taps mean the same thing to the person making them. A
+        // second call while a link is in flight signs a second one and the
+        // last to land wins — which costs a presign and never a wrong
+        // position.
         hearIt();
       },
     }),
@@ -145,105 +142,106 @@ export function RoomPlayer({ findIt, ref }: RoomPlayerProps) {
   }
 
   return (
-    <AudioElement
-      source={{ uri: url }}
-      // Straight into it. The tap already said "hear this room", and a second
-      // tap to start what the first one asked for is the control not working.
-      autoPlay
-      // Left at its default `false`, which is what streams over HTTP ranges
-      // rather than pulling the whole room down first — the entire reason this
-      // element is reached by a private path at all (#68).
-      forceDownload={false}
-      onError={(error: Error) => {
-        // Never the vendor's words. `CLAUDE.md` forbids naming a provider to
-        // the user, and this message is whatever the decoder or the store said
-        // — which on a bad day is a signed URL with our bucket host in it.
-        void error;
+    <Sounding
+      url={url}
+      refusal={refusal}
+      wanted={wanted}
+      onBroke={() => {
+        // Never the platform's words: whatever the decoder or the store
+        // said may carry a signed URL with our bucket host in it, and
+        // `CLAUDE.md` forbids naming a provider to the user either way.
         setRefusal('That did not play. Try it again in a moment.');
-        // Dropped, so the next tap signs a fresh link rather than retrying a
-        // URL that may simply have expired mid-stream.
+        // Dropped, so the next tap signs a fresh link rather than retrying
+        // a URL that may simply have expired mid-stream.
         setUrl(null);
       }}
-    >
-      <Chrome refusal={refusal} wanted={wanted} />
-    </AudioElement>
+    />
   );
 }
 
 /**
- * The transport, fed from the element's own context.
- *
- * A child rather than a sibling because `duration` and `currentTime` are
- * published only on that context — the imperative handle carries the verbs and
- * none of the readings — so anything that shows a position has to be inside.
+ * The half that holds a live player. Its own component so the player hooks
+ * run only once a link exists — hooks cannot be conditional, but mounting
+ * can be.
  */
-function Chrome({
+function Sounding({
+  url,
   refusal,
   wanted,
+  onBroke,
 }: {
+  url: string;
   refusal: string | null;
   wanted: { seconds: number; nth: number } | null;
+  onBroke: () => void;
 }) {
-  const tag = useAudioTagContext();
+  const player = useAudioPlayer({ uri: url });
+  const status = useAudioPlayerStatus(player);
 
   /**
-   * The last request actually spent, so position updates do not replay it.
-   *
-   * This effect re-runs on every `tag` change — which is constantly, because
-   * `currentTime` advances — and without a mark, one tapped timestamp would
-   * drag the playhead back to it forever.
+   * Straight into it, once. The tap already said "hear this room", and a
+   * second tap to start what the first one asked for is the control not
+   * working. Once, because pause must not be undone by a status update.
+   */
+  const started = useRef(false);
+  useEffect(() => {
+    if (status.isLoaded && !started.current) {
+      started.current = true;
+      player.play();
+    }
+  }, [status.isLoaded, player]);
+
+  /**
+   * Land on a moment somebody asked for, once there is something loaded to
+   * land on — the platform discards a seek on an unloaded player silently,
+   * which would look exactly like a timestamp that does nothing. `spent`
+   * stops position updates replaying the same request forever.
    */
   const spent = useRef(0);
-
-  /**
-   * Land on a moment somebody asked for, once there is something to land on.
-   *
-   * Waits for `ready`: seeking an element that has not loaded is discarded
-   * silently by the platform, which would look exactly like a timestamp that
-   * does nothing — on the one control whose entire point is that it lands
-   * somewhere.
-   */
   useEffect(() => {
-    if (wanted === null || wanted.nth === spent.current || !tag.ready) return;
+    if (wanted === null || wanted.nth === spent.current || !status.isLoaded) return;
 
     spent.current = wanted.nth;
-    tag.seekToTime(wanted.seconds);
-    tag.play();
-  }, [wanted, tag]);
+    void player.seekTo(wanted.seconds);
+    player.play();
+  }, [wanted, status.isLoaded, player]);
+
+  /** A stream that died mid-play surfaces through status, not a callback. */
+  const broke = status.playbackState === 'failed';
+  useEffect(() => {
+    if (broke) onBroke();
+  }, [broke, onBroke]);
 
   /**
-   * Whether Play would start at the end of the room.
-   *
-   * Read off the position rather than remembered from an `ended` event, because
-   * the same thing is true of somebody who dragged the bar to the end and then
-   * pressed Play — an event would have covered one case and not the other. The
-   * quarter-second is the gap position tracking leaves behind: it reports on an
-   * interval, so the last reading before a room ends is a fraction short of the
-   * duration rather than equal to it.
+   * Whether Play would start at the end of the room. Read off the position
+   * rather than remembered from an ended event, because the same thing is
+   * true of somebody who dragged the bar to the end — an event would cover
+   * one case and not the other. The quarter-second is the reporting
+   * interval's gap.
    */
-  const ended = tag.duration > 0 && tag.currentTime >= tag.duration - 0.25;
+  const ended = status.duration > 0 && status.currentTime >= status.duration - 0.25;
 
   const state: Heard =
     refusal !== null
       ? 'failed'
-      : tag.playbackState === 'playing'
+      : status.playing
         ? 'playing'
-        : tag.ready
+        : status.isLoaded
           ? 'paused'
           : 'opening';
 
   return (
     <RoomPlayback
       state={state}
-      at={tag.currentTime}
-      runs={tag.duration}
+      at={status.currentTime}
+      runs={status.duration}
       refusal={refusal}
       onPlay={() => {
-        if (ended) tag.seekToTime(0);
-        tag.play();
+        if (ended) void player.seekTo(0);
+        player.play();
       }}
-      onPause={tag.pause}
-      onSeek={tag.seekToTime}
+      onPause={() => player.pause()}
+      onSeek={(seconds) => void player.seekTo(seconds)}
     />
   );
 }

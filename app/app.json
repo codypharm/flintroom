@@ -11,7 +11,8 @@
       "bundleIdentifier": "com.flintroom.app",
       "supportsTablet": false,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Flintroom uses your microphone so the panel can hear your argument and respond to it during a rehearsal session."
+        "NSMicrophoneUsageDescription": "Flintroom uses your microphone so the panel can hear your argument and respond to it during a rehearsal session.",
+        "ITSAppUsesNonExemptEncryption": false
       },
       "usesAppleSignIn": true
     },
@@ -24,7 +25,9 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.flintroom.app",
       "permissions": [
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ]
     },
     "web": {
@@ -50,11 +53,18 @@
           "iosUrlScheme": "com.googleusercontent.apps.297672297774-d658jvif92sqquviai5me198720j4qfg"
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "74211d9e-db50-420e-9b14-9a706d5f7644"
+      }
     }
   }
 }
