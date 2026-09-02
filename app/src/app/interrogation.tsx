@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { AudioContext, AudioManager, AudioRecorder } from 'react-native-audio-api';
+import { AudioManager } from 'react-native-audio-api';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -33,6 +33,7 @@ import { takeIntent } from '../lib/room/intent';
 import { createSessionsApi, RoomOver, type StartedRoom } from '../lib/api/sessionsApi';
 import { API_BASE_URL, auth } from '../lib/auth';
 import { joinRoom, type Room } from '../lib/voice/room';
+import { openCaptureStack, openPlaybackStack, type CaptureStack, type PlaybackStack } from '../lib/voice/stack';
 import type { Attending, Ending, RoomTemperature , PanelLine } from '../lib/voice/connection';
 import { color, radius, space, type } from '../theme/tokens';
 
@@ -142,8 +143,8 @@ export default function InterrogationScreen() {
   } | null>(null);
 
   const room = useRef<Room | null>(null);
-  const context = useRef<AudioContext | null>(null);
-  const recorder = useRef<AudioRecorder | null>(null);
+  const stack = useRef<PlaybackStack | null>(null);
+  const recorder = useRef<CaptureStack['recorder'] | null>(null);
   const session = useRef<string | null>(null);
   const levels = useRef<number[]>([]);
   /**
@@ -176,8 +177,8 @@ export default function InterrogationScreen() {
     await deactivateKeepAwake(KEEP_AWAKE).catch(() => undefined);
     recorder.current?.stop();
     recorder.current = null;
-    await context.current?.close().catch(() => undefined);
-    context.current = null;
+    await stack.current?.close().catch(() => undefined);
+    stack.current = null;
     await leaveHandsFree();
   }, []);
 
@@ -391,11 +392,6 @@ export default function InterrogationScreen() {
         // Apple's voice processing, which is what cancels the panel out of the
         // microphone; `defaultToSpeaker` stops `playAndRecord` routing to the
         // earpiece, which would be a phone held to the ear rather than a room.
-        AudioManager.setAudioSessionOptions({
-          iosCategory: 'playAndRecord',
-          iosMode: 'voiceChat',
-          iosOptions: ['defaultToSpeaker', 'allowBluetoothHFP'],
-        });
         await enterHandsFree();
 
         // Hands-free means nobody touches the screen for twelve minutes, so the
@@ -403,17 +399,18 @@ export default function InterrogationScreen() {
         // server reads as hanging up. Held only while a room is open.
         await activateKeepAwakeAsync(KEEP_AWAKE);
 
-        const capture = new AudioRecorder();
+        // Which audio stack carries the room is `lib/voice/stack`'s one
+        // decision (#25). The trap its `ready()` covers on the library path:
+        // a context that is not running renders nothing, and renders it
+        // silently — indistinguishable from a panel that never spoke. The
+        // iOS session options live in there too, with the stack they belong
+        // to.
+        const { recorder: capture } = openCaptureStack();
         recorder.current = capture;
-        const playback = new AudioContext();
-        context.current = playback;
-
-        // A context that is not running renders nothing, and renders it
-        // silently: frames enqueue without complaint and no sound arrives,
-        // which is indistinguishable from a panel that never spoke.
-        if (playback.state !== 'running') {
-          await playback.resume();
-        }
+        const sound = openPlaybackStack();
+        stack.current = sound;
+        await sound.ready();
+        const playback = sound.context;
 
         const started = minted.room;
         session.current = started.id;
