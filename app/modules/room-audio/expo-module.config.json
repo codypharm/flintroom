@@ -1,0 +1,9 @@
+{
+  "platforms": ["android", "ios"],
+  "android": {
+    "modules": ["com.flintroom.roomaudio.RoomAudioModule"]
+  },
+  "ios": {
+    "modules": ["RoomAudioModule"]
+  }
+}
