@@ -209,12 +209,16 @@ Recorded here so the omissions are choices rather than oversights.
   published sentence states the fact; whether the audience's jurisdictions
   (GDPR etc.) need transfer-mechanism language on top of it is counsel's
   call, resting on the vendors' own DPAs.
-- **A children's provision is drafted, pending the store rating.** Proposed:
-  *"Flintroom is a professional rehearsal tool, is not directed at children,
-  and does not knowingly collect personal information from anyone under 13."*
-  [CONFIRM] Publish it once the Play content rating questionnaire has been
-  answered and agrees — a policy that says 13 beside a store page rated for
-  younger users would contradict itself.
+- **The children's provision is published — resolved 2026-09-03.** The Play
+  content rating came back "Rated for 3+", which is a statement about the
+  *content* (nothing objectionable), not about who the app is directed at —
+  that is the target-audience declaration, and no under-13 group was declared
+  (the Families policy flow, which Play forces on any app targeting children,
+  was never triggered). A 3+ content rating beside "not directed at children"
+  is the ordinary combination for a professional tool, so `web/privacy.html`
+  now carries: *"Flintroom is a professional rehearsal tool, is not directed
+  at children, and does not knowingly collect personal information from
+  anyone under 13."*
 
 ---
 
