@@ -25,9 +25,7 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.flintroom.app",
       "permissions": [
-        "android.permission.RECORD_AUDIO",
-        "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
