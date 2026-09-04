@@ -431,6 +431,43 @@ separates the two: `bad_signature` is a person, `stale_signature` is usually a
 clock, and `unconfigured` means this deployment is dropping real purchases on the
 floor right now.
 
+## What the app asks for is decided by plugins, so read the bundle
+
+Added 2026-09-04, after Play flagged `FOREGROUND_SERVICE_MEDIA_PLAYBACK` and
+two rebuilds failed to clear it.
+
+`app/android` and `app/ios` are generated and gitignored. EAS runs a fresh
+prebuild from `app.json` for every build, so **a permission deleted from the
+generated manifest is a change no build ever sees.** The first fix did exactly
+that and shipped an identical bundle.
+
+The permission was not in our config at all. `expo-audio`'s plugin adds
+`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK` and an
+`AudioControlsService` whenever `enableBackgroundPlayback` is left at its
+default of *true* — a default that arrived with the library in #25 and that
+nothing in the repo mentioned. `app/src/lib/app-config.test.ts` now pins the
+option, because listing the plugin bare is enough to bring all three back.
+
+**Verify against the artifact, not the config.** `expo config --type
+introspect` reads the *existing* generated directories as its base, so a
+stale local prebuild can make it agree with a build that does not exist. The
+bundle is the only thing that cannot be wrong:
+
+```bash
+npx eas-cli build:list --platform android --limit 2 --json --non-interactive
+curl -sL -o build.aab "<applicationArchiveUrl>"
+unzip -p build.aab base/manifest/AndroidManifest.xml | strings | grep permission
+```
+
+The AAB's manifest is protobuf, but permission names survive as plain strings.
+Measured this way: version 15 carried both permissions and the service;
+version 16 carried none.
+
+**A Play declaration outlives the bundle that caused it.** The console
+evaluates artifacts still active in a track, and it re-scans on its own
+schedule, so the warning persists for a while after a clean build is rolled
+out. That lag is not evidence the fix failed — the bundle is.
+
 ## Start from `backend/`
 
 `Settings` reads `.env` relative to the working directory, and the scripts
