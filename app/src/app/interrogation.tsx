@@ -21,6 +21,9 @@ import {
   type Steadied,
 } from '../lib/audio/hearing';
 import { ensureMicrophone } from '../lib/audio/permission';
+import * as Network from 'expo-network';
+
+import { isOffline } from '../lib/net/offline';
 import { refusalFor, type Refusal } from '../lib/room/refusals';
 import { createAccountApi } from '../lib/api/accountApi';
 import { RecordingDisclosure } from '../components/modules/RecordingDisclosure';
@@ -505,7 +508,11 @@ export default function InterrogationScreen() {
         opened.current = Date.now();
       } catch (thrown) {
         if (!alive) return;
-        setRefusal(refusalFor(thrown));
+        // Asked here rather than before the attempt: a probe that ran first
+        // would be answering about a moment that has passed by the time
+        // anything fails, and would cost every successful room a native call
+        // for a sentence nobody reads.
+        setRefusal(refusalFor(thrown, await isOffline(Network)));
         await release();
       }
     }

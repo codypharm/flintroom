@@ -22,6 +22,9 @@ import { collectClip, type Clip } from '../../lib/audio/clip';
 import { API_BASE_URL, auth } from '../../lib/auth';
 import { useGateway } from '../../lib/auth/gateway';
 import { SignedOut } from '../../lib/auth/session';
+import * as Network from 'expo-network';
+
+import { isOffline } from '../../lib/net/offline';
 import { refusedRoom, refusedTurn, type RoomRefusal } from '../../lib/debrief/refusals';
 import { byQuestion, exchanged } from '../../lib/debrief/resumed';
 import { streamedExchange } from '../../lib/debrief/streamedExchange';
@@ -182,7 +185,7 @@ export default function DebriefRoute() {
         setThread(debrief.thread.map(exchanged));
         setAttempts(byQuestion(debrief.attempts));
       })
-      .catch((error) => {
+      .catch(async (error) => {
         if (!live) return;
         if (error instanceof SignedOut) {
           // The gate decides where a signed-out person goes, not this screen.
@@ -193,7 +196,12 @@ export default function DebriefRoute() {
           recheck();
           return;
         }
-        setRefusal(refusedRoom(error));
+        const offline = await isOffline(Network);
+        // Re-checked after the await: the screen can leave while the probe is
+        // in flight, and setting state on a dead effect is how a warning
+        // becomes a habit nobody reads.
+        if (!live) return;
+        setRefusal(refusedRoom(error, offline));
       });
 
     return () => {
@@ -283,7 +291,7 @@ export default function DebriefRoute() {
           recheck();
         return;
       }
-      setTurnRefusal(refusedTurn(error));
+      setTurnRefusal(refusedTurn(error, await isOffline(Network)));
     }
   }, [id, speak, opening, recheck]);
 
@@ -367,7 +375,7 @@ export default function DebriefRoute() {
           recheck();
         return;
       }
-      setTurnRefusal(refusedTurn(error));
+      setTurnRefusal(refusedTurn(error, await isOffline(Network)));
     } finally {
       setListening({ state: 'idle' });
     }

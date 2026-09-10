@@ -60,3 +60,37 @@ it('says something honest about a failure nobody explained', async () => {
   expect(refusal.said).toBeTruthy();
   expect(refusal.buying).toBe(false);
 });
+
+describe('when the phone is the thing that is offline', () => {
+  it('says so instead of the catch-all, and still says nothing was charged', () => {
+    const refusal = refusalFor(new Error('Network request failed'), true);
+
+    expect(refusal.said).toMatch(/offline/i);
+    // The sentence this replaced led with "nothing was charged", and that
+    // reassurance is the part that must survive: somebody who just tried to
+    // spend minutes assumes they spent them.
+    expect(refusal.said).toMatch(/nothing was charged/i);
+    expect(refusal.buying).toBe(false);
+  });
+
+  it('never overrides a refusal the server sent, because the server answered', () => {
+    // Reaching a typed refusal means a request went out and came back. If the
+    // probe says offline here it is stale or wrong, and telling somebody their
+    // connection is down while showing them a server's own answer is the kind
+    // of contradiction that makes the whole screen untrustworthy.
+    const refusal = refusalFor(
+      new Refused('no_minutes_remaining', 'server said so', 422),
+      true
+    );
+
+    expect(refusal.said).not.toMatch(/offline/i);
+    expect(refusal.buying).toBe(true);
+  });
+
+  it('does not blame the network for the microphone', () => {
+    // A denied microphone is local and stays local. Sending somebody to check
+    // their wifi over a permission they have to change in Settings is a dead
+    // end with a confident voice.
+    expect(refusalFor(new Error('denied'), true).said).toMatch(/microphone/i);
+  });
+});

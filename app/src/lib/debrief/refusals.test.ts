@@ -1,4 +1,5 @@
 import { Refused } from '../api/debriefApi';
+import { SignedOut } from '../auth/session';
 import { refusedRoom, refusedTurn } from './refusals';
 
 /**
@@ -48,10 +49,15 @@ describe('refusedRoom', () => {
     );
   });
 
-  it('is not a room refusal when it is not a refusal at all', async () => {
+  it('is not a room refusal when the account is the problem', async () => {
     // A `SignedOut` reaches here and must not be drawn as a debrief problem;
     // the route sends it somewhere else entirely.
-    expect(refusedRoom(new Error('offline'))).toBeNull();
+    //
+    // **Narrowed 2026-09-10.** This used to assert null for *any* non-refusal,
+    // passing a plain `Error` to make a point about `SignedOut`, and the
+    // over-broad contract it locked in is what left a failed request drawing a
+    // spinner forever. Only the account case is silent now.
+    expect(refusedRoom(new SignedOut('expired'))).toBeNull();
   });
 });
 
@@ -128,5 +134,44 @@ describe('a room that could not be read this time', () => {
     // An unknown code has an unknown recovery, and guessing "try again" at one
     // would invite somebody to hammer a request that can never succeed.
     expect(refusedRoom(new Refused('something_new', 'x', 400))?.offer).toBeNull();
+  });
+});
+
+describe('a coaching turn that never left the phone', () => {
+  it('says the phone is offline rather than blaming the server', () => {
+    expect(refusedTurn(new Error('Network request failed'), true)).toMatch(/offline/i);
+  });
+
+  it('keeps the server\'s own answer when the server answered', () => {
+    expect(refusedTurn(new Refused('nothing_was_said', 'x', 422), true)).not.toMatch(
+      /offline/i
+    );
+  });
+});
+
+describe('a debrief that never arrived', () => {
+  it('says something instead of spinning forever', () => {
+    // The screen renders a spinner until a refusal exists, so a null here is
+    // not "no refusal" but "no exit": a transport failure left somebody
+    // watching an indicator with nothing coming. Offering the same call again
+    // is right, because the room and its transcript were never the problem.
+    const refusal = refusedRoom(new Error('Network request failed'));
+
+    expect(refusal).not.toBeNull();
+    expect(refusal?.offer).toBe('try again');
+  });
+
+  it('names the phone when the phone is what is offline', () => {
+    const refusal = refusedRoom(new Error('Network request failed'), true);
+
+    expect(`${refusal?.title} ${refusal?.body}`).toMatch(/offline/i);
+    expect(refusal?.offer).toBe('try again');
+  });
+
+  it('stays silent for a signed-out error, because the gate moves them', () => {
+    // Both call sites return early on this, but the promise is this file's to
+    // keep: a sentence drawn here would race the navigation that is already
+    // happening, and win.
+    expect(refusedRoom(new SignedOut('expired'), true)).toBeNull();
   });
 });

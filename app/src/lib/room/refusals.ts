@@ -34,7 +34,7 @@ export interface Refusal {
   buying: boolean;
 }
 
-export function refusalFor(thrown: unknown): Refusal {
+export function refusalFor(thrown: unknown, offline = false): Refusal {
   // The server's own diagnosis first, because it is the only thing that knows
   // WHY. A device reported "the room would not open, nothing was charged" while
   // the API was saying `no_minutes_remaining` — the catch-all below standing in
@@ -61,6 +61,18 @@ export function refusalFor(thrown: unknown): Refusal {
   if (why === 'unavailable') {
     return {
       said: 'We could not reach the microphone. Try again in a moment.',
+      buying: false,
+    };
+  }
+
+  // Only here, and deliberately last. Everything above either came back from
+  // the server (which proves the connection worked) or happened on the device
+  // (which the network cannot explain). This is the one branch that was
+  // reached without an answer from anywhere, so it is the only one a dead
+  // connection can account for.
+  if (offline) {
+    return {
+      said: 'Your phone is offline. A room needs a connection to open. Nothing was charged.',
       buying: false,
     };
   }

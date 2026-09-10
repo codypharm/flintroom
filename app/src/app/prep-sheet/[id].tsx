@@ -18,6 +18,9 @@ import { createDebriefApi, type WeakAnswer } from '../../lib/api/debriefApi';
 import { API_BASE_URL, auth } from '../../lib/auth';
 import { useGateway } from '../../lib/auth/gateway';
 import { SignedOut } from '../../lib/auth/session';
+import * as Network from 'expo-network';
+
+import { isOffline } from '../../lib/net/offline';
 import { refusedRoom, type RoomRefusal } from '../../lib/debrief/refusals';
 import { color, radius, space, type } from '../../theme/tokens';
 
@@ -84,7 +87,7 @@ export default function PrepSheetRoute() {
       .then((debrief) => {
         if (live) setAnswers(debrief.weakAnswers);
       })
-      .catch((error) => {
+      .catch(async (error) => {
         if (!live) return;
         if (error instanceof SignedOut) {
           // The gate decides where a signed-out person goes, not this screen.
@@ -99,7 +102,9 @@ export default function PrepSheetRoute() {
         // A room that broke, or one the panel never spoke in, means the same
         // thing here as it does there — and two screens inventing separate
         // sentences for one server code is how they come to disagree.
-        setRefused(refusedRoom(error));
+        const offline = await isOffline(Network);
+        if (!live) return;
+        setRefused(refusedRoom(error, offline));
       });
 
     return () => {

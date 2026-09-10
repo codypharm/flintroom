@@ -1,4 +1,5 @@
 import { Refused } from '../api/debriefApi';
+import { SignedOut } from '../auth/session';
 
 /**
  * What the server refused, said to the person who is holding the phone.
@@ -71,11 +72,36 @@ const ROOM: Record<string, RoomRefusal> = {
 /**
  * The refusal to draw instead of the sheet, or null if this is not one.
  *
- * Null for anything else, including a `SignedOut`: that is not a thing this
- * screen can explain, and the route sends it somewhere else.
+ * Null for exactly one case: a `SignedOut`. That is not a thing this screen
+ * can explain, and the gate is already moving them somewhere else — a sentence
+ * drawn here would race that navigation and win.
+ *
+ * **Everything else returns something, and that is a fix rather than a
+ * detail.** The screen shows a spinner until a refusal exists, so returning
+ * null for a failed request left somebody watching an indicator with nothing
+ * ever coming. A dropped connection is by far the likeliest way to reach here,
+ * and it was the one failure the screen could not say a word about.
  */
-export function refusedRoom(error: unknown): RoomRefusal | null {
-  if (!(error instanceof Refused)) return null;
+export function refusedRoom(error: unknown, offline = false): RoomRefusal | null {
+  if (error instanceof SignedOut) return null;
+
+  if (!(error instanceof Refused)) {
+    // No typed answer means no answer at all: the request never came back.
+    // Both sentences lead with what survived, because the fear this raises is
+    // that the room is gone, and both offer the same call again, because the
+    // transcript on our side was never the problem.
+    return offline
+      ? {
+          title: 'Your phone is offline',
+          body: 'This room and everything in it are still saved. Reconnect and open it again.',
+          offer: 'try again',
+        }
+      : {
+          title: 'That did not load',
+          body: 'We could not reach the server. The room is still there.',
+          offer: 'try again',
+        };
+  }
 
   return (
     ROOM[error.code] ?? {
@@ -96,9 +122,13 @@ export function refusedRoom(error: unknown): RoomRefusal | null {
  * because one recording was too long would be a worse failure than the one
  * being reported.
  */
-export function refusedTurn(error: unknown): string {
+export function refusedTurn(error: unknown, offline = false): string {
   if (!(error instanceof Refused)) {
-    return 'I could not reach the server. Try that again in a moment.';
+    // The coach speaks in the first person everywhere else on this screen, so
+    // it says what happened to *this* clip rather than issuing a diagnosis.
+    return offline
+      ? 'Your phone is offline, so that did not reach me. Try again once you are back.'
+      : 'I could not reach the server. Try that again in a moment.';
   }
 
   switch (error.code) {
