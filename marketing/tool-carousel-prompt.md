@@ -65,7 +65,9 @@ Follow the slide count in the tool block. The shape is always:
 3. One slide per input, or per pair of inputs that share a single idea. The
    tool block says which pair with which and why.
 4. The equation. Both versions: the one everybody uses, and the one the page
-   runs. The contrast is the post.
+   runs. The contrast is the post. Write both sides AS EQUATIONS, with symbols
+   and a small legend defining them. A column that describes the method in
+   prose instead of stating it looks like the equation is missing, and it is.
 5. The interpretation slide. What the answer means, named in the tool block.
 6. Payoff plus the link.
 
@@ -151,18 +153,41 @@ which no free calculator seems to compute.
 Pair 2 with 3, because gross versus net burn is one idea and needs both. Pair 4
 with 5 for the same reason.
 
-**The equation slide.**
+**The equation slide.** Write both sides as equations. A right-hand column
+that describes the method in words instead of stating it is the failure mode
+here, and it loses the entire contrast the slide exists for.
 
 Everybody:
 
-    Runway = Cash / (Monthly spend - Monthly revenue)
+    runway = C / (S - R)
 
-This page, month by month:
+with S and R frozen for the whole forecast.
 
-    spend in month n   = spend x (1 + spend growth)^(n-1)
-    revenue in month n = revenue x (1 + revenue growth)^(n-1)
-    cash after month n = cash after month n-1 - (spend_n - revenue_n)
-    Runway = the first month where cash reaches zero
+This page, month by month, where n is 1 for the month you are standing in:
+
+    S(n)    = S x (1 + g)^(n-1)
+    R(n)    = R x (1 + h)^(n-1)
+    cash(n) = cash(n-1) - (S(n) - R(n))
+
+    runway  = the first n where cash(n) reaches zero, plus the fraction of
+              that month the last of the cash pays for:
+
+    runway  = (n - 1) + cash(n-1) / (S(n) - R(n))
+
+C is cash today, S monthly spend, R monthly revenue, g spend growth, h revenue
+growth. Define them in a legend on the slide, small, under the equations.
+
+Two things not to get wrong. The exponent is n-1 rather than n, because month
+one is the month you are standing in and runs at today's spend, so growth
+starts in month two. And the fractional line is the point of the whole page:
+without it the answer is "month 10", which is a count, and with it the answer
+is 9.6 months, which is a date.
+
+A worked example belongs on this slide or the one after, because numbers read
+faster than symbols. 600,000 in the bank, 55,000 a month, no revenue, spend
+growing 3% a month. The division says 10.9 months. Compounded, it is 9.6. Six
+weeks that were never there. Those figures come from the page's own algorithm,
+so they hold if anybody checks.
 
 **The interpretation slide.** Default alive means revenue covers spend before
 cash reaches zero. Default dead means cash gets there first. Most companies are
