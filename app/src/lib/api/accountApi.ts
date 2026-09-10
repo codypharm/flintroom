@@ -1,4 +1,5 @@
 import { SignedOut } from '../auth/session';
+import { boundedFetch } from '../net/bounded';
 
 /**
  * The account endpoint, over HTTP.
@@ -49,7 +50,7 @@ interface DeletionScheduledBody {
 export function createAccountApi({
   baseUrl,
   accessToken,
-  fetch: fetcher = fetch,
+  fetch: fetcher = boundedFetch(),
 }: AccountApiOptions): AccountApi {
   return {
     recordingWindow: async () => {

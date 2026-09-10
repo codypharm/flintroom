@@ -1,4 +1,5 @@
 import { SignedOut } from '../auth/session';
+import { boundedFetch } from '../net/bounded';
 
 /**
  * The panel catalogue, over HTTP.
@@ -80,7 +81,7 @@ interface CatalogueBody {
 export function createPanelsApi({
   baseUrl,
   accessToken,
-  fetch: fetcher = fetch,
+  fetch: fetcher = boundedFetch(),
 }: PanelsApiOptions): PanelsApi {
   const send = async (path: string, init: RequestInit = {}): Promise<Response> => {
     const response = await fetcher(`${baseUrl}${path}`, {

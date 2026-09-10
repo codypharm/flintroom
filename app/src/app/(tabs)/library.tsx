@@ -10,6 +10,8 @@ import { API_BASE_URL, auth } from '../../lib/auth';
 import { useGateway } from '../../lib/auth/gateway';
 import { SignedOut } from '../../lib/auth/session';
 import { color, radius, space, type } from '../../theme/tokens';
+import * as Network from 'expo-network';
+import { isOffline } from '../../lib/net/offline';
 
 /**
  * Every room already run.
@@ -47,7 +49,7 @@ export default function LibraryRoute() {
       .then((theirs) => {
         if (live) setRooms(theirs);
       })
-      .catch((error) => {
+      .catch(async (error) => {
         if (!live) return;
         if (error instanceof SignedOut) {
           // The gate decides where a signed-out person goes, not this screen.
@@ -60,7 +62,15 @@ export default function LibraryRoute() {
         }
         // Distinct from an empty library, and the difference matters: one says
         // there is nothing here yet and the other says we could not find out.
-        setRefused('I could not reach your rooms. Try that again in a moment.');
+        // Offline is a third thing again: nothing is wrong with the rooms or
+        // with us, and the recovery is theirs rather than a retry.
+        const offline = await isOffline(Network);
+        if (!live) return;
+        setRefused(
+          offline
+            ? 'Your phone is offline. Your rooms are all still here when you are back.'
+            : 'I could not reach your rooms. Try that again in a moment.'
+        );
       });
 
     return () => {

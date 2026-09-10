@@ -1,6 +1,7 @@
 import { SignedOut } from '../auth/session';
 import { streamedTurn } from './coachStream';
 import { Refused } from './refused';
+import { boundedFetch } from '../net/bounded';
 
 /**
  * The unmetered half of the product, over HTTP.
@@ -259,7 +260,7 @@ interface SparringAttemptBody {
 export function createDebriefApi({
   baseUrl,
   accessToken,
-  fetch: fetcher = fetch,
+  fetch: fetcher = boundedFetch(),
   streamFetch,
 }: DebriefApiOptions): DebriefApi {
   const streamed = (path: string, clip: ArrayBuffer, handlers: TurnStreamHandlers) =>

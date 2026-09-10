@@ -1,5 +1,6 @@
 import { SignedOut } from '../auth/session';
 import { refusalIn } from './refused';
+import { UPLOAD_TIMEOUT_MS, boundedFetch } from '../net/bounded';
 
 /**
  * Attaching a deck: three calls, then a wait.
@@ -131,7 +132,7 @@ export class MaterialGone extends Error {
 export function createMaterialsApi({
   baseUrl,
   accessToken,
-  fetch: fetcher = fetch,
+  fetch: fetcher = boundedFetch(UPLOAD_TIMEOUT_MS),
 }: MaterialsApiOptions): MaterialsApi {
   const send = async (path: string, init: RequestInit = {}): Promise<Response> => {
     const response = await fetcher(`${baseUrl}${path}`, {

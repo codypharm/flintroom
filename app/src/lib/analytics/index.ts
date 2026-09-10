@@ -1,3 +1,5 @@
+import { boundedFetch } from '../net/bounded';
+
 /**
  * First-party analytics — the app's half of #105.
  *
@@ -30,7 +32,7 @@ export interface Analytics {
 export function createAnalytics({
   baseUrl,
   accessToken,
-  fetch: fetcher = fetch,
+  fetch: fetcher = boundedFetch(),
 }: AnalyticsOptions): Analytics {
   return {
     track(name) {

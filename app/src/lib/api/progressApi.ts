@@ -1,4 +1,5 @@
 import { SignedOut } from '../auth/session';
+import { boundedFetch } from '../net/bounded';
 
 /**
  * Whether this account is getting better.
@@ -73,7 +74,7 @@ export interface ProgressApiOptions {
 export function createProgressApi({
   baseUrl,
   accessToken,
-  fetch: fetcher = fetch,
+  fetch: fetcher = boundedFetch(),
 }: ProgressApiOptions): ProgressApi {
   return {
     read: async () => {

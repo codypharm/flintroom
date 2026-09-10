@@ -1,4 +1,5 @@
 import { SignedOut } from '../auth/session';
+import { boundedFetch } from '../net/bounded';
 
 /**
  * The panelists this account wrote.
@@ -66,7 +67,7 @@ export interface ArchetypesApiOptions {
 export function createArchetypesApi({
   baseUrl,
   accessToken,
-  fetch: fetcher = fetch,
+  fetch: fetcher = boundedFetch(),
 }: ArchetypesApiOptions): ArchetypesApi {
   const mine = `${baseUrl}/v1/archetypes/mine`;
 

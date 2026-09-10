@@ -1,4 +1,5 @@
 import { SignedOut, type AuthApi, type IssuedTokens } from '../auth/session';
+import { boundedFetch } from '../net/bounded';
 
 /**
  * The auth endpoints, over HTTP.
@@ -36,7 +37,7 @@ interface SignedInBody {
 
 export function createAuthApi({
   baseUrl,
-  fetch: fetcher = fetch,
+  fetch: fetcher = boundedFetch(),
 }: AuthApiOptions): AuthApi {
   const post = async (path: string, body: unknown): Promise<Response> => {
     const response = await fetcher(`${baseUrl}${path}`, {

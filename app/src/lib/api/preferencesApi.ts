@@ -1,4 +1,5 @@
 import { SignedOut } from '../auth/session';
+import { boundedFetch } from '../net/bounded';
 
 /**
  * Whether rooms are saved, and for how long they stay playable.
@@ -43,7 +44,7 @@ const PATH = '/v1/preferences/recording';
 export function createPreferencesApi({
   baseUrl,
   accessToken,
-  fetch: fetcher = fetch,
+  fetch: fetcher = boundedFetch(),
 }: PreferencesApiOptions): PreferencesApi {
   const send = async (init: RequestInit = {}): Promise<Recording> => {
     const response = await fetcher(`${baseUrl}${PATH}`, {

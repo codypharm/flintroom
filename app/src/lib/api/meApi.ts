@@ -1,5 +1,6 @@
 import type { OnboardingPlan } from '../auth/session';
 import { SignedOut } from '../auth/session';
+import { boundedFetch } from '../net/bounded';
 
 /**
  * Who is signed in, and whether they have told us anything yet.
@@ -38,7 +39,7 @@ export interface MeApiOptions {
 export function createMeApi({
   baseUrl,
   accessToken,
-  fetch: fetcher = fetch,
+  fetch: fetcher = boundedFetch(),
 }: MeApiOptions): MeApi {
   const send = async (path: string, init: RequestInit = {}): Promise<Response> => {
     const response = await fetcher(`${baseUrl}${path}`, {

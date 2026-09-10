@@ -9,6 +9,8 @@ import { API_BASE_URL, auth } from '../../lib/auth';
 import { useGateway } from '../../lib/auth/gateway';
 import { SignedOut } from '../../lib/auth/session';
 import { color, radius, space, type } from '../../theme/tokens';
+import * as Network from 'expo-network';
+import { isOffline } from '../../lib/net/offline';
 
 /**
  * How you are holding up, room after room.
@@ -51,7 +53,7 @@ export default function ProgressRoute() {
         .then((theirs) => {
           if (live) setRead(theirs);
         })
-        .catch((error) => {
+        .catch(async (error) => {
           if (!live) return;
           if (error instanceof SignedOut) {
             // The gate decides where a signed-out person goes, not this screen.
@@ -66,7 +68,13 @@ export default function ProgressRoute() {
           // says there is nothing to compare yet, the other says we could not
           // find out. Drawing the first for the second would tell somebody with
           // twelve rooms that they have none.
-          setRefused('I could not read your rooms back. Try again in a moment.');
+          const offline = await isOffline(Network);
+          if (!live) return;
+          setRefused(
+            offline
+              ? 'Your phone is offline. Nothing is lost; your rooms are on our side.'
+              : 'I could not read your rooms back. Try again in a moment.'
+          );
         });
 
       return () => {

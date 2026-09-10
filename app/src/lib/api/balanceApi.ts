@@ -1,4 +1,5 @@
 import { SignedOut } from '../auth/session';
+import { boundedFetch } from '../net/bounded';
 
 /**
  * How much time in the room this account has left.
@@ -40,7 +41,7 @@ export interface BalanceApiOptions {
 export function createBalanceApi({
   baseUrl,
   accessToken,
-  fetch: fetcher = fetch,
+  fetch: fetcher = boundedFetch(),
 }: BalanceApiOptions): BalanceApi {
   return {
     read: async () => {

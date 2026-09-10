@@ -1,4 +1,5 @@
 import { SignedOut } from '../auth/session';
+import { boundedFetch } from '../net/bounded';
 
 /**
  * Which control the buy screen leads with, and what there is to lead with.
@@ -56,7 +57,7 @@ export interface PurchaseApiOptions {
 export function createPurchaseApi({
   baseUrl,
   accessToken,
-  fetch: fetcher = fetch,
+  fetch: fetcher = boundedFetch(),
 }: PurchaseApiOptions): PurchaseApi {
   return {
     options: async () => {

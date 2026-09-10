@@ -1,5 +1,6 @@
 import { SignedOut } from '../auth/session';
 import { refusalIn } from './refused';
+import { boundedFetch } from '../net/bounded';
 
 /**
  * The door into a metered room, and the way out of one.
@@ -299,7 +300,7 @@ interface StartedBody {
 export function createSessionsApi({
   baseUrl,
   accessToken,
-  fetch: fetcher = fetch,
+  fetch: fetcher = boundedFetch(),
 }: SessionsApiOptions): SessionsApi {
   const send = async (path: string, init: RequestInit): Promise<Response> => {
     const response = await fetcher(`${baseUrl}${path}`, {
