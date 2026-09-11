@@ -1,0 +1,56 @@
+---
+/**
+ * Google Analytics, on the marketing site only.
+ *
+ * The app measures itself in our own Postgres and deliberately ships no
+ * analytics SDK (`docs/analytics.md`). That decision was about the app, and
+ * the same document says counting strangers "lives with the website, not the
+ * app backend" — which is this file. Nothing here runs on a phone, and no
+ * signed-in user is identified by it.
+ *
+ * **Consent Mode, defaulting to denied.** With `analytics_storage` denied,
+ * gtag sends cookieless pings: no cookie is set, so there is nothing a consent
+ * banner would be asking permission for. That is worth more than the returning
+ * visitor identity it costs. The site's whole pitch on the tool pages is that
+ * nothing is stored, and a cookie wall in front of that sentence would be a
+ * poor way to make it.
+ *
+ * **Host-gated rather than build-gated.** Vercel builds a preview deployment
+ * for every push and `astro dev` serves the same pages on localhost; both
+ * would otherwise report into the same property as the real site. Checking the
+ * hostname at runtime catches both with one condition, and keeps this file
+ * byte-identical to the copies in the three static pages — which is what makes
+ * `analytics.test.ts` a string comparison rather than a parser.
+ *
+ * **The copies.** `privacy.html`, `terms.html` and `delete-account.html` own
+ * their own `<head>` and cannot import this. They carry the same script inline.
+ * The test globs `pages/*.html`, so a new one fails on the day it is added.
+ */
+---
+
+<script is:inline>
+  (function () {
+    if (location.hostname !== 'www.flintroom.app') return;
+
+    var id = 'G-Q1GZBK57YS';
+
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { window.dataLayer.push(arguments); }
+    window.gtag = gtag;
+
+    gtag('consent', 'default', {
+      ad_storage: 'denied',
+      ad_user_data: 'denied',
+      ad_personalization: 'denied',
+      analytics_storage: 'denied'
+    });
+
+    gtag('js', new Date());
+    gtag('config', id);
+
+    var tag = document.createElement('script');
+    tag.async = true;
+    tag.src = 'https://www.googletagmanager.com/gtag/js?id=' + id;
+    document.head.appendChild(tag);
+  })();
+</script>

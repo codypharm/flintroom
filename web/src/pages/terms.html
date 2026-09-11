@@ -12,6 +12,35 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<!-- Google Analytics. The copy of record is src/components/Analytics.astro,
+     which this page cannot import because it owns its own head. Keep the two
+     identical; src/components/analytics.test.ts globs pages/*.html. -->
+<script>
+  (function () {
+    if (location.hostname !== 'www.flintroom.app') return;
+
+    var id = 'G-Q1GZBK57YS';
+
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { window.dataLayer.push(arguments); }
+    window.gtag = gtag;
+
+    gtag('consent', 'default', {
+      ad_storage: 'denied',
+      ad_user_data: 'denied',
+      ad_personalization: 'denied',
+      analytics_storage: 'denied'
+    });
+
+    gtag('js', new Date());
+    gtag('config', id);
+
+    var tag = document.createElement('script');
+    tag.async = true;
+    tag.src = 'https://www.googletagmanager.com/gtag/js?id=' + id;
+    document.head.appendChild(tag);
+  })();
+</script>
 <style>
   /* Kinetic Clarity — the landing page's tokens, on a page built to be read. */
   :root {

@@ -81,8 +81,10 @@ Nothing else about you: no password, no profile, no contacts, no address book.
 each session cost to run. This is how billing works and how the service is kept
 solvent.
 
-Flintroom does **not** collect video, does not analyse your face or body
-language, and does not build a profile of you from anywhere outside the app.
+The app does **not** collect video, does not analyse your face or body
+language, does not carry an advertising or analytics SDK, and does not build a
+profile of you from anywhere outside the app. The marketing site is a separate
+surface and is described under **The website** below.
 
 ---
 
@@ -188,10 +190,42 @@ Both were done on 2026-08-27, so the published page may — and now does — say
 *"our speech and model providers are barred, by the service tiers and settings
 we use, from training on what passes through them"* — cited to the tier and
 the setting rather than to hope. If either the ElevenLabs account or the
-Gemini billing arrangement ever changes, `web/privacy.html` carries this
+Gemini billing arrangement ever changes, `web/src/pages/privacy.html` carries this
 sentence and must change with it.
 
 Flintroom does not sell your data, and does not share it with advertisers.
+
+---
+
+## The website
+
+`flintroom.app` is a static marketing site with eight free calculators on it. It
+carries Google Analytics. The app does not, and `docs/analytics.md` records why
+the two are answered differently: counting strangers is marketing's job and
+lives with the website, while the app measures itself in our own Postgres.
+
+What it collects is what GA4 collects with no configuration: which pages were
+opened, approximate location derived from the IP address, device and browser.
+It runs in Consent Mode with `analytics_storage` defaulting to `denied`, so
+gtag sends cookieless pings and sets no cookie. That is what makes the
+published sentence "nothing is stored on your machine" true, and it is why the
+site carries no consent banner. Google Signals is off in the property, so none
+of this feeds advertising. [LAWYER] Confirm that cookieless Consent Mode is
+sufficient to go without a banner in the jurisdictions the site is read from;
+the mechanism is built either way, only the sentence depends on the answer.
+
+The tag is gated on the hostname, so Vercel preview deployments and local
+development do not report into the same property as the live site.
+
+The calculators compute in the browser. Nothing typed into one is sent
+anywhere: no request is made at all, and the pacing tool's pasted script in
+particular never leaves the page.
+
+**Where the tag lives.** `web/src/components/Analytics.astro` for the nine
+pages that render through `Base.astro`, and inline in `privacy.html`,
+`terms.html` and `delete-account.html`, which own their own `<head>` and cannot
+import it. `web/src/components/analytics.test.ts` globs `pages/*.html`, so a
+static page added without the tag fails the suite on the day it is added.
 
 ---
 
@@ -243,5 +277,8 @@ So that this document can be checked against the system rather than trusted.
 | Coach conversations are stored with the room | `backend/app/modules/sessions/models.py` → `session_coach_turns`, `session_sparring_attempts` |
 | A written panelist stays yours and dies with the account | `backend/app/modules/panels/models.py` → `CustomArchetype`; `docs/account-deletion.md` |
 | Purchases carry no card details | `backend/app/modules/billing/` consumes RevenueCat webhooks only; no payment fields exist anywhere in the schema |
+| The site sets no analytics cookie | `web/src/components/Analytics.astro` → Consent Mode default `analytics_storage: 'denied'`, asserted in `analytics.test.ts` |
+| Every page carries the same tag, or none does | `web/src/components/analytics.test.ts` globs `pages/*.html` and compares the inline copies to the component |
+| A calculator's inputs never leave the browser | `web/src/lib/*.ts` are pure functions; the site makes no request but the waitlist POST |
 
 The full reasoning behind these decisions is in `docs/session-retention.md`.

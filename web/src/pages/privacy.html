@@ -12,6 +12,35 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<!-- Google Analytics. The copy of record is src/components/Analytics.astro,
+     which this page cannot import because it owns its own head. Keep the two
+     identical; src/components/analytics.test.ts globs pages/*.html. -->
+<script>
+  (function () {
+    if (location.hostname !== 'www.flintroom.app') return;
+
+    var id = 'G-Q1GZBK57YS';
+
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { window.dataLayer.push(arguments); }
+    window.gtag = gtag;
+
+    gtag('consent', 'default', {
+      ad_storage: 'denied',
+      ad_user_data: 'denied',
+      ad_personalization: 'denied',
+      analytics_storage: 'denied'
+    });
+
+    gtag('js', new Date());
+    gtag('config', id);
+
+    var tag = document.createElement('script');
+    tag.async = true;
+    tag.src = 'https://www.googletagmanager.com/gtag/js?id=' + id;
+    document.head.appendChild(tag);
+  })();
+</script>
 <style>
   /* Kinetic Clarity — the landing page's tokens, on a page built to be read. */
   :root {
@@ -78,7 +107,7 @@
 <main>
   <p class="kicker">Legal</p>
   <h1>Privacy at Flintroom</h1>
-  <p class="updated">Last updated 27 August 2026</p>
+  <p class="updated">Last updated 11 September 2026</p>
 
   <p>Flintroom is a rehearsal room: a panel of AI interrogators challenges your
   argument out loud, off your own material, and a coach rebuilds the answers
@@ -123,9 +152,10 @@
   your account, a time, nothing else. It stays in Flintroom's own database and
   never goes to an analytics company.</p>
 
-  <p>Flintroom does <strong>not</strong> collect video, does not analyse your
-  face or body language, does not run advertising or tracking SDKs, and does
-  not build a profile of you from anywhere outside the app.</p>
+  <p>The Flintroom app does <strong>not</strong> collect video, does not
+  analyse your face or body language, does not run advertising or tracking
+  SDKs, and does not build a profile of you from anywhere outside the app.
+  This website is separate, and what it measures is described below.</p>
 
   <h2>How long it is kept</h2>
 
@@ -205,6 +235,21 @@
   States (US East). Wherever you use the app from, what it collects is stored
   and processed there, by the providers listed above under their own data
   protection agreements.</p>
+
+  <h2>This website</h2>
+
+  <p>flintroom.app uses Google Analytics to count visits. It records which
+  pages were opened, roughly where in the world the visit came from, and what
+  kind of device and browser it was. It is configured to store nothing on your
+  machine: no analytics cookie is set, and nothing links one visit of yours to
+  the next.</p>
+
+  <p>The free calculators do their arithmetic in your browser. The figures you
+  type, and any script pasted into the pacing tool, are never sent anywhere.
+  Google Analytics does not see them and neither does Flintroom.</p>
+
+  <p>The app itself uses no analytics service. What it records, it records in
+  Flintroom's own database, as described above.</p>
 
   <h2>Children</h2>
 

@@ -17,6 +17,7 @@
  * Split it when a tool page shows which half it actually needs.
  */
 import '../styles/site.css';
+import Analytics from '../components/Analytics.astro';
 
 interface Props {
   title: string;
@@ -53,6 +54,7 @@ const { title, description, url, ogTitle, ogDescription } = Astro.props;
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<Analytics />
 </head>
 <body>
 <slot />
