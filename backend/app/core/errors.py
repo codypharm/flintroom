@@ -203,6 +203,16 @@ class BusinessRuleViolation(FlintroomError):
     message = "That is not allowed right now."
 
 
+class GrantInputInvalid(BusinessRuleViolation):
+    """An operator grant refused before a single row was written.
+
+    Only ever raised to a terminal (`scripts/grant_minutes.py`); no endpoint
+    reaches it. The message says which input, since the operator fixes it.
+    """
+
+    code = "grant_input_invalid"
+
+
 class InvalidStateTransition(BusinessRuleViolation):
     code = "invalid_state_transition"
     message = "That session cannot move to that state."

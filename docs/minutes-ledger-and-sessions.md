@@ -129,7 +129,7 @@ accounts
 ledger_entries                      -- append-only, never updated or deleted
   id, user_id, session_id?, bucket, delta_seconds, reason, period_id?,
   idempotency_key UNIQUE, created_at
-  -- reason: grant_allowance | grant_free | grant_topup | expire_allowance
+  -- reason: grant_allowance | grant_free | grant_topup | grant_admin | expire_allowance
   --         | tick | refund_idle | refund_provider_failure | grace_forgiven
 
 sessions

@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.actors import ActorContext
+from app.core.actors import Actor, ActorContext
 from app.core.database import db_now
 from app.core.errors import AccountNotFound
 from app.core.logging import get_logger
@@ -193,6 +193,49 @@ class LedgerService:
             return False
 
         log.info("topup_granted", user_id=str(user_id), seconds=seconds)
+        return True
+
+    async def has_entry(self, *, idempotency_key: str) -> bool:
+        """Whether a movement under this key is already on the books. Reads only."""
+        return await self._entry_exists(idempotency_key=idempotency_key)
+
+    async def grant_admin(
+        self, *, user_id: uuid.UUID, seconds: int, idempotency_key: str
+    ) -> bool:
+        """Minutes an operator gave by hand. True if this call is what granted them.
+
+        Top-up bucket, so a period boundary never writes a gift off, but its own
+        reason: `purchase_options` counts `grant_topup` rows as purchases, and a
+        promo recipient's first real pack must not be steered as their second.
+
+        Refused for anything but an ADMIN actor. `ActorContext` already requires
+        an admin to be named, so this is what makes every gift in the ledger
+        carry the name of the person who gave it.
+        """
+        if self._actor.actor is not Actor.ADMIN:
+            raise PermissionError("a hand grant must be made by a named operator")
+
+        if await self._entry_exists(idempotency_key=idempotency_key):
+            return False
+
+        try:
+            await self.grant(
+                user_id=user_id,
+                bucket=Bucket.TOPUP,
+                seconds=seconds,
+                reason=EntryReason.GRANT_ADMIN,
+                idempotency_key=idempotency_key,
+            )
+        except IntegrityError:
+            await self._db.rollback()
+            return False
+
+        log.info(
+            "admin_grant_made",
+            user_id=str(user_id),
+            seconds=seconds,
+            actor_id=self._actor.actor_id,
+        )
         return True
 
     async def _entry_exists(self, *, idempotency_key: str) -> bool:

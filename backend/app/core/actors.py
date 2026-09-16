@@ -67,3 +67,8 @@ class ActorContext:
     @classmethod
     def reaper(cls) -> ActorContext:
         return cls(actor=Actor.REAPER)
+
+    @classmethod
+    def admin(cls, operator: str) -> ActorContext:
+        """A person at a terminal, named. `__post_init__` refuses an empty name."""
+        return cls(actor=Actor.ADMIN, actor_id=operator.strip())

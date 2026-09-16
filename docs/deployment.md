@@ -571,6 +571,37 @@ app's web nor its iOS client. Nothing failed at the time: there was no sign-in
 screen yet to fail. Closed the same day, with a real Android sign-in reaching
 `grant_free +900`.
 
+## Minutes are given by script, never by SQL
+
+A promo, the closed-test cohort, a complaint made good: all go through
+`scripts/grant_minutes.py`, which writes a `grant_admin` entry with the operator's
+name on it. Editing `accounts` in the Supabase SQL editor leaves a balance the
+ledger cannot explain and the reconciliation test cannot see.
+
+```sh
+railway run uv run python -m scripts.grant_minutes \
+    --file promo.txt --minutes 30 --campaign launch-week --operator nonso --dry-run
+```
+
+Dry-run first; it prints the database host it would write to. The campaign
+name is the idempotency unit, so a run that dies partway is re-run whole.
+Addresses with no verified match, or on two accounts, are listed and skipped.
+
+Gifts land in the top-up bucket (they never expire) under their own reason, so
+§4.5's upgrade rule never counts one as a purchase.
+
+**Who can run it is whoever holds the production database URL**: members of the
+Railway project, members of the Supabase project, and anyone that URL was pasted
+to. No endpoint reaches it, and the code alone connects to nothing. The script is
+not the boundary, since that same group could edit balances in the SQL editor;
+membership is. Keep both projects to people trusted with money, and rotate the
+database password when one of them leaves. `--operator` is attribution, not
+authentication: it records who says they ran it.
+
+**Do not run `scripts/dev_token.py` against production.** It creates accounts
+under a `dev:` subject, so it would not find a real user, and its stale-room
+release fails every open room in the database, not only that user's.
+
 ## Still open
 
 - **Recording retention is undocumented and unimplemented.** App Store review

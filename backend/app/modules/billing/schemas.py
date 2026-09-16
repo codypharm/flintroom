@@ -26,6 +26,9 @@ class EntryReason(str, Enum):
     GRANT_ALLOWANCE = "grant_allowance"
     GRANT_FREE = "grant_free"
     GRANT_TOPUP = "grant_topup"
+    #: Given by an operator: a promo, a tester, a complaint made good. Never
+    #: `grant_topup`, which §4.5's upgrade rule counts as a purchase.
+    GRANT_ADMIN = "grant_admin"
     EXPIRE_ALLOWANCE = "expire_allowance"
     TICK = "tick"
     REFUND_IDLE = "refund_idle"
