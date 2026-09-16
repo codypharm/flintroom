@@ -602,18 +602,24 @@ For one person, use `--email` instead of `--file` (repeatable).
    ever, so a new promo needs a new name.
 3. **Dry-run** (the command above). Check the `database:` line names the
    production host, not `localhost`, and read the four lists: *would grant*,
-   *already had this campaign*, *no account with this verified address*, and
-   *address on more than one account*.
+   *already had this campaign*, *no account found*, and *address on more than
+   one account*.
 4. **Run it for real**: the same command without `--dry-run`.
 5. **If it stopped partway**, run the identical command again. Anyone already
    granted moves to *already had this campaign* and is not paid twice.
-6. **The skipped addresses are yours to resolve.** *No account* usually means
-   they have not signed up yet, or signed in with a different address (Apple's
-   Hide My Email is the common one). Once fixed, re-run the same campaign and
-   only they are granted. *More than one account* cannot be granted by this
-   script at all, since it finds people only by address; it is rare (it needs
-   two sign-ins that failed to link) and worth asking about before building
-   anything for it.
+6. **The skipped addresses are yours to resolve.** *No account found* usually
+   means they have not signed up yet, or signed in with a different address
+   (Apple's Hide My Email is the common one); only verified addresses match.
+   Once fixed, re-run the same campaign and only they are granted.
+7. **An address on more than one account** is listed with each account's id,
+   how it signs in, when it joined, and its rooms. The one with rooms is almost
+   always the person. Grant it by id, in the **same campaign**, so the key still
+   stops a second payment:
+
+   ```sh
+   railway run uv run python -m scripts.grant_minutes \
+       --user-id <id from the report> --minutes 30 --campaign launch-week --operator nonso
+   ```
 
 Minutes per person are capped at 600, as a typo guard.
 

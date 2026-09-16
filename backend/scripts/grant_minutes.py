@@ -20,6 +20,12 @@ A promo list is one address per line; blank lines and `#` comments are ignored:
         --file promo.txt --minutes 30 --campaign launch-week --operator nonso
 
 Re-running the same campaign grants only the people who do not have it yet.
+
+An address on two accounts is skipped, and the report describes both. Name the
+right one directly, in the same campaign:
+
+    railway run uv run python -m scripts.grant_minutes \\
+        --user-id 3f2c... --minutes 30 --campaign launch-week --operator nonso
 """
 
 from __future__ import annotations
@@ -28,6 +34,8 @@ import argparse
 import asyncio
 import pathlib
 import sys
+import uuid
+from datetime import datetime
 
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -38,7 +46,13 @@ from app.modules.billing.grants import GrantReport, OperatorGrants
 
 
 async def grant(
-    *, emails: list[str], minutes: int, campaign: str, operator: str, dry_run: bool
+    *,
+    emails: list[str],
+    user_ids: list[uuid.UUID],
+    minutes: int,
+    campaign: str,
+    operator: str,
+    dry_run: bool,
 ) -> GrantReport:
     settings = get_settings()
     print(f"database: {make_url(settings.database_url).host}", file=sys.stderr)
@@ -47,7 +61,11 @@ async def grant(
     try:
         async with async_sessionmaker(engine, expire_on_commit=False)() as db:
             return await OperatorGrants(db, operator=operator).run(
-                emails=emails, minutes=minutes, campaign=campaign, dry_run=dry_run
+                emails=emails,
+                user_ids=user_ids,
+                minutes=minutes,
+                campaign=campaign,
+                dry_run=dry_run,
             )
     finally:
         await engine.dispose()
@@ -67,16 +85,33 @@ def _print(report: GrantReport, *, minutes: int, dry_run: bool) -> None:
     sections = (
         (f"{verb} {minutes} min", report.granted),
         ("already had this campaign, skipped", report.already_granted),
-        ("no account with this verified address, skipped", report.not_found),
-        ("address on more than one account, skipped", report.ambiguous),
+        ("no account found, skipped", report.not_found),
     )
-    for title, emails in sections:
-        if emails:
-            print(f"\n{title} ({len(emails)}):")
-            for email in emails:
-                print(f"  {email}")
+    for title, labels in sections:
+        if labels:
+            print(f"\n{title} ({len(labels)}):")
+            for label in labels:
+                print(f"  {label}")
+
+    if report.ambiguous:
+        print(
+            f"\naddress on more than one account, skipped ({len(report.ambiguous)}):"
+            "\n  pick one and re-run with --user-id, same campaign"
+        )
+        for email in report.ambiguous:
+            print(f"  {email}")
+            for c in report.candidates[email]:
+                last = _day(c.last_room_at) if c.last_room_at else "never"
+                print(
+                    f"    {c.user_id}  signs in with {', '.join(c.providers)}; "
+                    f"joined {_day(c.joined_at)}; {c.rooms} room(s), last {last}"
+                )
     if dry_run:
         print("\ndry run: nothing was written")
+
+
+def _day(moment: datetime | None) -> str:
+    return moment.date().isoformat() if moment else "unknown"
 
 
 def main() -> None:
@@ -85,6 +120,12 @@ def main() -> None:
     )
     parser.add_argument("--email", action="append", help="An address. Repeatable.")
     parser.add_argument("--file", help="A file of addresses, one per line.")
+    parser.add_argument(
+        "--user-id",
+        action="append",
+        type=uuid.UUID,
+        help="An account id, for an address on two accounts. Repeatable.",
+    )
     parser.add_argument("--minutes", type=int, required=True, help="Per person.")
     parser.add_argument(
         "--campaign",
@@ -98,13 +139,15 @@ def main() -> None:
     args = parser.parse_args()
 
     emails = _emails(args)
-    if not emails:
-        parser.error("give --email or --file")
+    user_ids = list(args.user_id or [])
+    if not emails and not user_ids:
+        parser.error("give --email, --file or --user-id")
 
     try:
         report = asyncio.run(
             grant(
                 emails=emails,
+                user_ids=user_ids,
                 minutes=args.minutes,
                 campaign=args.campaign,
                 operator=args.operator,

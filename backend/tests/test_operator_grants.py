@@ -16,6 +16,9 @@ from app.modules.billing.grants import GrantInputInvalid, OperatorGrants
 from app.modules.billing.models import Account
 from app.modules.billing.schemas import Bucket, EntryReason
 from app.modules.billing.service import LedgerService
+from app.modules.sessions.models import Session
+from app.modules.sessions.schemas import EndReason, SessionState
+from app.core.database import db_now
 from tests.test_reconciliation import assert_reconciles
 
 
@@ -167,6 +170,67 @@ async def test_an_address_on_two_accounts_is_reported_rather_than_guessed(db):
 
     assert report.ambiguous == ["ada@example.com"]
     assert report.granted == []
+
+
+async def test_the_accounts_behind_an_ambiguous_address_are_described_enough_to_choose(db):
+    """Granting both pays one person twice; picking one is a guess. So the operator picks."""
+    used = await _person(db, "ada@example.com")
+    idle = await _person(db, "ada@example.com")
+    db.add(
+        Session(
+            user_id=used.user_id,
+            state=SessionState.SETTLED,
+            settled_at=await db_now(db),
+            end_reason=EndReason.USER_ENDED,
+        )
+    )
+    await db.commit()
+
+    report = await OperatorGrants(db, operator="nonso").run(
+        emails=["ada@example.com"], minutes=30, campaign="launch-week"
+    )
+
+    candidates = {c.user_id: c for c in report.candidates["ada@example.com"]}
+    assert set(candidates) == {used.user_id, idle.user_id}
+    assert candidates[used.user_id].providers == ["google"]
+    assert candidates[used.user_id].rooms == 1
+    assert candidates[used.user_id].last_room_at is not None
+    assert candidates[idle.user_id].rooms == 0
+    assert candidates[idle.user_id].last_room_at is None
+    assert candidates[idle.user_id].joined_at is not None
+
+
+async def test_an_account_can_be_named_directly(db):
+    ada = await _person(db, "ada@example.com")
+
+    report = await OperatorGrants(db, operator="nonso").run(
+        user_ids=[ada.user_id], minutes=30, campaign="launch-week"
+    )
+
+    assert report.granted == [str(ada.user_id)]
+    assert (await LedgerService(db).balance(user_id=ada.user_id)).topup_seconds == 30 * 60
+
+
+async def test_naming_an_account_and_its_address_in_one_campaign_grants_once(db):
+    """The key is the account, however the operator reached it."""
+    ada = await _person(db, "ada@example.com")
+    grants = OperatorGrants(db, operator="nonso")
+
+    await grants.run(user_ids=[ada.user_id], minutes=30, campaign="launch-week")
+    report = await grants.run(emails=["ada@example.com"], minutes=30, campaign="launch-week")
+
+    assert report.already_granted == ["ada@example.com"]
+    assert (await LedgerService(db).balance(user_id=ada.user_id)).topup_seconds == 30 * 60
+
+
+async def test_an_account_that_does_not_exist_is_reported(db):
+    missing = uuid.uuid4()
+
+    report = await OperatorGrants(db, operator="nonso").run(
+        user_ids=[missing], minutes=30, campaign="launch-week"
+    )
+
+    assert report.not_found == [str(missing)]
 
 
 async def test_one_person_with_two_sign_in_methods_is_one_account(db):
