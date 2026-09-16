@@ -583,9 +583,39 @@ railway run uv run python -m scripts.grant_minutes \
     --file promo.txt --minutes 30 --campaign launch-week --operator nonso --dry-run
 ```
 
-Dry-run first; it prints the database host it would write to. The campaign
-name is the idempotency unit, so a run that dies partway is re-run whole.
-Addresses with no verified match, or on two accounts, are listed and skipped.
+For one person, use `--email` instead of `--file` (repeatable).
+
+**Granting to a list**, from `backend/`:
+
+1. **Write the file.** One address per line. Blank lines and lines starting
+   with `#` are ignored; case, surrounding spaces and duplicates do not matter.
+   Keep it outside the repo, since it is a list of people's email addresses.
+
+   ```text
+   # launch week, sign-ups from the waitlist
+   ada@example.com
+   Ben@Example.com
+   ```
+
+2. **Pick a campaign name** that says what this is: lowercase, digits and
+   hyphens, e.g. `launch-week`. Each person gets one grant per campaign name,
+   ever, so a new promo needs a new name.
+3. **Dry-run** (the command above). Check the `database:` line names the
+   production host, not `localhost`, and read the four lists: *would grant*,
+   *already had this campaign*, *no account with this verified address*, and
+   *address on more than one account*.
+4. **Run it for real**: the same command without `--dry-run`.
+5. **If it stopped partway**, run the identical command again. Anyone already
+   granted moves to *already had this campaign* and is not paid twice.
+6. **The skipped addresses are yours to resolve.** *No account* usually means
+   they have not signed up yet, or signed in with a different address (Apple's
+   Hide My Email is the common one). Once fixed, re-run the same campaign and
+   only they are granted. *More than one account* cannot be granted by this
+   script at all, since it finds people only by address; it is rare (it needs
+   two sign-ins that failed to link) and worth asking about before building
+   anything for it.
+
+Minutes per person are capped at 600, as a typo guard.
 
 Gifts land in the top-up bucket (they never expire) under their own reason, so
 §4.5's upgrade rule never counts one as a purchase.
