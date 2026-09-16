@@ -26,8 +26,14 @@ services:
   #
   # It also means moving to AWS S3, Cloudflare R2 or Backblaze B2 is an endpoint
   # and a credential, because the code speaks the same API here as there.
+  #
+  # From MinIO's own registry, pinned. Docker Hub's `minio/minio` and `minio/mc`
+  # stopped resolving (found 2026-09-16, when every CI run failed at the pull),
+  # and MinIO no longer publishes community builds, so `latest` is a tag that
+  # can only go stale or vanish. A pinned release keeps a clone and CI running
+  # the same server; move it deliberately, with the storage tests green.
   storage:
-    image: minio/minio
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: flintroom-storage
     command: server /data --console-address ":9001"
     environment:
@@ -49,7 +55,7 @@ services:
   # from application code was refused — a process that can create buckets is a
   # process holding more S3 permission than it needs for the rest of its life.
   storage-init:
-    image: minio/mc
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
     container_name: flintroom-storage-init
     depends_on:
       storage:
