@@ -86,6 +86,58 @@ months and an unindexed page ranks for nothing.
 furniture, different register, different breadcrumbs and siblings. Threading two
 registers through one layout would make both harder to read.
 
+## The field, as read on 2026-09-18
+
+Five pages are published. The survey behind them found that the category splits
+three ways, and the split is more useful than any single comparison:
+
+1. **Deck analysers** read the static document and report what is weak or
+   unsupported before anyone speaks. Cogently, UpSlide, PresenterPrep's slide
+   critique.
+2. **Hostile voice rooms** interrupt and press you live, but their questions are
+   seeded from a persona or a profile written in advance. Grillroom, Pitchdesk,
+   EchoPitch, Toad Talk, Virtual Orator, Ovation.
+3. **Delivery scorers** measure how you sound. Orai, Speaker Coach, Yoodli's
+   original product.
+
+**No product found claims to check what a speaker says out loud against their
+own uploaded material while they are speaking.** That is where Flintroom sits,
+and it is the claim to make. Phrase it as "we found no product that claims this"
+rather than "no product does this", because the second sentence is not something
+anyone can know.
+
+Things the survey killed, each of which someone would otherwise have written:
+
+- "Competitors only score delivery." Yoodli, VirtualSpeech and Ovation all run
+  AI panels that ask real questions.
+- "No competitor uses your uploaded file." Ovation builds interview questions
+  from an uploaded resume; VirtualSpeech does the same with a CV and a job
+  description.
+- "No competitor looks at your slides." Speaker Coach reads slide text to detect
+  reading aloud, and explicitly exempts numbers from that check.
+- "Nobody checks for contradictions." UpSlide ships a contradiction engine for
+  PowerPoint. It is deck-internal and has nothing to do with speech.
+
+### Not published, and why
+
+**Grillroom (grillroom.uk) is the closest competitor found and has no page yet.**
+It runs adversarial voice sparring with interrupting multi-persona investors off
+an uploaded deck, on the same ElevenLabs stack, sold as a small monthly fee plus
+minutes that never expire. Its hero line is "Founders rehearse the deck. Almost
+nobody rehearses the room." Read `Product.md` §4.4 next to that and the overlap
+is uncomfortable.
+
+Two reasons it is not in the register. Its marketing copy was read out of a
+JavaScript bundle rather than a rendered page, so the quotes are not yet safe to
+publish and must be re-read in a browser first. And its deck analysis appears to
+be a pre-session red-team report on the static PDF, with the live agents running
+off a summary extracted beforehand, which is a real difference from an Auditor
+watching a live transcript. Getting that distinction wrong in public would be
+the worst version of the mistake this doc exists to prevent.
+
+Cogently (cogently.app) has the same bundle problem, and its seven-persona
+"boardroom" appears to be text rather than voice. Also unverified.
+
 ## Adding one
 
 1. Read their pages. All of them: homepage, pricing, the feature announcements.
