@@ -18,6 +18,12 @@ The premise: the thing people dread is not presenting. It is being asked a quest
 
 **Competitive gap.** Yoodli, Orai, VirtualSpeech, Ovation and Speaker Coach all optimize delivery signals because delivery is easy to measure. Almost nobody does grounded, hostile Q&A against the user's own content. That is the wedge, and every product decision should protect it.
 
+> **[STALE — checked 2026-09-18, needs a human decision.]** The paragraph above is no longer accurate about Yoodli, and it is the sentence the whole positioning rests on. Their own pages now advertise uploading a deck or document, an AI that presents the slides and explains "material grounded in the uploaded files", "AI-powered follow-up questions", and simulating "a group presentation, buying committee pitch or interview panel" (`yoodli.ai`, and the live-visual-content feature announcement).
+>
+> **What still holds.** Their pages describe an AI that teaches you *from* your material. None of them claims to cross-check what the speaker says out loud *against* that material and interrupt on the contradiction, which is what the Auditor does. The defensible form of the wedge is therefore narrower: *others teach you from your deck; Flintroom cross-examines you against it.*
+>
+> **What needs deciding:** whether that narrower sentence becomes the positioning, and whether Yoodli's move into simulated panels changes anything in §2 or §8. Not an agent's call. `docs/competitor-pages.md` records how this was found; `docs/brand-voice.md` has already been corrected because it feeds a content generator.
+
 ---
 
 ## 2. Target Audience

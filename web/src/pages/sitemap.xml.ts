@@ -1,3 +1,4 @@
+import { COMPETITORS, hrefFor } from '../lib/competitors';
 import { TOOLS } from '../lib/tools';
 
 /**
@@ -22,6 +23,8 @@ const PAGES = [
   '/',
   '/tools',
   ...TOOLS.map((tool) => tool.href),
+  '/alternatives',
+  ...COMPETITORS.map(hrefFor),
   '/privacy',
   '/terms',
   '/delete-account',

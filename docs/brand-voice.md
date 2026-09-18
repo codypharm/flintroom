@@ -1,23 +1,3 @@
-# Brand and voice
-
-**Written 2026-09-18. For anything that speaks outward: social posts, the
-landing page, store listings, ads, a deck about the product.**
-
-This is the brief to paste into a content tool that asks for "brand guidelines,
-voice, style, visuals". It is self-contained on purpose, so it can be handed to
-something that cannot read the rest of this repository.
-
-**It is not `design-guide/`.** That folder is the app's UI design system, and its
-eight screen mockups are stale: they predate two renames and encode a token
-counter, an "investment verdict" screen and an "Avg. Likelihood %" that no
-longer exist (`Product.md` §9). Its hero images are unlicensed AI stock hosted
-on Google's CDN and must never be published. Only the tokens carry forward, and
-the ones that matter outward are repeated below.
-
-Everything here traces to `Product.md` §1, §2 and §9, to `CLAUDE.md`, or to
-`app/src/theme/tokens.ts`. When one of those changes, change this.
-
----
 
 ## The product, in one paragraph
 
@@ -46,16 +26,51 @@ second.
 **What it is not:** a recording utility, a delivery-metrics scorer, or a slide
 generator.
 
-**The wedge, which every post should protect.** Yoodli, Orai, VirtualSpeech,
-Ovation and Microsoft Speaker Coach all score *delivery*: filler words, pace, eye
-contact. They do that because delivery is easy to measure. Almost nobody does
-grounded, hostile Q&A against the user's own material. That is the gap Flintroom
-sits in. A post that says "get feedback on your presentation" describes the
-saturated category and sells nothing.
+**The wedge, stated carefully, because it moved.**
 
-The strongest single contrast, usable almost anywhere:
+It used to be safe to say that the competition scores delivery while Flintroom
+attacks substance. **That line is out of date and must not be used.** Checked
+2026-09-18: Yoodli's own pages advertise uploading a deck or document, an AI
+that presents the slides and explains "material grounded in the uploaded files",
+"AI-powered follow-up questions", and simulating "a group presentation, buying
+committee pitch or interview panel". A post claiming they only count filler
+words is checkably wrong about the best-funded product in the category.
 
-> Most speaking apps count your filler words. Flintroom checks your numbers.
+What their pages describe is an AI that **teaches you from** your material. What
+Flintroom does is cross-check what you say out loud **against** that material and
+interrupt when the two disagree. That is the Auditor, it is narrower than the old
+claim, and it is defensible by someone who opens both products.
+
+The contrast to use:
+
+> Others teach you from your deck. Flintroom cross-examines you against it.
+
+Without naming anyone, which is the safer default:
+
+> It has read your deck. It will notice when you say a different number.
+
+A post that says "get feedback on your presentation" describes the saturated
+category and sells nothing. But the fix is the contradiction, not an insult
+aimed at a competitor.
+
+## Naming a competitor
+
+Any post, page or reply that describes what another product does or cannot do is
+a statement of fact about another business. Comparative claims are legal; false
+ones are actionable, and the people most likely to read the claim closely are the
+company it is about.
+
+- **Every competitor claim carries a source and a date.** Their own public page,
+  quoted, with the day it was checked. No claim from memory, none from a review
+  site, none from a model's general knowledge.
+- **Re-check before reusing.** These products ship constantly. The wedge sentence
+  above was true when it was written and false within a year.
+- **Never say a competitor "cannot" do something.** Say their page does not claim
+  it, which is both true and checkable.
+- **Concede what they do well, by name.** It is what makes the rest believable,
+  and an all-green comparison table is the format readers already distrust.
+- **No competitor logos.** Their name in text is nominative fair use; their mark
+  is a separate risk.
 
 ## Who it is for
 
@@ -173,30 +188,6 @@ the AI as a robot, an orb or a glowing brain. The panel is people-shaped in
 imagination and abstract on screen.
 
 **Motion**, where a platform allows it: calm and weighted. Nothing bounces.
-
-## Hard rules for anything published
-
-These are compliance rules, not preferences. Each has a reason behind it.
-
-- **No prices, tier names or minute counts.** Every price in the spec is an
-  unverified assumption until cost reconciliation closes. The one safe money
-  claim is that coaching never uses your minutes, which is true by design.
-- **No users, sessions, testimonials, case studies, customer logos, accelerator
-  badges, ratings, download counts, latency figures or retention data.** None of
-  it exists yet. Do not fabricate it, and do not imply it with phrases like
-  "join thousands".
-- **No real person's name, likeness, voice or company on a panel.** Panelists are
-  archetypes. This is a legal line, not a style one.
-- **Never describe Flintroom as scoring delivery:** pace, filler words, eye
-  contact, posture, confidence level. That is the competitor product.
-- **No retired framing:** "Investable", "Delusional", likelihood percentages,
-  token counters, or anything calling the product pitch-only.
-- **Nothing readable as a guarantee.** Not "you'll win the room", not "get
-  funded", not "never get stumped again". Store reviewers read these.
-- **No claims about recording, storage or privacy** beyond what
-  `docs/privacy-policy.md` says. If a post needs to touch it, check there first.
-- **No logo or wordmark exists.** Do not generate one, do not place one, do not
-  imply one exists. Set the name in Hanken Grotesk until a real mark is made.
 
 ## Things that are true and usable
 

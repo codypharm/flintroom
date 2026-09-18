@@ -1,3 +1,4 @@
+import { COMPETITORS, hrefFor } from '../lib/competitors';
 import { TOOLS } from '../lib/tools';
 
 /**
@@ -45,6 +46,14 @@ a figure and then the questions that figure invites, which is a small, silent
 version of what the product does out loud.
 
 ${TOOLS.map((tool) => `- [${tool.name}](${SITE}${tool.href}): ${tool.blurb}. For ${tool.audience.toLowerCase()}.`).join('\n')}
+
+## Compared with other tools
+
+Each page credits the other product with what it actually does, cites every
+claim from that company's own pages with the date it was read, and says plainly
+where the other tool is the better fit.
+
+${COMPETITORS.map((c) => `- [Flintroom and ${c.name}](${SITE}${hrefFor(c)}): ${c.shortAnswer}`).join('\n')}
 
 ## The product
 

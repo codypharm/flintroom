@@ -1,0 +1,166 @@
+---
+/**
+ * One comparison page per competitor, generated from the register.
+ *
+ * The order of the sections is the argument. What they do well comes *before*
+ * the difference, because a reader who has used the other product will stop
+ * reading the moment a page tells them something they know to be false, and
+ * everything after that is wasted. Conceding first is not politeness, it is the
+ * only way the second half gets read.
+ *
+ * Every claim renders its own source link and the date it was read. That is
+ * partly for the reader and mostly for us: a visible date is the thing that
+ * makes a stale page embarrassing enough to fix.
+ */
+import Compare from '../../layouts/Compare.astro';
+import { COMPETITORS, hrefFor, type Claim } from '../../lib/competitors';
+
+export function getStaticPaths() {
+  return COMPETITORS.map((competitor) => ({
+    params: { slug: competitor.slug },
+    props: { competitor },
+  }));
+}
+
+const { competitor } = Astro.props;
+
+/** The newest date anything on this page was verified. */
+const checked = [...competitor.strengths, ...competitor.differences]
+  .map((claim: Claim) => claim.checked)
+  .sort()
+  .at(-1);
+
+const readable = checked
+  ? new Date(`${checked}T00:00:00Z`).toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC',
+    })
+  : undefined;
+---
+
+<Compare
+  title={competitor.title}
+  description={competitor.description}
+  url={`https://www.flintroom.app${hrefFor(competitor)}`}
+  current={competitor.slug}
+>
+  <section class="hub compare">
+    <div class="shell">
+      <h1>Flintroom and {competitor.name}</h1>
+      <p class="sub">{competitor.shortAnswer}</p>
+
+      <h2>What {competitor.name} does well</h2>
+      <ul class="claims">
+        {competitor.strengths.map((claim: Claim) => (
+          <li>
+            <p>{claim.says}</p>
+            <a class="src" href={claim.source} rel="nofollow noopener" target="_blank">
+              Their page, read {claim.checked}
+            </a>
+          </li>
+        ))}
+      </ul>
+
+      <h2>Where Flintroom is different</h2>
+      <ul class="claims">
+        {competitor.differences.map((claim: Claim) => (
+          <li>
+            <p>{claim.says}</p>
+            <a class="src" href={claim.source} rel="nofollow noopener" target="_blank">
+              Their page, read {claim.checked}
+            </a>
+          </li>
+        ))}
+      </ul>
+
+      <h2>Which one to pick</h2>
+      <div class="pick">
+        <div>
+          <b>Pick {competitor.name} if</b>
+          <p>{competitor.pickThemIf}</p>
+          <a class="src" href={competitor.site} rel="nofollow noopener" target="_blank">
+            Go to {competitor.name}
+          </a>
+        </div>
+        <div>
+          <b>Wait for Flintroom if</b>
+          <p>{competitor.pickUsIf}</p>
+        </div>
+      </div>
+
+      {readable && (
+        <p class="asof">
+          Everything above was read from {competitor.name}’s own pages on {readable}. Products
+          change, and this one ships often. If something here is out of date, tell us at
+          <a href="mailto:hello@flintroom.app">hello@flintroom.app</a> and we will correct it.
+        </p>
+      )}
+    </div>
+  </section>
+</Compare>
+
+<style>
+  .compare h2 {
+    margin: 2.5rem 0 1rem;
+  }
+
+  .claims {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 12px;
+  }
+
+  .claims li {
+    background: var(--card, #fff);
+    border-radius: 28px;
+    padding: 24px;
+    box-shadow: 0 8px 24px -4px rgba(26, 26, 26, 0.04);
+  }
+
+  .claims p {
+    margin: 0 0 12px;
+  }
+
+  .src {
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .pick {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: 1fr;
+  }
+
+  .pick > div {
+    background: var(--card, #fff);
+    border-radius: 28px;
+    padding: 24px;
+    box-shadow: 0 8px 24px -4px rgba(26, 26, 26, 0.04);
+  }
+
+  .pick b {
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  .pick p {
+    margin: 0 0 12px;
+  }
+
+  .asof {
+    margin-top: 2.5rem;
+    font-size: 14px;
+    opacity: 0.8;
+  }
+
+  @media (min-width: 760px) {
+    .pick {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+</style>

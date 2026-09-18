@@ -1,0 +1,113 @@
+---
+/**
+ * The shape every comparison page shares.
+ *
+ * Deliberately a sibling of `Tool.astro` rather than a parameter on it. The
+ * furniture is the same shape, but the breadcrumb trail, the sideways links and
+ * the closing block all point at a different set, and threading two registers
+ * through one layout would make both harder to read than keeping them apart.
+ *
+ * **The closing block says the product is not open yet, and that is the whole
+ * point of it.** Somebody searching for an alternative to a product wants
+ * something to use today. Sending them to a "Get started" button that turns out
+ * to be a waitlist is the one move that would make the honesty of the rest of
+ * the page worthless.
+ */
+import Base from './Base.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import { COMPETITORS, hrefFor } from '../lib/competitors';
+import '../styles/tools.css';
+
+interface Props {
+  title: string;
+  description: string;
+  url: string;
+  /** Omitted on the hub, which is not itself a comparison. */
+  current?: string;
+}
+
+const { title, description, url, current } = Astro.props;
+
+const here = current ? COMPETITORS.find((c) => c.slug === current) : undefined;
+const crumbs = [
+  { href: '/', name: 'Flintroom' },
+  { href: '/alternatives', name: 'Alternatives' },
+  ...(here ? [{ href: hrefFor(here), name: here.name }] : []),
+];
+const others = current ? COMPETITORS.filter((c) => c.slug !== current) : [];
+---
+
+<Base title={title} description={description} url={url}>
+  <Header />
+
+  <main id="top">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <div class="shell">
+        <ol>
+          {crumbs.map((crumb, index) => {
+            const last = index === crumbs.length - 1;
+            return (
+              <li>
+                {last
+                  ? <span aria-current="page">{crumb.name}</span>
+                  : <a href={crumb.href}>{crumb.name}</a>}
+                {!last && <span class="sep" aria-hidden="true">/</span>}
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    </nav>
+
+    <slot />
+
+    <section class="tool-cta">
+      <div class="shell">
+        <div class="inner">
+          <h2>Flintroom is not open yet.</h2>
+          <p>
+            It is a rehearsal room where a panel of AI interrogators presses on your argument out
+            loud, quotes your own deck back at you, and does not accept the first answer. We will
+            send one email when it opens, and nothing else.
+          </p>
+          <a class="btn" href="/#waitlist">Join the waitlist</a>
+        </div>
+      </div>
+    </section>
+
+    {others.length > 0 && (
+      <section class="siblings">
+        <div class="shell">
+          <h2>Other comparisons</h2>
+          <ul>
+            {others.map((competitor) => (
+              <li>
+                <a href={hrefFor(competitor)}>
+                  <b>{competitor.name}</b>
+                  <span>{competitor.shortAnswer}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+    )}
+
+    <div class="tool-foot"></div>
+  </main>
+
+  <!-- The same trail, for the search result. -->
+  <script is:inline type="application/ld+json" set:html={JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: crumbs.map((crumb, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: crumb.name,
+      item: `https://www.flintroom.app${crumb.href === '/' ? '' : crumb.href}`,
+    })),
+  })} />
+
+  <Footer />
+</Base>

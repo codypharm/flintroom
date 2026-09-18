@@ -1,0 +1,44 @@
+---
+/**
+ * /alternatives — the hub.
+ *
+ * A real page for the same reason `/tools` is one: it collects the internal
+ * links and ranks for the category rather than for a single product name.
+ *
+ * It also does something the individual pages cannot. A reader who lands here
+ * is shopping, and the honest thing to give them is the shape of the field
+ * rather than five pages that each say we win.
+ */
+import Compare from '../../layouts/Compare.astro';
+import { COMPETITORS, hrefFor } from '../../lib/competitors';
+---
+
+<Compare
+  title="Flintroom compared with the other speaking practice tools"
+  description="How Flintroom compares with Yoodli and the rest of the field, with every claim cited from their own pages and dated. What each one does well, and which to pick."
+  url="https://www.flintroom.app/alternatives"
+>
+  <section class="hub">
+    <div class="shell">
+      <h1>Compared with the rest</h1>
+      <p class="sub">
+        These pages credit each product with what it actually does, cite every claim from that
+        company’s own pages, and show the date it was read. Where another tool is the better
+        fit, they say so.
+      </p>
+
+      <ul>
+        {COMPETITORS.map((competitor) => (
+          <li>
+            <a href={hrefFor(competitor)}>
+              <span class="text">
+                <b>Flintroom and {competitor.name}</b>
+                <span class="what">{competitor.shortAnswer}</span>
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+</Compare>
