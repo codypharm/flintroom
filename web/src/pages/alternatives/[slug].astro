@@ -87,6 +87,16 @@ const readable = checked
         <div>
           <b>Wait for Flintroom if</b>
           <p>{competitor.pickUsIf}</p>
+          {/* Both sides of a comparison get a next step. Linking out to them is
+              what makes the page worth believing, but leaving our own half bare
+              made the only action on the page the one that leaves.
+
+              This is a second conversion block, which #113 decision 4 rules out
+              on a tool page. The reasoning does not carry here: that rule stops
+              a calculator opening with a pitch, and a reader on this page came
+              to choose between two products. Refusing them the choice is not
+              restraint, it is just a dead end. */}
+          <a class="src" href="/#waitlist">Join the waitlist</a>
         </div>
       </div>
 
