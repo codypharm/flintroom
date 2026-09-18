@@ -123,6 +123,9 @@ room once and use it twice.
 
 ## What not to say or show
 
+The same rules govern every outward surface, with the reasons and the voice they
+belong to, in `docs/brand-voice.md`.
+
 - **No prices, and no minute counts beyond "never uses your minutes".** Prices
   in `Product.md` §4.4 are unverified against invoices (Open Risk #4).
 - **No "Investable" or "Delusional", no likelihood percentages, no "pitch
