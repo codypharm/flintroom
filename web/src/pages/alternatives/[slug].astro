@@ -24,11 +24,25 @@ export function getStaticPaths() {
 
 const { competitor } = Astro.props;
 
+const claims = [...competitor.strengths, ...competitor.differences];
+
 /** The newest date anything on this page was verified. */
-const checked = [...competitor.strengths, ...competitor.differences]
-  .map((claim: Claim) => claim.checked)
-  .sort()
-  .at(-1);
+const checked = claims.map((claim: Claim) => claim.checked).sort().at(-1);
+
+// Every claim carries its own source in the register, and the tests insist on
+// it. Printing that under each sentence stamped "Their page, read 2026-09-18"
+// six times down a page, which read as a legal disclaimer rather than as
+// homework. Collected once at the foot, deduplicated, it is the same evidence
+// and none of the noise.
+const sources = [...new Set(claims.map((claim: Claim) => claim.source))];
+
+/** `support.microsoft.com/en-us/office/…` reads better than the whole URL. */
+const label = (source: string): string => {
+  const { hostname, pathname } = new URL(source);
+  const host = hostname.replace(/^www\./, '');
+  const tail = pathname.replace(/\/$/, '').split('/').filter(Boolean).at(-1);
+  return tail ? `${host}/${tail.slice(0, 48)}` : host;
+};
 
 const readable = checked
   ? new Date(`${checked}T00:00:00Z`).toLocaleDateString('en-GB', {
@@ -53,26 +67,12 @@ const readable = checked
 
       <h2>What {competitor.name} does well</h2>
       <ul class="claims">
-        {competitor.strengths.map((claim: Claim) => (
-          <li>
-            <p>{claim.says}</p>
-            <a class="src" href={claim.source} rel="nofollow noopener" target="_blank">
-              Their page, read {claim.checked}
-            </a>
-          </li>
-        ))}
+        {competitor.strengths.map((claim: Claim) => <li><p>{claim.says}</p></li>)}
       </ul>
 
       <h2>Where Flintroom is different</h2>
       <ul class="claims">
-        {competitor.differences.map((claim: Claim) => (
-          <li>
-            <p>{claim.says}</p>
-            <a class="src" href={claim.source} rel="nofollow noopener" target="_blank">
-              Their page, read {claim.checked}
-            </a>
-          </li>
-        ))}
+        {competitor.differences.map((claim: Claim) => <li><p>{claim.says}</p></li>)}
       </ul>
 
       <h2>Which one to pick</h2>
@@ -90,13 +90,19 @@ const readable = checked
         </div>
       </div>
 
-      {readable && (
-        <p class="asof">
-          Everything above was read from {competitor.name}’s own pages on {readable}. Products
-          change, and this one ships often. If something here is out of date, tell us at
-          <a href="mailto:hello@flintroom.app">hello@flintroom.app</a> and we will correct it.
-        </p>
-      )}
+      <h2>Sources</h2>
+      <p class="asof">
+        Everything above was read from {competitor.name}’s own pages{readable && ` on ${readable}`}.
+        Products change, and this one ships often. If something here is out of date, tell us at
+        <a href="mailto:hello@flintroom.app">hello@flintroom.app</a> and we will correct it.
+      </p>
+      <ul class="sources">
+        {sources.map((source: string) => (
+          <li>
+            <a href={source} rel="nofollow noopener" target="_blank">{label(source)}</a>
+          </li>
+        ))}
+      </ul>
     </div>
   </section>
 </Compare>
@@ -122,12 +128,22 @@ const readable = checked
   }
 
   .claims p {
-    margin: 0 0 12px;
+    margin: 0;
   }
 
   .src {
     font-size: 14px;
     font-weight: 600;
+  }
+
+  .sources {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+    font-size: 14px;
+    word-break: break-word;
   }
 
   .pick {
