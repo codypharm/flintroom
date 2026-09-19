@@ -56,6 +56,23 @@ pytestmark = pytest.mark.asyncio
         "i didn't hear you",
         "say that again",
         "huh?",
+        # Reported 2026-09-19, and the reason this table grew. Each of these
+        # fell through to selection, where a request carrying no domain
+        # vocabulary scores on silence alone — so the floor went to whoever
+        # had been quiet longest. A near miss here does not degrade to
+        # "handled the old way"; it *guarantees* the wrong panelist.
+        "say again",
+        "say that one more time",
+        "can you ask that again",
+        "ask me that again",
+        "run that by me again",
+        "would you mind repeating that",
+        # The adverb is the whole defect: "quite" sat between the negation and
+        # the verb and no pattern allowed anything there.
+        "I didn't quite catch that",
+        # Trailing softeners, which the leading ones were already stripped for.
+        "sorry, could you repeat that for me",
+        "say that again please",
     ],
 )
 def test_a_repeat_request_is_recognised(said: str):
@@ -74,6 +91,12 @@ def test_a_repeat_request_is_recognised(said: str):
         "what our customers say is that the callout takes four days",
         "the question of pricing is one we've studied for a year",
         "",
+        # Short enough to clear the word cap, so only the anchoring refuses
+        # these. They guard the 2026-09-19 widening: every phrase below is a
+        # recognised request with real words on either side of it.
+        "we should ask that again next quarter",
+        "say that again to the board",
+        "i didn't quite catch the upside there",
     ],
 )
 def test_an_answer_is_never_mistaken_for_a_repeat_request(said: str):
@@ -101,6 +124,16 @@ def test_an_answer_is_never_mistaken_for_a_repeat_request(said: str):
         "in plain english?",
         "I'm not sure what you're asking",
         "not sure what you're asking",
+        # Reported 2026-09-19. "rephrase" with no object failed on a space the
+        # pattern required before an otherwise optional group, so the bare
+        # verb — the most natural form of all — was the one that missed.
+        "can you rephrase",
+        "could you rephrase that question",
+        "can you rephrase that for me",
+        # The object was mandatory here too, and "I don't follow" on its own
+        # is the commonest way anyone says it.
+        "I don't follow",
+        "what do you mean by that exactly",
     ],
 )
 def test_a_rephrase_request_is_recognised(said: str):
@@ -126,6 +159,12 @@ def test_a_rephrase_request_is_recognised(said: str):
         "let me rephrase my earlier answer about the margin",
         "in plain english the unit economics work at scale",
         "",
+        # Short enough to clear the word cap, like the repeat side's. "follow"
+        # and "mean" are ordinary verbs in an answer, and making their objects
+        # optional is exactly what could have swallowed these.
+        "i don't follow the usual playbook here",
+        "what do you mean to the market is trust",
+        "we can rephrase the deck before friday",
     ],
 )
 def test_an_answer_is_never_mistaken_for_a_rephrase_request(said: str):
