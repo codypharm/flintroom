@@ -36,9 +36,23 @@ export interface RoomRefusal {
 
 const ROOM: Record<string, RoomRefusal> = {
   session_not_settled: {
-    title: 'This room is still running',
-    body: 'The panel finishes first, then the debrief opens. Come back when it has.',
-    offer: null,
+    // **Was a dead end until 2026-09-19.** It offered nothing, on the
+    // reasoning that a live room is not something to restart. That is true of
+    // a *fresh room* and was quietly applied to every offer, so somebody who
+    // arrived a second early had one route out: back.
+    //
+    // Arriving early is not an unusual way to reach this. The End button
+    // navigates on a fixed beat while settlement is still in flight, and a
+    // dropped line gives up the instant the session leaves `active` — which
+    // includes the whole of `finalizing`. In both cases the same read
+    // succeeds seconds later.
+    //
+    // So the body says what is happening rather than what is forbidden. The
+    // old sentence, "come back when it has", asked somebody to leave and
+    // remember to return, which is the one thing nobody does.
+    title: 'This room is still finishing',
+    body: 'The panel has stopped and we are closing the books on it. This takes a few seconds.',
+    offer: 'try again',
   },
   room_has_no_questions: {
     title: 'Nothing was asked',

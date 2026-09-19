@@ -28,7 +28,25 @@ describe('refusedRoom', () => {
   it('does not offer a restart for a room that is merely still running', async () => {
     // Restarting here would abandon a live session, which is the opposite of
     // what somebody arriving early wants.
-    expect(refusedRoom(refused('session_not_settled', '', 409))?.offer).toBeNull();
+    expect(refusedRoom(refused('session_not_settled', '', 409))?.offer).not.toBe(
+      'fresh room'
+    );
+  });
+
+  it('lets somebody who arrived early ask again', async () => {
+    // **The dead end, reported 2026-09-19.** This offered nothing, on the
+    // reasoning that a live room is not something to restart — true, and not
+    // an argument for offering *no* way forward. The room settles seconds
+    // later and the same read succeeds, so the one thing this refusal must
+    // do is let them make it.
+    //
+    // It is reachable by two races the client cannot win from the outside:
+    // the End button navigating on a fixed beat while settlement is still in
+    // flight, and a dropped line whose re-mint is refused the moment the
+    // session leaves `active` — which includes the whole of `finalizing`.
+    const refusal = refusedRoom(refused('session_not_settled', '', 409));
+
+    expect(refusal?.offer).toBe('try again');
   });
 
   it('tells a room that asked nothing apart from a room that broke', async () => {

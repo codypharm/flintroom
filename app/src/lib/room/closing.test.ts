@@ -33,17 +33,85 @@ it('tells the server before it drops the line', async () => {
 
 it('drops the line anyway when the server will not answer', async () => {
   // The room is over either way. A presenter who has finished must never be
-  // held on a screen because a request is hanging — the reaper settles an
-  // abandoned room and refunds it, so the worst case is the old behaviour.
+  // held on a screen because a request is hanging.
   const hangUp = jest.fn();
 
   await closeRoom({
     tell: () => new Promise(() => {}),
     hangUp,
     patience: 10,
+    confirmation: 20,
   });
 
   expect(hangUp).toHaveBeenCalled();
+});
+
+/**
+ * Whether the server *accepted* the ending, which is a different question to
+ * whether the line is down — and the caller needs both.
+ *
+ * Reported 2026-09-19: ending a room landed on a debrief that refused to
+ * open, saying the room was still running. The screen navigated on a fixed
+ * beat that had no relationship to this call, so it arrived before the room
+ * had settled. `POST /sessions/{id}/end` settles synchronously and returns
+ * the settled room, so a resolved `tell` is the one trustworthy signal that
+ * the debrief is ready to read.
+ */
+describe('reporting whether the room was settled', () => {
+  it('confirms an ending the server accepted', async () => {
+    await expect(closeRoom({ tell: async () => {}, hangUp: () => {} })).resolves.toBe(
+      true
+    );
+  });
+
+  it('does not confirm an ending the server never answered', async () => {
+    await expect(
+      closeRoom({
+        tell: () => new Promise(() => {}),
+        hangUp: () => {},
+        patience: 10,
+        confirmation: 20,
+      })
+    ).resolves.toBe(false);
+  });
+
+  it('does not confirm an ending the server refused', async () => {
+    await expect(
+      closeRoom({
+        tell: async () => {
+          throw new Error('offline');
+        },
+        hangUp: () => {},
+      })
+    ).resolves.toBe(false);
+  });
+
+  it('keeps waiting for the answer after the line is already down', async () => {
+    // The two deadlines are deliberately different. The microphone is live
+    // until `hangUp`, so that cannot wait — but the confirmation is only a
+    // question about where to navigate, and giving up on it early is what put
+    // somebody on a debrief that was not ready.
+    //
+    // A late `tell` still settles the room correctly: hanging up first only
+    // opens the reconnect window, and the session stays `active` inside it.
+    const order: string[] = [];
+
+    const settled = await closeRoom({
+      tell: () =>
+        new Promise<void>((resolve) =>
+          setTimeout(() => {
+            order.push('told');
+            resolve();
+          }, 40)
+        ),
+      hangUp: () => order.push('hung up'),
+      patience: 10,
+      confirmation: 200,
+    });
+
+    expect(order).toEqual(['hung up', 'told']);
+    expect(settled).toBe(true);
+  });
 });
 
 it('does not wait the full timeout when the server answers quickly', async () => {

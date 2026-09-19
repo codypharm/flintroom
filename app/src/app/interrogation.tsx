@@ -167,6 +167,21 @@ export default function InterrogationScreen() {
   /** Guards the hand-off: a close and an End both arrive, and only one may navigate. */
   const leaving = useRef(false);
   /**
+   * The paperwork in flight, so the hand-off can wait for it.
+   *
+   * Reported 2026-09-19: ending a room landed on a debrief that refused to
+   * open, saying the room was still running. `filePaperwork` and the beat
+   * below were two clocks with no relationship — `PATIENCE_MS` is 2000 in
+   * `closing.ts` and `BEAT_MS` is 2500 here, in a different file — so a
+   * settlement slower than the beat put somebody on a debrief that was not
+   * ready, with a refusal that offered no way back.
+   *
+   * Null for every ending nobody filed: a dropped line, an upstream failure,
+   * a close that arrived on its own. Those still leave on the beat alone,
+   * because there is no answer coming that would tell us any more.
+   */
+  const filed = useRef<Promise<boolean> | null>(null);
+  /**
    * The way back in, set once the first join has proven the way in works.
    *
    * A ref to the same `joinRoom` call the room opened with — same recorder,
@@ -231,13 +246,19 @@ export default function InterrogationScreen() {
       void release();
 
       const settled = session.current;
-      setTimeout(() => {
+      // The beat is a *minimum* now rather than the whole wait. It exists so
+      // the last line stays readable; it was never a claim about the server.
+      const beat = new Promise<void>((resolve) => setTimeout(resolve, BEAT_MS));
+      const paperwork = filed.current ?? Promise.resolve(true);
+      filed.current = null;
+
+      void Promise.all([beat, paperwork]).then(() => {
         if (settled === null) {
           router.replace('/');
           return;
         }
         router.replace(`/debrief/${settled}`);
-      }, BEAT_MS);
+      });
     },
     [release]
   );
@@ -586,9 +607,11 @@ export default function InterrogationScreen() {
       return;
     }
 
-    // `closeRoom` owns the order and is tested on it. Not awaited — a
-    // presenter who is done should not watch a spinner while we file.
-    void closeRoom({
+    // `closeRoom` owns the order and is tested on it. Still not awaited here —
+    // a presenter who is done should not watch a spinner while we file — but
+    // the promise is kept, because `settle` needs to know whether the room was
+    // actually settled before it opens the debrief on it.
+    filed.current = closeRoom({
       tell: () => sessions.end(settled),
       hangUp: () => room.current?.leave(),
     });
