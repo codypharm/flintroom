@@ -32,8 +32,27 @@ export interface RoomOptions {
    * caller starts it once this resolves.
    */
   recorder: UplinkRecorder;
-  /** A finished panel utterance, to caption, and who said it. */
+  /**
+   * A finished panel utterance, to caption, and who said it.
+   *
+   * Fires the instant the frame arrives, ahead of the audio it captions, and
+   * that is deliberate — captions are an accessibility requirement and a
+   * caption that waited for its own audio would arrive seconds late.
+   *
+   * **It is not who is speaking.** Use `onSpeaking` for that.
+   */
   onTranscript?: (line: PanelLine) => void;
+  /**
+   * Whose voice is actually coming out of the phone, or null for nobody.
+   *
+   * Separate from `onTranscript` because the two are true at different
+   * moments, and conflating them is what put the screen a whole turn ahead of
+   * the audio. A caption leads its own audio by design; a lit seat must not.
+   *
+   * Null is the floor being empty rather than the presenter's — that is
+   * `onTurnFinished`, which follows when nobody is waiting to speak.
+   */
+  onSpeaking?: (archetype: string | null) => void;
   /**
    * The panel has stopped; the floor is the presenter's.
    *
@@ -99,37 +118,46 @@ export interface Room {
 
 export async function joinRoom(options: RoomOptions): Promise<Room> {
   /**
-   * The floor comes back when **both** halves say so, and neither is enough.
+   * Who is audible, and who is queued behind them.
    *
-   * `turn_finished` means the server sent its last frame. Synthesis runs ahead
-   * of playback — that is what makes barge-in possible — so acting on it alone
-   * took the speaking panelist off the screen while their voice was still
-   * coming out of the phone. Reported from a device as losing focus "even when
-   * they are still speaking".
+   * **One boundary, used for both halves of the question, because the two
+   * halves used to have different answers.** Clearing a lit seat waited for
+   * the server to finish *and* for the audio to play; lighting one waited for
+   * nothing, so any caption could hand the seat to the next panelist while the
+   * last was still speaking. Reported from a device in August as losing focus
+   * "even when they are still speaking", and again on 2026-09-19 as the screen
+   * running a whole turn ahead of the audio. Two reports, one defect.
    *
-   * An empty playback queue alone is no better, and `connection.ts` already
-   * says why: it is indistinguishable from the network stalling mid-sentence,
-   * which would invite the presenter to talk over the end of a question.
+   * `turn_finished` says the server sent its last frame, which is not the same
+   * as the phone having played it — synthesis runs ahead of playback, and that
+   * is what makes barge-in possible. So it marks the last buffer of its
+   * utterance instead, and the room moves on when that buffer has actually
+   * played.
    *
-   * Together they are exact. Nothing more is coming, and nothing is left to
-   * play.
+   * Exact in both directions, and in particular still exact when the next
+   * panelist's frames are queued behind the tail of the last. The queue never
+   * empties there, which is why the empty-queue signal this replaces could not
+   * see the boundary at all.
    */
-  let sent = false;
-  let quiet = true;
+  let audible: string | null = null;
+  const waiting: string[] = [];
 
-  const handOver = () => {
-    if (!sent || !quiet) {
-      return;
-    }
-    sent = false;
-    options.onTurnFinished?.();
+  const show = (who: string | null) => {
+    audible = who;
+    options.onSpeaking?.(who);
   };
 
   const playback = createPlayback({
     context: options.context,
-    onDrained: () => {
-      quiet = true;
-      handOver();
+    onPlayed: () => {
+      // The floor goes back to the presenter only when nobody is queued behind
+      // the voice that just stopped. Announcing it between two panel turns
+      // would be the room inviting an answer to a question still being asked.
+      const next = waiting.shift() ?? null;
+      show(next);
+      if (next === null) {
+        options.onTurnFinished?.();
+      }
     },
   });
 
@@ -165,29 +193,36 @@ export async function joinRoom(options: RoomOptions): Promise<Room> {
     url: options.url,
     ticket: options.ticket,
     socketFactory: options.socketFactory,
-    onAudio: (pcm) => {
-      // A frame arriving is the room no longer being quiet. Set here rather
-      // than on the caption, because a caption goes out ahead of its audio and
-      // a turn whose synthesis fails would otherwise leave the floor held by
-      // somebody who never spoke.
-      quiet = false;
-      playback.enqueue(pcm);
+    onAudio: (pcm) => playback.enqueue(pcm),
+    onTranscript: (line) => {
+      // The caption goes out at once, ahead of its own audio, because that is
+      // what a caption is for. The *seat* does not: a caption that arrives
+      // while somebody is still audible belongs to the panelist queued behind
+      // them, and lighting them here is the bug this queue exists to stop.
+      options.onTranscript?.(line);
+
+      if (audible === null) {
+        show(line.speaker);
+        return;
+      }
+      waiting.push(line.speaker);
     },
-    onTranscript: options.onTranscript,
     onAttending: options.onAttending,
     onTemperature: options.onTemperature,
     onChallenging: options.onChallenging,
-    onTurnFinished: () => {
-      sent = true;
-      handOver();
-    },
+    // Where this utterance's audio ends. Every frame of it has already been
+    // enqueued — the wire delivers them before the control frame that closes
+    // the turn — so the buffer queued last is this utterance's last buffer.
+    onTurnFinished: () => playback.mark(),
     onDiscardPlayback: () => {
       // Barge-in. The queue is emptied without any buffer reaching its end, so
-      // no drain will ever be reported for what was dropped — and the floor is
-      // the presenter's already, by the act of interrupting.
-      quiet = true;
-      sent = false;
+      // nothing queued will ever be reported as played — including anyone
+      // waiting behind it, whose turn was thrown away with it.
+      waiting.length = 0;
       playback.discard();
+      // The floor is the presenter's already, by the act of interrupting, so
+      // this puts the panelist down without announcing a hand-over.
+      show(null);
       options.onDiscardPlayback?.();
     },
     onEnding: teardown,

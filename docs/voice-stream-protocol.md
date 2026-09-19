@@ -179,8 +179,18 @@ there is that a warning firing at the wrong time teaches people to ignore the
 one that matters.
 
 It says nothing about a panelist speaking. The caption and `turn_finished`
-already carry that, and a second source for one fact is what took a speaking
-panelist off the screen mid-sentence.
+already carry that between them, and a second source for one fact is what took
+a speaking panelist off the screen mid-sentence.
+
+**Corrected 2026-09-19: neither frame carries it on its own, and the caption
+carries it least.** A caption is sent ahead of the audio it captions, on
+purpose, so the instant it arrives is precisely when its speaker is *not* yet
+audible. Treating it as "who is speaking" put the screen a whole turn ahead of
+the loudspeaker whenever the next panelist's frames were queued behind the tail
+of the last. Who is audible is the client's to derive, from `turn_finished`
+marking the end of an utterance's buffers and the phone reporting when those
+buffers have actually played — see `app/src/lib/voice/room.ts`. Nothing on the
+wire changed, and nothing on the wire needs to.
 
 **Sent on transitions for speed and on every heartbeat for correctness**, and
 the heartbeat repeats it even when nothing has changed. Suppressing the repeat

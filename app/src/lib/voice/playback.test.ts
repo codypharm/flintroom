@@ -301,7 +301,7 @@ describe('holding buffers', () => {
   });
 });
 
-describe('reporting that the room has gone quiet', () => {
+describe('reporting that an utterance has finished playing', () => {
   /**
    * Reported from a device: the speaking panelist "quickly takes the person out
    * of focus even when they are still speaking".
@@ -311,10 +311,140 @@ describe('reporting that the room has gone quiet', () => {
    * what makes barge-in possible at all — so the caption's speaker was being
    * released while their voice was still coming out of the loudspeaker.
    *
-   * The queue node already knows. It has always reported `isLastBufferInQueue`
-   * and this module has always thrown it away.
+   * **This was an empty-queue signal until 2026-09-19, and an empty queue is
+   * the wrong boundary.** Reported again: the screen ran a whole turn ahead of
+   * the audio. When a presenter talks over the tail of a question the server
+   * has already finished, the next panelist's frames are appended behind that
+   * tail in the same queue — so the loudspeaker moves from one panelist to the
+   * next *without the queue ever emptying*, and nothing downstream could tell
+   * where one voice stopped and the other started.
+   *
+   * `mark` is that boundary, and it is exact rather than inferred. The wire
+   * delivers a turn's audio frames before the `turn_finished` that closes it,
+   * so the buffer queued last at that moment is the last buffer of that
+   * utterance. The node already reports each buffer by id as it ends; this
+   * module had been throwing the id away.
    */
-  function drainable() {
+  function markable() {
+    const context = new FakeContext(16000);
+    const played: number[] = [];
+    const playback = createPlayback({
+      context: context as never,
+      onPlayed: () => played.push(1),
+    });
+
+    return { playback, played, source: () => context.sources[0] };
+  }
+
+  it('reports when the last buffer of the utterance has actually played', () => {
+    const { playback, played, source } = markable();
+
+    playback.enqueue(frame([0.1]));
+    playback.enqueue(frame([0.2]));
+    playback.mark();
+
+    source().finish('1');
+    expect(played).toEqual([]);
+
+    source().finish('2');
+    expect(played).toEqual([1]);
+  });
+
+  it('keeps two utterances apart when their audio runs back to back', () => {
+    // THE BUG. The queue never empties between these two, so an
+    // empty-queue signal reports once, at the end of the second — by which
+    // time the screen has been wrong for a whole turn.
+    const { playback, played, source } = markable();
+
+    playback.enqueue(frame([0.1]));
+    playback.mark();
+    playback.enqueue(frame([0.2]));
+    playback.mark();
+
+    source().finish('1');
+    expect(played).toEqual([1]);
+
+    source().finish('2');
+    expect(played).toEqual([1, 1]);
+  });
+
+  it('reports at once for an utterance that queued no audio', () => {
+    // Synthesis can fail with the caption already sent. Nothing will ever
+    // play, so waiting for a buffer would hold the floor for the rest of the
+    // room.
+    const { playback, played } = markable();
+
+    playback.mark();
+
+    expect(played).toEqual([1]);
+  });
+
+  it('reports at once when the audio finished before the mark arrived', () => {
+    // A short utterance whose frames all played before `turn_finished`
+    // crossed the network. The buffer is gone and its id will never be
+    // reported again.
+    const { playback, played, source } = markable();
+
+    playback.enqueue(frame([0.1]));
+    source().finish('1');
+
+    playback.mark();
+
+    expect(played).toEqual([1]);
+  });
+
+  it('forgets the marks of audio that was thrown away', () => {
+    // Barge-in clears the queue, so the buffers those marks were waiting on
+    // will never end. Left behind, the next utterance would inherit them.
+    const { playback, played, source } = markable();
+
+    playback.enqueue(frame([0.1]));
+    playback.mark();
+    playback.discard();
+
+    source().finish('1');
+
+    expect(played).toEqual([]);
+  });
+
+  it('still releases the buffer it reports on', () => {
+    // The leak this callback sits beside: the node holds every buffer it has
+    // played until told otherwise, and rooms died after about three replies.
+    // Reporting must not quietly replace the release.
+    const { playback, source } = markable();
+
+    playback.enqueue(frame([0.1]));
+    playback.mark();
+    source().finish('1');
+
+    expect(source().dequeued).toEqual(['1']);
+  });
+
+  it('works for a room that never asked to be told', () => {
+    // `onPlayed` is optional, like every other callback on this seam.
+    const context = new FakeContext(16000);
+    const playback = createPlayback({ context: context as never });
+
+    playback.enqueue(frame([0.1]));
+    playback.mark();
+
+    expect(() => context.sources[0].finish('1')).not.toThrow();
+  });
+});
+
+describe('reporting that the loudspeaker is idle', () => {
+  /**
+   * Kept alongside `onPlayed`, and not the same question.
+   *
+   * The debrief coach has one voice and no turns to keep apart. It streams a
+   * reply in chunks and never says where the reply ends, so "nothing left to
+   * play" is the only signal available to it — and it is the right one, since
+   * what it re-enables is the controls that speaking disabled.
+   *
+   * The room must never use it to decide who is speaking. That is what it was
+   * used for, and it is why the screen ran a turn ahead of the audio.
+   */
+  it('says when the queue has emptied', () => {
     const context = new FakeContext(16000);
     const drained: number[] = [];
     const playback = createPlayback({
@@ -322,48 +452,24 @@ describe('reporting that the room has gone quiet', () => {
       onDrained: () => drained.push(1),
     });
 
-    return { playback, drained, source: () => context.sources[0] };
-  }
-
-  it('says when the last buffer has actually finished playing', () => {
-    const { playback, drained, source } = drainable();
-
-    playback.enqueue(frame([0.1, 0.2]));
-    source().drain('1');
+    playback.enqueue(frame([0.1]));
+    context.sources[0].drain('1');
 
     expect(drained).toEqual([1]);
   });
 
   it('says nothing for a buffer with more behind it', () => {
-    // Mid-utterance: a panelist is still talking and the screen must not move.
-    const { playback, drained, source } = drainable();
+    const context = new FakeContext(16000);
+    const drained: number[] = [];
+    const playback = createPlayback({
+      context: context as never,
+      onDrained: () => drained.push(1),
+    });
 
     playback.enqueue(frame([0.1]));
     playback.enqueue(frame([0.2]));
-    source().finish('1');
+    context.sources[0].finish('1');
 
     expect(drained).toEqual([]);
-  });
-
-  it('still releases the buffer it reports on', () => {
-    // The leak this callback sits beside: the node holds every buffer it has
-    // played until told otherwise, and rooms died after about three replies.
-    // Reporting must not quietly replace the release.
-    const { playback, source } = drainable();
-
-    playback.enqueue(frame([0.1]));
-    source().drain('1');
-
-    expect(source().dequeued).toEqual(['1']);
-  });
-
-  it('works for a room that never asked to be told', () => {
-    // `onDrained` is optional, like every other callback on this seam.
-    const context = new FakeContext(16000);
-    const playback = createPlayback({ context: context as never });
-
-    playback.enqueue(frame([0.1]));
-
-    expect(() => context.sources[0].drain('1')).not.toThrow();
   });
 });

@@ -63,14 +63,27 @@ class FakeQueueSource {
   connect(): void {}
   enqueueBuffer(buffer: unknown): string {
     this.enqueued.push(buffer);
-    return '1';
+    // Unique, because the boundary between two utterances is now a buffer id.
+    // A node that returned the same id for every frame would make every mark
+    // land on every frame.
+    return String(this.enqueued.length);
   }
   dequeueBuffer(bufferId: string): void {
     this.dequeued.push(bufferId);
   }
-  /** The loudspeaker actually going quiet — the last buffer played out. */
+  /** One buffer playing out, oldest first. */
+  finish(): void {
+    const bufferId = String(this.dequeued.length + 1);
+    this.onBufferEnded?.({
+      bufferId,
+      isLastBufferInQueue: this.dequeued.length + 1 >= this.enqueued.length,
+    });
+  }
+  /** Every queued buffer playing out, to the end of what is there. */
   drain(): void {
-    this.onBufferEnded?.({ bufferId: '1', isLastBufferInQueue: true });
+    while (this.dequeued.length < this.enqueued.length) {
+      this.finish();
+    }
   }
   clearBuffers(): void {
     order.push('playback.discard');
@@ -229,17 +242,24 @@ describe('handing the floor back', () => {
    * Reported from a device: the speaking panelist "quickly takes the person out
    * of focus even when they are still speaking".
    *
-   * Two signals arrive and neither is the answer on its own. `turn_finished`
-   * says the server sent its last frame — but synthesis runs ahead of playback,
-   * which is what makes barge-in possible, so seconds of the panelist's voice
-   * are still queued on the phone. An empty queue says nothing is left to play
-   * — but that is also what a network stall looks like mid-sentence, which
-   * would invite the presenter to talk over the end of a question.
+   * `turn_finished` says the server sent its last frame — but synthesis runs
+   * ahead of playback, which is what makes barge-in possible, so seconds of
+   * the panelist's voice are still queued on the phone.
    *
-   * Together they are exact, and this is the only place both can be seen.
+   * **Reported again 2026-09-19, the other way round: the screen ran a whole
+   * turn ahead of the audio.** Clearing a lit seat was gated on both signals;
+   * *lighting* one was gated on nothing at all, so any caption could hand the
+   * seat to the next panelist while the last one was still audible. The two
+   * halves of one question had two different answers.
+   *
+   * There is now one boundary and it is exact. `turn_finished` marks the last
+   * buffer of that utterance, and the room moves on when that buffer has
+   * actually played — which also works when the next panelist's audio is
+   * queued behind the tail of the last, where the queue never empties at all.
    */
   async function speaking() {
     const floor: string[] = [];
+    const lit: (string | null)[] = [];
     const context = new FakeContext();
     const recorder = new FakeRecorder();
 
@@ -250,6 +270,7 @@ describe('handing the floor back', () => {
       recorder: recorder as never,
       onTurnFinished: () => floor.push('yours'),
       onDiscardPlayback: () => floor.push('interrupted'),
+      onSpeaking: (who) => lit.push(who),
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
     });
 
@@ -257,62 +278,147 @@ describe('handing the floor back', () => {
     socket.onopen?.();
     const room = await joining;
 
-    // A panelist speaks: one frame of their voice arrives and is queued.
-    socket.receive(toPcm16(new Float32Array([0.1, 0.2])));
+    const says = (speaker: string) =>
+      socket.receive(JSON.stringify({ type: 'transcript', speaker, text: '...' }));
 
-    return { room, socket, floor, source: () => context.source! };
+    // A panelist speaks: one frame of their voice arrives and is queued.
+    const voice = () => socket.receive(toPcm16(new Float32Array([0.1, 0.2])));
+
+    return { room, socket, floor, lit, says, voice, source: () => context.source! };
   }
 
-  it('waits for the audio to finish, not just for the server to stop sending', () => {
-    // THE BUG. Acting here put the speaker down mid-sentence.
-    return speaking().then(({ socket, floor }) => {
-      socket.receive(JSON.stringify({ type: 'turn_finished' }));
+  it('waits for the audio to finish, not just for the server to stop sending', async () => {
+    // THE FIRST BUG. Acting here put the speaker down mid-sentence.
+    const { socket, floor, voice } = await speaking();
 
-      expect(floor).toEqual([]);
-    });
+    voice();
+    socket.receive(JSON.stringify({ type: 'turn_finished' }));
+
+    expect(floor).toEqual([]);
   });
 
-  it('hands it over once the last frame has actually played', () => {
-    return speaking().then(({ socket, floor, source }) => {
-      socket.receive(JSON.stringify({ type: 'turn_finished' }));
-      source().drain();
+  it('hands it over once the last frame has actually played', async () => {
+    const { socket, floor, voice, source } = await speaking();
 
-      expect(floor).toEqual(['yours']);
-    });
+    voice();
+    socket.receive(JSON.stringify({ type: 'turn_finished' }));
+    source().drain();
+
+    expect(floor).toEqual(['yours']);
   });
 
-  it('does not hand it over on a stall the server has not finished', () => {
+  it('does not hand it over on a stall the server has not finished', async () => {
     // The queue draining mid-utterance is the network, not the end of a turn.
-    return speaking().then(({ socket, floor, source }) => {
-      source().drain();
+    const { socket, floor, voice, source } = await speaking();
 
-      expect(floor).toEqual([]);
+    voice();
+    source().drain();
+    expect(floor).toEqual([]);
 
-      socket.receive(JSON.stringify({ type: 'turn_finished' }));
-      expect(floor).toEqual(['yours']);
-    });
+    socket.receive(JSON.stringify({ type: 'turn_finished' }));
+    expect(floor).toEqual(['yours']);
   });
 
-  it('hands it over exactly once', () => {
-    // Both signals can arrive more than once — a stalled queue drains, refills
-    // and drains again. The floor may only be given back for one of them.
-    return speaking().then(({ socket, floor, source }) => {
-      socket.receive(JSON.stringify({ type: 'turn_finished' }));
-      source().drain();
-      source().drain();
+  it('hands it over exactly once', async () => {
+    const { socket, floor, voice, source } = await speaking();
 
-      expect(floor).toEqual(['yours']);
-    });
+    voice();
+    socket.receive(JSON.stringify({ type: 'turn_finished' }));
+    source().drain();
+    source().drain();
+
+    expect(floor).toEqual(['yours']);
   });
 
-  it('puts an interrupted panelist down even though no turn finishes', () => {
+  it('puts an interrupted panelist down even though no turn finishes', async () => {
     // A cancelled turn deliberately never announces the floor — the person
     // holding it is already talking. Without this the panelist stays lit for
     // the rest of the room.
-    return speaking().then(({ socket, floor }) => {
-      socket.receive(JSON.stringify({ type: 'discard_playback' }));
+    const { socket, floor, lit, says, voice } = await speaking();
 
-      expect(floor).toEqual(['interrupted']);
-    });
+    says('The CFO');
+    voice();
+    socket.receive(JSON.stringify({ type: 'discard_playback' }));
+
+    expect(floor).toEqual(['interrupted']);
+    expect(lit).toEqual(['The CFO', null]);
+  });
+
+  it('lights the panelist whose caption arrived when nobody else is audible', async () => {
+    const { lit, says } = await speaking();
+
+    says('The CFO');
+
+    expect(lit).toEqual(['The CFO']);
+  });
+
+  it('does not light the next panelist while the last one is still audible', async () => {
+    // **THE SECOND BUG, and the reason this file changed.** The presenter
+    // talks over the tail of a question the server has already closed, so no
+    // barge-in is raised and the tail keeps playing. The next panelist's
+    // caption arrived ~0.8s later and took the seat immediately, while the
+    // previous voice was still coming out of the phone.
+    const { socket, lit, says, voice } = await speaking();
+
+    says('The CFO');
+    voice();
+    socket.receive(JSON.stringify({ type: 'turn_finished' }));
+
+    says('The Technical Skeptic');
+
+    expect(lit).toEqual(['The CFO']);
+  });
+
+  it('lights the next panelist the moment the previous one stops being heard', async () => {
+    const { socket, lit, says, voice, source } = await speaking();
+
+    says('The CFO');
+    voice();
+    socket.receive(JSON.stringify({ type: 'turn_finished' }));
+    says('The Technical Skeptic');
+    // The second panelist's audio, queued behind the first's tail. The queue
+    // never empties between the two, which is what made an empty-queue signal
+    // useless here.
+    voice();
+    source().finish();
+
+    expect(lit).toEqual(['The CFO', 'The Technical Skeptic']);
+  });
+
+  it('does not hand the floor back when another panelist is waiting to speak', async () => {
+    // The floor is not the presenter's between two panel turns. Announcing it
+    // there is the room telling somebody to answer a question that is still
+    // being asked.
+    const { socket, floor, says, voice, source } = await speaking();
+
+    says('The CFO');
+    voice();
+    socket.receive(JSON.stringify({ type: 'turn_finished' }));
+    says('The Technical Skeptic');
+    voice();
+    source().finish();
+
+    expect(floor).toEqual([]);
+  });
+
+  it('does not spend a finished turn on the panelist who replaced them', async () => {
+    // The other half of the same defect: the stale end-of-turn from the first
+    // panelist used to be spent blanking the second, so the room jumped to
+    // the new speaker, went dark, and only then heard them.
+    const { socket, lit, says, voice, source } = await speaking();
+
+    says('The CFO');
+    voice();
+    socket.receive(JSON.stringify({ type: 'turn_finished' }));
+    says('The Technical Skeptic');
+    voice();
+    source().finish();
+
+    expect(lit).toEqual(['The CFO', 'The Technical Skeptic']);
+
+    socket.receive(JSON.stringify({ type: 'turn_finished' }));
+    source().finish();
+
+    expect(lit).toEqual(['The CFO', 'The Technical Skeptic', null]);
   });
 });

@@ -450,16 +450,27 @@ export default function InterrogationScreen() {
             ticket,
             context: playback,
             recorder: capture,
+          // The caption only. It arrives ahead of its own audio by design, so
+          // it cannot also be what lights a seat — doing both here is what put
+          // the screen a whole turn ahead of the room (2026-09-19).
           onTranscript: (said) => {
             setLine(said);
-            setSpeaking(said.speaker);
             setFloor('panel');
-            // #75. They have arrived, so the announcement is spent. Cleared on
-            // the caption rather than on `challenging` changing, because this
-            // is the moment the thing it promised actually happened — and a
-            // tray still coming up under a voice that is already speaking
-            // would be the screen a beat behind the room.
-            setChallenging(null);
+          },
+          // Who is actually audible. `joinRoom` holds this back until the
+          // previous panelist's last buffer has played, which is the only
+          // moment it becomes true.
+          onSpeaking: (who) => {
+            setSpeaking(who);
+            // #75. They have arrived, so the announcement is spent. Cleared
+            // here rather than on the caption, because this is the moment the
+            // thing it promised actually happened — a tray still coming up
+            // under a voice that is already speaking would be the screen a
+            // beat behind the room, and one cleared while its owner is still
+            // queued would be a beat ahead of it.
+            if (who !== null) {
+              setChallenging(null);
+            }
           },
           // Both halves have happened: the room sent its last frame and the
           // phone has played it. `joinRoom` is what waits for the second —
@@ -484,17 +495,15 @@ export default function InterrogationScreen() {
           // the only thing that can honestly end it, and a turn that never
           // produced one was a turn nobody heard either.
           onChallenging: setChallenging,
-          onTurnFinished: () => {
-            setSpeaking(null);
-            setFloor('yours');
-          },
+          // The floor only. Putting the panelist down is `onSpeaking(null)`,
+          // which `joinRoom` raises first — and which also fires for the case
+          // this never saw, where one panelist hands straight to the next and
+          // the floor is nobody's in between.
+          onTurnFinished: () => setFloor('yours'),
           // Cut off mid-question. No `turn_finished` follows a barge-in, so
-          // without this the interrupted panelist stays lit for the rest of
-          // the room.
-          onDiscardPlayback: () => {
-            setSpeaking(null);
-            setFloor('yours');
-          },
+          // without this the floor would stay the panel's for the rest of the
+          // room.
+          onDiscardPlayback: () => setFloor('yours'),
           onLevel: (dbfs) => {
             levels.current = [...levels.current, dbfs].slice(-HEARD_WINDOW);
             // The bar tracks every buffer — it is an amplitude and lagging it
