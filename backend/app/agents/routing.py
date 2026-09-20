@@ -19,6 +19,7 @@ from collections.abc import Sequence
 
 from app.agents.archetypes import Archetype
 from app.agents.context import USER
+from app.agents.repeat import MOST_WORDS
 from app.agents.vocabulary import terms_for
 from app.core.logging import get_logger
 
@@ -55,6 +56,15 @@ def choose(panel: Sequence[Archetype], context) -> Archetype:
     unreproducible, and the first question about any room is *"why did it ask
     that"*.
     """
+    holding = _still_holding(panel, context)
+    if holding is not None:
+        log.info(
+            "panel_kept_the_floor",
+            archetype=holding.name,
+            words=len(context.said.split()),
+        )
+        return holding
+
     ranked = sorted(
         panel,
         key=lambda archetype: (-_score(archetype, context), panel.index(archetype)),
@@ -68,6 +78,73 @@ def choose(panel: Sequence[Archetype], context) -> Archetype:
         quiet_for=_quiet_for(chosen, context),
     )
     return chosen
+
+
+def _still_holding(panel: Sequence[Archetype], context) -> Archetype | None:
+    """The panelist who keeps the floor, or `None` to rank the room as usual.
+
+    **This exists because the fallback contradicted the prompt it stands in
+    for.** `_SELECTION_INSTRUCTION` rule 2 says that a reply carrying no figure,
+    no name, no date and no mechanism leaves the floor with the panelist who
+    spoke last, to press. Handed exactly that, `choose` did the opposite: with
+    no domain vocabulary to weigh, the score collapses to turns of silence and
+    the floor goes to whoever has been quiet longest.
+
+    That is the worst available answer to *"I could not place that"*. A room
+    which mishears a short utterance should not reply by opening a new line of
+    questioning from a new person. Reported 2026-09-19 by way of a missed
+    rephrase request: the presenter asked a panelist to put a question another
+    way, no pattern in `repeat.py` matched the phrasing, and a stranger
+    answered.
+
+    Three conditions, and all of them are needed:
+
+    - **Short.** `repeat.MOST_WORDS`, borrowed rather than invented, because
+      the question being asked here is the same one from the other side: could
+      this have been a request to hear the question again? Past that cap an
+      utterance touching no domain is narrative or an anecdote, and rotating
+      through the room is right.
+    - **Nothing anybody owns.** A single domain hit anywhere on the panel means
+      there is something in it to answer, so §3.1's mixed room applies.
+    - **Somebody to keep it.** No panel line yet means no floor to leave where
+      it is, on the room's first turn.
+
+    Bounded by #55's dial, which has to be applied here rather than assumed:
+    `pressure.presses` is enforced in the selection *prompt*, and this function
+    never sees the prompt. Without the check a fallback would quietly exceed
+    the dial on exactly the turns where the model failed and nobody is looking.
+    """
+    if len(context.said.split()) > MOST_WORDS:
+        return None
+    if any(_domain_hits(archetype, context.said) for archetype in panel):
+        return None
+
+    holding = next(
+        (archetype for archetype in panel if _quiet_for(archetype, context) == 0),
+        None,
+    )
+    if holding is None:
+        return None
+
+    # `presses` is how many times a panelist may press an unanswered question,
+    # so one consecutive line is the question itself and the press is the
+    # second. Counted from the transcript rather than remembered, for the
+    # reason the rest of this module gives: nothing here infers anything.
+    if _consecutively(holding, context) > context.pressure.presses:
+        return None
+    return holding
+
+
+def _consecutively(archetype: Archetype, context) -> int:
+    """Panel lines this archetype has just said in a row, ending at the newest."""
+    spoken = [line for line in context.grounding.transcript if line.speaker != USER]
+
+    held = 0
+    for line in reversed(spoken):
+        if line.speaker != archetype.name:
+            break
+        held += 1
+    return held
 
 
 def _score(archetype: Archetype, context) -> int:

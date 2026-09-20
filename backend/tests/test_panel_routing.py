@@ -164,3 +164,103 @@ def test_every_archetypes_domains_have_words_people_actually_say():
     ]
 
     assert missing == []
+
+
+# ------------------------------------------- a short utterance nobody can place
+
+
+def test_a_short_utterance_with_nothing_in_it_leaves_the_floor_where_it_is():
+    """The fallback used to contradict the prompt it stands in for.
+
+    `_SELECTION_INSTRUCTION` rule 2 says that when a reply contains no figure,
+    no name, no date and no mechanism, the panelist who spoke last takes the
+    floor again and presses. This function, handed exactly that, did the
+    opposite: with no domain vocabulary to weigh, the score collapsed to turns
+    of silence and the floor went to whoever had been quiet longest.
+
+    **That is the worst possible answer to "I could not place that".** A room
+    that mishears a short utterance should not respond by opening a new line of
+    questioning from a new person. Reported 2026-09-19 by way of a missed
+    rephrase request: the presenter asked a panelist to put a question another
+    way, the recogniser did not match the phrasing, and a stranger answered.
+
+    Widening the recognisers (`agents/repeat.py`) shrinks how often an
+    unrecognised request reaches here. It cannot close it, because there is
+    always one more way to say a thing.
+    """
+    chosen = choose(
+        DEFAULT_PANEL,
+        context(
+            "run that by me once more",
+            Said(speaker="cfo", text="Which number is lying?"),
+        ),
+    )
+
+    assert chosen.name == "cfo"
+
+
+def test_an_answer_with_something_in_it_still_moves_the_room_on():
+    """The rule above is for utterances with nothing in them, and only those.
+
+    An answer that names a figure has been answered, so §3.1's mixed room
+    applies as it always did and somebody else takes the floor.
+    """
+    chosen = choose(
+        DEFAULT_PANEL,
+        context(
+            "Gross margin is twenty eight percent",
+            Said(speaker="cfo", text="Which number is lying?"),
+        ),
+    )
+
+    assert chosen.name != "cfo"
+
+
+def test_a_long_utterance_nobody_owns_still_rotates():
+    """Length is the whole gate, and it is borrowed rather than invented.
+
+    `repeat.MOST_WORDS` is the cap on what can be a request to hear a question
+    again, so it is exactly the population where "we may have failed to
+    recognise this" is a live possibility. Past it, an utterance touching no
+    declared domain is narrative, context or an anecdote — which
+    `test_an_answer_nobody_owns_still_gets_a_speaker` exists for, and which the
+    room should keep rotating through.
+    """
+    chosen = choose(
+        DEFAULT_PANEL,
+        context(
+            "Let me take you back to how the two of us started this",
+            Said(speaker="cfo", text="Which number is lying?"),
+        ),
+    )
+
+    assert chosen.name != "cfo"
+
+
+def test_the_floor_does_not_stay_past_the_press_the_dial_allows():
+    """#55's cap holds here too, and it has to be applied rather than assumed.
+
+    `pressure.presses` is enforced in the selection *prompt* — "has pressed as
+    far as they may" — and this function never sees the prompt. So a fallback
+    that handed the floor back indefinitely would quietly exceed the dial on
+    every turn the model failed, which is precisely when nobody is watching.
+    """
+    pressed = (
+        Said(speaker="cfo", text="Which number is lying?"),
+        Said(speaker="cfo", text="I will ask it again."),
+    )
+
+    chosen = choose(DEFAULT_PANEL, context("run that by me once more", *pressed))
+
+    assert chosen.name != "cfo"
+
+
+def test_a_short_utterance_before_anybody_has_spoken_still_gets_a_speaker():
+    """There is no floor to leave where it is on the room's first turn.
+
+    The room is never silent, which is the invariant every other branch here
+    protects too.
+    """
+    chosen = choose(DEFAULT_PANEL, context("sorry, go on"))
+
+    assert chosen in DEFAULT_PANEL

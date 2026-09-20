@@ -137,7 +137,14 @@ _REPHRASINGS = tuple(
 #: A request is short. Anything past this is somebody making a point that
 #: happens to contain a trigger phrase, and the anchoring already refuses it —
 #: the cap is defence in depth against a pattern growing a loose tail.
-_MOST_WORDS = 8
+#:
+#: Public because `agents/routing.py` asks the same question from the other
+#: side: an utterance short enough to have been one of these, which no pattern
+#: matched, is one the room may have failed to understand rather than one it
+#: should answer by handing the floor to a stranger. Two copies of this number
+#: would drift, and the drift would read as the fallback disagreeing with the
+#: recogniser about what counts as short.
+MOST_WORDS = 8
 
 
 def _normalised(text: str) -> str | None:
@@ -165,7 +172,7 @@ def _normalised(text: str) -> str | None:
             break
         plain = softened
 
-    if not plain or len(plain.split()) > _MOST_WORDS:
+    if not plain or len(plain.split()) > MOST_WORDS:
         return None
     return plain
 
