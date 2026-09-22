@@ -201,6 +201,17 @@
   }
   .board .more { margin-top: 28px; font-size: 15px; color: var(--ink-variant); }
 
+  /* ── Reviews ──────────────────────────────────────────── */
+  /* SaaS Browser's script renders the carousel itself, so all that is here
+     is the frame around it: the heading, the room it sits in, and the line
+     underneath. Nothing styles inside `#saas-browser-reviews`, because that
+     is their markup and it can change without telling us. */
+  .reviews { padding: 96px 0 0; }
+  .reviews h2 { text-align: center; font-size: clamp(26px, 3.4vw, 32px); font-weight: 700; letter-spacing: -0.01em; }
+  #saas-browser-reviews { margin-top: 32px; }
+  .reviews .source { text-align: center; font-size: 14px; color: var(--ink-variant); margin-top: 20px; }
+  .reviews .source a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+
   /* ── Pricing ──────────────────────────────────────────── */
   .pricing { padding: 96px 0 32px; }
   .pricing > .shell > h2 { text-align: center; font-size: clamp(26px, 3.4vw, 32px); font-weight: 700; letter-spacing: -0.01em; }

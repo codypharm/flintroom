@@ -221,11 +221,22 @@ The calculators compute in the browser. Nothing typed into one is sent
 anywhere: no request is made at all, and the pacing tool's pasted script in
 particular never leaves the page.
 
+The landing page also carries a review carousel from SaaS Browser, loaded from
+`assets.saasbrowser.com`. The reviews are written on their site rather than
+ours, and nothing flows from our page into it: there is no form behind it and
+nobody signs in to it here. What it does mean is that a visitor's browser
+fetches a file from a host that is not ours, and that request carries the IP
+address and user agent any request carries. Their policy governs what they do
+with it. It loads on the landing page only, not on the calculators or the
+static pages. [LAWYER] Confirm whether they have to be named as a processor,
+or whether describing the request is enough.
+
 **Where the tag lives.** `web/src/components/Analytics.astro` for the nine
 pages that render through `Base.astro`, and inline in `privacy.html`,
 `terms.html` and `delete-account.html`, which own their own `<head>` and cannot
 import it. `web/src/components/analytics.test.ts` globs `pages/*.html`, so a
-static page added without the tag fails the suite on the day it is added.
+static page added without the tag fails the suite on the day it is added. The review
+widget lives in `web/src/pages/index.astro` and nowhere else.
 
 ---
 

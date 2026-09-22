@@ -12,6 +12,15 @@
  * exactly the kind of "very probably" a no-visible-change migration should
  * not be spending. It is plain DOM code against `.rail` and the two
  * waitlist forms; it can become a proper island when something asks it to.
+ *
+ * The reviews section is the one place on the site that loads a script we did
+ * not write. It is SaaS Browser's carousel, rendered from their profile id
+ * into `#saas-browser-reviews`, and it sits above the plans because social
+ * proof is worth more before the price than after it. The markup is their
+ * snippet unchanged: the div, the verified link, the `async` tag, in that
+ * order. Only the frame around it is ours, in `site.css`. It is a third-party
+ * processor of whatever a browser sends when it fetches a file, which is why
+ * `docs/privacy-policy.md` names it under **The website**.
  */
 import Base from '../layouts/Base.astro';
 import Header from '../components/Header.astro';
@@ -135,6 +144,15 @@ const OG_DESCRIPTION =
       </div>
       <p class="more">Or write your own. Custom archetypes sit beside ours, shaped by a sentence about the room you are actually facing.</p>
     </div>
+  </section>
+
+  <section class="reviews" id="reviews">
+    <div class="shell">
+      <h2>Reviews</h2>
+      <div id="saas-browser-reviews"></div>
+      <p class="source"><a href="https://saasbrowser.com/en/saas/1646709/flintroom">We're verified on SaaS Browser</a></p>
+    </div>
+    <script is:inline src="https://assets.saasbrowser.com/widgets/display.min.js" data-profile="1a49ab0c-9997-4d8d-93e8-4079265a5495" data-layout="carousel" data-mode="light" async></script>
   </section>
 
   <section class="pricing" id="pricing">
