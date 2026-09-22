@@ -360,11 +360,18 @@ seven strings are the deliverable.
 
 - **Teams is not a product yet.** Deferred in §1 above; per-seat with a ten-seat
   minimum does not fit an App Store subscription, and the channel is undecided.
-- **Sandbox purchases and real minutes.** The event carries
-  `environment: PRODUCTION | SANDBOX`. Granting on sandbox means anyone with a
-  tester account mints minutes against production; refusing it means a staging
-  deployment sharing the production database cannot be tested end to end. Undecided
-  — the handler slice needs an answer.
+- ~~Sandbox purchases and real minutes.~~ **Resolved 2026-09-22.** The handler
+  refuses. `modules/billing/billing.py` reads `environment` before anything that
+  grants, audits the event as `sandbox_purchase` and rejects it, because a
+  licence tester buys every product without being charged and the event is
+  otherwise identical to a real one: `environment` is the only thing telling
+  them apart, and a check placed late is one refactor from minting minutes for
+  free. The cost is the one this bullet named, and it is worth knowing before
+  it is met: a licence tester's purchase succeeds at the store and produces no
+  minutes, which reads as a bug the first time it happens. Grant them by hand
+  with `scripts/grant_minutes.py`, which is what `docs/deployment.md` keeps that
+  script for. A staging deployment that needs the purchase flow end to end needs
+  its own database, not a looser check.
 - ~~The credit-toward-upgrade rule needs a store mechanism.~~ **Resolved
   2026-08-16.** It needs none: top-up minutes live in their own bucket and are
   untouched by a reset or an upgrade, so a user who tops up and then subscribes
