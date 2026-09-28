@@ -772,7 +772,7 @@ nothing else checks and exactly the kind this document exists for: it fails
 quietly, months later, on somebody's first clone. The signing key is generated
 per run, so no credential-shaped string sits in the workflow.
 
-**Postgres and MinIO come from `backend/docker-compose.yml`**, the same file a
+**Postgres and RustFS come from `backend/docker-compose.yml`**, the same file a
 developer uses, so there is one description of what the suite needs. A
 filesystem stub was refused for the same reason `docs/ingestion.md` refuses one
 in development: it cannot do direct-to-storage PUT without proxying, so it would

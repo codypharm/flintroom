@@ -27,7 +27,7 @@ does it hold up in a hand, on a desk, over real air.
 
 1. **Services on the laptop:**
    ```
-   docker compose up -d          # Postgres + MinIO, from the repo root
+   docker compose up -d          # Postgres + RustFS, from the repo root
    cd backend && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
    cd app && npx expo start
    ```

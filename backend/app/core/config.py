@@ -291,7 +291,7 @@ class Settings(BaseSettings):
     #: runs the voice loop, and `docs/auditor-grounding.md` makes the deckless
     #: path first-class rather than degraded. Absent means ingestion refuses.
     #:
-    #: The endpoint is what makes this portable: MinIO in development, and AWS
+    #: The endpoint is what makes this portable: RustFS in development, and AWS
     #: S3, Cloudflare R2 or Backblaze B2 in production, with no code change.
     #: It is required rather than defaulted to AWS, because a blank endpoint
     #: that silently means "the real S3" is a credential sent to the wrong host.
@@ -300,9 +300,9 @@ class Settings(BaseSettings):
     s3_secret_access_key: str | None = None
     s3_bucket: str | None = None
 
-    #: SigV4 signs over a region whether or not the store has regions. MinIO
-    #: accepts any value; S3 does not, so this is a real setting with a default
-    #: that happens to be right for development.
+    #: SigV4 signs over a region whether or not the store has regions, and S3
+    #: checks it, so this is a real setting with a default that happens to be
+    #: right for development.
     s3_region: str = "us-east-1"
 
     #: Where the bucket name goes — in the hostname, or in the path.
@@ -313,7 +313,7 @@ class Settings(BaseSettings):
     #: works everywhere today; it is still the wrong thing to bake into a
     #: production deployment when the alternative is a default.
     #:
-    #: `path` is for stores with no DNS to put a bucket in front of — MinIO in
+    #: `path` is for stores with no DNS to put a bucket in front of — RustFS in
     #: development, and Cloudflare R2, which documents it. A `Literal`, so a
     #: typo is a process that refuses to boot rather than a signature the store
     #: rejects at upload time.

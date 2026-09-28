@@ -1,6 +1,6 @@
 """`ObjectStorage` over anything that speaks S3.
 
-The endpoint is configuration, so this one class is MinIO in development, and
+The endpoint is configuration, so this one class is RustFS in development, and
 AWS S3, Cloudflare R2 or Backblaze B2 in production, with no branch and nothing
 recompiled. That is the whole reason development runs a real S3 server rather
 than a filesystem stub — the code exercised here is the code that deploys.

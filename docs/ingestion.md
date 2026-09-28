@@ -185,7 +185,9 @@ user per prep session. What they buy is process isolation and retry machinery.
 
 One `ObjectStorage` protocol — `presign_put`, `presign_get`, `delete` — with an
 S3-compatible implementation. MinIO joins Postgres in `backend/docker-compose.yml`
-so development and CI exercise real presigned PUT and GET rather than a stub.
+so development and CI exercise real presigned PUT and GET rather than a stub. (RustFS
+since 2026-09-28, when MinIO stopped publishing images; the reasons are in
+`backend/docker-compose.yml`.)
 
 CLAUDE.md already requires presigned delivery (*"never proxied"*) and an interface
 whose *"contract is the presigned URL, not the vendor SDK."* What is decided here
@@ -1010,7 +1012,7 @@ reason — no window rolls over into them:
 ```
 backend/app/core/
   storage.py            ObjectStorage protocol
-  storage_s3.py         S3-compatible implementation (MinIO in dev)
+  storage_s3.py         S3-compatible implementation (RustFS in dev)
 
 backend/app/modules/ingestion/
   router.py             thin: presign, complete, read, delete

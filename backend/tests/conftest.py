@@ -122,7 +122,7 @@ async def session_factory(db, engine):
 
 @pytest.fixture
 def recordings(storage) -> RoomRecordings:
-    """Real MinIO, like every other storage test here — a fake object store
+    """A real S3 server, like every other storage test here — a fake object store
     would agree with whatever we wrote rather than with S3."""
     return RoomRecordings(storage)
 
@@ -149,7 +149,7 @@ def sessions(db) -> SessionService:
 
 @pytest.fixture
 def storage() -> S3ObjectStorage:
-    """The MinIO in `docker-compose.yml`, not a stub.
+    """The RustFS in `docker-compose.yml`, not a stub.
 
     `docs/ingestion.md` refused a filesystem shim for development because a
     filesystem cannot do direct-to-storage PUT without proxying — so a shim

@@ -119,7 +119,7 @@ being wrong by 2× in either direction; the crossover point does not.
 > `docs/session-retention.md`. Everything below is preserved as the reasoning
 > that produced the answer.
 
-Development runs MinIO. Production is undecided, and deliberately so: the code
+Development runs RustFS. Production is undecided, and deliberately so: the code
 speaks the S3 API and holds no vendor SDK above `core/storage_s3.py`, so AWS S3,
 Cloudflare R2, Backblaze B2 and a self-hosted MinIO differ by four environment
 variables and `S3_ADDRESSING_STYLE`. Choosing now would be choosing without the
