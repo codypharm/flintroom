@@ -14,7 +14,7 @@ perfectly well in a transcript and feels flat in a room.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 
 from app.agents.archetypes import Archetype, by_name
 from app.agents.authored import is_authored
@@ -30,7 +30,8 @@ from app.agents.context import (
     SelectedBy,
     TurnContext,
 )
-from app.agents.model import PanelModel, TurnUsage
+from app.agents.model import ModelReply, PanelModel, TurnUsage
+from app.agents.reasked import already_asked
 from app.agents.routing import choose
 from app.core.errors import (
     ArchetypeNotFound,
@@ -219,6 +220,18 @@ async def interrogate(
     written = await model.compose(
         archetype=archetype, context=context, finding=finding, dispute=dispute
     )
+    spent = [written.usage]
+
+    # A panelist returning to the floor with a question it already put — the
+    # 2026-09-26 report. Checked in code because the prompt already forbids it
+    # and that did not hold. A finding is exempt: it is new evidence, and §3.3
+    # gives it to the domain's owner and nobody else.
+    repeated = None if finding else _repeating(archetype, context, written.text)
+    if repeated is not None:
+        redrawn = await _not_again(panel, archetype, context, model, repeated, dispute)
+        archetype, written, dispute = redrawn.archetype, redrawn.written, redrawn.dispute
+        chosen_by = redrawn.chosen_by or chosen_by
+        spent.extend(redrawn.spent)
 
     # Never the line itself, and never a claim. Ingested material contents are
     # forbidden in logs (CLAUDE.md) and a panelist's line quotes them directly —
@@ -249,11 +262,95 @@ async def interrogate(
         # Routing plus composition. A turn that fell back to keywords still
         # carries whatever the failed routing call cost, because the provider
         # charged for it either way.
+        # A draft sent back still cost what the provider charged for it.
         usage=TurnUsage(
-            input_tokens=routing.input_tokens + written.usage.input_tokens,
-            output_tokens=routing.output_tokens + written.usage.output_tokens,
+            input_tokens=routing.input_tokens + sum(u.input_tokens for u in spent),
+            output_tokens=routing.output_tokens + sum(u.output_tokens for u in spent),
         ),
     )
+
+
+def _repeating(archetype: Archetype, context: TurnContext, line: str) -> str | None:
+    """The question this line repeats, when its speaker is *returning* to the floor.
+
+    A press is exempt, and has to be: a panelist speaking straight after its own
+    question is pressing it, and #55's dial exists precisely so that it can.
+    What the tester reported was the other case — the floor went round the
+    table and came back to somebody with nothing new to ask.
+    """
+    spoken = [line for line in context.grounding.transcript if line.speaker != USER]
+    if not spoken or spoken[-1].speaker == archetype.name:
+        return None
+    return already_asked(line, context.grounding.asked_by(archetype.name))
+
+
+@dataclass(frozen=True, slots=True)
+class _Redrawn:
+    """What the turn became after its first draft came back as a repeat."""
+
+    archetype: Archetype
+    written: ModelReply
+    dispute: Said | None
+    #: Set only when the floor changed hands, and then to `fallback`: code
+    #: overruled the model's pick, which is what that value already means.
+    chosen_by: SelectedBy | None
+    spent: list[TurnUsage] = field(default_factory=list)
+
+
+async def _not_again(
+    panel: Sequence[Archetype],
+    archetype: Archetype,
+    context: TurnContext,
+    model: PanelModel,
+    repeated: str,
+    dispute: Said | None,
+) -> _Redrawn:
+    """One rewrite, told which question it repeated; then somebody else.
+
+    **Bounded at two extra calls, and usually one.** Each is a composition,
+    measured at 0.82s, so the worst case adds about 1.6s to a turn that Open
+    Risk #3 budgets at 1.5s. That is only paid on a turn that was about to
+    repeat itself, which is the one turn where the room had already lost the
+    illusion.
+
+    **The screen can be wrong for a beat when the floor moves.** #75 announces
+    the next speaker before this runs, from `who_takes_the_floor`, and nothing
+    here can reach back and change it. The announced tray emerges, and clears
+    the moment the real voice arrives. A tray shown for a second under the wrong
+    portrait was judged cheaper than a panelist asking the same thing twice,
+    and `panel_repeat_caught` with `outcome=handed_off` is how often it happens.
+    """
+    earlier = context.grounding.asked_by(archetype.name)
+    rewrite = await model.compose(
+        archetype=archetype,
+        context=replace(context, repeated=repeated),
+        dispute=dispute,
+    )
+    if already_asked(rewrite.text, earlier) is None:
+        log.info("panel_repeat_caught", archetype=archetype.name, outcome="rewritten")
+        return _Redrawn(archetype, rewrite, dispute, None, [rewrite.usage])
+
+    others = [one for one in panel if one.name != archetype.name]
+    if not others:
+        # A panel of one has nobody to hand to. A repeat is better than silence
+        # in a metered room.
+        log.info("panel_repeat_caught", archetype=archetype.name, outcome="kept")
+        return _Redrawn(archetype, rewrite, dispute, None, [rewrite.usage])
+
+    # The keyword router, which is deterministic and costs nothing. A second
+    # selection call would be another 0.77s to decide something the room only
+    # needs to be roughly right about: anybody but the panelist who has run out.
+    taker = choose(others, context)
+    handed = await model.compose(archetype=taker, context=context)
+    log.info(
+        "panel_repeat_caught",
+        archetype=archetype.name,
+        outcome="handed_off",
+        to=taker.name,
+    )
+    # No dispute travels. It was an occasion for the panelist who is not now
+    # speaking, and `dispute.py` counts what a room spends on them.
+    return _Redrawn(taker, handed, None, "fallback", [rewrite.usage, handed.usage])
 
 
 @dataclass(frozen=True, slots=True)

@@ -1127,3 +1127,43 @@ incumbent in). Per-call or deployment-wide: deployment-wide like
 `extraction_provider`, if ever — but not wired today. Mixed room: the numbers
 do not justify a second vendor's failure modes for a cheaper selection call
 that is already the cheap call.
+
+## Coming back with the same question, 2026-09-28
+
+Reported by a tester from a room on 2026-09-26: the floor went from the CFO
+to other panelists and back, and the CFO returned with the question it had
+already asked. The logs for that room (no transcript was read) show why the
+conditions were the worst case: no deck (`claims=0`), an eight-word opening
+(`thin=True`), and replies of one to four words. A persona with nothing else
+to press on pulls back to its one subject.
+
+The composer was already told not to. `_composition_prompt` lists the
+archetype's own earlier questions under *"do not repeat these"*, and nothing
+checked the line it wrote. That is the pattern `CLAUDE.md` warns about for the
+coach, arriving in the panel: a rule held by a sentence in a prompt.
+
+**What changed.** `panel.interrogate` now checks the written line against the
+speaker's earlier questions (`agents/reasked.py`). On a repeat it asks for one
+rewrite, naming the question that was repeated (`TurnContext.repeated`). If
+the rewrite repeats too, the floor goes to another panelist through the keyword
+router (`routing.choose`), recorded as `chosen_by="fallback"`.
+
+- **Lexical, not a model judgement.** Word overlap after dropping filler, at
+  0.6. It catches the same question reworded around the edges and does not
+  catch a second question on the same subject. The tests pin both sides.
+  Looser paraphrase gets through, and that is the trade for a check that is
+  free, deterministic and has no latency.
+- **A press is exempt.** A panelist speaking straight after its own question is
+  pressing it, which #55 allows. Only a panelist *returning* to the floor is
+  checked.
+- **A finding is exempt.** It is new evidence, and §3.3 gives it to the owner
+  of the domain and nobody else.
+- **The cost.** One extra composition (about 0.82s) on a caught turn, two on a
+  handoff. It is paid only on turns that were about to repeat.
+- **The screen can be wrong for a beat.** #75 announces the next speaker before
+  the turn is written, so on a handoff the announced tray emerges and then
+  clears when the real voice arrives.
+
+`panel_repeat_caught` logs every catch with `outcome=rewritten`, `handed_off`
+or `kept` (a panel of one). Its rate against `panel_turn` shows whether 0.6 is
+right, and how often the screen was briefly wrong.

@@ -425,9 +425,20 @@ async def test_a_challenge_is_kept_against_the_panelist_who_made_it():
 class TakingTurns:
     """Hands the floor to a different archetype each time it is asked."""
 
+    #: A different question every call. The same line from the same archetype
+    #: twice is a repeat, and `agents/reasked.py` hands the floor away from a
+    #: panelist that returns with one, which would test that instead of this.
+    QUESTIONS = (
+        "What did onboarding do to the cost of landing a customer?",
+        "Who at those two customers will take a reference call?",
+        "Where does the margin go once support is staffed?",
+        "Which quarter does sponsorship have to renew in?",
+    )
+
     def __init__(self, *speakers: str) -> None:
         self._speakers = list(speakers)
         self._next = 0
+        self._written = 0
 
     async def select(self, *, candidates: Sequence[Archetype], context) -> ModelReply:
         speaker = self._speakers[min(self._next, len(self._speakers) - 1)]
@@ -437,7 +448,9 @@ class TakingTurns:
     async def compose(
         self, *, archetype: Archetype, context, finding=None, dispute=None
     ) -> ModelReply:
-        return ModelReply(text=f"{archetype.name} asks something.")
+        question = self.QUESTIONS[self._written % len(self.QUESTIONS)]
+        self._written += 1
+        return ModelReply(text=question)
 
 
 class WatchingTranscript(FakeTranscript):

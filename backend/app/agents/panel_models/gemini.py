@@ -674,5 +674,17 @@ def _composition_prompt(
             "it. Ask for the one thing you would need first, in your own terms."
         )
 
+    if context.repeated:
+        # The second draft, after the first came back as a question this
+        # archetype had already put — `agents/reasked.py`. Last before what they
+        # said, so it is the freshest thing in front of the model, and it names
+        # the question rather than restating the ban above, which had already
+        # been read and not held.
+        parts.append(
+            "You were about to ask this again, and you have already asked it:\n"
+            f"{context.repeated}\n"
+            "Do not ask it in any wording. Ask them something it did not cover."
+        )
+
     parts.append(f"They just said:\n{context.said}")
     return "\n\n".join(parts)

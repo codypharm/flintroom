@@ -215,6 +215,20 @@ class TurnContext:
     #: company does is one that was not listening.
     thin_opening: bool = False
 
+    #: The earlier question this archetype's first draft repeated, or empty.
+    #:
+    #: Set only on the one rewrite `panel.interrogate` asks for when a returning
+    #: panelist comes back with a question it already put (reported 2026-09-26,
+    #: see `agents/reasked.py`). Here rather than as an argument to `compose`
+    #: for the reason `thin_opening` is: it stays off `PanelModel`, so neither
+    #: adapter nor any fake had to learn it exists.
+    #:
+    #: **The question itself, not a flag.** The composer already has the list
+    #: headed "do not repeat these" and wrote a repeat anyway; told only "not
+    #: that" again, it writes the nearest neighbour. Named, it can be told what
+    #: to move off.
+    repeated: str = ""
+
 
 @dataclass(frozen=True)
 class Finding:
