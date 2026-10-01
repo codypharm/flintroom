@@ -1,6 +1,6 @@
 import { Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MoreMinutes } from '../components/modules/MoreMinutes';
@@ -16,6 +16,7 @@ import { useGateway } from '../lib/auth/gateway';
 import { SignedOut } from '../lib/auth/session';
 import { PurchaseCancelled, revenueCatStore } from '../lib/billing/revenuecat';
 import { settles } from '../lib/billing/settling';
+import { storeKeyFor } from '../lib/billing/storeKey';
 import { unconfiguredStore, type Sellable, type Store } from '../lib/billing/store';
 import { color } from '../theme/tokens';
 
@@ -29,11 +30,12 @@ import { color } from '../theme/tokens';
  * become dismissible-only-by-paying, because there is nothing to dismiss.
  *
  * **The store is RevenueCat when a key is present, and a shut shop when it is
- * not.** The key decides per build: production and any developer who has set
- * `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` get the real till; a build without it
- * keeps `unconfiguredStore()`, which sells nothing and refuses to buy — an
- * honest closed shop rather than a pretend open one. The key is the public
- * SDK identifier, not a secret; it ships in the bundle by design.
+ * not.** The key decides per build and per platform: `storeKeyFor` picks
+ * `EXPO_PUBLIC_REVENUECAT_IOS_KEY` on an iPhone and
+ * `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` on Android, and a build without its own
+ * platform's key keeps `unconfiguredStore()`, which sells nothing and refuses
+ * to buy — an honest closed shop rather than a pretend open one. The keys are
+ * public SDK identifiers, not secrets; they ship in the bundle by design.
  */
 
 const balance = createBalanceApi({
@@ -46,7 +48,10 @@ const purchases = createPurchaseApi({
   accessToken: () => auth.accessToken(),
 });
 
-const storeKey = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY;
+const storeKey = storeKeyFor(Platform.OS, {
+  android: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY,
+  ios: process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY,
+});
 const store: Store = storeKey
   ? revenueCatStore({ apiKey: storeKey, userId: () => auth.userId() })
   : unconfiguredStore();
