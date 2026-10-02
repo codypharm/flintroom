@@ -408,6 +408,28 @@ field check the paragraph above left owed.
 **The lesson for the spike:** it measures one start order. A change to which
 side of the room opens first is a change the spike will not see.
 
+**Then the rooms went silent again, intermittently, and the cause was iOS
+reconfiguring the engine under them.** Same symptom, a fresh room sometimes
+working and the next one not. With no cable to the phone, a temporary probe
+printed counts to the Metro terminal, and one failing room said it plainly:
+iOS posted `AVAudioEngineConfigurationChange` and stopped the engine as
+playback opened; the microphone delivered 549 frames and the server heard the
+presenter, and of 69 chunks of a panelist's voice enqueued, none was played.
+Two fixes in `RoomAudioModule.swift`: the session is only set when it differs,
+since re-setting it under a running voice-processing engine is itself a
+change; and the notification is observed, with recovery that rebuilds the
+player's connections on the engine's current formats rather than only
+restarting, because a restart alone brought the microphone back and left the
+speaker playing into nothing. Three consecutive rooms on the rebuilt app, fresh
+and "Run it again", all played and all heard. Each recovery logs
+`[room-audio] the engine stopped under the room and was restarted` on a
+development build.
+
+Unrecovered, the bug is invisible from both ends: the server sends the opener
+and logs nothing wrong, the phone lights the seat, and the room is refunded as
+unheard. A metered room that plays nothing and refunds itself looks, in every
+log, like a presenter who walked out.
+
 ## Open
 
 - **One handset is not a result.** Echo behaviour is per-device on Android.

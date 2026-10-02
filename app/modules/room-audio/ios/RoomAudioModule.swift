@@ -14,8 +14,9 @@ import ExpoModulesCore
 
  Measured on an iPhone 13 on 2026-10-02 (`docs/echo-cancellation.md`, "iOS,
  measured"): the canceller holds and a presenter talking over the panel is
- still heard. The same day's first live room was silent, which is what
- `ensureVoiceProcessing` is for. The simulator routes audio through the host
+ still heard. The same day's live rooms went silent twice over: voice
+ processing switched on under a running engine (`ensureVoiceProcessing`), and
+ iOS reconfiguring the engine as playback opened (`recover`). The simulator routes audio through the host
  Mac and still cannot answer an acoustic question.
  */
 public class RoomAudioModule: Module {

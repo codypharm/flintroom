@@ -15,51 +15,6 @@ defaultNative?.addListener('restarted', ((event: RestartedEvent) => {
   }
 }) as (event: never) => void);
 
-/*
- * TEMPORARY PROBE, 2026-10-02. Remove once the silent iOS rooms are explained.
- *
- * Every two seconds while audio is open, in a development build only: how
- * many microphone frames arrived, how many chunks were handed to the native
- * player, how many it reports as played, and when each side finished
- * starting, in milliseconds from the first thing that opened. Read off the
- * Metro terminal, because the phone in question cannot be reached by cable.
- */
-const probe = {
-  frames: 0,
-  enqueued: 0,
-  played: 0,
-  firstEnqueueMs: -1,
-  playbackReadyMs: -1,
-  captureReadyMs: -1,
-};
-let probeStartedAt = 0;
-let probing: ReturnType<typeof setInterval> | null = null;
-
-function probeSince(): number {
-  return Date.now() - probeStartedAt;
-}
-
-function startProbe(): void {
-  if (!__DEV__ || process.env.NODE_ENV === 'test' || probing !== null) return;
-  probeStartedAt = Date.now();
-  Object.assign(probe, {
-    frames: 0,
-    enqueued: 0,
-    played: 0,
-    firstEnqueueMs: -1,
-    playbackReadyMs: -1,
-    captureReadyMs: -1,
-  });
-  probing = setInterval(() => console.log('[room-audio probe]', JSON.stringify(probe)), 2000);
-}
-
-function stopProbe(): void {
-  if (probing === null) return;
-  console.log('[room-audio probe] final', JSON.stringify(probe));
-  clearInterval(probing);
-  probing = null;
-}
-
 /**
  * The owned audio layer (#25), wearing the shapes the room already uses.
  *
@@ -175,7 +130,6 @@ export function openNativeCapture(
       callback = ready;
       subscription?.remove();
       subscription = native.addListener('frame', (event: FrameEvent) => {
-        probe.frames += 1;
         const samples = floatFromPcm16(bytesFromBase64(event.base64));
         callback?.({
           buffer: {
@@ -191,14 +145,8 @@ export function openNativeCapture(
       subscription?.remove();
       subscription = null;
     },
-    start: () => {
-      startProbe();
-      return Promise.resolve(native.startCapture(communication)).then(() => {
-        probe.captureReadyMs = probeSince();
-      });
-    },
+    start: () => native.startCapture(communication),
     stop: () => {
-      stopProbe();
       native.stopCapture();
     },
   };
@@ -276,8 +224,6 @@ export function openNativePlayback(
         enqueueBuffer: (buffer) => {
           const id = String(next++);
           queued.push(id);
-          probe.enqueued += 1;
-          if (probe.firstEnqueueMs < 0) probe.firstEnqueueMs = probeSince();
           native.enqueue(base64FromBytes(pcm16FromFloat(buffer.samples())));
           return id;
         },
@@ -294,7 +240,6 @@ export function openNativePlayback(
         start: () => {
           subscription?.remove();
           subscription = native.addListener('played', (event: PlayedEvent) => {
-            probe.played += 1;
             const id = queued.shift();
             if (id === undefined) {
               return; // A discard raced a chunk that had already finished.
@@ -308,14 +253,9 @@ export function openNativePlayback(
           // start (the engine, the session) became a room that lit its seats
           // and played nothing, with no error anywhere to read. Found on the
           // first iPhone, 2026-10-02.
-          startProbe();
-          Promise.resolve(native.startPlayback(communication))
-            .then(() => {
-              probe.playbackReadyMs = probeSince();
-            })
-            .catch((error: unknown) => {
-              console.error('[room-audio] playback did not start', error);
-            });
+          Promise.resolve(native.startPlayback(communication)).catch((error: unknown) => {
+            console.error('[room-audio] playback did not start', error);
+          });
         },
         stop: () => {
           subscription?.remove();
