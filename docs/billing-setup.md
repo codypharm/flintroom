@@ -203,8 +203,8 @@ Play Console → Settings → **Licence testing**. Add the tester email addresse
 they can buy every product without being charged, and the purchases are real
 enough to fire webhooks.
 
-Test purchases arrive with `environment: SANDBOX` — see the open question at the
-foot of this document about whether those may grant real minutes.
+Test purchases arrive with `environment: SANDBOX` and grant real minutes; see
+the foot of this document for why, and for how to tell them apart afterwards.
 
 ### 2.4 The identifier Play reports may not be the one you typed
 
@@ -360,18 +360,18 @@ seven strings are the deliverable.
 
 - **Teams is not a product yet.** Deferred in §1 above; per-seat with a ten-seat
   minimum does not fit an App Store subscription, and the channel is undecided.
-- ~~Sandbox purchases and real minutes.~~ **Resolved 2026-09-22.** The handler
-  refuses. `modules/billing/billing.py` reads `environment` before anything that
-  grants, audits the event as `sandbox_purchase` and rejects it, because a
-  licence tester buys every product without being charged and the event is
-  otherwise identical to a real one: `environment` is the only thing telling
-  them apart, and a check placed late is one refactor from minting minutes for
-  free. The cost is the one this bullet named, and it is worth knowing before
-  it is met: a licence tester's purchase succeeds at the store and produces no
-  minutes, which reads as a bug the first time it happens. Grant them by hand
-  with `scripts/grant_minutes.py`, which is what `docs/deployment.md` keeps that
-  script for. A staging deployment that needs the purchase flow end to end needs
-  its own database, not a looser check.
+- ~~Sandbox purchases and real minutes.~~ **Resolved 2026-09-22, reversed
+  2026-10-02 on the founder's decision.** The handler refused sandbox events, to
+  stop a licence tester minting minutes. App Review buys in sandbox too, so the
+  refusal meant Apple's reviewer would pay, receive nothing, and reject the app.
+  Sandbox purchases now grant. The exposure is bounded by who can make one: a
+  customer on a store build cannot, and App Review, TestFlight testers and Play
+  licence testers are all invited. `modules/billing/billing.py` writes
+  `environment` onto the `entitlement_changed` and `topup_purchased` audit rows,
+  the only place these minutes are distinguishable from paid ones; filter on it
+  when counting revenue (`docs/cost-reconciliation.md`). Keep the TestFlight and
+  licence-tester lists short, because every name on them can buy minutes
+  without being charged.
 - ~~The credit-toward-upgrade rule needs a store mechanism.~~ **Resolved
   2026-08-16.** It needs none: top-up minutes live in their own bucket and are
   untouched by a reset or an upgrade, so a user who tops up and then subscribes

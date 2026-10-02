@@ -343,22 +343,44 @@ async def test_a_product_we_do_not_recognise_is_refused_loudly(db, account):
     assert account.entitlement_tier == "free"
 
 
-async def test_a_sandbox_purchase_grants_nothing(db, account, ledger):
-    """A licence tester must not be able to mint minutes against production.
+async def test_a_sandbox_purchase_grants_and_says_it_was_sandbox(db, account, ledger):
+    """Apple's reviewer buys with a sandbox account, and must get what it bought.
 
-    Play testers buy every product without being charged, and the events are
-    otherwise identical to real ones — `environment` is the only thing telling
-    them apart. Refused rather than ignored, so a staging deployment that
-    genuinely wants them fails visibly rather than silently doing nothing.
+    Until 2026-10-02 a sandbox event was refused, which stopped Play licence
+    testers minting minutes. App Review buys the same way, so the refusal meant
+    a reviewer would pay, receive nothing, and reject the app. Ordinary
+    customers cannot make a sandbox purchase on a store build: the only people
+    who can are App Review, TestFlight testers and licence testers, all invited.
+    So it grants, and the audit row says which environment paid, because
+    nothing else separates these minutes from ones somebody was charged for.
     """
-    with pytest.raises(WebhookRejected):
-        await billing(db).handle(
-            event(app_user_id=account.user_id, environment="SANDBOX")
-        )
+    await billing(db).handle(event(app_user_id=account.user_id, environment="SANDBOX"))
 
     await db.refresh(account)
-    assert account.entitlement_tier == "free"
-    assert (await ledger.balance(user_id=account.user_id)).allowance_seconds == 0
+    assert account.entitlement_tier == "pro"
+    assert (await ledger.balance(user_id=account.user_id)).allowance_seconds == (
+        MONTHLY_ALLOWANCE_SECONDS["pro"]
+    )
+    (changed,) = await audited(db, AuditEventType.ENTITLEMENT_CHANGED)
+    assert changed.context["environment"] == "SANDBOX"
+
+
+async def test_a_sandbox_top_up_grants_and_says_it_was_sandbox(db, account, ledger):
+    await billing(db).handle(
+        event(app_user_id=account.user_id, type="NON_RENEWING_PURCHASE",
+              product_id=TOPUP_90, environment="SANDBOX", expires=None)
+    )
+
+    (bought,) = await audited(db, AuditEventType.TOPUP_PURCHASED)
+    assert bought.context["environment"] == "SANDBOX"
+    assert (await ledger.balance(user_id=account.user_id)).topup_seconds == 90 * 60
+
+
+async def test_a_real_purchase_says_it_was_production(db, account, ledger):
+    await billing(db).handle(event(app_user_id=account.user_id))
+
+    (changed,) = await audited(db, AuditEventType.ENTITLEMENT_CHANGED)
+    assert changed.context["environment"] == "PRODUCTION"
 
 
 async def test_a_free_trial_grants_nothing(db, account, ledger):

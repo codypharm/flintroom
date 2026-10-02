@@ -160,19 +160,15 @@ class BillingService:
             )
             return
 
-        # Sandbox before anything else, because everything below it grants. A
-        # licence tester buys every product without being charged and the event
-        # is otherwise identical to a real one — `environment` is the only thing
-        # telling them apart, so a handler that checks it late is one refactor
-        # from minting minutes for free.
-        if event.environment and event.environment.upper() != "PRODUCTION":
-            await self._reject(
-                "sandbox_purchase",
-                store_event=event.type,
-                environment=event.environment,
-            )
-            raise WebhookRejected(reason="sandbox_purchase")
-
+        # Sandbox purchases grant, decided 2026-10-02. They were refused, to stop
+        # licence testers minting minutes, but App Review buys in sandbox too,
+        # and a reviewer who pays and receives nothing rejects the app. A
+        # customer on a store build cannot make a sandbox purchase; the only
+        # people who can are App Review, TestFlight testers and licence testers,
+        # every one of them invited. `environment` is carried onto the audit row
+        # below, because it is the only thing separating these minutes from ones
+        # somebody was charged for.
+        #
         # A trial, for the same reason and in the same place: everything below
         # this grants, and `period_type` is the only thing separating a
         # subscription somebody paid for from one they have not.
@@ -283,6 +279,7 @@ class BillingService:
                 store_event=event.type,
                 event_id=event.id,
                 product_id=event.product_id,
+                environment=event.environment,
             )
 
     async def _grant_topup(self, user_id: uuid.UUID, event: RevenueCatEvent) -> None:
@@ -310,6 +307,7 @@ class BillingService:
             product_id=event.product_id,
             event_id=event.id,
             seconds=seconds,
+            environment=event.environment,
         )
 
     def _tier_of(self, event: RevenueCatEvent) -> str:
