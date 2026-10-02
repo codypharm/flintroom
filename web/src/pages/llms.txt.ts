@@ -37,7 +37,8 @@ attached.
 
 The live interrogation is metered in minutes. The debrief and the sparring that
 follow are unlimited on every plan, because the teaching should not be on a
-clock. Android first, iOS after.
+clock. Out now on Android:
+https://play.google.com/store/apps/details?id=com.flintroom.app. On iPhone soon.
 
 ## Free tools
 

@@ -112,6 +112,12 @@ and this page follows it, never the other way round.
 The Audience is the broadcast list: Resend → Broadcasts → send to `Waitlist`.
 The welcome email already promises exactly one email, so send exactly one.
 
+The site stopped collecting signups on 2026-10-02, when the app went live on
+Google Play: every waitlist button now opens the Play listing, read from
+`src/lib/stores.ts`. `api/waitlist.js` still deploys but nothing links to it,
+and `src/lib/stores.test.ts` fails if a page does again. No launch email was
+sent: the list had no real signups to send it to.
+
 ## What the function does
 
 `api/waitlist.js`: validates the address, drops honeypot submissions with a

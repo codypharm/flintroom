@@ -14,6 +14,7 @@
  */
 import Compare from '../../layouts/Compare.astro';
 import { COMPETITORS, hrefFor, type Claim } from '../../lib/competitors';
+import { PLAY_URL } from '../../lib/stores';
 
 export function getStaticPaths() {
   return COMPETITORS.map((competitor) => ({
@@ -96,7 +97,7 @@ const readable = checked
               a calculator opening with a pitch, and a reader on this page came
               to choose between two products. Refusing them the choice is not
               restraint, it is just a dead end. */}
-          <a class="src" href="/#waitlist">Join the waitlist</a>
+          <a class="src" href={PLAY_URL}>Get Flintroom on Google Play</a>
         </div>
       </div>
 

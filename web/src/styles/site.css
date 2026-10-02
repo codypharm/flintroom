@@ -36,7 +36,6 @@
   h1, h2, h3 { text-wrap: balance; }
   img { max-width: 100%; display: block; }
   :is(a, button):focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
-  .field input:focus-visible { outline: none; }
   .icon { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 
   /* ── Nav ──────────────────────────────────────────────── */
@@ -91,21 +90,13 @@
   }
   .hero h1 em { font-style: normal; color: var(--primary); display: block; }
   .hero .sub { font-size: 18px; line-height: 1.55; color: var(--ink-variant); max-width: 34rem; margin-bottom: 32px; }
-  .signup { display: flex; gap: 8px; max-width: 480px; }
-  @media (max-width: 560px) { .signup { flex-direction: column; } }
-  .field { position: relative; flex: 1; }
-  .field .icon { position: absolute; left: 16px; top: 50%; translate: 0 -50%; color: var(--muted); }
-  .field input {
-    width: 100%; font: inherit; font-size: 15px; color: var(--ink);
-    background: var(--card); border: 1px solid var(--input-line); border-radius: 999px;
-    padding: 13px 18px 13px 46px; transition: border-color 0.15s ease, box-shadow 0.15s ease;
-  }
-  .field input::placeholder { color: var(--ink-variant); opacity: 0.9; }
-  .field input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 4px rgba(164, 55, 0, 0.12); }
-  .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
-  .said { margin-top: 12px; font-size: 14px; color: var(--ink-variant); min-height: 1.4em; }
-  .said.ok { color: var(--primary); font-weight: 600; }
-  .hero .platforms { margin-top: 20px; font-size: 13px; color: var(--ink-variant); }
+  /* The download badge is Google's artwork, so the only things ours are its
+     size and the lift it shares with .btn. */
+  .stores { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .store { display: inline-block; border-radius: 10px; transition: transform 0.15s ease; }
+  .store:hover { transform: translateY(-2px); }
+  .store img { display: block; height: 56px; width: auto; }
+  .stores .platforms { font-size: 14px; color: var(--ink-variant); }
 
   /* The product itself, photographed live — two real screens, framed as phones.
      The dark room sits in front because the interrogation is the wedge; the
@@ -247,8 +238,7 @@
   .cta .mark { width: 56px; height: 56px; margin: 0 auto 24px; }
   .cta h2 { font-size: clamp(26px, 3.6vw, 36px); font-weight: 800; letter-spacing: -0.02em; }
   .cta p { font-size: 17px; color: var(--ink-variant); margin: 14px auto 32px; max-width: 34rem; }
-  .cta .signup { margin: 0 auto; }
-  .cta .said { text-align: center; }
+  .cta .stores { justify-content: center; flex-direction: column; gap: 14px; }
 
   /* ── Footer ───────────────────────────────────────────── */
   footer { background: var(--band); padding: 56px 0 40px; }

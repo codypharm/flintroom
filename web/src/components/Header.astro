@@ -18,6 +18,7 @@
  * Free tools does not: on a tool page it is the only route back into the rest
  * of the site, and hiding it would strand every phone.
  */
+import { PLAY_URL } from '../lib/stores';
 import { TOOLS } from '../lib/tools';
 ---
 
@@ -50,7 +51,7 @@ import { TOOLS } from '../lib/tools';
       </div>
     </nav>
 
-    <a class="btn" href="/#waitlist">Join the waitlist</a>
+    <a class="btn" href={PLAY_URL}>Get the app</a>
   </div>
 </header>
 

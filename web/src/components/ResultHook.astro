@@ -11,6 +11,8 @@
  * Hidden until a result exists — a pitch under an empty card is a banner.
  * Each page unhides it exactly where it unhides its figures.
  */
+import { PLAY_URL } from '../lib/stores';
+
 interface Props {
   /** The sentence tying this tool's result to the room. */
   line: string;
@@ -21,5 +23,5 @@ const { line } = Astro.props;
 
 <div class="hook" data-out="hook" hidden>
   <p>{line}</p>
-  <a href="/#waitlist">Rehearse it in Flintroom →</a>
+  <a href={PLAY_URL}>Rehearse it in Flintroom →</a>
 </div>

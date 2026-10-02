@@ -1,0 +1,18 @@
+---
+/**
+ * The download badge, and the one line about iPhone.
+ *
+ * Google's own badge artwork, unaltered apart from trimming its transparent
+ * margin, which is what Google's badge guidelines ask for: their artwork, not
+ * a button of ours that says "Google Play". The App Store badge joins it here
+ * when Apple approves the iPhone build, and the iPhone line goes.
+ */
+import { PLAY_URL } from '../lib/stores';
+---
+
+<div class="stores">
+  <a class="store" href={PLAY_URL}>
+    <img src="/google-play-badge.png" width="564" height="168" alt="Get it on Google Play">
+  </a>
+  <p class="platforms">On iPhone soon.</p>
+</div>

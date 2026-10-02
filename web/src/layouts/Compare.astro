@@ -7,15 +7,17 @@
  * the closing block all point at a different set, and threading two registers
  * through one layout would make both harder to read than keeping them apart.
  *
- * **The closing block says the product is not open yet, and that is the whole
- * point of it.** Somebody searching for an alternative to a product wants
- * something to use today. Sending them to a "Get started" button that turns out
- * to be a waitlist is the one move that would make the honesty of the rest of
+ * **The closing block says exactly where the product can be used, and that is
+ * the whole point of it.** Somebody searching for an alternative to a product
+ * wants something to use today. While Flintroom was a waitlist this block said
+ * so; since 2026-10-02 it says Android now and iPhone soon. Promising more than
+ * the stores carry is the one move that would make the honesty of the rest of
  * the page worthless.
  */
 import Base from './Base.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
+import { PLAY_URL } from '../lib/stores';
 import { COMPETITORS, hrefFor } from '../lib/competitors';
 import '../styles/tools.css';
 
@@ -65,13 +67,13 @@ const others = current ? COMPETITORS.filter((c) => c.slug !== current) : [];
     <section class="tool-cta">
       <div class="shell">
         <div class="inner">
-          <h2>Flintroom is not open yet.</h2>
+          <h2>Flintroom is open on Android.</h2>
           <p>
             It is a rehearsal room where a panel of AI interrogators presses on your argument out
-            loud, quotes your own deck back at you, and does not accept the first answer. We will
-            send one email when it opens, and nothing else.
+            loud, quotes your own deck back at you, and does not accept the first answer. Your
+            first room is free. On iPhone soon.
           </p>
-          <a class="btn" href="/#waitlist">Join the waitlist</a>
+          <a class="btn" href={PLAY_URL}>Get it on Google Play</a>
         </div>
       </div>
     </section>
