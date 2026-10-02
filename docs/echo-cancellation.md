@@ -391,6 +391,23 @@ to hand was charge-only, which is why the screen now prints peak and RMS for
 the residual. A live room on iOS against the real provider, talking over a
 panelist the way the 2026-08-27 Android run did, is the field check still owed.
 
+**The first live room on the same iPhone was silent, and the spike could not
+have caught it.** The opener arrived, the seat lit, and nothing came out of the
+speaker. Voice processing replaces the engine's I/O unit for both directions,
+and `RoomAudioModule.swift` switched it on only in `beginCapture`. The spike
+starts capture first; the live room plays the opener the moment the socket
+opens and starts the microphone a beat later, so it switched voice processing
+on under a running engine and the player played into nothing. Same module,
+same phone, opposite order. `ensureVoiceProcessing` now switches it with the
+engine stopped, from whichever side starts first, and playback enables it
+before the player is attached. On the rebuilt app the room played its opener,
+heard a 67-word opening and took nine turns at 0.44–1.24s. The architect talked
+over a panelist mid-line and the room heard it and answered, which closes the
+field check the paragraph above left owed.
+
+**The lesson for the spike:** it measures one start order. A change to which
+side of the room opens first is a change the spike will not see.
+
 ## Open
 
 - **One handset is not a result.** Echo behaviour is per-device on Android.

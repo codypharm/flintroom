@@ -12,11 +12,11 @@ import ExpoModulesCore
  the swap nothing else in the app touches the session and a property this
  load-bearing should have exactly one owner.
 
- UNMEASURED ON HARDWARE. `docs/echo-cancellation.md` is explicit that the
- simulator routes audio through the host Mac and cannot answer an acoustic
- question, and there is no iPhone on the project yet. This file is written to
- the same contract the Android half measures against; #99 is where it gets
- its numbers. Nothing here may ship to an iPhone before that.
+ Measured on an iPhone 13 on 2026-10-02 (`docs/echo-cancellation.md`, "iOS,
+ measured"): the canceller holds and a presenter talking over the panel is
+ still heard. The same day's first live room was silent, which is what
+ `ensureVoiceProcessing` is for. The simulator routes audio through the host
+ Mac and still cannot answer an acoustic question.
  */
 public class RoomAudioModule: Module {
   /// The wire's rate (`docs/voice-stream-protocol.md`). Both directions.
@@ -94,7 +94,7 @@ public class RoomAudioModule: Module {
       self.state.async {
         do {
           try self.configureSession(communication: communication)
-          try self.beginPlayback()
+          try self.beginPlayback(communication: communication)
           promise.resolve(nil)
         } catch {
           promise.reject("ERR_PLAYBACK", error.localizedDescription)
@@ -189,7 +189,7 @@ public class RoomAudioModule: Module {
     // Apple's echo cancellation, for the live room. The engine-level
     // equivalent of Android's VOICE_COMMUNICATION pair, and off for the
     // debrief's plain clips.
-    try input.setVoiceProcessingEnabled(communication)
+    try ensureVoiceProcessing(communication)
 
     let native = input.outputFormat(forBus: 0)
     guard let converter = AVAudioConverter(from: native, to: wireFormat) else {
@@ -250,8 +250,16 @@ public class RoomAudioModule: Module {
 
   // ── Playback ───────────────────────────────────────────
 
-  private func beginPlayback() throws {
+  private func beginPlayback(communication: Bool) throws {
     guard !playing else { return }
+
+    // Before the player is attached and before the engine starts. The live
+    // room plays the opener the moment the socket opens and starts the
+    // microphone a beat later, so playback is the side that starts the
+    // engine. See `ensureVoiceProcessing` for what that order used to cost.
+    if communication {
+      try ensureVoiceProcessing(true)
+    }
 
     if player.engine == nil {
       engine.attach(player)
@@ -287,6 +295,38 @@ public class RoomAudioModule: Module {
   }
 
   // ── Engine ─────────────────────────────────────────────
+
+  /// Voice processing, switched while the engine is stopped and never under it.
+  ///
+  /// **The first live room on an iPhone was silent (2026-10-02).** The opener
+  /// arrived, the seat lit, and nothing came out of the speaker. Voice
+  /// processing replaces the engine's I/O unit for *both* directions, and it
+  /// was only ever switched on by `beginCapture`, which the live room reaches
+  /// after playback has already started the engine. Switched on a running
+  /// engine, the I/O is rebuilt under the player, and the panel plays into
+  /// nothing. The Echo spike starts capture first, which is why it played
+  /// out loud on the same phone and the room did not.
+  ///
+  /// So the engine is stopped around the switch whenever it is running, and
+  /// the player resumed after. It is also what the echo canceller needs: the
+  /// panel's audio has to leave through the voice-processing unit for the
+  /// canceller to have it as a reference.
+  private func ensureVoiceProcessing(_ enabled: Bool) throws {
+    let input = engine.inputNode
+    guard input.isVoiceProcessingEnabled != enabled else { return }
+
+    let wasRunning = engine.isRunning
+    if wasRunning {
+      engine.stop()
+    }
+    try input.setVoiceProcessingEnabled(enabled)
+    if wasRunning {
+      try engine.start()
+      if playing {
+        player.play()
+      }
+    }
+  }
 
   private func startEngine() throws {
     if !engine.isRunning {
