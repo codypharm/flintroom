@@ -99,5 +99,21 @@ class OidcVerifier:
             email=claims.get("email"),
             #: Absent means unverified. `docs/onboarding.md` forbids linking on
             #: an unverified email, so the default here has to be the safe one.
-            email_verified=bool(claims.get("email_verified", False)),
+            email_verified=_vouched(claims.get("email_verified")),
         )
+
+
+def _vouched(flag: object) -> bool:
+    """Whether the provider vouched for the email, read strictly.
+
+    Apple documents `email_verified` as a boolean *or* the string "true" or
+    "false"; Google sends a boolean. This was `bool(flag)` until 2026-10-02,
+    and every non-empty string is truthy, so Apple's "false" read as verified,
+    which is the one value linking must never trust. Only `True` or the word
+    "true" counts; anything else, including a value nobody documented, is
+    unverified, because a wrong "no" costs a duplicate account and a wrong
+    "yes" can hand somebody else's account over.
+    """
+    if isinstance(flag, bool):
+        return flag
+    return isinstance(flag, str) and flag.strip().lower() == "true"

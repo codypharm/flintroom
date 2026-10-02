@@ -65,7 +65,7 @@ def id_token(
     *,
     subject: str = "google-subject-1",
     email: str = "someone@example.com",
-    email_verified: bool = True,
+    email_verified: bool | str = True,
     audience: str = GOOGLE_AUDIENCE,
     issuer: str = GOOGLE_ISSUER,
     expires_in: timedelta = timedelta(hours=1),
@@ -180,6 +180,37 @@ async def test_an_unverified_email_is_reported_as_unverified(verifier, provider_
     two layers up, where nobody would think to look for it.
     """
     identity = await verifier.verify(id_token(provider_key, email_verified=False))
+
+    assert identity.email_verified is False
+
+
+@pytest.mark.parametrize("written", ["false", "False", "FALSE"])
+async def test_apples_written_false_is_unverified(verifier, provider_key, written):
+    """Apple sends `email_verified` as a boolean *or as the text "false"*.
+
+    Found 2026-10-02. The flag was read with `bool(...)`, and every non-empty
+    string is truthy, so the text "false" came out as verified. That is the
+    one value linking must never trust: an unverified address planted under
+    Apple would have attached itself to whoever holds that address verified
+    under Google, which is the takeover `docs/onboarding.md` forbids.
+    """
+    identity = await verifier.verify(id_token(provider_key, email_verified=written))
+
+    assert identity.email_verified is False
+
+
+async def test_apples_written_true_is_verified(verifier, provider_key):
+    """The same spelling, the other way. Refusing it would stop every Apple
+    account linking at all, which is safe and wrong."""
+    identity = await verifier.verify(id_token(provider_key, email_verified="true"))
+
+    assert identity.email_verified is True
+
+
+@pytest.mark.parametrize("odd", ["yes", "1", 1, ""])
+async def test_anything_else_is_unverified(verifier, provider_key, odd):
+    """Only `true`, as a boolean or as that word, vouches for an address."""
+    identity = await verifier.verify(id_token(provider_key, email_verified=odd))
 
     assert identity.email_verified is False
 
