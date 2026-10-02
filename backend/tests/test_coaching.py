@@ -26,7 +26,7 @@ from app.agents.weakness import Judgement, Weakness
 from app.core.errors import FlintroomError
 from app.modules.sessions.coaching import CoachService
 from app.modules.sessions.debrief import DebriefService
-from app.modules.sessions.models import SparringAttempt
+from app.modules.sessions.models import CoachTurn, SparringAttempt
 from app.modules.sessions.schemas import EndReason
 from app.modules.voice.dictation import Heard
 
@@ -508,6 +508,59 @@ async def test_the_opening_is_written_once_and_then_only_recalled(
 
     assert coach.opened == 1
     assert again is not None and again.text == first.text
+
+
+class RacedCoach(OpeningCoach):
+    """While this opening waits on the model, another request saves its own.
+
+    The shape of the 2026-10-02 incident: the debrief was asked for twice,
+    about seven seconds apart, both found an empty thread, and both called the
+    model. The first committed its opening; the second tried to write the same
+    slot and the read came back a 500.
+    """
+
+    def __init__(self, session_factory, session_id, winner: str) -> None:
+        super().__init__()
+        self._factory = session_factory
+        self._session_id = session_id
+        self._winner = winner
+
+    async def open(self, *, grounds):
+        async with self._factory() as other:
+            other.add(
+                CoachTurn(
+                    session_id=self._session_id, ordinal=0, who=COACH, text=self._winner
+                )
+            )
+            await other.commit()
+        return await super().open(grounds=grounds)
+
+
+async def test_an_opening_that_loses_the_race_hands_back_the_one_that_won(
+    db, engine, sessions, settlement, funded_account, session_factory
+):
+    """A read that is retried must never fail, and the loser says what the winner said.
+
+    Reported 2026-10-02 from an iPhone as "that did not load": the debrief was
+    requested twice and the second write of the opening hit
+    `pk_session_coach_turns`. The weak answers already handle this race
+    (`weak_answers_lost_race`); the opening did not.
+
+    The winner's text, because two devices showing two different greetings for
+    one room would each be right to distrust the other. No voice, because the
+    voice belongs to the arrival that won, and asking to hear it again has its
+    own endpoint.
+    """
+    session = await debriefed(db, engine, sessions, settlement, funded_account, *ROOM)
+    speaker = ScriptedSpeaker()
+    coach = RacedCoach(session_factory, session.id, winner="You held on pricing.")
+
+    opening = await coaching(db, coach=coach, speaker=speaker).open(session_id=session.id)
+
+    assert opening is not None
+    assert opening.text == "You held on pricing."
+    assert opening.speech == b""
+    assert speaker.spoke == []
 
 
 async def test_coming_back_to_a_debrief_is_not_being_greeted_again(

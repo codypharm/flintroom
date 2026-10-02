@@ -22,6 +22,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.voices import Voice
@@ -262,7 +263,20 @@ class CoachService:
             output_tokens=reply.usage.output_tokens,
         )
 
-        await self._greeted(session_id, said)
+        if not await self._greeted(session_id, said):
+            # Another read of this debrief greeted them first. Its line is the
+            # one stored, so it is the one returned: two devices showing two
+            # greetings for one room would each be right to distrust the
+            # other. No voice, for the reason the stored path above gives.
+            #
+            # The model call still happened and was still paid for, so it is
+            # counted, with no synthesis because none was done.
+            await self._spent(
+                session_id, heard=Heard(text="", seconds=0.0), reply=reply, said=""
+            )
+            thread = await self._thread(session_id)
+            return CoachedTurn(text=thread[0].text, speech=b"", heard="")
+
         # No `stt_seconds`: nothing was heard, because nothing was said. The
         # model and the synthesiser are still paid, and a turn whose cost
         # nobody counted is the one that quietly decides a margin.
@@ -574,19 +588,37 @@ class CoachService:
         )
         return tuple(Spoken(who=row.who, text=row.text) for row in rows.scalars())
 
-    async def _greeted(self, session_id: uuid.UUID, said: str) -> None:
-        """The opening, as the first line of the thread.
+    async def _greeted(self, session_id: uuid.UUID, said: str) -> bool:
+        """The opening, as the first line of the thread, or `False` if one is there.
 
         One row rather than the pair `_keep` writes, because nothing was asked.
         It goes in the thread rather than beside it so that the next turn can
         see it: a coach that greeted somebody and could not tell it had done so
         would open the conversation twice, and would answer their reply as
         though it were the first thing said.
+
+        **It can lose a race, and losing is not an error.** Two reads of one
+        debrief both find an empty thread, both wait several seconds on the
+        model, and both write ordinal 0. The primary key on `(session_id,
+        ordinal)` decides it. Until 2026-10-02 the loser raised, and a phone
+        that had asked twice was told the debrief did not load. The weak answers
+        settle the same race the same way (`weak_answers_lost_race`).
+
+        Only that constraint is caught. Any other integrity failure is a bug
+        and stays one.
         """
         self._db.add(
             CoachTurn(session_id=session_id, ordinal=0, who=COACH, text=said)
         )
-        await self._db.commit()
+        try:
+            await self._db.commit()
+        except IntegrityError as exc:
+            await self._db.rollback()
+            if "pk_session_coach_turns" not in str(getattr(exc, "orig", exc)):
+                raise
+            log.info("coach_opening_lost_race", session_id=str(session_id))
+            return False
+        return True
 
     async def _keep(self, session_id: uuid.UUID, asked: str, answered: str) -> None:
         """Both sides of the turn, in one transaction.
