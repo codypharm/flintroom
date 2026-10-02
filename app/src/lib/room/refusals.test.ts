@@ -44,6 +44,19 @@ it('does not offer to sell a second room to somebody already in one', async () =
   expect(refusal.buying).toBe(false);
 });
 
+it('tells somebody who just left a room that it clears by itself', async () => {
+  // The common case is not a second device. It is a room the presenter just
+  // left, held open for the 30-second reconnect window plus the sweep that
+  // closes it, which took 43 to 52 seconds on the first iPhone (2026-10-02).
+  // "Finish that one" sent them looking for a room they could not see.
+  const refusal = refusalFor(
+    new Refused('active_session_exists', 'server said so', 422),
+  );
+
+  expect(refusal.said).toMatch(/within a minute/);
+  expect(refusal.said).not.toMatch(/\u2014/);
+});
+
 it('keeps the server sentence for a code this build predates', async () => {
   // A refusal added on the server after this build shipped should still say
   // something true rather than a catch-all — and must never offer to sell

@@ -98,8 +98,15 @@ const REFUSED: Record<string, Refusal> = {
   // One live room at a time, which is a real constraint rather than a fault —
   // and the recovery is to finish or leave the other one. Minutes are not the
   // constraint, so money changes nothing.
+  //
+  // **Usually the room they just left.** A dropped or abandoned room is held
+  // for `RECONNECT_WINDOW` (30s) and then closed by the reaper's sweep, 43 to
+  // 52 seconds in practice on the first iPhone (2026-10-02). Telling them only
+  // to "finish that one" sent them looking for a room they could not see, so
+  // the sentence leads with the wait. Never called a grace period: see
+  // `docs/reconnect.md` for why the window has no such name.
   active_session_exists: {
-    said: 'A room is already open on this account. Finish that one, then start another.',
+    said: 'A room is already open on this account. If you just left one, it closes by itself within a minute. Try again then, or finish the one that is open.',
     buying: false,
   },
   // The runaway-cost circuit breaker (#73), and the only refusal here that is
