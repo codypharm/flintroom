@@ -529,7 +529,17 @@ export default function InterrogationScreen() {
         // After `joinRoom`, never before: it registers `onAudioReady` as it
         // builds the uplink, and a recorder started first delivers into a
         // callback nobody has registered — which fails as silence, not an error.
-        capture.start();
+        //
+        // Awaited, and its failure kept. It was neither, so a microphone the
+        // native side refused to start produced a live room that heard nothing
+        // and billed for it, with the reason discarded. Found on the first
+        // iPhone, 2026-10-02.
+        try {
+          await capture.start();
+        } catch (error) {
+          console.error('[room-audio] capture did not start', error);
+          throw error;
+        }
         if (!alive) return;
         setPhase('live');
         // From here rather than from the tap. The clock should measure the

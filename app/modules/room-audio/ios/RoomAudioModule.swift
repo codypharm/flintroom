@@ -36,6 +36,8 @@ public class RoomAudioModule: Module {
   private var capturing = false
   private var playing = false
 
+  private var configurationObserver: NSObjectProtocol?
+
   /// Chunks scheduled but not yet played back, for `drained` honesty:
   /// `played` with `drained: true` must mean the loudspeaker went quiet, not
   /// that the last buffer was handed over.
@@ -67,7 +69,21 @@ public class RoomAudioModule: Module {
   public func definition() -> ModuleDefinition {
     Name("RoomAudio")
 
-    Events("frame", "played")
+    Events("frame", "played", "restarted")
+
+    OnCreate { [weak self] in
+      guard let self else { return }
+      // iOS stops an engine whose configuration changes underneath it, and
+      // says so only through this notification. Unobserved, that stop is a
+      // room that goes deaf and mute at once with nothing raised anywhere.
+      self.configurationObserver = NotificationCenter.default.addObserver(
+        forName: .AVAudioEngineConfigurationChange,
+        object: self.engine,
+        queue: nil
+      ) { [weak self] _ in
+        self?.state.async { self?.recover() }
+      }
+    }
 
     AsyncFunction("startCapture") { (communication: Bool, promise: Promise) in
       self.state.async {
@@ -153,6 +169,9 @@ public class RoomAudioModule: Module {
     }
 
     OnDestroy {
+      if let observer = self.configurationObserver {
+        NotificationCenter.default.removeObserver(observer)
+      }
       self.state.async {
         self.capturing = false
         self.playing = false
@@ -172,11 +191,20 @@ public class RoomAudioModule: Module {
     // premise. The debrief runs plain — nothing plays while somebody
     // answers a coach, so call-tuned processing would only colour a solo
     // recording, the same refusal its Android half makes with MIC/MEDIA.
-    try session.setCategory(
-      .playAndRecord,
-      mode: communication ? .voiceChat : .default,
-      options: [.defaultToSpeaker, .allowBluetoothHFP]
-    )
+    //
+    // **Only when it differs.** Both halves of the room call this, and the
+    // second arrives while the first may already have the engine running.
+    // Setting the category again under a running voice-processing engine is
+    // a configuration change, and iOS answers one by stopping the engine:
+    // the 2026-10-02 rooms that played nothing and heard nothing. Whether
+    // the microphone's call landed before or after the speaker's depended on
+    // how fast the opener arrived, which is why some rooms worked.
+    let mode: AVAudioSession.Mode = communication ? .voiceChat : .default
+    let options: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
+    if session.category != .playAndRecord || session.mode != mode
+      || session.categoryOptions != options {
+      try session.setCategory(.playAndRecord, mode: mode, options: options)
+    }
     try session.setActive(true)
   }
 
@@ -185,12 +213,23 @@ public class RoomAudioModule: Module {
   private func beginCapture(communication: Bool) throws {
     guard !capturing else { return }
 
-    let input = engine.inputNode
     // Apple's echo cancellation, for the live room. The engine-level
     // equivalent of Android's VOICE_COMMUNICATION pair, and off for the
     // debrief's plain clips.
     try ensureVoiceProcessing(communication)
+    try installTap()
 
+    try startEngine()
+    capturing = true
+  }
+
+  /// The microphone tap, at whatever format the input node has now.
+  ///
+  /// Its own function because `recover` needs it too: after a configuration
+  /// change the input's format can differ, and a tap left at the old one is
+  /// a capture that delivers nothing.
+  private func installTap() throws {
+    let input = engine.inputNode
     let native = input.outputFormat(forBus: 0)
     guard let converter = AVAudioConverter(from: native, to: wireFormat) else {
       throw NSError(
@@ -244,8 +283,6 @@ public class RoomAudioModule: Module {
       }
     }
 
-    try startEngine()
-    capturing = true
   }
 
   // ── Playback ───────────────────────────────────────────
@@ -325,6 +362,68 @@ public class RoomAudioModule: Module {
       if playing {
         player.play()
       }
+    }
+  }
+
+  /// Bring the room back after iOS stopped the engine under it.
+  ///
+  /// Only if something is still meant to be running and the engine is not:
+  /// `ensureVoiceProcessing` stops and restarts the engine itself, and the
+  /// notification that produces arrives after it has already finished.
+  ///
+  /// Reported as `restarted`, with the error if the restart failed, because a
+  /// recovery nobody can see is one nobody can tell from the bug it covers.
+  private func recover() {
+    guard capturing || playing, !engine.isRunning else { return }
+
+    var failure = ""
+    do {
+      if playing {
+        reconnectPlayer()
+      }
+      if capturing {
+        engine.inputNode.removeTap(onBus: 0)
+        try installTap()
+      }
+      engine.prepare()
+      try engine.start()
+      if playing {
+        player.play()
+      }
+    } catch {
+      failure = error.localizedDescription
+    }
+    sendEvent("restarted", [
+      "capturing": capturing,
+      "playing": playing,
+      "error": failure,
+    ])
+  }
+
+  /// The player, detached and wired in again on the engine's current formats.
+  ///
+  /// **Restarting was not enough.** The 2026-10-02 probe on an iPhone 13: iOS
+  /// stopped the engine as playback opened, `recover` restarted it and called
+  /// `play()`, and of 69 chunks of a panelist's voice enqueued afterwards,
+  /// none was played. The microphone came back on the same restart, and the
+  /// server heard the presenter. A configuration change can move the output's
+  /// format, and a player left connected on the old one renders nothing and
+  /// completes nothing, so it is rebuilt rather than resumed.
+  ///
+  /// Anything it had scheduled went with it. Those chunks are reported as
+  /// played, in order, so the JavaScript queue that waits on them is not left
+  /// holding a speaker who will never finish.
+  private func reconnectPlayer() {
+    let lost = scheduled
+    generation += 1
+    scheduled = 0
+    player.stop()
+    engine.detach(player)
+    engine.attach(player)
+    engine.connect(player, to: engine.mainMixerNode, format: playFormat)
+    engine.connect(engine.mainMixerNode, to: engine.outputNode, format: nil)
+    for chunk in 0..<lost {
+      sendEvent("played", ["drained": chunk == lost - 1])
     }
   }
 

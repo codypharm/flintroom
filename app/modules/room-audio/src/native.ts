@@ -55,6 +55,16 @@ export interface FrameEvent {
   sampleRate: number;
 }
 
+/**
+ * iOS stopped the engine under the room and the module started it again.
+ * `error` is empty when the restart worked.
+ */
+export interface RestartedEvent {
+  capturing: boolean;
+  playing: boolean;
+  error: string;
+}
+
 /** One enqueued chunk has finished playing. Emitted in queue order. */
 export interface PlayedEvent {
   /** True when the queue is now empty — the loudspeaker has gone quiet. */
