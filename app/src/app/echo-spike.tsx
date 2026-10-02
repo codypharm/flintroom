@@ -151,6 +151,10 @@ export default function EchoSpikeScreen() {
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [residualPath, setResidualPath] = useState<string | null>(null);
+  // The residual's level, read on the phone. Pulling the WAV needs `adb` on
+  // Android and a trusted cable on iOS; the first iPhone run (2026-10-02) had
+  // neither, and peak plus overall RMS are the two numbers `wav_level` prints.
+  const [residualLevel, setResidualLevel] = useState<{ peak: number; rms: number } | null>(null);
 
   const levels = useRef<number[]>([]);
   const observedRate = useRef<number>(0);
@@ -342,6 +346,11 @@ export default function EchoSpikeScreen() {
         encoding: FileSystem.EncodingType.Base64,
       });
 
+      let loudest = 0;
+      for (const sample of samples) {
+        loudest = Math.max(loudest, Math.abs(sample));
+      }
+      setResidualLevel({ peak: toDbfs(loudest), rms: toDbfs(rms(samples)) });
       setResidualPath(path);
       setPhase('captured');
     } catch (caught) {
@@ -395,6 +404,12 @@ export default function EchoSpikeScreen() {
             <Text style={[styles.figure, { color: colors.text }]}>
               Residual captured
             </Text>
+            {residualLevel && (
+              <Text style={[styles.figure, { color: colors.text }]}>
+                Peak {residualLevel.peak.toFixed(1)} dBFS, RMS{' '}
+                {residualLevel.rms.toFixed(1)} dBFS
+              </Text>
+            )}
             <Text style={[styles.body, { color: colors.text }]}>
               Pull it with:
             </Text>

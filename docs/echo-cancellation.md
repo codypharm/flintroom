@@ -359,18 +359,46 @@ declares, and the measurement this stack was accepted against. File playback
 debrief's clips run on `modules/room-audio`, profile chosen in
 `app/src/lib/voice/stack.ts`.
 
+## iOS, measured — 2026-10-02
+
+The first run on an iPhone, an iPhone 13, on a development build of the owned
+stack, against the same Echo spike as every Android figure above. Phone flat on
+a desk, volume at maximum, `voiceChat` with `defaultToSpeaker` as `stack.ts`
+sets them.
+
+| Capture | iPhone | Galaxy S24+ (owned stack) |
+| --- | --- | --- |
+| Quiet room, noise floor | −56.1 dBFS | — |
+| Panel playing, presenter silent | **−99.9 dBFS**, GO | −120.0 dBFS |
+| Talking over the panel, RMS | **−22.3 dBFS** (peak 0.0) | −26.7 dBFS (peak −4.9) |
+
+**Both halves hold, and the second is the one that mattered.** iOS voice
+processing can suppress the near end during far-end playback, and a
+canceller that does that returns exactly the silence in the second row, while
+also swallowing every interruption. The third row rules it out: speech spoken
+straight through the panel reaches the uplink at a level comparable to the
+Android handset, so the panel cannot hear itself and the presenter can still
+cut in. The floor of −56.1 dBFS was not gated, so the 43.8 dB the panel sits
+*below* it is a real ratio, not noise suppression flattening both readings.
+
+The 0.0 peak is the presenter close to the microphone and loud, which is what
+the capture asked for. It proves the microphone was alive; it is not a level the
+room ever needs.
+
+**What this does not answer.** One iPhone, one room, one run, read off the
+phone's own screen rather than pulled and checked with `wav_level` — the cable
+to hand was charge-only, which is why the screen now prints peak and RMS for
+the residual. A live room on iOS against the real provider, talking over a
+panelist the way the 2026-08-27 Android run did, is the field check still owed.
+
 ## Open
 
-- **iOS is unmeasured.** There is no iPhone on this project; the simulator
-  routes audio through the host Mac and cannot answer an acoustic question. The
-  code sets `voiceChat` and `defaultToSpeaker`, which *should* be sufficient,
-  but "should" is what this document exists to replace. An iPhone is a
-  prerequisite before shipping, not a convenience.
 - **One handset is not a result.** Echo behaviour is per-device on Android.
 
 ## Reproducing
 
-`npx expo start --dev-client`, open **Echo spike** from the home screen, put the
+`npx expo start --dev-client`, open **Echo spike** (nothing links to it; open
+`flintroom://echo-spike` from the browser on the phone — Safari on iOS), put the
 phone flat on a desk, turn the volume up, tap **Run measurement**, and stay
 quiet for ten seconds.
 
