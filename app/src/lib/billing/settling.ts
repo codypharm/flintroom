@@ -21,20 +21,23 @@
 /**
  * How many times to ask before giving up, and how long between.
  *
- * Roughly thirty seconds in total. Reasoned rather than measured, and worth
- * revisiting against a real store: RevenueCat delivers most webhooks in
- * seconds, but "most" is doing work in that sentence and neither number here
- * comes from an observed distribution.
+ * Two minutes in total. It was thirty seconds, reasoned rather than measured,
+ * until 2026-10-04: an iOS sandbox top-up reached the webhook about 80 seconds
+ * after it was bought, one second after that window closed, and the screen had
+ * stopped looking. One observation, from sandbox, so this is a floor rather
+ * than a distribution. A read every three seconds for two minutes is forty
+ * small requests, which is cheap next to a buyer who thinks they paid for
+ * nothing.
  *
  * The honest source is production — `ledger_entries` records when a top-up was
  * granted and the store records when it was bought, so the real gap is
  * recoverable later rather than guessable now.
  */
-export const SETTLE_ATTEMPTS = 10;
+export const SETTLE_ATTEMPTS = 40;
 export const SETTLE_GAP_MS = 3000;
 
 export interface Settling {
-  /** Injected so a test does not spend thirty seconds proving it waits. */
+  /** Injected so a test does not spend two minutes proving it waits. */
   pause?(ms: number): Promise<void>;
   attempts?: number;
   gapMs?: number;

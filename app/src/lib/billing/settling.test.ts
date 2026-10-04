@@ -1,4 +1,4 @@
-import { answersWithin, settles, SETTLE_ATTEMPTS } from './settling';
+import { answersWithin, settles, SETTLE_ATTEMPTS, SETTLE_GAP_MS } from './settling';
 
 /**
  * Waiting for a purchase to become minutes.
@@ -127,4 +127,11 @@ describe('a store that goes quiet', () => {
     refuse(new Error('too late'));
     await new Promise((done) => setImmediate(done));
   });
+});
+
+it('keeps asking for at least two minutes', () => {
+  // Measured, 2026-10-04: an iOS sandbox top-up reached the webhook about 80
+  // seconds after it was bought, one second after the old 30-second window
+  // closed. The minutes arrived and the screen had already stopped looking.
+  expect(SETTLE_ATTEMPTS * SETTLE_GAP_MS).toBeGreaterThanOrEqual(120_000);
 });
