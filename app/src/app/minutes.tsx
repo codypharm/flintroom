@@ -1,6 +1,6 @@
 import { Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MoreMinutes } from '../components/modules/MoreMinutes';
@@ -15,7 +15,8 @@ import { API_BASE_URL, auth } from '../lib/auth';
 import { useGateway } from '../lib/auth/gateway';
 import { SignedOut } from '../lib/auth/session';
 import { PurchaseCancelled, revenueCatStore } from '../lib/billing/revenuecat';
-import { settles } from '../lib/billing/settling';
+import { useOnReturn } from '../lib/balance/foreground';
+import { answersWithin, BUY_PATIENCE_MS, settles } from '../lib/billing/settling';
 import { storeKeyFor } from '../lib/billing/storeKey';
 import { unconfiguredStore, type Sellable, type Store } from '../lib/billing/store';
 import { color } from '../theme/tokens';
@@ -133,6 +134,15 @@ export default function MoreMinutesRoute() {
     }, [gone]),
   );
 
+  // The webhook can land after `settles` stops asking. Coming back to the app
+  // is when somebody looks again, so that is when the figure is read again.
+  useOnReturn(() => {
+    balance
+      .read()
+      .then((held) => setHolding(held.minutes))
+      .catch(gone);
+  });
+
   const buy = useCallback(
     async (what: Sellable) => {
       // Held before the purchase, because it is the thing `settles` compares
@@ -143,7 +153,12 @@ export default function MoreMinutesRoute() {
 
       setState('buying');
       try {
-        await store.buy(what);
+        // Not `await store.buy(what)`: an iOS sandbox purchase on 2026-10-02
+        // never answered, and this screen sat disabled until the app was
+        // killed. Past the patience it moves to `waiting` and asks the server
+        // instead, which is where the minutes would show up anyway; a late
+        // answer from the store changes nothing that polling does not see.
+        await answersWithin(store.buy(what), BUY_PATIENCE_MS);
       } catch (thrown) {
         // A sheet closed on purpose is not a failure — the screen simply
         // returns to rest (#107 item 6). Everything else — a declined card, a
@@ -211,6 +226,7 @@ export default function MoreMinutesRoute() {
         sells={sells}
         onBuy={(what) => void buy(what)}
         onRestore={() => void restore()}
+        onOpenLegal={(url) => void Linking.openURL(url)}
         state={state}
       />
     </SafeAreaView>

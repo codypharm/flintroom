@@ -72,7 +72,7 @@ export function PlanCard({ plan, sold, above, lead, annual, busy, onBuy }: PlanC
           sold !== null && (
             // `front` like every sibling — `lead` alone was identical only
             // because the lead can never be the plan already held.
-            <Text style={[styles.price, front && styles.onLead]}>{sold.price}</Text>
+            <Text style={[styles.price, front && styles.onLead]}>{`${sold.price} / month`}</Text>
           )
         )}
       </View>

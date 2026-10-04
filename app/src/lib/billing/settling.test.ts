@@ -1,4 +1,4 @@
-import { settles, SETTLE_ATTEMPTS } from './settling';
+import { answersWithin, settles, SETTLE_ATTEMPTS } from './settling';
 
 /**
  * Waiting for a purchase to become minutes.
@@ -81,4 +81,50 @@ it('never reads before waiting once', async () => {
   await settles(read, 12, { pause });
 
   expect(order[0]).toBe('pause');
+});
+
+describe('a store that goes quiet', () => {
+  // 2026-10-02, an iOS sandbox top-up: `purchasePackage` never resolved, the
+  // screen sat dimmed with every control disabled, and the minutes only
+  // arrived after the app was killed and reopened. Apple's own "successful"
+  // sheet came later still. The screen trusted the store to answer and had no
+  // way out when it did not.
+
+  /** A pause that never ends, standing in for a store still thinking. */
+  const forever = () => new Promise<void>(() => undefined);
+
+  it('reports an answer that came in time', async () => {
+    expect(await answersWithin(Promise.resolve(), 20_000, forever)).toBe(true);
+  });
+
+  it('reports silence once the patience runs out', async () => {
+    const pending = new Promise<void>(() => undefined);
+    const pause = jest.fn().mockResolvedValue(undefined);
+
+    expect(await answersWithin(pending, 20_000, pause)).toBe(false);
+    expect(pause).toHaveBeenCalledWith(20_000);
+  });
+
+  it('passes on a refusal that came in time', async () => {
+    // A closed sheet or a declined card still has to reach the screen as
+    // itself, or a cancel would read as a purchase being confirmed.
+    const refused = Promise.reject(new Error('declined'));
+
+    await expect(answersWithin(refused, 20_000, forever)).rejects.toThrow('declined');
+  });
+
+  it('swallows a refusal that came after it stopped listening', async () => {
+    // By then the screen is waiting on the server, not the store. An
+    // unhandled rejection here would surface as a red box over a purchase
+    // that may well have gone through.
+    let refuse: (why: Error) => void = () => undefined;
+    const late = new Promise<void>((_, no) => {
+      refuse = no;
+    });
+    const pause = jest.fn().mockResolvedValue(undefined);
+
+    expect(await answersWithin(late, 20_000, pause)).toBe(false);
+    refuse(new Error('too late'));
+    await new Promise((done) => setImmediate(done));
+  });
 });

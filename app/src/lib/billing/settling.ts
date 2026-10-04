@@ -73,4 +73,51 @@ export async function settles(
   return false;
 }
 
+/**
+ * How long the store gets to answer before the screen stops waiting on it.
+ *
+ * Set from one observation, not a distribution: on 2026-10-02 an iOS sandbox
+ * top-up never answered at all, and the minutes landed only after a relaunch.
+ * Twenty seconds is past any sheet a person is still looking at and short
+ * enough that a frozen screen is never what they are left with.
+ */
+export const BUY_PATIENCE_MS = 20_000;
+
+/**
+ * Whether the store answered within `ms`.
+ *
+ * True when it did, false when it is still thinking, and its own refusal when
+ * it refused in time, so a closed sheet still reads as a closed sheet. It does
+ * not cancel anything: a purchase that answers late carries on, and the
+ * screen, by then polling the server, sees its minutes arrive the same way.
+ *
+ * A refusal after `ms` is swallowed. The screen is no longer listening to the
+ * store by then, and an unhandled rejection would draw an error over a
+ * purchase that may have gone through.
+ */
+export async function answersWithin(
+  answer: Promise<unknown>,
+  ms: number,
+  pause: (ms: number) => Promise<void> = wait,
+): Promise<boolean> {
+  let listening = true;
+  const answered = answer.then(
+    () => true,
+    (thrown: unknown) => {
+      if (listening) throw thrown;
+      return false;
+    },
+  );
+  const gaveUp = pause(ms).then(() => false);
+
+  try {
+    return await Promise.race([answered, gaveUp]);
+  } finally {
+    listening = false;
+    // A late refusal now resolves to false instead of rejecting, but the
+    // promise still needs a handler for the case where it rejected first.
+    answered.catch(() => undefined);
+  }
+}
+
 const wait = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));

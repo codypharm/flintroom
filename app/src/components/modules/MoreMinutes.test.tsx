@@ -71,6 +71,7 @@ async function setup(overrides: Partial<MoreMinutesProps> = {}) {
     packs: PACKS,
     onBuy: jest.fn(),
     onRestore: jest.fn(),
+    onOpenLegal: jest.fn(),
     state: 'idle',
     ...overrides,
   };
@@ -331,7 +332,7 @@ describe('what a plan gets you', () => {
     // and charges another.
     await setup({ sells: [{ ...PLAN, grants: 'pro', price: '€55,00' }] });
 
-    expect(screen.getByText('€55,00')).toBeOnTheScreen();
+    expect(screen.getByText('€55,00 / month')).toBeOnTheScreen();
   });
 });
 
@@ -429,4 +430,41 @@ it('draws no heading over an empty shelf', async () => {
 
   expect(screen.queryByText('Every month')).toBeNull();
   expect(screen.queryByText('Just this once')).toBeNull();
+});
+
+describe('what App Review needs on a subscription screen (3.1.2)', () => {
+  // Apple's 2026-10-04 information request named it: the title, length and
+  // price of each subscription, and links to the Terms of Use and the privacy
+  // policy, on the screen that sells it. The sign-in sheet carried the links;
+  // the screen that takes the money did not.
+
+  it('says how long the price buys', async () => {
+    await setup({ sells: [PACK, { ...PLAN, grants: 'pro' }] });
+
+    expect(within(screen.getByTestId('plan-pro')).getByText('$59.00 / month')).toBeOnTheScreen();
+  });
+
+  it('says a plan renews until cancelled', async () => {
+    await setup();
+
+    expect(screen.getByText(/renew automatically/i)).toHaveTextContent(/until you cancel/i);
+  });
+
+  it('keeps the links when the store has not answered', async () => {
+    // The links are housekeeping like Restore, not part of an offer, so a
+    // shop that is shut still shows them.
+    await setup({ sells: [] });
+
+    expect(screen.getByText('Terms of Use')).toBeOnTheScreen();
+  });
+
+  it('links the terms and the privacy policy', async () => {
+    const props = await setup();
+
+    fireEvent.press(screen.getByRole('link', { name: 'Terms of Use' }));
+    fireEvent.press(screen.getByRole('link', { name: 'Privacy Policy' }));
+
+    expect(props.onOpenLegal).toHaveBeenNthCalledWith(1, 'https://www.flintroom.app/terms');
+    expect(props.onOpenLegal).toHaveBeenNthCalledWith(2, 'https://www.flintroom.app/privacy');
+  });
 });

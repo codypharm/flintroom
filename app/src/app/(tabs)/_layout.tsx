@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { StyleSheet } from 'react-native';
 
 import { createBalanceApi, type Held } from '../../lib/api/balanceApi';
+import { useOnReturn } from '../../lib/balance/foreground';
 import { HeldProvider } from '../../lib/balance/held';
 import { API_BASE_URL, auth } from '../../lib/auth';
 import { TopBar } from '../../components/ui/TopBar';
@@ -92,6 +93,15 @@ export default function TabsLayout() {
       };
     }, [])
   );
+
+  // And again on coming back to the app: a purchase Apple finished while the
+  // person was elsewhere changes the figure without any screen losing focus.
+  useOnReturn(() => {
+    balance
+      .read()
+      .then(setHeld)
+      .catch(() => undefined);
+  });
 
   return (
     <HeldProvider held={held}>

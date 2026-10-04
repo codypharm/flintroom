@@ -84,6 +84,12 @@ export interface MoreMinutesProps {
   onRestore: () => void;
 
   /**
+   * Open the Terms of Use or the privacy policy. App Review asks for both on
+   * the screen that sells a subscription (3.1.2), not only on sign-in.
+   */
+  onOpenLegal: (url: string) => void;
+
+  /**
    * Where a purchase has got to.
    *
    * `waiting` is the state most products get wrong. A purchase completes on the
@@ -101,6 +107,7 @@ export function MoreMinutes({
   sells,
   onBuy,
   onRestore,
+  onOpenLegal,
   state,
 }: MoreMinutesProps) {
   const busy = state === 'buying';
@@ -131,6 +138,12 @@ export function MoreMinutes({
           />
         ))}
       </View>
+      {/* The length and the renewal, said where the price is (3.1.2). */}
+      <Text style={styles.renews}>
+        {
+          "Plans renew automatically at the end of each billing period until you cancel in your account's subscription settings."
+        }
+      </Text>
     </View>
   );
 
@@ -256,6 +269,24 @@ export function MoreMinutes({
         >
           <Text style={styles.restoreText}>Restore a previous purchase</Text>
         </Pressable>
+        <View style={styles.legal}>
+          <Pressable
+            onPress={() => onOpenLegal('https://www.flintroom.app/terms')}
+            accessibilityRole="link"
+            accessibilityLabel="Terms of Use"
+            style={({ pressed }) => [styles.restore, pressed && styles.pressed]}
+          >
+            <Text style={styles.legalText}>Terms of Use</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => onOpenLegal('https://www.flintroom.app/privacy')}
+            accessibilityRole="link"
+            accessibilityLabel="Privacy Policy"
+            style={({ pressed }) => [styles.restore, pressed && styles.pressed]}
+          >
+            <Text style={styles.legalText}>Privacy Policy</Text>
+          </Pressable>
+        </View>
       </View>
     </ScrollView>
   );
@@ -432,4 +463,7 @@ const styles = StyleSheet.create({
   },
   restore: { paddingVertical: space.snug, minHeight: 44, justifyContent: 'center' },
   restoreText: { ...type.bodySm, color: color.onSurfaceVariant, textAlign: 'center' },
+  legal: { flexDirection: 'row', justifyContent: 'center', gap: space.base },
+  legalText: { ...type.bodySm, color: color.onSurfaceVariant, textDecorationLine: 'underline' },
+  renews: { ...type.bodySm, color: color.onSurfaceVariant, marginTop: space.snug },
 });
