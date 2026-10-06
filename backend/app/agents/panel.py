@@ -270,18 +270,27 @@ async def interrogate(
     )
 
 
-def _repeating(archetype: Archetype, context: TurnContext, line: str) -> str | None:
-    """The question this line repeats, when its speaker is *returning* to the floor.
+def _closed(archetype: Archetype, context: TurnContext) -> tuple[str, ...]:
+    """The questions this panelist may not put again on this turn.
 
-    A press is exempt, and has to be: a panelist speaking straight after its own
-    question is pressing it, and #55's dial exists precisely so that it can.
-    What the tester reported was the other case — the floor went round the
-    table and came back to somebody with nothing new to ask.
+    All of them, except that a panelist speaking straight after its own
+    question may press *that* one — #55's dial exists precisely so that it can.
+
+    Only that one. The press used to exempt the whole turn, and reported
+    2026-10-06 is what that allowed: a panelist holding the floor asked,
+    asked something else, then asked the first question again. Every turn was
+    a press, so nothing was ever checked.
     """
+    asked = context.grounding.asked_by(archetype.name)
     spoken = [line for line in context.grounding.transcript if line.speaker != USER]
-    if not spoken or spoken[-1].speaker == archetype.name:
-        return None
-    return already_asked(line, context.grounding.asked_by(archetype.name))
+    if spoken and spoken[-1].speaker == archetype.name:
+        return asked[:-1]
+    return asked
+
+
+def _repeating(archetype: Archetype, context: TurnContext, line: str) -> str | None:
+    """The question this line repeats, or `None` if it may be said."""
+    return already_asked(line, _closed(archetype, context))
 
 
 @dataclass(frozen=True, slots=True)
@@ -320,7 +329,7 @@ async def _not_again(
     portrait was judged cheaper than a panelist asking the same thing twice,
     and `panel_repeat_caught` with `outcome=handed_off` is how often it happens.
     """
-    earlier = context.grounding.asked_by(archetype.name)
+    earlier = _closed(archetype, context)
     rewrite = await model.compose(
         archetype=archetype,
         context=replace(context, repeated=repeated),

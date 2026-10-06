@@ -315,7 +315,9 @@ async def test_the_floor_is_only_ever_the_first_stretch():
     Every later utterance is answered immediately — the settle pause is an
     opening-statement affordance, not a new rhythm for the whole session.
     """
-    model = ScriptedPanelModel()
+    model = ScriptedPanelModel(
+        lines=("Where is that from?", "Who signed that off?", "What did it cost?")
+    )
     channel = OrchestratedChannel(
         panel=DEFAULT_PANEL,
         transcription=held_open(

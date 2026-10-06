@@ -154,6 +154,53 @@ async def test_a_press_straight_after_its_own_question_is_left_alone():
     assert model.wrote_as == ["cfo"]
 
 
+#: The CFO kept the floor for two questions running. Reported 2026-10-06: a
+#: panelist asked, asked something else, then asked the first one again. Every
+#: one of those turns was "a press", so nothing was ever checked.
+HOLDING = _room(
+    Said(speaker="cfo", text=ASKED),
+    Said(speaker=USER, text="We get there on the enterprise tier."),
+    Said(speaker="cfo", text="What does one enterprise customer cost you to land?"),
+    Said(speaker=USER, text="About forty thousand, all in."),
+)
+
+
+async def test_a_panelist_holding_the_floor_cannot_go_back_to_an_older_question():
+    model = ScriptedModel(
+        "So walk me through how you get from twelve thousand users to profitability.",
+        "How long before that forty thousand comes back to you?",
+    )
+
+    turn = await interrogate(
+        DEFAULT_PANEL,
+        said="About forty thousand, all in.",
+        model=model,
+        grounding=HOLDING,
+        routed=Routed(CFO, "model"),
+    )
+
+    assert turn.archetype.name == "cfo"
+    assert turn.line == "How long before that forty thousand comes back to you?"
+    assert model.contexts[1].repeated == ASKED
+
+
+async def test_a_press_may_still_put_the_question_it_just_asked():
+    """Only the newest question is open to a press; the dial exists for it."""
+    last = "What does one enterprise customer cost you to land?"
+    model = ScriptedModel(last)
+
+    turn = await interrogate(
+        DEFAULT_PANEL,
+        said="About forty thousand, all in.",
+        model=model,
+        grounding=HOLDING,
+        routed=Routed(CFO, "model"),
+    )
+
+    assert turn.line == last
+    assert model.wrote_as == ["cfo"]
+
+
 async def test_an_auditor_catch_is_never_rewritten_or_handed_away():
     """§3.3: the owner of the domain puts the contradiction. Nobody else can."""
     model = ScriptedModel(ASKED)

@@ -81,9 +81,13 @@ class ScriptedPanelModel:
         speaker: str = "cfo",
         line: str = "Where is that from?",
         rephrased: str | None = None,
+        lines: Sequence[str] = (),
     ) -> None:
         self._speaker = speaker
         self._line = line
+        #: A different question each turn, for a room long enough that one line
+        #: said three times is a repeat the panel would now refuse.
+        self._queued = list(lines)
         self._rephrased = rephrased
         self.rephrasings: list[str] = []
         self.composed_for: list[str] = []
@@ -118,7 +122,7 @@ class ScriptedPanelModel:
             return ModelReply(text=self._rephrased or self._line)
         self.said.append(context.said)
         self.contexts.append(context)
-        return ModelReply(text=self._line)
+        return ModelReply(text=self._queued.pop(0) if self._queued else self._line)
 
 
 class FakeTranscript:
